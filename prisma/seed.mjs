@@ -55,11 +55,12 @@ async function main() {
     });
   }
 
+  const gameUrl = "/demo-game/index.html"; // todos apuntan al juego demo
   for (const g of GAMES) {
     await prisma.game.upsert({
       where: { slug: g.slug },
-      update: { ...g, providerId: provider.id, status: "published" },
-      create: { ...g, providerId: provider.id, status: "published" },
+      update: { ...g, providerId: provider.id, status: "published", gameUrl },
+      create: { ...g, providerId: provider.id, status: "published", gameUrl },
     });
   }
 

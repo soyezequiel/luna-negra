@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
+import { ReviewsSection } from "@/components/reviews-section";
 import { priceLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -85,10 +86,7 @@ export default async function GamePage({
         </section>
       ) : null}
 
-      <section className="mt-10">
-        <h2 className="mb-3 text-lg font-semibold">Reseñas</h2>
-        <p className="text-sm text-zinc-500">Próximamente (Semana 2).</p>
-      </section>
+      <ReviewsSection gameId={game.id} owned={owned} />
     </div>
   );
 }

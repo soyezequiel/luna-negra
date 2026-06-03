@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Luna Negra · Demo</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0a0c10;
+        color: #e6e8ec;
+        font-family: system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 24px;
+      }
+      h1 { margin: 0; font-size: 22px; }
+      .badge {
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid #ffffff22;
+      }
+      .ok { background: #16a34a22; color: #86efac; border-color: #16a34a55; }
+      .bad { background: #dc262622; color: #fca5a5; border-color: #dc262655; }
+      .info { background: #38bdf822; color: #7dd3fc; border-color: #38bdf855; }
+      .arena {
+        position: relative;
+        width: min(90vw, 520px);
+        height: 360px;
+        border: 1px solid #ffffff1a;
+        border-radius: 12px;
+        background: radial-gradient(circle at 50% 30%, #1e293b, #0b0d12);
+        overflow: hidden;
+      }
+      #moon {
+        position: absolute;
+        font-size: 40px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.05s;
+      }
+      #moon:active { transform: scale(0.85); }
+      .hud { display: flex; gap: 24px; font-size: 16px; }
+      .hud b { color: #7dd3fc; }
+      button.action {
+        background: #0ea5e9;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 18px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.action:disabled { opacity: 0.5; cursor: default; }
+      .muted { color: #94a3b8; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>🌑 Atrapá la Luna</h1>
+    <div id="status" class="badge info">Verificando acceso…</div>
+
+    <div class="hud">
+      <div>Puntaje: <b id="score">0</b></div>
+      <div>Tiempo: <b id="time">15</b>s</div>
+    </div>
+
+    <div class="arena" id="arena">
+      <button id="moon" style="display: none">🌙</button>
+    </div>
+
+    <button class="action" id="start">Empezar</button>
+    <p class="muted">
+      Juego demo de Luna Negra · verifica el entitlement vía
+      <code>/api/entitlements/verify</code>
+    </p>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const token = params.get("lnToken");
+      const statusEl = document.getElementById("status");
+
+      function setStatus(kind, text) {
+        statusEl.className = "badge " + kind;
+        statusEl.textContent = text;
+      }
+
+      async function verifyAccess() {
+        if (!token) {
+          setStatus("info", "Modo invitado (sin token de Luna Negra)");
+          return;
+        }
+        try {
+          const r = await fetch(
+            "/api/entitlements/verify?token=" + encodeURIComponent(token),
+          );
+          const d = await r.json();
+          if (d.valid) {
+            setStatus("ok", "Acceso verificado · " + d.npub.slice(0, 16) + "…");
+          } else {
+            setStatus("bad", "Token inválido o expirado");
+          }
+        } catch {
+          setStatus("bad", "No se pudo verificar el acceso");
+        }
+      }
+      verifyAccess();
+
+      // --- Juego ---
+      const arena = document.getElementById("arena");
+      const moon = document.getElementById("moon");
+      const scoreEl = document.getElementById("score");
+      const timeEl = document.getElementById("time");
+      const startBtn = document.getElementById("start");
+
+      let score = 0,
+        time = 15,
+        timer = null,
+        playing = false;
+
+      function moveMoon() {
+        const x = Math.random() * (arena.clientWidth - 50);
+        const y = Math.random() * (arena.clientHeight - 50);
+        moon.style.left = x + "px";
+        moon.style.top = y + "px";
+      }
+
+      moon.addEventListener("click", () => {
+        if (!playing) return;
+        score++;
+        scoreEl.textContent = score;
+        moveMoon();
+      });
+
+      function endGame() {
+        playing = false;
+        clearInterval(timer);
+        moon.style.display = "none";
+        startBtn.disabled = false;
+        startBtn.textContent = "Jugar de nuevo";
+        setStatus("info", "¡Terminó! Puntaje final: " + score);
+      }
+
+      startBtn.addEventListener("click", () => {
+        score = 0;
+        time = 15;
+        playing = true;
+        scoreEl.textContent = "0";
+        timeEl.textContent = "15";
+        startBtn.disabled = true;
+        moon.style.display = "block";
+        moveMoon();
+        timer = setInterval(() => {
+          time--;
+          timeEl.textContent = time;
+          if (time <= 0) endGame();
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>

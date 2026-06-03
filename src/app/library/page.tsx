@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { PlayButton } from "@/components/play-button";
 
 type LibraryGame = {
   id: string;
@@ -73,9 +74,7 @@ export default function LibraryPage() {
                 </div>
               </Link>
               {g.gameUrl ? (
-                <a href={g.gameUrl} target="_blank" rel="noopener noreferrer">
-                  <Button className="w-full">Jugar</Button>
-                </a>
+                <PlayButton gameId={g.id} gameUrl={g.gameUrl} className="w-full" />
               ) : (
                 <Button variant="outline" className="w-full" disabled>
                   Sin enlace

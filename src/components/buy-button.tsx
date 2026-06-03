@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { PlayButton } from "@/components/play-button";
 import { priceLabel } from "@/lib/format";
 
 type Props = {
@@ -99,9 +100,7 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
 
   if (owned || phase === "paid") {
     return gameUrl ? (
-      <a href={gameUrl} target="_blank" rel="noopener noreferrer">
-        <Button>Jugar</Button>
-      </a>
+      <PlayButton gameId={gameId} gameUrl={gameUrl} />
     ) : (
       <Button variant="outline" disabled>
         En tu biblioteca

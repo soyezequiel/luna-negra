@@ -69,3 +69,39 @@ export async function verifyChallenge(
     return null;
   }
 }
+
+// --- Entitlement (token corto para que el juego verifique el acceso) ---
+
+export type EntitlementPayload = {
+  npub: string;
+  pubkey: string;
+  gameId: string;
+  slug: string;
+};
+
+export async function signEntitlement(
+  payload: EntitlementPayload,
+): Promise<string> {
+  return new SignJWT({ ...payload, purpose: "entitlement" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(secret);
+}
+
+export async function verifyEntitlement(
+  token: string,
+): Promise<EntitlementPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.purpose !== "entitlement") return null;
+    return {
+      npub: payload.npub as string,
+      pubkey: payload.pubkey as string,
+      gameId: payload.gameId as string,
+      slug: payload.slug as string,
+    };
+  } catch {
+    return null;
+  }
+}

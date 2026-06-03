@@ -21,6 +21,9 @@ export function Navbar() {
           <Link href="/library" className="hover:text-white">
             Biblioteca
           </Link>
+          <Link href="/provider" className="hover:text-white">
+            Proveedor
+          </Link>
         </nav>
         <div className="ml-auto flex items-center gap-3">
           {loading ? null : user ? (

@@ -20,7 +20,14 @@ Tienda de juegos **100% web** estilo Steam, con pagos en **Bitcoin/Lightning** v
 
 Pendiente Semana 1: crear el wallet **Alby Hub** real y poner `NWC_CONNECTION_STRING` para pagos de verdad.
 
-Próximo (Semana 2): juego demo + API de entitlements + panel de proveedor + reseñas.
+### Semana 2 ✅
+- [x] **API de entitlements**: `play-token` (firma un JWT corto si poseés el juego) + `verify` (público, CORS) para el game server.
+- [x] **Juego demo** en `public/demo-game/` que lee el `lnToken`, verifica el acceso y se juega → prueba comprar→acceder→jugar real.
+- [x] **Panel de proveedor** (`/provider`): alta de proveedor, alta de juego (borrador), enviar a revisión.
+- [x] **Admin** (`/admin`): aprobar y publicar juegos en revisión (admin por `ADMIN_PUBKEY`, o cualquiera en dev).
+- [x] **Reseñas y ratings** (requiere poseer el juego), con promedio en la página del juego.
+
+Próximo (Semana 3): social vía Nostr (amigos, chat DM, feed de actividad por juego).
 
 ## Requisitos
 - Node 20+ (probado con 24).
