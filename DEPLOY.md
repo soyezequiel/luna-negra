@@ -1,37 +1,29 @@
 # Deploy a producción (Vercel + Postgres)
 
-Local usa **SQLite**; producción usa **Postgres**. Pasos:
+El proyecto **ya está configurado para Postgres** (`prisma/schema.prisma` usa
+`postgresql` con `directUrl`, y la migración inicial está en `prisma/migrations/0_init`).
+Solo tenés que crear la DB, poner las URLs y aplicar la migración.
 
 ## 1. Base de datos (Supabase o Neon)
-Creá un proyecto Postgres y copiá la connection string. Para serverless usá la
-**URL con pooler** (Supabase: "Connection pooling" / Neon: endpoint `-pooler`).
+Creá un proyecto Postgres y copiá **dos** connection strings:
+- **Pooler** (serverless) → `DATABASE_URL`. Supabase: "Connection pooling" (puerto 6543) · Neon: endpoint con `-pooler`.
+- **Directa** (sin pooler) → `DIRECT_URL`. Supabase: puerto 5432 · Neon: endpoint sin `-pooler`.
 
-## 2. Cambiar Prisma a Postgres
-En `prisma/schema.prisma`:
+> Si no usás pooler, podés poner la misma URL en ambas.
 
-```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
-Las migraciones actuales son de SQLite, así que para una DB nueva:
+## 2. Aplicar la migración (crear las tablas)
+Con las URLs en tu `.env` local (o exportadas), corré una vez:
 
 ```bash
-rm -rf prisma/migrations prisma/dev.db          # (PowerShell: Remove-Item -Recurse -Force prisma\migrations, prisma\dev.db)
-$env:DATABASE_URL="postgresql://...";  npx prisma migrate dev --name init
+npx prisma migrate deploy   # aplica prisma/migrations/0_init
+npm run db:seed             # opcional: datos de ejemplo
 ```
-
-Esto genera migraciones de Postgres. Commiteá `prisma/migrations`.
-
-> Tip pooler: si usás PgBouncer, agregá `?pgbouncer=true&connection_limit=1` a
-> la URL, o definí un `directUrl` en el datasource para las migraciones.
 
 ## 3. Variables de entorno (en Vercel → Settings → Environment Variables)
 | Var | Valor |
 |---|---|
-| `DATABASE_URL` | URL Postgres (pooler) |
+| `DATABASE_URL` | URL Postgres con **pooler** |
+| `DIRECT_URL` | URL Postgres **directa** (migraciones) |
 | `JWT_SECRET` | secreto fuerte → `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `NWC_CONNECTION_STRING` | cadena NWC de tu Alby Hub |
 | `ADMIN_PUBKEY` | tu pubkey hex (para `/admin`) |
@@ -40,8 +32,13 @@ Esto genera migraciones de Postgres. Commiteá `prisma/migrations`.
 
 ## 4. Vercel
 1. Subí el repo a GitHub e importalo en Vercel (detecta Next.js).
-2. El `build` ya corre `prisma generate && next build`.
-3. Cargá las env vars de arriba → **Deploy**.
+2. Cargá las env vars de arriba.
+3. **Deploy.** El `vercel.json` corre en cada build:
+   `prisma generate && prisma migrate deploy && next build` → o sea, genera el
+   cliente, **aplica las migraciones a la DB** y compila. No hace falta migrar a mano.
+
+> Si preferís migrar manualmente (no en cada build), sacá `prisma migrate deploy`
+> del `buildCommand` en `vercel.json` y corré las migraciones por separado.
 
 ## 5. Datos iniciales
 - Opción A: cargá el seed contra prod → `$env:DATABASE_URL="<prod>"; npm run db:seed`.

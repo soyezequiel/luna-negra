@@ -47,35 +47,41 @@ Pendiente Semana 1: crear el wallet **Alby Hub** real y poner `NWC_CONNECTION_ST
 
 ## Setup
 
+Usa **Postgres** (Neon o Supabase, ambos con free tier) en local y en prod.
+
 ```bash
 # 1. Instalar dependencias
 npm install
 
 # 2. Variables de entorno
 cp .env.example .env
-#   - DATABASE_URL ya viene con SQLite local (no requiere nada externo)
+#   - DATABASE_URL / DIRECT_URL → tu Postgres (Neon/Supabase)
 #   - cambiá JWT_SECRET por uno fuerte
 
-# 3. Crear la base de datos local (SQLite) + cliente Prisma
-npx prisma migrate dev
+# 3. Crear las tablas + cliente Prisma
+npx prisma migrate deploy
+npx prisma generate
 
-# 4. Levantar
+# 4. (opcional) datos de ejemplo
+npm run db:seed
+
+# 5. Levantar
 npm run dev
 ```
 
 Abrí http://localhost:3000 y tocá **“Conectar con Nostr”** (necesitás la extensión).
 
+> ¿Cero setup para probar rápido? Podés crear una DB Neon gratis en 1 min y usar
+> la misma URL en local y en Vercel.
+
 ## Scripts útiles
 - `npm run dev` — desarrollo.
-- `npm run build` — build de producción.
+- `npm run build` — build de producción (`prisma generate && next build`).
 - `npx prisma studio` — explorar la base de datos.
 
 ## Pasar a producción (Vercel)
-1. En `prisma/schema.prisma`, cambiar `provider = "sqlite"` → `"postgresql"`.
-2. Crear una DB Postgres en **Supabase** o **Neon** y poner su URL en `DATABASE_URL`.
-3. `npx prisma migrate deploy`.
-4. Generar un `JWT_SECRET` fuerte.
-5. (Semana 1) Crear un wallet **Alby Hub**, obtener la cadena **NWC** y ponerla en `NWC_CONNECTION_STRING`.
+Ya está configurado para Postgres. Pasos completos en [`DEPLOY.md`](./DEPLOY.md):
+crear DB → cargar envs → `npx prisma migrate deploy` → deploy en Vercel.
 
 ## Arquitectura (resumen)
 - **Frontend + API:** Next.js (App Router) en Vercel.

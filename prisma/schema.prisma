@@ -3,11 +3,11 @@ generator client {
 }
 
 datasource db {
-  // SQLite para desarrollo local (cero setup externo).
-  // Para producción en Vercel: cambiar provider a "postgresql" y
-  // apuntar DATABASE_URL a Supabase/Neon, luego `npx prisma migrate deploy`.
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // DATABASE_URL: conexión con POOLER (para serverless en Vercel).
+  // DIRECT_URL: conexión DIRECTA (sin pooler), usada por las migraciones.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
