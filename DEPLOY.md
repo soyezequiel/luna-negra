@@ -33,12 +33,12 @@ npm run db:seed             # opcional: datos de ejemplo
 ## 4. Vercel
 1. Subí el repo a GitHub e importalo en Vercel (detecta Next.js).
 2. Cargá las env vars de arriba.
-3. **Deploy.** El `vercel.json` corre en cada build:
-   `prisma generate && prisma migrate deploy && next build` → o sea, genera el
-   cliente, **aplica las migraciones a la DB** y compila. No hace falta migrar a mano.
+3. **Deploy.** El `vercel.json` corre `prisma generate && next build`. El build
+   **no toca la DB** (las páginas son `force-dynamic`), así que no falla por la base.
 
-> Si preferís migrar manualmente (no en cada build), sacá `prisma migrate deploy`
-> del `buildCommand` en `vercel.json` y corré las migraciones por separado.
+Las **migraciones se aplican aparte** (paso 2), no en el build. Así el deploy nunca
+depende de que la DB esté accesible en ese momento. Cuando cambies el schema,
+volvé a correr `npx prisma migrate deploy` contra prod.
 
 ## 5. Datos iniciales
 - Opción A: cargá el seed contra prod → `$env:DATABASE_URL="<prod>"; npm run db:seed`.
