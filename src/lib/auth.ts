@@ -109,3 +109,31 @@ export async function verifyEntitlement(
     return null;
   }
 }
+
+// --- Bet-session (token Bearer para el modal de apuestas embebido) ---
+
+export type BetSession = { sub: string; npub: string; pubkey: string };
+
+export async function signBetSession(p: BetSession): Promise<string> {
+  return new SignJWT({ ...p, purpose: "bet-session" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("2h")
+    .sign(secret);
+}
+
+export async function verifyBetSession(
+  token: string,
+): Promise<BetSession | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.purpose !== "bet-session") return null;
+    return {
+      sub: payload.sub as string,
+      npub: payload.npub as string,
+      pubkey: payload.pubkey as string,
+    };
+  } catch {
+    return null;
+  }
+}

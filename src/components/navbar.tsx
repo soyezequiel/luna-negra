@@ -27,6 +27,9 @@ export function Navbar() {
           <Link href="/messages" className="hover:text-white">
             Mensajes
           </Link>
+          <Link href="/bets" className="hover:text-white">
+            Apuestas
+          </Link>
           <Link href="/provider" className="hover:text-white">
             Proveedor
           </Link>

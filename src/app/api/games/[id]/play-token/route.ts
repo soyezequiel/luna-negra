@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, signEntitlement } from "@/lib/auth";
+import { getSession, signEntitlement, signBetSession } from "@/lib/auth";
 
 export async function POST(
   _req: Request,
@@ -37,5 +37,11 @@ export async function POST(
     gameId: id,
     slug: game.slug,
   });
-  return NextResponse.json({ token });
+  // Token de mínimo privilegio para que el modal de apuestas opere como el jugador.
+  const betSession = await signBetSession({
+    sub: session.sub,
+    npub: session.npub,
+    pubkey: session.pubkey,
+  });
+  return NextResponse.json({ token, betSession });
 }

@@ -12,6 +12,8 @@ import {
   verifyChallenge,
   signEntitlement,
   verifyEntitlement,
+  signBetSession,
+  verifyBetSession,
 } from "@/lib/auth";
 
 describe("sesión JWT", () => {
@@ -55,5 +57,18 @@ describe("entitlement", () => {
   it("un challenge no se acepta como entitlement", async () => {
     const t = await signChallenge("abc", "n");
     expect(await verifyEntitlement(t)).toBeNull();
+  });
+});
+
+describe("bet-session", () => {
+  it("round-trip", async () => {
+    const t = await signBetSession({ sub: "u1", npub: "n", pubkey: "p" });
+    const s = await verifyBetSession(t);
+    expect(s?.sub).toBe("u1");
+  });
+
+  it("un entitlement no se acepta como bet-session", async () => {
+    const t = await signEntitlement({ npub: "n", pubkey: "p", gameId: "g", slug: "s" });
+    expect(await verifyBetSession(t)).toBeNull();
   });
 });
