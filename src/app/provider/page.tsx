@@ -77,6 +77,7 @@ export default function ProviderPage() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<GameForm>({ ...emptyForm });
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     const [d, s] = await Promise.all([
@@ -97,16 +98,22 @@ export default function ProviderPage() {
   }, [user, load]);
 
   async function uploadFile(file: File): Promise<string | null> {
-    const r = await fetch(
-      `/api/upload?filename=${encodeURIComponent(file.name)}`,
-      { method: "POST", body: file },
-    );
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setMsg(d.error ?? "No se pudo subir la imagen");
-      return null;
+    setUploading(true);
+    setMsg(null);
+    try {
+      const r = await fetch(
+        `/api/upload?filename=${encodeURIComponent(file.name)}`,
+        { method: "POST", body: file },
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg(d.error ?? "No se pudo subir la imagen");
+        return null;
+      }
+      return d.url as string;
+    } finally {
+      setUploading(false);
     }
-    return d.url as string;
   }
 
   async function saveProvider(e: FormEvent) {
@@ -256,7 +263,7 @@ export default function ProviderPage() {
 
             {/* Portada */}
             <div>
-              <label className="text-sm text-zinc-400">Portada</label>
+              <label className="block text-sm text-zinc-400">Portada</label>
               <div className="mt-1 flex items-center gap-3">
                 {form.coverUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -268,30 +275,33 @@ export default function ProviderPage() {
                 ) : null}
                 <input
                   className={inputCls}
-                  placeholder="URL de portada (o subí una imagen)"
+                  placeholder="Pegá una URL de portada…"
                   value={form.coverUrl}
                   onChange={(e) =>
                     setForm({ ...form, coverUrl: e.target.value })
                   }
                 />
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                className="mt-2 text-xs text-zinc-400"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const url = await uploadFile(f);
-                  if (url) setForm((prev) => ({ ...prev, coverUrl: url }));
-                  e.target.value = "";
-                }}
-              />
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5">
+                {uploading ? "Subiendo…" : "📷 Subir portada"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const url = await uploadFile(f);
+                    if (url) setForm((prev) => ({ ...prev, coverUrl: url }));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
             </div>
 
             {/* Capturas */}
             <div>
-              <label className="text-sm text-zinc-400">Capturas</label>
+              <label className="block text-sm text-zinc-400">Capturas</label>
               {form.screenshots.length > 0 ? (
                 <div className="mt-1 flex flex-wrap gap-2">
                   {form.screenshots.map((src, i) => (
@@ -320,22 +330,25 @@ export default function ProviderPage() {
                   ))}
                 </div>
               ) : null}
-              <input
-                type="file"
-                accept="image/*"
-                className="mt-2 text-xs text-zinc-400"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const url = await uploadFile(f);
-                  if (url)
-                    setForm((prev) => ({
-                      ...prev,
-                      screenshots: [...prev.screenshots, url],
-                    }));
-                  e.target.value = "";
-                }}
-              />
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5">
+                {uploading ? "Subiendo…" : "➕ Agregar captura"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const url = await uploadFile(f);
+                    if (url)
+                      setForm((prev) => ({
+                        ...prev,
+                        screenshots: [...prev.screenshots, url],
+                      }));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
             </div>
 
             <div className="flex gap-3">
