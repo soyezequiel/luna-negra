@@ -15,6 +15,7 @@ export type SessionUser = {
   pubkey: string;
   displayName?: string | null;
   avatarUrl?: string | null;
+  isAdmin?: boolean;
 };
 
 type SessionContextValue = {

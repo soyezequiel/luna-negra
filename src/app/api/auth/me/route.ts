@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { isAdmin } from "@/lib/admin";
 
 export async function GET() {
   const session = await getSession();
@@ -17,5 +18,7 @@ export async function GET() {
     },
   });
   if (!user) return NextResponse.json({ user: null });
-  return NextResponse.json({ user });
+  return NextResponse.json({
+    user: { ...user, isAdmin: isAdmin(session.pubkey) },
+  });
 }

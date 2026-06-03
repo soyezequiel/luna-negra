@@ -1,13 +1,45 @@
+import Link from "next/link";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GameCard } from "@/components/game-card";
 
 export const dynamic = "force-dynamic";
 
-export default async function StorePage() {
-  const games = await prisma.game.findMany({
-    where: { status: "published" },
-    orderBy: { createdAt: "desc" },
-  });
+const PAGE_SIZE = 12;
+
+export default async function StorePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim();
+  const page = Math.max(1, Number(sp.page) || 1);
+
+  const where: Prisma.GameWhereInput = {
+    status: "published",
+    ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+  };
+
+  const [games, total] = await Promise.all([
+    prisma.game.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+    }),
+    prisma.game.count({ where }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const linkFor = (p: number) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -19,28 +51,68 @@ export default async function StorePage() {
         </p>
       </section>
 
+      <form action="/" method="get" className="mt-6 flex gap-2">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Buscar juegos…"
+          className="w-full max-w-sm rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50"
+        />
+        <button className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-400">
+          Buscar
+        </button>
+      </form>
+
       <section className="mt-8">
-        <h2 className="mb-4 text-lg font-semibold">Destacados</h2>
+        <h2 className="mb-4 text-lg font-semibold">
+          {q ? `Resultados para "${q}"` : "Destacados"}
+        </h2>
         {games.length === 0 ? (
           <p className="text-sm text-zinc-500">
-            Todavía no hay juegos publicados. Corré{" "}
-            <code className="rounded bg-white/10 px-1">npx prisma db seed</code>{" "}
-            para cargar ejemplos.
+            {q
+              ? "No hay juegos que coincidan con tu búsqueda."
+              : "Todavía no hay juegos publicados."}
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {games.map((g) => (
-              <GameCard
-                key={g.id}
-                game={{
-                  slug: g.slug,
-                  title: g.title,
-                  coverUrl: g.coverUrl,
-                  priceSats: g.priceSats,
-                }}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {games.map((g) => (
+                <GameCard
+                  key={g.id}
+                  game={{
+                    slug: g.slug,
+                    title: g.title,
+                    coverUrl: g.coverUrl,
+                    priceSats: g.priceSats,
+                  }}
+                />
+              ))}
+            </div>
+
+            {totalPages > 1 ? (
+              <div className="mt-8 flex items-center justify-center gap-4 text-sm">
+                {page > 1 ? (
+                  <Link
+                    href={linkFor(page - 1)}
+                    className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+                  >
+                    ← Anterior
+                  </Link>
+                ) : null}
+                <span className="text-zinc-500">
+                  Página {page} de {totalPages}
+                </span>
+                {page < totalPages ? (
+                  <Link
+                    href={linkFor(page + 1)}
+                    className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+                  >
+                    Siguiente →
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
       </section>
     </div>

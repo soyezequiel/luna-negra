@@ -13,11 +13,13 @@ ordenado por prioridad. Esfuerzo: **S** (horas) · **M** (1-2 días) · **L** (v
 Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use.
 
 - **A1 · Gestión de juegos del proveedor** ✅ (hecho): editar, **despublicar** y borrar; editar precio/descripción/URL después de crear.
-- **A2 · Subida de imágenes** (M): portada + screenshots con **Vercel Blob** (o Supabase Storage), en vez de pegar URLs.
+- **A2 · Subida de imágenes** ✅ (hecho): portada + screenshots con **Vercel Blob** (con fallback a pegar URL). Requiere activar Blob en Vercel.
 - **A3 · Payout robusto** ✅ (hecho): **reintento** de payouts en `failed` + panel en `/admin` + sección de ventas en `/provider`.
 - **A4 · Cachear perfil** ✅ (hecho): guarda `displayName`/`avatar` (kind:0) al login → nombre real en navbar, reseñas, amigos.
-- **A5 · Tienda navegable** (M): **búsqueda**, categorías/tags, orden y **paginación** (hoy carga todos los juegos de una).
-- **A6 · Admin completo** (S): **rechazar**/despublicar (no solo aprobar) + link gateado en el nav.
+- **A5 · Tienda navegable** ✅ (hecho): **búsqueda** + **paginación**. (Categorías/tags quedan pendientes — falta campo en el modelo.)
+- **A6 · Admin completo** ✅ (hecho): **rechazar** + link de admin gateado en el nav.
+
+> **Fase A completa** 🎉 (queda solo categorías/tags, opcional).
 
 ## Fase B — Listo para público (robustez y operación)
 - **B1 · Rate-limit real** (S): mover de memoria a **Upstash/Redis** (el actual no sirve en serverless).

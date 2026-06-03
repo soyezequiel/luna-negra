@@ -40,6 +40,11 @@ export async function POST(req: Request) {
         typeof body.coverUrl === "string" && body.coverUrl.trim()
           ? body.coverUrl.trim()
           : null,
+      screenshots: Array.isArray(body.screenshots)
+        ? JSON.stringify(
+            body.screenshots.filter((s: unknown) => typeof s === "string"),
+          )
+        : "[]",
       status: "draft",
     },
   });

@@ -30,6 +30,11 @@ export function Navbar() {
           <Link href="/provider" className="hover:text-white">
             Proveedor
           </Link>
+          {user?.isAdmin ? (
+            <Link href="/admin" className="hover:text-white">
+              Admin
+            </Link>
+          ) : null}
         </nav>
         <div className="ml-auto flex items-center gap-3">
           {loading ? null : user ? (

@@ -16,6 +16,7 @@ type Game = {
   priceSats: number;
   gameUrl: string | null;
   coverUrl: string | null;
+  screenshots: string;
   status: string;
 };
 type Sale = {
@@ -23,6 +24,14 @@ type Sale = {
   gameTitle: string;
   share: number;
   payoutStatus: string;
+};
+type GameForm = {
+  title: string;
+  description: string;
+  priceSats: string;
+  gameUrl: string;
+  coverUrl: string;
+  screenshots: string[];
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -38,13 +47,23 @@ const PAYOUT_LABEL: Record<string, string> = {
   skipped: "Sin dirección",
 };
 
-const emptyForm = {
+const emptyForm: GameForm = {
   title: "",
   description: "",
   priceSats: "0",
   gameUrl: "",
   coverUrl: "",
+  screenshots: [],
 };
+
+function parseShots(json: string): string[] {
+  try {
+    const v = JSON.parse(json || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function ProviderPage() {
   const { user, login, loading } = useSession();
@@ -57,7 +76,7 @@ export default function ProviderPage() {
   const [ln, setLn] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...emptyForm });
+  const [form, setForm] = useState<GameForm>({ ...emptyForm });
 
   const load = useCallback(async () => {
     const [d, s] = await Promise.all([
@@ -76,6 +95,19 @@ export default function ProviderPage() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  async function uploadFile(file: File): Promise<string | null> {
+    const r = await fetch(
+      `/api/upload?filename=${encodeURIComponent(file.name)}`,
+      { method: "POST", body: file },
+    );
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      setMsg(d.error ?? "No se pudo subir la imagen");
+      return null;
+    }
+    return d.url as string;
+  }
 
   async function saveProvider(e: FormEvent) {
     e.preventDefault();
@@ -99,6 +131,7 @@ export default function ProviderPage() {
       priceSats: String(g.priceSats),
       gameUrl: g.gameUrl ?? "",
       coverUrl: g.coverUrl ?? "",
+      screenshots: parseShots(g.screenshots),
     });
     setMsg(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -220,12 +253,91 @@ export default function ProviderPage() {
                 onChange={(e) => setForm({ ...form, gameUrl: e.target.value })}
               />
             </div>
-            <input
-              className={inputCls}
-              placeholder="URL de portada (opcional)"
-              value={form.coverUrl}
-              onChange={(e) => setForm({ ...form, coverUrl: e.target.value })}
-            />
+
+            {/* Portada */}
+            <div>
+              <label className="text-sm text-zinc-400">Portada</label>
+              <div className="mt-1 flex items-center gap-3">
+                {form.coverUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.coverUrl}
+                    alt=""
+                    className="h-16 w-12 rounded object-cover"
+                  />
+                ) : null}
+                <input
+                  className={inputCls}
+                  placeholder="URL de portada (o subí una imagen)"
+                  value={form.coverUrl}
+                  onChange={(e) =>
+                    setForm({ ...form, coverUrl: e.target.value })
+                  }
+                />
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                className="mt-2 text-xs text-zinc-400"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const url = await uploadFile(f);
+                  if (url) setForm((prev) => ({ ...prev, coverUrl: url }));
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            {/* Capturas */}
+            <div>
+              <label className="text-sm text-zinc-400">Capturas</label>
+              {form.screenshots.length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {form.screenshots.map((src, i) => (
+                    <div key={src} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt=""
+                        className="h-16 w-16 rounded object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            screenshots: prev.screenshots.filter(
+                              (_, j) => j !== i,
+                            ),
+                          }))
+                        }
+                        className="absolute -right-1 -top-1 rounded-full bg-black/80 px-1.5 text-xs leading-tight"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <input
+                type="file"
+                accept="image/*"
+                className="mt-2 text-xs text-zinc-400"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const url = await uploadFile(f);
+                  if (url)
+                    setForm((prev) => ({
+                      ...prev,
+                      screenshots: [...prev.screenshots, url],
+                    }));
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
             <div className="flex gap-3">
               <Button type="submit">
                 {editingId ? "Guardar cambios" : "Crear borrador"}

@@ -58,6 +58,11 @@ export default function AdminPage() {
     load();
   }
 
+  async function reject(id: string) {
+    await fetch(`/api/admin/games/${id}/reject`, { method: "POST" });
+    load();
+  }
+
   async function retry(id: string) {
     setBusy(id);
     try {
@@ -113,7 +118,12 @@ export default function AdminPage() {
                     {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
                   </p>
                 </div>
-                <Button onClick={() => approve(g.id)}>Aprobar y publicar</Button>
+                <div className="flex gap-2">
+                  <Button onClick={() => approve(g.id)}>Aprobar</Button>
+                  <Button variant="ghost" onClick={() => reject(g.id)}>
+                    Rechazar
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
