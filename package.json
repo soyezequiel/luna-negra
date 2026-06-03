@@ -10,6 +10,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "db:seed": "prisma db seed"
   },
   "dependencies": {
@@ -17,6 +18,8 @@
     "@getalby/sdk": "^8.0.3",
     "@nostr-dev-kit/ndk": "^3.0.3",
     "@prisma/client": "^6.19.3",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.4.0",
     "jose": "^6.2.3",
     "next": "16.2.7",
@@ -35,6 +38,7 @@
     "eslint-config-next": "16.2.7",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.8"
   }
 }

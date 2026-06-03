@@ -22,12 +22,12 @@ Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use
 > **Fase A completa** 🎉 (queda solo categorías/tags, opcional).
 
 ## Fase B — Listo para público (robustez y operación)
-- **B1 · Rate-limit real** (S): mover de memoria a **Upstash/Redis** (el actual no sirve en serverless).
-- **B2 · Monitoreo de errores** (S): **Sentry** — hoy un 500 solo se ve en logs de Vercel.
-- **B3 · Dominio propio** (S): salir de `*.vercel.app`.
-- **B4 · Términos y privacidad** (S): importante porque **custodiás fondos** (y más con apuestas).
-- **B5 · Tests automatizados** (M): al menos el **flujo de pago** y auth.
-- **B6 · Backups/PITR** (S): activar en Neon.
+- **B1 · Rate-limit real** ✅ (hecho): Upstash Redis con fallback a memoria (`checkRateLimit`). Falta setear las env vars de Upstash en Vercel para activarlo.
+- **B2 · Monitoreo de errores** ⏳ (pendiente): **Sentry** — necesita cuenta/DSN y tocar la config de build; hacer con cuidado.
+- **B3 · Dominio propio** ✅ (documentado en DEPLOY.md): acción en el dashboard de Vercel.
+- **B4 · Términos y privacidad** ✅ (hecho): `/terms` y `/privacy` + links en el footer.
+- **B5 · Tests automatizados** ✅ (hecho): Vitest, 13 tests (auth/JWT, format, admin). `npm test`.
+- **B6 · Backups/PITR** ✅ (documentado en DEPLOY.md): acción en el dashboard de Neon.
 
 ## Fase C — Feature estrella: apuestas / escrow ⭐
 La razón de ser de Luna Negra. La más delicada. **Necesita un servicio always-on**

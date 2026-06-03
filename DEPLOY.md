@@ -49,6 +49,29 @@ volvé a correr `npx prisma migrate deploy` contra prod.
 - Los proveedores hostean su juego donde quieran (subdominio propio) y ponen esa
   URL en `gameUrl`. Luna Negra lo abre con `?lnToken=<jwt>` (ver `DEVELOPERS.md`).
 
+## Producción a escala (Fase B)
+
+### Rate limiting real (Upstash)
+1. Crear un **Redis** gratis en [upstash.com](https://upstash.com).
+2. Copiar **REST URL** y **REST Token**.
+3. En Vercel agregar `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN` → Redeploy.
+4. La app los usa automáticamente; sin ellos cae al rate-limit en memoria.
+
+### Dominio propio
+1. Vercel → proyecto → **Settings → Domains** → **Add**.
+2. Ingresá tu dominio y seguí los pasos de DNS (registro A / CNAME a Vercel).
+3. Vercel emite el certificado HTTPS solo.
+
+### Backups de la base (Neon)
+- Neon hace **branching** y **Point-in-Time Restore** (PITR). En el dashboard de
+  Neon → tu proyecto → **Settings/Backups**, verificá la ventana de retención del
+  plan (en free es corta; subí de plan si necesitás más).
+
+### Monitoreo de errores (Sentry) — pendiente
+- `npx @sentry/wizard@latest -i nextjs` configura el SDK. Requiere un DSN de Sentry.
+  Hacerlo con cuidado (toca `next.config.ts` / instrumentación) y probar el build
+  antes de pushear, para no romper el deploy en vivo.
+
 ## 7. Checklist de seguridad
 - [ ] `JWT_SECRET` fuerte y único.
 - [ ] `ADMIN_PUBKEY` seteado (si no, en prod nadie es admin).
