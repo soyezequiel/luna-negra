@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant GS as Game server (proveedor)
+    participant LN as Luna Negra API
+    participant N as Relays Nostr
+    participant P as Jugador (modal)
+    participant W as Alby Hub / NWC
+    participant T as Tick (QStash)
+
+    GS->>LN: POST /escrow/bets (firmado NIP-98)
+    LN->>LN: verifica pubkey == dueño del game
+    LN->>N: publica contrato (tag a npubs) [inmutable]
+    LN-->>GS: 201 { betId, depositDeadline (+10m) }
+    P->>LN: POST /escrow/bets/{id}/deposit (Bearer)
+    LN->>W: makeInvoice (msat)
+    LN-->>P: 200 { invoice, QR }
+    P->>W: paga el invoice
+    loop cada ~1 min
+        T->>LN: POST /escrow/tick (firma QStash)
+        LN->>W: lookupInvoice (pendientes)
+        alt todos depositaron
+            LN->>LN: status = ready, resolveDeadline +15m
+        else venció 10m incompleto
+            LN->>W: payInvoice reembolso (idempotente)
+            LN->>LN: status = cancelled_incomplete
+        end
+    end

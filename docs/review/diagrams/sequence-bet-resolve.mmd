@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant GS as Game server (proveedor)
+    participant LN as Luna Negra API
+    participant N as Relays Nostr
+    participant W as Alby Hub / NWC
+    participant P as Ganador
+    participant T as Tick (QStash)
+
+    alt el server reporta a tiempo (< 15m)
+        GS->>LN: POST /escrow/result (evento firmado)
+        LN->>LN: verifica firma == pubkey del proveedor
+        LN->>LN: claim status ready→settling (update optimista)
+        LN->>LN: invariante: Σdepósitos ≥ Σsalidas + payout
+        LN->>N: publica resultado (tag a jugadores)
+        alt ganador tiene lud16 / NWC
+            LN->>W: payInvoice (pozo − 5%) [ledger idempotencyKey]
+            LN-->>P: "te pagamos a tu wallet"
+        else sin destino
+            LN-->>P: QR LNURL-withdraw (ventana 60m)
+            P->>LN: escanea → callback → invoice
+            LN->>W: payInvoice al invoice del jugador
+        end
+        LN->>LN: status = settled
+    else timeout 15m sin resultado
+        T->>LN: POST /escrow/tick
+        LN->>W: payInvoice reembolso a cada uno (idempotente)
+        LN->>LN: status = refunded_timeout
+    end

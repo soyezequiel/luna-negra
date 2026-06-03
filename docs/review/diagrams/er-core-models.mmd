@@ -1,0 +1,47 @@
+erDiagram
+    User ||--o{ BetParticipant : "participa"
+    User ||--o{ LedgerEntry : "involucra"
+    Provider ||--o{ Bet : "resuelve/firma"
+    Game ||--o{ Bet : "aloja"
+    Bet ||--|{ BetParticipant : "tiene"
+    Bet ||--o{ LedgerEntry : "registra"
+
+    Bet {
+      string id PK
+      string gameId FK
+      string providerId FK
+      string status "created..settled/refunded/cancelled"
+      bigint stakeMsat "msat por jugador"
+      int feePct "ej. 5"
+      string victoryCondition
+      datetime depositDeadline "+10 min"
+      datetime resolveDeadline "+15 min al quedar ready"
+      string contractEventId "Nostr"
+      string resultEventId "Nostr firmado"
+      datetime createdAt
+    }
+    BetParticipant {
+      string id PK
+      string betId FK
+      string userId FK
+      string npub "denormalizado"
+      string depositStatus "pending|paid|refunded|failed"
+      string depositInvoice "bolt11"
+      string depositPaymentHash UK
+      string result "pending|won|lost|tie"
+      string payoutStatus "none..claimed|forfeited"
+      bigint payoutMsat
+      string payoutDestination "lud16/LN addr/NWC"
+      datetime withdrawDeadline "+60 min QR"
+    }
+    LedgerEntry {
+      string id PK
+      string betId FK
+      string userId FK "nullable (fee/forfeit=house)"
+      string kind "deposit|payout|refund|fee|forfeit"
+      bigint amountMsat
+      string status "pending|settled|failed"
+      string paymentHash
+      string idempotencyKey UK "{kind}:{betId}:{userId}"
+      datetime createdAt
+    }
