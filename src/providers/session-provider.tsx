@@ -7,8 +7,15 @@ import {
   useEffect,
   useState,
 } from "react";
+import { fetchProfile, profileName } from "@/lib/nostr";
 
-export type SessionUser = { id: string; npub: string; pubkey: string };
+export type SessionUser = {
+  id: string;
+  npub: string;
+  pubkey: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+};
 
 type SessionContextValue = {
   user: SessionUser | null;
@@ -64,6 +71,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Verificación fallida");
       setUser(data.user);
+
+      // Cachear el perfil Nostr (kind:0) en segundo plano.
+      void (async () => {
+        try {
+          const p = await fetchProfile(pubkey);
+          if (!p) return;
+          const displayName = profileName(p);
+          const avatarUrl = p.picture ?? null;
+          await fetch("/api/users/me/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ displayName, avatarUrl }),
+          });
+          setUser((prev) => (prev ? { ...prev, displayName, avatarUrl } : prev));
+        } catch {
+          /* sin perfil, no pasa nada */
+        }
+      })();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error de login");
     }

@@ -36,9 +36,9 @@ export function Navbar() {
             <>
               <Link
                 href="/profile"
-                className="font-mono text-sm text-zinc-300 hover:text-white"
+                className="max-w-[140px] truncate text-sm text-zinc-300 hover:text-white"
               >
-                {user.npub.slice(0, 12)}…
+                {user.displayName || `${user.npub.slice(0, 12)}…`}
               </Link>
               <Button variant="outline" onClick={logout}>
                 Salir

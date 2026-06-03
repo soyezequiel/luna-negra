@@ -7,17 +7,22 @@ import { Button } from "@/components/ui/button";
 const inputCls =
   "w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50";
 
-type Provider = {
-  id: string;
-  name: string;
-  lightningAddress: string | null;
-};
+type Provider = { id: string; name: string; lightningAddress: string | null };
 type Game = {
   id: string;
   title: string;
   slug: string;
+  description: string;
   priceSats: number;
+  gameUrl: string | null;
+  coverUrl: string | null;
   status: string;
+};
+type Sale = {
+  id: string;
+  gameTitle: string;
+  share: number;
+  payoutStatus: string;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -25,32 +30,47 @@ const STATUS_LABEL: Record<string, string> = {
   in_review: "En revisión",
   published: "Publicado",
 };
+const PAYOUT_LABEL: Record<string, string> = {
+  none: "—",
+  pending: "En proceso",
+  paid: "Pagado",
+  failed: "Falló",
+  skipped: "Sin dirección",
+};
+
+const emptyForm = {
+  title: "",
+  description: "",
+  priceSats: "0",
+  gameUrl: "",
+  coverUrl: "",
+};
 
 export default function ProviderPage() {
   const { user, login, loading } = useSession();
   const [provider, setProvider] = useState<Provider | null>(null);
   const [games, setGames] = useState<Game[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priceSats, setPriceSats] = useState("0");
-  const [gameUrl, setGameUrl] = useState("");
-  const [coverUrl, setCoverUrl] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({ ...emptyForm });
 
   const load = useCallback(async () => {
-    const d = await fetch("/api/provider")
-      .then((r) => r.json())
-      .catch(() => null);
+    const [d, s] = await Promise.all([
+      fetch("/api/provider").then((r) => r.json()).catch(() => null),
+      fetch("/api/provider/sales").then((r) => r.json()).catch(() => ({ sales: [] })),
+    ]);
     if (d?.provider) {
       setProvider(d.provider);
       setName(d.provider.name);
       setLn(d.provider.lightningAddress ?? "");
     }
     setGames(d?.games ?? []);
+    setSales(s?.sales ?? []);
   }, []);
 
   useEffect(() => {
@@ -71,33 +91,53 @@ export default function ProviderPage() {
     setMsg("Perfil guardado.");
   }
 
-  async function createGame(e: FormEvent) {
+  function startEdit(g: Game) {
+    setEditingId(g.id);
+    setForm({
+      title: g.title,
+      description: g.description,
+      priceSats: String(g.priceSats),
+      gameUrl: g.gameUrl ?? "",
+      coverUrl: g.coverUrl ?? "",
+    });
+    setMsg(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm({ ...emptyForm });
+  }
+
+  async function submitGame(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
-    const r = await fetch("/api/provider/games", {
-      method: "POST",
+    const payload = { ...form, priceSats: Number(form.priceSats) };
+    const url = editingId
+      ? `/api/provider/games/${editingId}`
+      : "/api/provider/games";
+    const r = await fetch(url, {
+      method: editingId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        description,
-        priceSats: Number(priceSats),
-        gameUrl,
-        coverUrl,
-      }),
+      body: JSON.stringify(payload),
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "Error");
-    setTitle("");
-    setDescription("");
-    setPriceSats("0");
-    setGameUrl("");
-    setCoverUrl("");
-    setMsg("Juego creado (borrador).");
+    setMsg(editingId ? "Cambios guardados." : "Juego creado (borrador).");
+    cancelEdit();
     load();
   }
 
-  async function submitGame(id: string) {
-    await fetch(`/api/provider/games/${id}/submit`, { method: "POST" });
+  async function action(id: string, path: string, method = "POST") {
+    await fetch(`/api/provider/games/${id}${path}`, { method });
+    load();
+  }
+
+  async function remove(id: string) {
+    if (!confirm("¿Borrar este juego? No se puede deshacer.")) return;
+    const r = await fetch(`/api/provider/games/${id}`, { method: "DELETE" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg(d.error ?? "No se pudo borrar");
     load();
   }
 
@@ -145,22 +185,24 @@ export default function ProviderPage() {
       {provider ? (
         <>
           <form
-            onSubmit={createGame}
+            onSubmit={submitGame}
             className="mt-8 space-y-3 rounded-xl border border-white/10 bg-white/5 p-5"
           >
-            <h2 className="font-semibold">Nuevo juego</h2>
+            <h2 className="font-semibold">
+              {editingId ? "Editar juego" : "Nuevo juego"}
+            </h2>
             <input
               className={inputCls}
               placeholder="Título"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
             <textarea
               className={inputCls}
               placeholder="Descripción"
               rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
             <div className="flex gap-3">
               <input
@@ -168,23 +210,32 @@ export default function ProviderPage() {
                 type="number"
                 min={0}
                 placeholder="Precio (sats)"
-                value={priceSats}
-                onChange={(e) => setPriceSats(e.target.value)}
+                value={form.priceSats}
+                onChange={(e) => setForm({ ...form, priceSats: e.target.value })}
               />
               <input
                 className={inputCls}
                 placeholder="URL del juego (subdominio)"
-                value={gameUrl}
-                onChange={(e) => setGameUrl(e.target.value)}
+                value={form.gameUrl}
+                onChange={(e) => setForm({ ...form, gameUrl: e.target.value })}
               />
             </div>
             <input
               className={inputCls}
               placeholder="URL de portada (opcional)"
-              value={coverUrl}
-              onChange={(e) => setCoverUrl(e.target.value)}
+              value={form.coverUrl}
+              onChange={(e) => setForm({ ...form, coverUrl: e.target.value })}
             />
-            <Button type="submit">Crear borrador</Button>
+            <div className="flex gap-3">
+              <Button type="submit">
+                {editingId ? "Guardar cambios" : "Crear borrador"}
+              </Button>
+              {editingId ? (
+                <Button type="button" variant="ghost" onClick={cancelEdit}>
+                  Cancelar
+                </Button>
+              ) : null}
+            </div>
           </form>
 
           <section className="mt-8">
@@ -196,7 +247,7 @@ export default function ProviderPage() {
                 {games.map((g) => (
                   <li
                     key={g.id}
-                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3"
                   >
                     <div>
                       <p className="text-sm font-medium">{g.title}</p>
@@ -205,11 +256,61 @@ export default function ProviderPage() {
                         {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
                       </p>
                     </div>
-                    {g.status === "draft" ? (
-                      <Button variant="outline" onClick={() => submitGame(g.id)}>
-                        Enviar a revisión
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="ghost" onClick={() => startEdit(g)}>
+                        Editar
                       </Button>
-                    ) : null}
+                      {g.status === "draft" ? (
+                        <Button
+                          variant="outline"
+                          onClick={() => action(g.id, "/submit")}
+                        >
+                          Enviar a revisión
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={() => action(g.id, "/unpublish")}
+                        >
+                          Despublicar
+                        </Button>
+                      )}
+                      <Button variant="ghost" onClick={() => remove(g.id)}>
+                        Borrar
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="mt-8">
+            <h2 className="mb-3 font-semibold">Ventas</h2>
+            {sales.length === 0 ? (
+              <p className="text-sm text-zinc-500">Todavía no hay ventas.</p>
+            ) : (
+              <ul className="space-y-2">
+                {sales.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm"
+                  >
+                    <span>{s.gameTitle}</span>
+                    <span className="text-zinc-400">
+                      {s.share} sats ·{" "}
+                      <span
+                        className={
+                          s.payoutStatus === "paid"
+                            ? "text-emerald-400"
+                            : s.payoutStatus === "failed"
+                              ? "text-red-400"
+                              : "text-amber-400"
+                        }
+                      >
+                        {PAYOUT_LABEL[s.payoutStatus] ?? s.payoutStatus}
+                      </span>
+                    </span>
                   </li>
                 ))}
               </ul>
