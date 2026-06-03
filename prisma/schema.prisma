@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // SQLite para desarrollo local (cero setup externo).
+  // Para producción en Vercel: cambiar provider a "postgresql" y
+  // apuntar DATABASE_URL a Supabase/Neon, luego `npx prisma migrate deploy`.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  npub        String   @unique
+  pubkey      String   @unique // hex
+  displayName String?
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  lastSeen    DateTime @default(now())
+
+  providers Provider[]
+  purchases Purchase[]
+  reviews   Review[]
+}
+
+model Provider {
+  id               String   @id @default(cuid())
+  ownerId          String
+  owner            User     @relation(fields: [ownerId], references: [id])
+  name             String
+  lightningAddress String? // dirección Lightning para el payout (70%)
+  status           String   @default("pending") // pending | approved
+  createdAt        DateTime @default(now())
+
+  games Game[]
+}
+
+model Game {
+  id           String   @id @default(cuid())
+  providerId   String
+  provider     Provider @relation(fields: [providerId], references: [id])
+  slug         String   @unique
+  title        String
+  description  String   @default("")
+  priceSats    Int      @default(0) // 0 = gratis
+  coverUrl     String?
+  screenshots  String   @default("[]") // JSON array de URLs (portable SQLite/Postgres)
+  gameUrl      String? // subdominio donde el proveedor hostea el juego
+  status       String   @default("draft") // draft | in_review | published
+  revenueShare Int      @default(70) // % para el proveedor
+  createdAt    DateTime @default(now())
+
+  purchases Purchase[]
+  reviews   Review[]
+}
+
+model Purchase {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  gameId       String
+  game         Game      @relation(fields: [gameId], references: [id])
+  amountSats   Int
+  invoice      String? // bolt11
+  paymentHash  String?
+  status       String    @default("pending") // pending | paid | failed
+  payoutStatus String    @default("none") // none | pending | paid | failed
+  payoutHash   String?
+  createdAt    DateTime  @default(now())
+  paidAt       DateTime?
+
+  @@unique([userId, gameId]) // un usuario posee un juego una sola vez (entitlement)
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id])
+  rating    Int // 1-5
+  body      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, gameId]) // una reseña por usuario y juego
+}

@@ -1,0 +1,88 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
+export type SessionUser = { id: string; npub: string; pubkey: string };
+
+type SessionContextValue = {
+  user: SessionUser | null;
+  loading: boolean;
+  error: string | null;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+};
+
+const SessionContext = createContext<SessionContextValue | null>(null);
+
+export function SessionProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setUser(d.user))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const login = useCallback(async () => {
+    setError(null);
+    if (!window.nostr) {
+      setError("No se encontró una extensión Nostr. Instalá nos2x o Alby.");
+      return;
+    }
+    try {
+      const pubkey = await window.nostr.getPublicKey();
+
+      const ch = await fetch("/api/auth/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pubkey }),
+      }).then((r) => r.json());
+      if (!ch.token) throw new Error(ch.error ?? "No se pudo iniciar el login");
+
+      const signed = await window.nostr.signEvent({
+        kind: 27235,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [["challenge", ch.nonce]],
+        content: "Iniciar sesión en Luna Negra",
+      });
+
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: ch.token, event: signed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Verificación fallida");
+      setUser(data.user);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error de login");
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+  }, []);
+
+  return (
+    <SessionContext.Provider value={{ user, loading, error, login, logout }}>
+      {children}
+    </SessionContext.Provider>
+  );
+}
+
+export function useSession(): SessionContextValue {
+  const ctx = useContext(SessionContext);
+  if (!ctx) throw new Error("useSession debe usarse dentro de <SessionProvider>");
+  return ctx;
+}

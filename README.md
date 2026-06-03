@@ -11,7 +11,16 @@ Tienda de juegos **100% web** estilo Steam, con pagos en **Bitcoin/Lightning** v
 - [x] Layout oscuro estilo Steam (Tienda / Biblioteca / Perfil).
 - [x] Perfil leído de Nostr (metadata kind:0) desde relays públicos.
 
-Próximo (Semana 1): catálogo + flujo de compra Lightning + reparto 70/30.
+### Semana 1 (en curso ✅)
+- [x] Catálogo desde DB (home grid + página de juego) con datos de ejemplo (`npx prisma db seed`).
+- [x] Flujo de compra: invoice por NWC → modal con **QR** + copiar → **polling** → entitlement.
+- [x] Payout 70/30 automático a la Lightning Address del proveedor (`src/lib/payments.ts`).
+- [x] Biblioteca con los juegos comprados.
+- [x] **Modo dev** sin wallet: botón "Simular pago" para probar todo el flujo sin Alby Hub.
+
+Pendiente Semana 1: crear el wallet **Alby Hub** real y poner `NWC_CONNECTION_STRING` para pagos de verdad.
+
+Próximo (Semana 2): juego demo + API de entitlements + panel de proveedor + reseñas.
 
 ## Requisitos
 - Node 20+ (probado con 24).
