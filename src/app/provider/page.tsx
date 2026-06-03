@@ -351,6 +351,7 @@ export default function ProviderPage() {
               </label>
             </div>
 
+            {msg ? <p className="text-xs text-amber-400">{msg}</p> : null}
             <div className="flex gap-3">
               <Button type="submit">
                 {editingId ? "Guardar cambios" : "Crear borrador"}
