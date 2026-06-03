@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPlayerAuth } from "@/lib/escrow-auth";
+import { signWithdrawToken } from "@/lib/auth";
 import { msatToSats } from "@/lib/money";
 
 export async function GET(
@@ -33,15 +34,31 @@ export async function GET(
     result: string;
     payoutStatus: string;
     depositInvoice: string | null;
+    withdrawUrl: string | null;
   } = null;
   if (auth) {
     const mine = bet.participants.find((p) => p.userId === auth.sub);
     if (mine) {
+      let withdrawUrl: string | null = null;
+      if (
+        mine.payoutStatus === "withdraw_pending" &&
+        mine.withdrawDeadline &&
+        mine.withdrawDeadline > new Date()
+      ) {
+        const token = await signWithdrawToken(
+          mine.id,
+          Math.floor(mine.withdrawDeadline.getTime() / 1000),
+        );
+        const host =
+          req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+        withdrawUrl = `lnurlw://${host}/api/escrow/lnurlw/${token}`;
+      }
       me = {
         paid: mine.depositStatus === "paid",
         result: mine.result,
         payoutStatus: mine.payoutStatus,
         depositInvoice: mine.depositInvoice,
+        withdrawUrl,
       };
     }
   }

@@ -17,7 +17,13 @@ type BetData = {
   gameTitle: string;
   providerName: string;
   participants: Participant[];
-  me: { paid: boolean; result: string; payoutStatus: string; depositInvoice: string | null } | null;
+  me: {
+    paid: boolean;
+    result: string;
+    payoutStatus: string;
+    depositInvoice: string | null;
+    withdrawUrl: string | null;
+  } | null;
 };
 
 const ACTIVE = new Set(["pending_deposits", "ready", "settling", "refunding"]);
@@ -35,6 +41,7 @@ export function BetView({ betId }: { betId: string }) {
   const [qr, setQr] = useState<string | null>(null);
   const [devMode, setDevMode] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [withdrawQr, setWithdrawQr] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -148,7 +155,39 @@ export function BetView({ betId }: { betId: string }) {
             ) : (
               <p className="text-lg font-semibold text-zinc-400">Perdiste esta vez</p>
             )}
-            <p className="mt-1 text-sm text-zinc-500">Cobro: {bet.me.payoutStatus}</p>
+            {bet.me.payoutStatus === "paid" || bet.me.payoutStatus === "claimed" ? (
+              <p className="mt-1 text-sm text-emerald-400">Cobrado ✓</p>
+            ) : bet.me.payoutStatus === "withdraw_pending" && bet.me.withdrawUrl ? (
+              <div className="mt-3">
+                {!withdrawQr ? (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      const u = bet.me?.withdrawUrl;
+                      if (u) setWithdrawQr(await QRCode.toDataURL(u, { margin: 1, width: 220 }));
+                    }}
+                  >
+                    Retirar (mostrar QR)
+                  </Button>
+                ) : (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={withdrawQr} alt="QR de retiro" className="mx-auto rounded-lg bg-white p-2" />
+                    <p className="mt-2 text-xs text-amber-400">
+                      Escaneá con tu wallet. Tenés 60 min o los sats quedan en el pozo.
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : bet.me.payoutStatus === "forfeited" ? (
+              <p className="mt-1 text-sm text-zinc-500">
+                No reclamaste a tiempo; los sats quedaron en el pozo.
+              </p>
+            ) : bet.me.payoutStatus === "failed" ? (
+              <p className="mt-1 text-sm text-red-400">
+                Hubo un problema con el cobro; se reintentará.
+              </p>
+            ) : null}
           </div>
         ) : !bet.me.paid && bet.status === "pending_deposits" ? (
           <div>

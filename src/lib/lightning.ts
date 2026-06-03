@@ -68,3 +68,14 @@ export async function payToLightningAddress(
     client.close();
   }
 }
+
+/** Paga un invoice bolt11 ya provisto (ej. LNURL-withdraw). Devuelve el preimage. */
+export async function payInvoiceRaw(bolt11: string): Promise<string> {
+  const client = getClient();
+  try {
+    const res = await client.payInvoice({ invoice: bolt11 });
+    return res.preimage;
+  } finally {
+    client.close();
+  }
+}

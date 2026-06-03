@@ -137,3 +137,26 @@ export async function verifyBetSession(
     return null;
   }
 }
+
+// --- Withdraw token (LNURL-withdraw del ganador sin destino) ---
+
+export async function signWithdrawToken(
+  participantId: string,
+  expEpochSeconds: number,
+): Promise<string> {
+  return new SignJWT({ pid: participantId, purpose: "withdraw" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(expEpochSeconds)
+    .sign(secret);
+}
+
+export async function verifyWithdrawToken(token: string): Promise<string | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.purpose !== "withdraw") return null;
+    return payload.pid as string;
+  } catch {
+    return null;
+  }
+}

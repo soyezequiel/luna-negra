@@ -1,5 +1,5 @@
 import { finalizeEvent } from "nostr-tools/pure";
-import { SimplePool, nip19 } from "nostr-tools";
+import { SimplePool, nip19, type Event } from "nostr-tools";
 import { RELAYS } from "./constants";
 
 // Identidad Nostr de Luna Negra (server) para firmar el contrato.
@@ -43,4 +43,13 @@ export async function publishContract(
     /* best-effort: el id ya está calculado */
   }
   return ev.id;
+}
+
+/** Republica un evento ya firmado (ej. el resultado firmado por el proveedor). */
+export async function publishSignedEvent(ev: Event): Promise<void> {
+  try {
+    await Promise.allSettled(getPool().publish(RELAYS, ev));
+  } catch {
+    /* best-effort */
+  }
 }
