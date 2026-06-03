@@ -1,6 +1,10 @@
 # Plan de implementación — Apuestas / Escrow (Fase 1)
 
 Derivado de `docs/review/` (revisión swr-review completa).
+
+> **Estado: M0–M7 implementados (código) ✅** — tsc limpio + 37 tests. Falta lo
+> que depende del usuario: aplicar la migración, conectar QStash + Alby Hub,
+> integrar el demo (crear apuesta + reportar resultado firmado) y la **prueba real**.
 Alcance: **Luna Negra como único proveedor, beta entre conocidos** (caso testigo: Tetris).
 Esfuerzo: **S** (horas) · **M** (1-2 días) · **L** (varios días). Dev solo.
 

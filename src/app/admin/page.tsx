@@ -20,16 +20,37 @@ type Payout = {
   payoutStatus: string;
 };
 
+type BetRow = {
+  id: string;
+  gameTitle: string;
+  status: string;
+  stakeSats: number;
+  paid: number;
+  total: number;
+};
+
 const PAYOUT_LABEL: Record<string, string> = {
   pending: "En proceso",
   failed: "Falló",
   skipped: "Sin dirección",
 };
 
+const BET_STATUS: Record<string, string> = {
+  pending_deposits: "Esperando depósitos",
+  ready: "En juego",
+  settling: "Liquidando",
+  settled: "Resuelta",
+  refunding: "Reembolsando",
+  cancelled_incomplete: "Cancelada (incompleta)",
+  cancelled_admin: "Cancelada (admin)",
+  refunded_timeout: "Reembolsada (timeout)",
+};
+
 export default function AdminPage() {
   const { user, login, loading } = useSession();
   const [games, setGames] = useState<Row[] | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [bets, setBets] = useState<BetRow[]>([]);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -47,6 +68,10 @@ export default function AdminPage() {
       .then((res) => res.json())
       .catch(() => ({ payouts: [] }));
     setPayouts(p.payouts ?? []);
+    const b = await fetch("/api/admin/bets")
+      .then((res) => res.json())
+      .catch(() => ({ bets: [] }));
+    setBets(b.bets ?? []);
   }, []);
 
   useEffect(() => {
@@ -71,6 +96,12 @@ export default function AdminPage() {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function cancelBet(id: string) {
+    if (!confirm("¿Cancelar esta apuesta incompleta y reembolsar?")) return;
+    await fetch(`/api/escrow/bets/${id}/cancel`, { method: "POST" });
+    load();
   }
 
   if (loading) return null;
@@ -160,6 +191,35 @@ export default function AdminPage() {
                 >
                   {busy === p.id ? "Reintentando…" : "Reintentar"}
                 </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="mb-3 font-semibold">Apuestas</h2>
+        {bets.length === 0 ? (
+          <p className="text-zinc-400">No hay apuestas.</p>
+        ) : (
+          <ul className="space-y-2">
+            {bets.map((b) => (
+              <li
+                key={b.id}
+                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{b.gameTitle}</p>
+                  <p className="text-xs text-zinc-500">
+                    {BET_STATUS[b.status] ?? b.status} · {b.stakeSats} sats ·{" "}
+                    {b.paid}/{b.total} pagaron
+                  </p>
+                </div>
+                {b.status === "pending_deposits" ? (
+                  <Button variant="ghost" onClick={() => cancelBet(b.id)}>
+                    Cancelar
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
