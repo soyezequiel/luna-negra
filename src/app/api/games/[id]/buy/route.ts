@@ -3,14 +3,18 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { createInvoice, lightningConfigured } from "@/lib/lightning";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+  if (!rateLimit(`buy:${clientIp(req)}:${session.sub}`, 15, 60_000)) {
+    return NextResponse.json({ error: "Demasiados intentos" }, { status: 429 });
   }
   const { id } = await params;
 

@@ -28,6 +28,7 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
   const [devMode, setDevMode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [expired, setExpired] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -46,10 +47,12 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
     setQr(null);
     setPurchaseId(null);
     setError(null);
+    setExpired(false);
   }, [stopPolling]);
 
   const startBuy = useCallback(async () => {
     setError(null);
+    setExpired(false);
     setPhase("creating");
     try {
       const res = await fetch(`/api/games/${gameId}/buy`, { method: "POST" });
@@ -68,7 +71,13 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
       setQr(await QRCode.toDataURL(data.invoice, { margin: 1, width: 240 }));
       setPhase("pending");
 
+      const startedAt = Date.now();
       pollRef.current = setInterval(async () => {
+        if (Date.now() - startedAt > 15 * 60 * 1000) {
+          stopPolling();
+          setExpired(true);
+          return;
+        }
         const s = await fetch(`/api/purchases/${data.purchaseId}/status`)
           .then((r) => r.json())
           .catch(() => null);
@@ -146,7 +155,20 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
             >
               {copied ? "¡Copiado!" : invoice}
             </button>
-            <p className="mt-3 text-sm text-zinc-500">Esperando el pago…</p>
+            {expired ? (
+              <div className="mt-3">
+                <p className="text-sm text-amber-400">Invoice expirado.</p>
+                <Button
+                  variant="outline"
+                  className="mt-2 w-full"
+                  onClick={startBuy}
+                >
+                  Reintentar
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">Esperando el pago…</p>
+            )}
 
             {devMode ? (
               <Button

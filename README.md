@@ -27,7 +27,19 @@ Pendiente Semana 1: crear el wallet **Alby Hub** real y poner `NWC_CONNECTION_ST
 - [x] **Admin** (`/admin`): aprobar y publicar juegos en revisión (admin por `ADMIN_PUBKEY`, o cualquiera en dev).
 - [x] **Reseñas y ratings** (requiere poseer el juego), con promedio en la página del juego.
 
-Próximo (Semana 3): social vía Nostr (amigos, chat DM, feed de actividad por juego).
+### Semana 3 ✅ (social vía Nostr)
+- [x] **Amigos** (`/friends`): lee tu lista de contactos (NIP-02), cruza con `/api/users/known` (usuarios de Luna Negra arriba), muestra sus juegos y su **estado/presencia** (NIP-38). Incluye setter de tu propio estado.
+- [x] **Actividad por juego**: notas Nostr (kind:1) etiquetadas `lunanegra:game:<slug>`, leídas/publicadas desde la página del juego.
+- [x] **Chat** (`/messages`): DMs cifrados con **NIP-04** — lista de conversaciones, hilo descifrado y envío; iniciar por npub.
+- Todo lo social vive en **relays públicos** (no en la DB); solo `/api/users/known` cruza npubs con la DB.
+
+### Semana 4 ✅ (pulido + listo para deploy)
+- [x] Hardening: rate-limit en pagos/auth, headers de seguridad, `JWT_SECRET` obligatorio en prod.
+- [x] Build deploy-ready (`prisma generate && next build`) + guía [`DEPLOY.md`](./DEPLOY.md) (Postgres + Vercel).
+- [x] Pulido: footer, página 404, navbar scrollable en mobile, **expiración de invoice** en el modal de compra.
+- [x] Docs de integración para proveedores: [`DEVELOPERS.md`](./DEVELOPERS.md).
+
+**MVP completo.** Para publicar, seguí [`DEPLOY.md`](./DEPLOY.md).
 
 ## Requisitos
 - Node 20+ (probado con 24).

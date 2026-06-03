@@ -14,12 +14,18 @@ export function Navbar() {
           <span className="text-lg">🌑</span>
           <span>Luna Negra</span>
         </Link>
-        <nav className="flex items-center gap-4 text-sm text-zinc-300">
+        <nav className="flex min-w-0 items-center gap-4 overflow-x-auto whitespace-nowrap text-sm text-zinc-300">
           <Link href="/" className="hover:text-white">
             Tienda
           </Link>
           <Link href="/library" className="hover:text-white">
             Biblioteca
+          </Link>
+          <Link href="/friends" className="hover:text-white">
+            Amigos
+          </Link>
+          <Link href="/messages" className="hover:text-white">
+            Mensajes
           </Link>
           <Link href="/provider" className="hover:text-white">
             Proveedor

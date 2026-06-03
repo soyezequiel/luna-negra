@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
 import { ReviewsSection } from "@/components/reviews-section";
+import { ActivitySection } from "@/components/activity-section";
 import { priceLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +87,7 @@ export default async function GamePage({
         </section>
       ) : null}
 
+      <ActivitySection slug={game.slug} />
       <ReviewsSection gameId={game.id} owned={owned} />
     </div>
   );

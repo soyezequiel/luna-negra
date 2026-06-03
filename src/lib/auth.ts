@@ -1,6 +1,10 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("JWT_SECRET es obligatorio en producción");
+}
+
 const secret = new TextEncoder().encode(
   process.env.JWT_SECRET ?? "dev-insecure-secret-change-me",
 );

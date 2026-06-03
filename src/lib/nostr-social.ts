@@ -1,0 +1,194 @@
+import { SimplePool, nip19, type Event } from "nostr-tools";
+import { RELAYS } from "./constants";
+
+export type Profile = {
+  name?: string;
+  display_name?: string;
+  displayName?: string;
+  picture?: string;
+  about?: string;
+  lud16?: string;
+};
+
+let _pool: SimplePool | null = null;
+function pool(): SimplePool {
+  if (!_pool) _pool = new SimplePool();
+  return _pool;
+}
+
+const now = () => Math.floor(Date.now() / 1000);
+
+export function npubOf(pubkey: string): string {
+  return nip19.npubEncode(pubkey);
+}
+
+export function pubkeyFromNpub(npub: string): string | null {
+  try {
+    const d = nip19.decode(npub.trim());
+    return d.type === "npub" ? (d.data as string) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function shortId(value: string): string {
+  return value.length > 16 ? `${value.slice(0, 12)}…` : value;
+}
+
+export function profileName(p: Profile | undefined, fallback: string): string {
+  return p?.displayName || p?.display_name || p?.name || fallback;
+}
+
+async function sign(unsigned: {
+  kind: number;
+  created_at: number;
+  tags: string[][];
+  content: string;
+}): Promise<Event> {
+  if (!window.nostr) throw new Error("Necesitás una extensión Nostr (nos2x/Alby)");
+  return (await window.nostr.signEvent(unsigned)) as unknown as Event;
+}
+
+async function publish(ev: Event): Promise<void> {
+  await Promise.allSettled(pool().publish(RELAYS, ev));
+}
+
+// --- Amigos (NIP-02) y perfiles (kind:0) ---
+
+export async function fetchContacts(pubkey: string): Promise<string[]> {
+  const ev = await pool().get(RELAYS, { kinds: [3], authors: [pubkey] });
+  if (!ev) return [];
+  return ev.tags.filter((t) => t[0] === "p" && t[1]).map((t) => t[1]);
+}
+
+export async function fetchProfiles(
+  pubkeys: string[],
+): Promise<Record<string, Profile>> {
+  if (pubkeys.length === 0) return {};
+  const evs = await pool().querySync(RELAYS, { kinds: [0], authors: pubkeys });
+  const map: Record<string, Profile> = {};
+  for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
+    try {
+      map[ev.pubkey] = JSON.parse(ev.content) as Profile;
+    } catch {
+      /* ignore */
+    }
+  }
+  return map;
+}
+
+// --- Presencia (NIP-38, kind:30315 d="general") ---
+
+export async function fetchStatuses(
+  pubkeys: string[],
+): Promise<Record<string, string>> {
+  if (pubkeys.length === 0) return {};
+  const evs = await pool().querySync(RELAYS, {
+    kinds: [30315],
+    authors: pubkeys,
+    "#d": ["general"],
+  });
+  const map: Record<string, string> = {};
+  for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
+    if (ev.content) map[ev.pubkey] = ev.content;
+  }
+  return map;
+}
+
+export async function publishStatus(content: string): Promise<void> {
+  await publish(
+    await sign({
+      kind: 30315,
+      created_at: now(),
+      tags: [["d", "general"]],
+      content,
+    }),
+  );
+}
+
+// --- Actividad por juego (kind:1 con tag lunanegra:game:<slug>) ---
+
+export function gameTag(slug: string): string {
+  return `lunanegra:game:${slug}`;
+}
+
+export type ActivityNote = {
+  id: string;
+  pubkey: string;
+  content: string;
+  created_at: number;
+};
+
+export async function fetchGameActivity(slug: string): Promise<ActivityNote[]> {
+  const evs = await pool().querySync(RELAYS, {
+    kinds: [1],
+    "#t": [gameTag(slug)],
+  });
+  return evs
+    .sort((a, b) => b.created_at - a.created_at)
+    .slice(0, 50)
+    .map((e) => ({
+      id: e.id,
+      pubkey: e.pubkey,
+      content: e.content,
+      created_at: e.created_at,
+    }));
+}
+
+export async function publishGameNote(
+  slug: string,
+  content: string,
+): Promise<void> {
+  await publish(
+    await sign({
+      kind: 1,
+      created_at: now(),
+      tags: [["t", gameTag(slug)]],
+      content,
+    }),
+  );
+}
+
+// --- Chat (NIP-04, kind:4) ---
+
+export async function fetchDmEvents(myPubkey: string): Promise<Event[]> {
+  const [recv, sent] = await Promise.all([
+    pool().querySync(RELAYS, { kinds: [4], "#p": [myPubkey] }),
+    pool().querySync(RELAYS, { kinds: [4], authors: [myPubkey] }),
+  ]);
+  const map = new Map<string, Event>();
+  for (const e of [...recv, ...sent]) map.set(e.id, e);
+  return [...map.values()].sort((a, b) => a.created_at - b.created_at);
+}
+
+export function dmCounterpart(ev: Event, myPubkey: string): string {
+  if (ev.pubkey === myPubkey) {
+    return ev.tags.find((t) => t[0] === "p")?.[1] ?? "";
+  }
+  return ev.pubkey;
+}
+
+export async function decryptDm(ev: Event, myPubkey: string): Promise<string> {
+  if (!window.nostr?.nip04) return "[tu extensión no soporta NIP-04]";
+  try {
+    return await window.nostr.nip04.decrypt(dmCounterpart(ev, myPubkey), ev.content);
+  } catch {
+    return "[no se pudo descifrar]";
+  }
+}
+
+export async function sendDm(
+  recipientPubkey: string,
+  text: string,
+): Promise<void> {
+  if (!window.nostr?.nip04) throw new Error("Tu extensión no soporta NIP-04");
+  const ciphertext = await window.nostr.nip04.encrypt(recipientPubkey, text);
+  await publish(
+    await sign({
+      kind: 4,
+      created_at: now(),
+      tags: [["p", recipientPubkey]],
+      content: ciphertext,
+    }),
+  );
+}
