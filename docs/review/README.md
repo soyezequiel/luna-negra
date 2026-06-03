@@ -1,6 +1,6 @@
 # Revisión de Software — Luna Negra: Apuestas / Escrow
 
-Estado: en revisión
+Estado: **revisión completa** (faltan opcionales: performance, cost, dx, testing, visualizer)
 Última actualización: 2026-06-03
 
 ## Artefactos generados
@@ -17,6 +17,7 @@ Estado: en revisión
 | [diagrams/sequence-bet-deposit.mmd](diagrams/sequence-bet-deposit.mmd) | swr-api | 2026-06-03 | Secuencia: crear → depositar → ready/reembolso. |
 | [diagrams/sequence-bet-resolve.mmd](diagrams/sequence-bet-resolve.mmd) | swr-api | 2026-06-03 | Secuencia: resolución/payout vs timeout/reembolso. |
 | [decisions/security.md](decisions/security.md) | swr-security | 2026-06-03 | STRIDE: firma del resultado, scope del Bearer, fee fijado por LN, NWC budget, anti-doble-cobro. |
+| [summary.md](summary.md) | swr-review | 2026-06-03 | Resumen ejecutivo: decisiones por dominio, riesgos, próximo paso. |
 
 ## Riesgos abiertos
 

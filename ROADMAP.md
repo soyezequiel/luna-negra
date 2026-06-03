@@ -33,7 +33,7 @@ Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use
 La razón de ser de Luna Negra. La más delicada. **Necesita un servicio always-on**
 (Railway/Fly.io) aparte de Vercel para vigilar pagos y timeouts.
 
-- **C0 · Diseño + `swr-review`** (M): resolver el **problema del oráculo** (¿quién dice quién ganó sin que un proveedor mentiroso robe el pozo?), disputas, y exposición legal **antes de codear**.
+- **C0 · Diseño + `swr-review`** ✅ (hecho): revisión completa en [`docs/review/`](docs/review/) (idea→requisitos→arquitectura→diseño→datos→API→seguridad). **Plan de implementación: [`docs/apuestas-plan.md`](docs/apuestas-plan.md)** (M0–M7). Gates antes de escalar: oráculo 3ros, legal, custodia.
 - **C1 · Modelo de datos** (S): apuestas, participantes, pozo, resultado, estados.
 - **C2 · Depósitos al pozo** (M): el juego crea una apuesta; los jugadores depositan (zap/invoice); Luna Negra **custodia** el pozo.
 - **C3 · Resolución y reparto** (M): el game server reporta ganador(es) → Luna Negra **paga a los ganadores** menos el fee (5% configurable).

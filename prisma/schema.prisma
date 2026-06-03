@@ -21,9 +21,11 @@ model User {
   createdAt   DateTime @default(now())
   lastSeen    DateTime @default(now())
 
-  providers Provider[]
-  purchases Purchase[]
-  reviews   Review[]
+  providers         Provider[]
+  purchases         Purchase[]
+  reviews           Review[]
+  betParticipations BetParticipant[]
+  ledgerEntries     LedgerEntry[]
 }
 
 model Provider {
@@ -36,6 +38,7 @@ model Provider {
   createdAt        DateTime @default(now())
 
   games Game[]
+  bets  Bet[]
 }
 
 model Game {
@@ -55,6 +58,7 @@ model Game {
 
   purchases Purchase[]
   reviews   Review[]
+  bets      Bet[]
 }
 
 model Purchase {
@@ -87,3 +91,73 @@ model Review {
 
   @@unique([userId, gameId]) // una reseña por usuario y juego
 }
+
+// ───────────────────────── Apuestas / Escrow (Fase C) ─────────────────────────
+
+model Bet {
+  id               String    @id @default(cuid())
+  gameId           String
+  game             Game      @relation(fields: [gameId], references: [id])
+  providerId       String
+  provider         Provider  @relation(fields: [providerId], references: [id])
+  // created | pending_deposits | ready | settling | settled |
+  // refunding | cancelled_incomplete | cancelled_admin | refunded_timeout
+  status           String    @default("created")
+  stakeMsat        BigInt // monto por jugador (msat)
+  feePct           Int       @default(5) // fijado por Luna Negra
+  victoryCondition String    @default("")
+  depositDeadline  DateTime? // +10 min al crear
+  resolveDeadline  DateTime? // +15 min al quedar ready
+  contractEventId  String? // evento Nostr del contrato (inmutable)
+  resultEventId    String? // evento Nostr del resultado firmado
+  createdAt        DateTime  @default(now())
+  readyAt          DateTime?
+  settledAt        DateTime?
+
+  participants BetParticipant[]
+  ledger       LedgerEntry[]
+
+  @@index([status])
+  @@index([depositDeadline])
+  @@index([resolveDeadline])
+}
+
+model BetParticipant {
+  id                 String    @id @default(cuid())
+  betId              String
+  bet                Bet       @relation(fields: [betId], references: [id])
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  npub               String // denormalizado para el contrato/display
+  depositStatus      String    @default("pending") // pending | paid | refunded | failed
+  depositInvoice     String? // bolt11
+  depositPaymentHash String?   @unique
+  result             String    @default("pending") // pending | won | lost | tie
+  payoutStatus       String    @default("none") // none|pending|paid|failed|withdraw_pending|claimed|forfeited
+  payoutMsat         BigInt?
+  payoutDestination  String? // lud16 / LN address / NWC
+  withdrawDeadline   DateTime? // +60 min para el QR de retiro
+  createdAt          DateTime  @default(now())
+  paidAt             DateTime?
+  settledAt          DateTime?
+
+  @@unique([betId, userId]) // una participación por usuario y apuesta
+  @@index([betId])
+}
+
+model LedgerEntry {
+  id             String   @id @default(cuid())
+  betId          String
+  bet            Bet      @relation(fields: [betId], references: [id])
+  userId         String? // null = movimiento de la casa (fee/forfeit)
+  user           User?    @relation(fields: [userId], references: [id])
+  kind           String // deposit | payout | refund | fee | forfeit
+  amountMsat     BigInt
+  status         String   @default("pending") // pending | settled | failed
+  paymentHash    String?
+  idempotencyKey String   @unique // {kind}:{betId}:{userId} → guard anti-doble-gasto
+  createdAt      DateTime @default(now())
+
+  @@index([betId])
+}
+
