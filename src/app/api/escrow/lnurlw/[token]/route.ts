@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyWithdrawToken } from "@/lib/auth";
+import { msatToSats } from "@/lib/money";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -32,7 +33,10 @@ export async function GET(
 
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const amountMsat = Number(part.payoutMsat);
+  // Redondear a sat entero: WoS y la validación del callback trabajan en sats,
+  // así evitamos invoices de "9,5 sats" que se rechazan.
+  const sats = Number(msatToSats(part.payoutMsat));
+  const amountMsat = sats * 1000;
 
   return NextResponse.json(
     {
