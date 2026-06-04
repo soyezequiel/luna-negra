@@ -50,6 +50,14 @@ export default function ProfilePage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">{name ?? "Anónimo"}</h1>
           <p className="break-all font-mono text-xs text-zinc-500">{user.npub}</p>
+          <a
+            href={`https://njump.me/${user.npub}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/5"
+          >
+            Ver en njump.me ↗
+          </a>
         </div>
       </div>
 
