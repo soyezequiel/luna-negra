@@ -15,6 +15,7 @@ export async function GET() {
       pubkey: true,
       displayName: true,
       avatarUrl: true,
+      lud16: true,
     },
   });
   if (!user) return NextResponse.json({ user: null });

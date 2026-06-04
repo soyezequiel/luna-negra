@@ -10,8 +10,16 @@ import {
 } from "@/lib/lightning";
 import { WITHDRAW_WINDOW_MS } from "@/lib/escrow-config";
 
-/** Cascada de destino (R5): por ahora lud16 del perfil Nostr (kind:0). */
+/**
+ * Cascada de destino (R5): lud16 configurado en Luna Negra (perfil) →
+ * lud16 del perfil Nostr (kind:0). Si no hay → null (fallback a QR de retiro).
+ */
 export async function resolveDestination(npub: string): Promise<string | null> {
+  const user = await prisma.user
+    .findUnique({ where: { npub }, select: { lud16: true } })
+    .catch(() => null);
+  if (user?.lud16) return user.lud16;
+
   const pk = pubkeyFromNpub(npub);
   if (!pk) return null;
   const profile = await fetchProfile(pk).catch(() => null);

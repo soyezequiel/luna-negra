@@ -18,6 +18,7 @@ model User {
   pubkey      String   @unique // hex
   displayName String?
   avatarUrl   String?
+  lud16       String? // Lightning Address para cobrar payouts (override del kind:0)
   createdAt   DateTime @default(now())
   lastSeen    DateTime @default(now())
 

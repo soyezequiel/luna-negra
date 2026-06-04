@@ -59,6 +59,83 @@ export default function ProfilePage() {
       {loadingProfile ? (
         <p className="mt-4 text-sm text-zinc-500">Cargando perfil desde Nostr…</p>
       ) : null}
+
+      <Lud16Form nostrLud16={profile?.lud16 ?? null} />
     </div>
+  );
+}
+
+function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
+  const { user } = useSession();
+  const [value, setValue] = useState(user?.lud16 ?? "");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  // Sincroniza con el valor de la sesión cuando carga.
+  useEffect(() => {
+    setValue(user?.lud16 ?? "");
+  }, [user?.lud16]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("saving");
+    setError(null);
+    try {
+      const res = await fetch("/api/users/me/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lud16: value.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "No se pudo guardar");
+      setStatus("saved");
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
+
+  return (
+    <section className="mt-10 rounded-lg border border-white/10 p-5">
+      <h2 className="text-lg font-semibold">Lightning Address (cobros)</h2>
+      <p className="mt-1 text-sm text-zinc-400">
+        Dirección donde recibís tus pagos y premios. Si la dejás vacía, usamos la
+        de tu perfil Nostr
+        {nostrLud16 ? (
+          <>
+            {" "}
+            (<span className="font-mono text-zinc-300">{nostrLud16}</span>)
+          </>
+        ) : null}
+        ; si tampoco hay, vas a cobrar escaneando un QR.
+      </p>
+
+      <form onSubmit={save} className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <input
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          placeholder="usuario@dominio.com"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setStatus("idle");
+          }}
+          className="w-full rounded-md border border-white/15 bg-transparent px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-500 focus:outline-none"
+        />
+        <Button type="submit" disabled={status === "saving"}>
+          {status === "saving" ? "Guardando…" : "Guardar"}
+        </Button>
+      </form>
+
+      {status === "saved" ? (
+        <p className="mt-2 text-sm text-emerald-400">Guardado ✓</p>
+      ) : null}
+      {status === "error" ? (
+        <p className="mt-2 text-sm text-red-400">{error}</p>
+      ) : null}
+    </section>
   );
 }
