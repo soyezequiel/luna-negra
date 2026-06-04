@@ -1,31 +1,30 @@
-import { NextResponse } from "next/server";
 import { verifyInvite } from "@/lib/auth";
+import {
+  apiOk,
+  apiError,
+  corsPreflight,
+  bearerToken,
+  deprecatedHeaders,
+} from "@/lib/api";
 
-// Endpoint público: lo llama el lobby del proveedor (otro origen) → CORS abierto.
-// El token es corto y autocontenido; devolver su info no es sensible.
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
-};
+// DEPRECADO → usar GET /api/v1/rooms/verify (Authorization: Bearer).
+// Sigue aceptando ?token= por compatibilidad.
+const DEP = deprecatedHeaders("/api/v1/rooms/verify");
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS });
+export function OPTIONS() {
+  return corsPreflight();
 }
 
 export async function GET(req: Request) {
-  const token = new URL(req.url).searchParams.get("token");
+  const token = bearerToken(req);
   if (!token) {
-    return NextResponse.json(
-      { valid: false, error: "falta token" },
-      { status: 400, headers: CORS },
-    );
+    return apiError("MISSING_TOKEN", "Falta el token de invitación", 400, DEP);
   }
   const inv = await verifyInvite(token);
   if (!inv) {
-    return NextResponse.json({ valid: false }, { headers: CORS });
+    return apiOk({ valid: false }, DEP);
   }
-  return NextResponse.json(
+  return apiOk(
     {
       valid: true,
       npub: inv.npub,
@@ -34,6 +33,6 @@ export async function GET(req: Request) {
       roomId: inv.roomId,
       host: inv.host,
     },
-    { headers: CORS },
+    DEP,
   );
 }

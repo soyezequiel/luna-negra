@@ -1,32 +1,31 @@
-import { NextResponse } from "next/server";
 import { verifyEntitlement } from "@/lib/auth";
+import {
+  apiOk,
+  apiError,
+  corsPreflight,
+  bearerToken,
+  deprecatedHeaders,
+} from "@/lib/api";
 
-// Endpoint público: lo llama el server del juego (otro origen) → CORS abierto.
-// El token es corto y autocontenido, así que devolver su info no es sensible.
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
-};
+// DEPRECADO → usar GET /api/v1/entitlements/verify (Authorization: Bearer).
+// Sigue aceptando ?token= por compatibilidad.
+const DEP = deprecatedHeaders("/api/v1/entitlements/verify");
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS });
+export function OPTIONS() {
+  return corsPreflight();
 }
 
 export async function GET(req: Request) {
-  const token = new URL(req.url).searchParams.get("token");
+  const token = bearerToken(req);
   if (!token) {
-    return NextResponse.json(
-      { valid: false, error: "falta token" },
-      { status: 400, headers: CORS },
-    );
+    return apiError("MISSING_TOKEN", "Falta el token de acceso", 400, DEP);
   }
   const ent = await verifyEntitlement(token);
   if (!ent) {
-    return NextResponse.json({ valid: false }, { headers: CORS });
+    return apiOk({ valid: false }, DEP);
   }
-  return NextResponse.json(
+  return apiOk(
     { valid: true, npub: ent.npub, gameId: ent.gameId, slug: ent.slug },
-    { headers: CORS },
+    DEP,
   );
 }

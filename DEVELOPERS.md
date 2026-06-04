@@ -23,11 +23,13 @@ https://tu-juego.com/?lnToken=<JWT>
 
 Usar ese token es **opcional**: si no lo verificás, tu juego igual funciona.
 
-## 4. Verificar acceso (API de entitlements)
-Para confirmar que el jugador realmente compró, validá el token contra:
+## 4. Verificar acceso (API de entitlements · v1)
+Para confirmar que el jugador realmente compró, validá el token contra la **API
+v1** pasándolo en el header `Authorization: Bearer` (CORS habilitado):
 
 ```
-GET https://<luna-negra>/api/entitlements/verify?token=<lnToken>
+GET https://<luna-negra>/api/v1/entitlements/verify
+Authorization: Bearer <lnToken>
 ```
 
 Respuesta:
@@ -36,13 +38,13 @@ Respuesta:
 { "valid": true, "npub": "npub1…", "gameId": "…", "slug": "tu-juego" }
 ```
 
-Ejemplo en el cliente del juego (CORS habilitado):
+Ejemplo en el cliente del juego:
 
 ```js
 const token = new URLSearchParams(location.search).get("lnToken");
-const r = await fetch(
-  "https://<luna-negra>/api/entitlements/verify?token=" + encodeURIComponent(token),
-);
+const r = await fetch("https://<luna-negra>/api/v1/entitlements/verify", {
+  headers: { Authorization: "Bearer " + token },
+});
 const { valid, npub } = await r.json();
 if (!valid) {
   // bloquear / modo invitado
@@ -52,7 +54,27 @@ if (!valid) {
 > Mejor aún: validá el token **en tu backend** antes de servir contenido pago.
 > El token es un JWT corto (5 min) firmado por Luna Negra.
 
-## 5. Feed de actividad (opcional)
+### Convenciones de la API v1
+- **Auth:** token en `Authorization: Bearer <token>`.
+- **Errores:** forma estándar `{ "error": { "code": "MISSING_TOKEN", "message": "…" } }`
+  con el status HTTP correcto (400/401/…). Un token inválido/expirado devuelve
+  `200 { "valid": false }`.
+- Las rutas viejas sin `/v1` siguen funcionando (con `?token=`) pero están
+  **deprecadas** (responden con el header `Deprecation: true`).
+
+## 5. Multijugador / jugar con amigos (v1)
+Luna Negra emite **invite tokens** de sala; vos hosteás el lobby (WebSocket) y
+validás a quien se une:
+
+```
+GET https://<luna-negra>/api/v1/rooms/verify
+Authorization: Bearer <inviteToken>
+→ { "valid": true, "npub": "…", "gameId": "…", "slug": "…", "roomId": "…", "host": true }
+```
+
+Detalle completo del flujo en [`docs/multijugador-contrato.md`](docs/multijugador-contrato.md).
+
+## 6. Feed de actividad (opcional)
 Para que tus novedades aparezcan en la pestaña **Actividad** del juego, publicá una
 nota de Nostr (kind:1) con el tag:
 

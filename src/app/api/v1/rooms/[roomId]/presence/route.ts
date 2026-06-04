@@ -1,12 +1,10 @@
 import { after } from "next/server";
 import { resolvePresence } from "@/lib/rooms";
 import { cacheProfile } from "@/lib/profile-cache";
-import { apiOk, apiError, corsPreflight, deprecatedHeaders } from "@/lib/api";
+import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
-// DEPRECADO → usar POST /api/v1/rooms/:roomId/presence (token en Authorization).
-// Esta versión acepta el token en el body. Se mantiene por compatibilidad.
-const DEP = deprecatedHeaders("/api/v1/rooms/:roomId/presence");
-
+// Heartbeat + roster de una sala multijugador.
+// Auth: Authorization: Bearer <invite token>. clientId/score/leave en el body.
 export function OPTIONS() {
   return corsPreflight();
 }
@@ -16,17 +14,20 @@ export async function POST(
   { params }: { params: Promise<{ roomId: string }> },
 ) {
   const { roomId } = await params;
+  const token = bearerToken(req);
   const body = await req.json().catch(() => ({}));
 
   const result = await resolvePresence(roomId, {
-    inviteToken: body.inviteToken, // viejo: token en el body
+    inviteToken: token,
     clientId: body.clientId,
     score: body.score,
     leave: body.leave,
   });
   if (!result.ok) {
-    return apiError(result.code, result.message, result.status, DEP);
+    return apiError(result.code, result.message, result.status);
   }
+
+  // Resolver nombre/avatar faltantes en background (no frena la respuesta).
   if (result.missingPubkeys.length) {
     after(() =>
       Promise.allSettled(result.missingPubkeys.map(cacheProfile)).then(
@@ -34,5 +35,6 @@ export async function POST(
       ),
     );
   }
-  return apiOk({ members: result.members }, DEP);
+
+  return apiOk({ members: result.members });
 }

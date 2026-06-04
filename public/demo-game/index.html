@@ -112,9 +112,9 @@
 
     <button class="action" id="start">Empezar</button>
     <p class="muted">
-      Juego demo de Luna Negra · entitlement vía
-      <code>/api/entitlements/verify</code> · sala vía
-      <code>/api/rooms/verify</code> + presencia <code>/api/rooms/:id/presence</code>
+      Juego demo de Luna Negra · API v1 (Bearer): entitlement vía
+      <code>/api/v1/entitlements/verify</code> · sala vía
+      <code>/api/v1/rooms/verify</code> + <code>/api/v1/rooms/:id/presence</code>
     </p>
 
     <script>
@@ -206,12 +206,15 @@
         if (!me) return;
         try {
           const r = await fetch(
-            "/api/rooms/" + encodeURIComponent(me.roomId) + "/presence",
+            "/api/v1/rooms/" + encodeURIComponent(me.roomId) + "/presence",
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Bearer " + inviteToken,
+              },
               keepalive: !!leave,
-              body: JSON.stringify({ inviteToken, clientId, score, leave: !!leave }),
+              body: JSON.stringify({ clientId, score, leave: !!leave }),
             },
           );
           const d = await r.json();
@@ -238,9 +241,9 @@
         // Multijugador: validar la invitación y armar el lobby.
         if (inviteToken && room) {
           try {
-            const r = await fetch(
-              "/api/rooms/verify?token=" + encodeURIComponent(inviteToken),
-            );
+            const r = await fetch("/api/v1/rooms/verify", {
+              headers: { Authorization: "Bearer " + inviteToken },
+            });
             const d = await r.json();
             if (d.valid) {
               me = { npub: d.npub, host: d.host, roomId: d.roomId || room };
@@ -262,9 +265,9 @@
         // Single-player: entitlement.
         if (entToken) {
           try {
-            const r = await fetch(
-              "/api/entitlements/verify?token=" + encodeURIComponent(entToken),
-            );
+            const r = await fetch("/api/v1/entitlements/verify", {
+              headers: { Authorization: "Bearer " + entToken },
+            });
             const d = await r.json();
             if (d.valid) {
               setStatus("ok", "Acceso verificado · " + d.npub.slice(0, 16) + "…");
