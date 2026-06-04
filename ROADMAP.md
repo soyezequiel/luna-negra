@@ -16,10 +16,10 @@ Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use
 - **A2 · Subida de imágenes** ✅ (hecho): portada + screenshots con **Vercel Blob** (con fallback a pegar URL). Requiere activar Blob en Vercel.
 - **A3 · Payout robusto** ✅ (hecho): **reintento** de payouts en `failed` + panel en `/admin` + sección de ventas en `/provider`.
 - **A4 · Cachear perfil** ✅ (hecho): guarda `displayName`/`avatar` (kind:0) al login → nombre real en navbar, reseñas, amigos.
-- **A5 · Tienda navegable** ✅ (hecho): **búsqueda** + **paginación**. (Categorías/tags quedan pendientes — falta campo en el modelo.)
+- **A5 · Tienda navegable** ✅ (hecho): **búsqueda** + **paginación** + **categorías** (campo `Game.category`, lista curada en `src/lib/categories.ts`, chips de filtro en la tienda y badge en el detalle). Tags libres quedan como extensión opcional.
 - **A6 · Admin completo** ✅ (hecho): **rechazar** + link de admin gateado en el nav.
 
-> **Fase A completa** 🎉 (queda solo categorías/tags, opcional).
+> **Fase A completa** 🎉
 
 ## Fase B — Listo para público (robustez y operación)
 - **B1 · Rate-limit real** ✅ (hecho): Upstash Redis con fallback a memoria (`checkRateLimit`). Falta setear las env vars de Upstash en Vercel para activarlo.

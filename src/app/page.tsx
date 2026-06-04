@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GameCard } from "@/components/game-card";
+import { CATEGORIES, normalizeCategory } from "@/lib/categories";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -10,15 +12,17 @@ const PAGE_SIZE = 12;
 export default async function StorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; cat?: string }>;
 }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
+  const cat = normalizeCategory(sp.cat);
   const page = Math.max(1, Number(sp.page) || 1);
 
   const where: Prisma.GameWhereInput = {
     status: "published",
     ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+    ...(cat ? { category: cat } : {}),
   };
 
   const [games, total] = await Promise.all([
@@ -36,7 +40,17 @@ export default async function StorePage({
   const linkFor = (p: number) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
+    if (cat) params.set("cat", cat);
     if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  };
+
+  // Link de un chip de categoría: setea cat (o la limpia con ""), preserva q, resetea page.
+  const catLink = (slug: string) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (slug) params.set("cat", slug);
     const qs = params.toString();
     return qs ? `/?${qs}` : "/";
   };
@@ -62,6 +76,26 @@ export default async function StorePage({
           Buscar
         </button>
       </form>
+
+      <nav className="mt-5 flex flex-wrap gap-2">
+        {[{ slug: "", label: "Todas" }, ...CATEGORIES].map((c) => {
+          const active = (c.slug || null) === cat;
+          return (
+            <Link
+              key={c.slug || "all"}
+              href={catLink(c.slug)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs transition-colors",
+                active
+                  ? "border-sky-500/50 bg-sky-500/15 text-sky-300"
+                  : "border-white/15 text-zinc-400 hover:bg-white/5",
+              )}
+            >
+              {c.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <section className="mt-8">
         <h2 className="mb-4 text-lg font-semibold">

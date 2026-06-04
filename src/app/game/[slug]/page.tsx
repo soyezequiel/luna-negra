@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -5,6 +6,7 @@ import { BuyButton } from "@/components/buy-button";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
 import { priceLabel } from "@/lib/format";
+import { categoryLabel } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,17 @@ export default async function GamePage({
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-3xl font-bold">{game.title}</h1>
-      <p className="mt-1 text-sm text-zinc-500">por {game.provider.name}</p>
+      <div className="mt-1 flex items-center gap-2 text-sm text-zinc-500">
+        <span>por {game.provider.name}</span>
+        {game.category ? (
+          <Link
+            href={`/?cat=${game.category}`}
+            className="rounded-full border border-white/15 px-2 py-0.5 text-xs text-zinc-400 hover:bg-white/5"
+          >
+            {categoryLabel(game.category)}
+          </Link>
+        ) : null}
+      </div>
 
       <div className="mt-6 flex flex-col gap-6 sm:flex-row">
         <div className="aspect-[3/4] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg border border-white/10 bg-gradient-to-br from-sky-900/40 to-zinc-900">

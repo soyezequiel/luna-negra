@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { CATEGORIES } from "@/lib/categories";
 
 const inputCls =
   "w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50";
@@ -13,6 +14,7 @@ type Game = {
   title: string;
   slug: string;
   description: string;
+  category: string | null;
   priceSats: number;
   gameUrl: string | null;
   coverUrl: string | null;
@@ -28,6 +30,7 @@ type Sale = {
 type GameForm = {
   title: string;
   description: string;
+  category: string;
   priceSats: string;
   gameUrl: string;
   coverUrl: string;
@@ -50,6 +53,7 @@ const PAYOUT_LABEL: Record<string, string> = {
 const emptyForm: GameForm = {
   title: "",
   description: "",
+  category: "",
   priceSats: "0",
   gameUrl: "",
   coverUrl: "",
@@ -135,6 +139,7 @@ export default function ProviderPage() {
     setForm({
       title: g.title,
       description: g.description,
+      category: g.category ?? "",
       priceSats: String(g.priceSats),
       gameUrl: g.gameUrl ?? "",
       coverUrl: g.coverUrl ?? "",
@@ -253,13 +258,25 @@ export default function ProviderPage() {
                 value={form.priceSats}
                 onChange={(e) => setForm({ ...form, priceSats: e.target.value })}
               />
-              <input
+              <select
                 className={inputCls}
-                placeholder="URL del juego (subdominio)"
-                value={form.gameUrl}
-                onChange={(e) => setForm({ ...form, gameUrl: e.target.value })}
-              />
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+              >
+                <option value="">Sin categoría</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
+            <input
+              className={inputCls}
+              placeholder="URL del juego (subdominio)"
+              value={form.gameUrl}
+              onChange={(e) => setForm({ ...form, gameUrl: e.target.value })}
+            />
 
             {/* Portada */}
             <div>
