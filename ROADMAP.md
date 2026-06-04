@@ -48,7 +48,8 @@ La razón de ser de Luna Negra. La más delicada. **Necesita un servicio always-
 
 - **D1 · "Unirse a la sala"** ✅ (hecho): invite token (`signInvite`/`verifyInvite`), `POST /api/games/:id/invite` (host crea sala / invitado se une) y `GET /api/rooms/verify` (público, CORS) para el lobby del proveedor. UI: panel "Jugar con amigos" en la página del juego. El juego demo trae un lobby con presencia + puntaje de equipo (vía `BroadcastChannel`, entre pestañas).
 - **D2 · Contrato para proveedores** ✅ (hecho): [`docs/multijugador-contrato.md`](multijugador-contrato.md).
-- **D3 · Presencia mejorada** ⏳ (pendiente): auto-publicar NIP-38 "jugando X" al lanzar un juego. (No hace falta para el descubrimiento por link; encaja con descubrimiento vía Nostr.)
+- **D3 · Presencia mejorada** ✅ (hecho): al lanzar un juego (single-player o multijugador) se auto-publica **NIP-38** (kind 30315, `d=general`) "Jugando X en Luna Negra" con link y expiración (1h). `/friends` lo muestra (`🎮 …`). Helper `publishPlayingStatus` en `src/lib/nostr-social.ts`.
+- **Descubrimiento sin link (Opción C)** ✅ (hecho): la presencia del host lleva el link de la sala (`/game/slug?room=…`), así en `/friends` aparece un botón **"Unirse"** y el amigo entra **sin que le pasen el link** (vía Nostr). `fetchStatuses` devuelve el `r` del evento.
 - Infra: el lobby lo hostea el proveedor; si Luna Negra hace señalización, necesita always-on.
 
 ## Fase E — Inclusión y cuentas

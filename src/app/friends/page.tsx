@@ -13,7 +13,20 @@ import {
   profileName,
   shortId,
   type Profile,
+  type Status,
 } from "@/lib/nostr-social";
+
+/** Si el estado del amigo apunta a una sala unible, devuelve el path relativo. */
+function roomHref(status?: Status): string | null {
+  if (!status?.url) return null;
+  try {
+    const u = new URL(status.url);
+    if (!u.searchParams.get("room")) return null;
+    return u.pathname + u.search;
+  } catch {
+    return null;
+  }
+}
 
 type Known = {
   pubkey: string;
@@ -28,7 +41,7 @@ type Friend = {
   profile?: Profile;
   isMember: boolean;
   games: { slug: string; title: string }[];
-  status?: string;
+  status?: Status;
 };
 
 export default function FriendsPage() {
@@ -168,9 +181,19 @@ export default function FriendsPage() {
                     ) : null}
                   </div>
                   {f.status ? (
-                    <p className="truncate text-xs text-emerald-400">
-                      🎮 {f.status}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-xs text-emerald-400">
+                        🎮 {f.status.content}
+                      </p>
+                      {roomHref(f.status) ? (
+                        <Link
+                          href={roomHref(f.status)!}
+                          className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/30"
+                        >
+                          Unirse
+                        </Link>
+                      ) : null}
+                    </div>
                   ) : null}
                   {f.games.length > 0 ? (
                     <div className="mt-1 flex flex-wrap gap-1">

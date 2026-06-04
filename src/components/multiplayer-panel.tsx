@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { publishPlayingStatus } from "@/lib/nostr-social";
 
 type InviteResp = { token: string; roomId: string; host: boolean };
 
@@ -16,10 +17,12 @@ type InviteResp = { token: string; roomId: string; host: boolean };
 export function MultiplayerPanel({
   gameId,
   slug,
+  title,
   gameUrl,
 }: {
   gameId: string;
   slug: string;
+  title: string;
   gameUrl: string;
 }) {
   const { user, login } = useSession();
@@ -37,8 +40,15 @@ export function MultiplayerPanel({
       url.searchParams.set("inviteToken", token);
       url.searchParams.set("room", roomId);
       window.open(url.toString(), "_blank", "noopener");
+      // Presencia NIP-38 "jugando X" con el link de la sala → los amigos pueden
+      // unirse desde /friends sin que les pase el link (descubrimiento vía Nostr).
+      const link = new URL(
+        `/game/${slug}?room=${encodeURIComponent(roomId)}`,
+        window.location.origin,
+      ).toString();
+      publishPlayingStatus(title, link).catch(() => {});
     },
-    [gameUrl],
+    [gameUrl, slug, title],
   );
 
   const mintInvite = useCallback(

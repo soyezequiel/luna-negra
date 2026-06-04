@@ -79,18 +79,23 @@ export async function fetchProfiles(
 
 // --- Presencia (NIP-38, kind:30315 d="general") ---
 
+export type Status = { content: string; url?: string };
+
 export async function fetchStatuses(
   pubkeys: string[],
-): Promise<Record<string, string>> {
+): Promise<Record<string, Status>> {
   if (pubkeys.length === 0) return {};
   const evs = await pool().querySync(RELAYS, {
     kinds: [30315],
     authors: pubkeys,
     "#d": ["general"],
   });
-  const map: Record<string, string> = {};
+  const map: Record<string, Status> = {};
+  // Ascendente → el último (más nuevo) gana.
   for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
-    if (ev.content) map[ev.pubkey] = ev.content;
+    if (!ev.content) continue;
+    const url = ev.tags.find((t) => t[0] === "r")?.[1];
+    map[ev.pubkey] = { content: ev.content, url: url || undefined };
   }
   return map;
 }
@@ -102,6 +107,29 @@ export async function publishStatus(content: string): Promise<void> {
       created_at: now(),
       tags: [["d", "general"]],
       content,
+    }),
+  );
+}
+
+/**
+ * Auto-publica presencia "jugando X" (NIP-38) al lanzar un juego.
+ * Best-effort: incluye link al juego y expira (por defecto 1h) para que se
+ * limpie solo. El contenido NO lleva emoji (la UI de /friends antepone 🎮).
+ */
+export async function publishPlayingStatus(
+  title: string,
+  gameUrl?: string,
+  ttlSeconds = 3600,
+): Promise<void> {
+  const tags: string[][] = [["d", "general"]];
+  if (gameUrl) tags.push(["r", gameUrl]);
+  tags.push(["expiration", String(now() + ttlSeconds)]);
+  await publish(
+    await sign({
+      kind: 30315,
+      created_at: now(),
+      tags,
+      content: `Jugando ${title} en Luna Negra`,
     }),
   );
 }

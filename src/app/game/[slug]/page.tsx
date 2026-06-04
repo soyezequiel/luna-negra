@@ -79,6 +79,8 @@ export default async function GamePage({
               priceSats={game.priceSats}
               owned={owned}
               gameUrl={game.gameUrl}
+              title={game.title}
+              slug={game.slug}
             />
           </div>
 
@@ -87,6 +89,7 @@ export default async function GamePage({
               <MultiplayerPanel
                 gameId={game.id}
                 slug={game.slug}
+                title={game.title}
                 gameUrl={game.gameUrl}
               />
             </Suspense>

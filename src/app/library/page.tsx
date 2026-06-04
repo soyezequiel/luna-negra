@@ -74,7 +74,13 @@ export default function LibraryPage() {
                 </div>
               </Link>
               {g.gameUrl ? (
-                <PlayButton gameId={g.id} gameUrl={g.gameUrl} className="w-full" />
+                <PlayButton
+                  gameId={g.id}
+                  gameUrl={g.gameUrl}
+                  title={g.title}
+                  slug={g.slug}
+                  className="w-full"
+                />
               ) : (
                 <Button variant="outline" className="w-full" disabled>
                   Sin enlace

@@ -13,11 +13,13 @@ type Props = {
   priceSats: number;
   owned: boolean;
   gameUrl: string | null;
+  title?: string;
+  slug?: string;
 };
 
 type Phase = "idle" | "creating" | "pending" | "paid" | "error";
 
-export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
+export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Props) {
   const { user, login } = useSession();
   const router = useRouter();
 
@@ -109,7 +111,7 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl }: Props) {
 
   if (owned || phase === "paid") {
     return gameUrl ? (
-      <PlayButton gameId={gameId} gameUrl={gameUrl} />
+      <PlayButton gameId={gameId} gameUrl={gameUrl} title={title} slug={slug} />
     ) : (
       <Button variant="outline" disabled>
         En tu biblioteca
