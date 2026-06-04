@@ -23,7 +23,7 @@ Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use
 
 ## Fase B — Listo para público (robustez y operación)
 - **B1 · Rate-limit real** ✅ (hecho): Upstash Redis con fallback a memoria (`checkRateLimit`). Falta setear las env vars de Upstash en Vercel para activarlo.
-- **B2 · Monitoreo de errores** ⏳ (pendiente): **Sentry** — necesita cuenta/DSN y tocar la config de build; hacer con cuidado.
+- **B2 · Monitoreo de errores** ✅ (hecho): **Sentry** integrado (`@sentry/nextjs`) con instrumentación server/edge/cliente, `onRequestError`, saneo de secretos (`src/lib/sentry-scrub.ts`) y captura explícita en los flujos de dinero (payout de compra y de escrow). Queda inerte sin DSN. Falta solo crear el proyecto en sentry.io y setear `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN` (opcional: `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` para source maps).
 - **B3 · Dominio propio** ✅ (documentado en DEPLOY.md): acción en el dashboard de Vercel.
 - **B4 · Términos y privacidad** ✅ (hecho): `/terms` y `/privacy` + links en el footer.
 - **B5 · Tests automatizados** ✅ (hecho): Vitest, 13 tests (auth/JWT, format, admin). `npm test`.

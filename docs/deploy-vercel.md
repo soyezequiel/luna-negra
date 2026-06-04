@@ -25,9 +25,12 @@ Postgres (Neon), Vercel Blob (imágenes), Upstash Redis (rate-limit), Upstash QS
 | `QSTASH_NEXT_SIGNING_KEY` | Verificar el tick de apuestas | ✅*** | Upstash QStash |
 | `LUNA_NEGRA_NSEC` | Firmar el contrato de apuestas (Nostr) | ✅*** | lo generás vos |
 | `BET_MIN_SATS` / `BET_MAX_SATS` / `BET_FEE_PCT` | Config de apuestas | ➖ (default 5/100/5) | vos |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Monitoreo de errores (server / cliente) | ➖ | Sentry (mismo valor en ambas) |
+| `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | Subir source maps en el build | ➖ | Sentry |
 
 \* Sin `ADMIN_PUBKEY` en prod, **nadie** es admin. · \** Sin NWC, los pagos no funcionan
-(modo dev no aplica en prod). · \*** Solo si usás las **apuestas**.
+(modo dev no aplica en prod). · \*** Solo si usás las **apuestas**. · Sin `SENTRY_DSN`,
+Sentry queda **inerte** (no envía nada) — la app funciona igual.
 
 Todas se cargan en **Vercel → tu proyecto → Settings → Environment Variables**
 (entorno **Production**; marcá Preview también si querés previews funcionales).

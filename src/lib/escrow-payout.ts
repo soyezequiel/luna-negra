@@ -1,4 +1,5 @@
 import type { Bet, BetParticipant } from "@prisma/client";
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { fetchProfile } from "@/lib/nostr";
 import { pubkeyFromNpub } from "@/lib/escrow";
@@ -105,7 +106,13 @@ export async function payParticipant(args: {
       `Luna Negra ${kind} ${bet.id}`,
     );
     await markPaid(preimage);
-  } catch {
+  } catch (err) {
+    // Falló mover plata de una apuesta: alertar (queda "failed" para reintento).
+    Sentry.captureException(err, {
+      level: "error",
+      tags: { flow: "escrow-payout", kind, betId: bet.id },
+      extra: { participantId: participant.id, amountMsat: amountMsat.toString() },
+    });
     await markFailed();
   }
 }

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { lightningConfigured, payToLightningAddress } from "@/lib/lightning";
 
@@ -44,7 +45,13 @@ export async function maybePayout(purchaseId: string): Promise<void> {
       where: { id: p.id },
       data: { payoutStatus: "paid", payoutHash: preimage },
     });
-  } catch {
+  } catch (err) {
+    // El proveedor no cobró su parte: alertar (queda en "failed" para reintento).
+    Sentry.captureException(err, {
+      level: "error",
+      tags: { flow: "payout", purchaseId: p.id },
+      extra: { gameId: p.gameId, shareSats: share },
+    });
     await prisma.purchase.update({
       where: { id: p.id },
       data: { payoutStatus: "failed" },
