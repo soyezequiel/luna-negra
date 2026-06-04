@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyInvite } from "@/lib/auth";
+import { cacheProfile } from "@/lib/profile-cache";
 
 // Heartbeat + roster de una sala multijugador (demo). El cliente postea cada
 // ~2s con su puntaje; devuelve quién está en línea. Confiable en serverless
@@ -74,7 +75,7 @@ export async function POST(
   const npubs = [...new Set(rows.map((m) => m.npub))];
   const users = await prisma.user.findMany({
     where: { npub: { in: npubs } },
-    select: { npub: true, displayName: true, avatarUrl: true },
+    select: { npub: true, pubkey: true, displayName: true, avatarUrl: true },
   });
   const byNpub = new Map(users.map((u) => [u.npub, u]));
   const members = rows.map((m) => ({
@@ -82,6 +83,18 @@ export async function POST(
     name: byNpub.get(m.npub)?.displayName ?? null,
     avatar: byNpub.get(m.npub)?.avatarUrl ?? null,
   }));
+
+  // Self-healing: para los que no tienen nombre cacheado, traer el kind:0 de
+  // relays en background y cachearlo → aparece en el próximo poll. No frena
+  // esta respuesta (los relays desde el server tardan unos segundos).
+  const missing = users.filter((u) => !u.displayName);
+  if (missing.length) {
+    after(() =>
+      Promise.allSettled(missing.map((u) => cacheProfile(u.pubkey))).then(
+        () => undefined,
+      ),
+    );
+  }
 
   return NextResponse.json({ members }, { headers: CORS });
 }

@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { verifyEvent, nip19, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, signSession, verifyChallenge } from "@/lib/auth";
 import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { cacheProfile } from "@/lib/profile-cache";
 
 const AUTH_KIND = 27235; // NIP-98 (HTTP Auth event)
 const MAX_AGE_SECONDS = 300;
@@ -46,6 +47,9 @@ export async function POST(req: Request) {
     update: { lastSeen: new Date() },
     create: { pubkey: ev.pubkey, npub },
   });
+
+  // Cachear el perfil (kind:0) en background, sin depender del cliente.
+  after(() => cacheProfile(user.pubkey));
 
   const session = await signSession({
     sub: user.id,
