@@ -250,26 +250,36 @@ export default function ProviderPage() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
             <div className="flex gap-3">
-              <input
-                className={inputCls}
-                type="number"
-                min={0}
-                placeholder="Precio (sats)"
-                value={form.priceSats}
-                onChange={(e) => setForm({ ...form, priceSats: e.target.value })}
-              />
-              <select
-                className={inputCls}
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-              >
-                <option value="">Sin categoría</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c.slug} value={c.slug}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+              <div className="flex-1">
+                <label className="block text-sm text-zinc-400">Precio (sats)</label>
+                <input
+                  className={`${inputCls} mt-1`}
+                  type="number"
+                  min={0}
+                  placeholder="0 = gratis"
+                  value={form.priceSats}
+                  onChange={(e) =>
+                    setForm({ ...form, priceSats: e.target.value })
+                  }
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm text-zinc-400">Categoría</label>
+                <select
+                  className={`${inputCls} mt-1`}
+                  value={form.category}
+                  onChange={(e) =>
+                    setForm({ ...form, category: e.target.value })
+                  }
+                >
+                  <option value="">Sin categoría</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c.slug} value={c.slug}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <input
               className={inputCls}
