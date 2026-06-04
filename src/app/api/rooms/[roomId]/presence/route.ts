@@ -84,10 +84,10 @@ export async function POST(
     avatar: byNpub.get(m.npub)?.avatarUrl ?? null,
   }));
 
-  // Self-healing: para los que no tienen nombre cacheado, traer el kind:0 de
-  // relays en background y cachearlo → aparece en el próximo poll. No frena
-  // esta respuesta (los relays desde el server tardan unos segundos).
-  const missing = users.filter((u) => !u.displayName);
+  // Self-healing: para los que no tienen nombre o avatar cacheado, traer el
+  // kind:0 de relays en background y cachearlo → aparece en el próximo poll.
+  // No frena esta respuesta (los relays desde el server tardan unos segundos).
+  const missing = users.filter((u) => !u.displayName || !u.avatarUrl);
   if (missing.length) {
     after(() =>
       Promise.allSettled(missing.map((u) => cacheProfile(u.pubkey))).then(
