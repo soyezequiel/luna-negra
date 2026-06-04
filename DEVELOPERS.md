@@ -3,6 +3,10 @@
 Luna Negra es una tienda de juegos **web**. Vos hosteás tu juego donde quieras;
 Luna Negra te da visibilidad, cobra a los jugadores y te paga.
 
+> 📖 **Referencia interactiva (OpenAPI):** `/developers` · spec en `/openapi.json`.
+> 📦 **SDK de TypeScript:** [`sdk/`](sdk/) (`@lunanegra/sdk`) para validar tokens en
+> tu game server sin escribir nada a mano.
+
 ## 1. Publicar
 1. Entrá con tu **Nostr** (extensión nos2x/Alby) y andá a **Proveedor**.
 2. Creá tu perfil con tu **Lightning Address** (ahí cobrás el payout).

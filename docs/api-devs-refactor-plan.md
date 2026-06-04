@@ -91,13 +91,13 @@ El refactor de auth es **plomería** (quién puede llamar la API). NO debe tocar
 - **Firma Nostr SOLO para reportar el resultado** de la apuesta, porque ahí la
   firma del proveedor *es* la prueba del oráculo (ver invariante).
 
-## Fase 5 — Developer Experience *(M, lo que más se nota)*
-- **OpenAPI 3.1** como única fuente de verdad (`openapi.yaml`).
-- **Referencia auto-generada** (Scalar/Redoc en `/developers`).
-- **SDK oficial de TS** (`@lunanegra/sdk`): `verifyAccess()`, `verifyRoom()`,
-  `createBet()`, `reportResult()` — sin `fetch` a mano.
-- **`Idempotency-Key`** (estilo Stripe) en endpoints de dinero.
-- `DEVELOPERS.md` completo (multijugador + apuestas).
+## Fase 5 — Developer Experience *(mayormente HECHO)*
+- ✅ **OpenAPI 3.1** como fuente de verdad (`public/openapi.json`).
+- ✅ **Referencia navegable** (Scalar vía CDN en `/developers`).
+- ✅ **SDK de TS** (`sdk/`, `@lunanegra/sdk`): `verifyAccess()`, `verifyRoom()`
+  (validación offline con JWKS). `createBet()`/`reportResult()` se suman con la Fase 4.
+- ✅ `DEVELOPERS.md` con multijugador + verificación offline + links a `/developers` y SDK.
+- ⏳ Pendiente: **`Idempotency-Key`** (estilo Stripe) en endpoints de dinero (buy/escrow).
 
 ## Fase 6 — Webhooks *(L, opcional pero muy estándar)*
 - Eventos firmados a una URL del proveedor: `purchase.completed`, `bet.settled`,

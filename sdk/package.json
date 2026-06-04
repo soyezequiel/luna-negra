@@ -1,0 +1,12 @@
+{
+  "name": "@lunanegra/sdk",
+  "version": "0.1.0",
+  "description": "SDK para validar tokens de Luna Negra en tu game server.",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "peerDependencies": {
+    "jose": "^6"
+  },
+  "license": "MIT"
+}

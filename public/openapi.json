@@ -1,0 +1,199 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Luna Negra · API para desarrolladores",
+    "version": "1.0.0",
+    "description": "Contrato público de Luna Negra para desarrolladores de juegos.\n\nAutenticación: los tokens de acceso (entitlement) e invitación (sala) van en el header `Authorization: Bearer <token>`. Son JWT firmados con ES256: podés validarlos **offline** con la clave pública de `/.well-known/jwks.json` (recomendado) o contra los endpoints `/verify` de abajo.\n\nErrores: forma estándar `{ \"error\": { \"code\", \"message\" } }` con el status HTTP correspondiente."
+  },
+  "servers": [
+    {
+      "url": "https://{host}",
+      "variables": { "host": { "default": "luna-negra-three.vercel.app" } }
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token emitido por Luna Negra (entitlement o invite)."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string", "example": "MISSING_TOKEN" },
+              "message": { "type": "string" }
+            },
+            "required": ["code", "message"]
+          }
+        }
+      },
+      "EntitlementVerify": {
+        "type": "object",
+        "properties": {
+          "valid": { "type": "boolean" },
+          "npub": { "type": "string" },
+          "gameId": { "type": "string" },
+          "slug": { "type": "string" }
+        },
+        "required": ["valid"]
+      },
+      "RoomVerify": {
+        "type": "object",
+        "properties": {
+          "valid": { "type": "boolean" },
+          "npub": { "type": "string" },
+          "gameId": { "type": "string" },
+          "slug": { "type": "string" },
+          "roomId": { "type": "string" },
+          "host": { "type": "boolean" }
+        },
+        "required": ["valid"]
+      },
+      "PresenceMember": {
+        "type": "object",
+        "properties": {
+          "clientId": { "type": "string" },
+          "npub": { "type": "string" },
+          "host": { "type": "boolean" },
+          "score": { "type": "integer" },
+          "name": { "type": ["string", "null"] },
+          "avatar": { "type": ["string", "null"] }
+        }
+      },
+      "Jwks": {
+        "type": "object",
+        "properties": {
+          "keys": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "summary": "Claves públicas (JWKS)",
+        "description": "Clave pública ES256 para validar los tokens offline.",
+        "tags": ["Tokens"],
+        "responses": {
+          "200": {
+            "description": "Conjunto de claves",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Jwks" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/entitlements/verify": {
+      "get": {
+        "summary": "Verificar acceso (entitlement)",
+        "description": "Confirma que el jugador compró el juego. Alternativa al verify offline con JWKS.",
+        "tags": ["Entitlements"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Resultado de la introspección (token inválido → valid:false)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EntitlementVerify" }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta el token",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rooms/verify": {
+      "get": {
+        "summary": "Verificar invitación a sala",
+        "description": "Valida el invite token de un jugador que se une a una sala multijugador.",
+        "tags": ["Multijugador"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Resultado de la introspección",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RoomVerify" }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta el token",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/presence": {
+      "post": {
+        "summary": "Heartbeat + roster de la sala",
+        "description": "El cliente postea su puntaje cada ~2s; devuelve quién está en línea (con nombre/avatar).",
+        "tags": ["Multijugador"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientId": { "type": "string", "description": "Id propio del cliente (distingue navegadores)" },
+                  "score": { "type": "integer" },
+                  "leave": { "type": "boolean", "description": "true para salir de la sala" }
+                },
+                "required": ["clientId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Roster de la sala",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/PresenceMember" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token inválido para esta sala",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
