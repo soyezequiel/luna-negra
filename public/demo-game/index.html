@@ -101,25 +101,10 @@
     <p class="muted">
       Juego demo de Luna Negra · entitlement vía
       <code>/api/entitlements/verify</code> · sala vía
-      <code>/api/rooms/verify</code> + relays Nostr
+      <code>/api/rooms/verify</code> + presencia <code>/api/rooms/:id/presence</code>
     </p>
 
-    <script type="module">
-      import {
-        SimplePool,
-        finalizeEvent,
-        generateSecretKey,
-      } from "https://esm.sh/nostr-tools@2.23.5";
-
-      // Relays (mismos que usa Luna Negra) + kind efímero para la sala.
-      const RELAYS = [
-        "wss://relay.damus.io",
-        "wss://nos.lol",
-        "wss://relay.primal.net",
-        "wss://relay.nostr.band",
-      ];
-      const KIND = 20987;
-
+    <script>
       const params = new URLSearchParams(location.search);
       const entToken = params.get("lnToken"); // acceso single-player
       const inviteToken = params.get("inviteToken"); // multijugador
@@ -131,17 +116,13 @@
         statusEl.textContent = text;
       }
 
-      // --- Estado multijugador ---
+      // --- Estado multijugador (presencia por polling al backend) ---
       // Cada pestaña/navegador tiene un clientId propio, así dos personas
       // (o dos sesiones) se distinguen aunque compartan npub.
       const clientId = Math.random().toString(36).slice(2, 10);
-      let me = null; // { npub, host }
-      let pool = null,
-        sk = null,
-        roomTag = null,
-        sub = null;
-      const peers = new Map(); // clientId -> { npub, host, score }
-      const seen = new Set(); // ids de eventos ya vistos
+      let me = null; // { npub, host, roomId }
+      let peers = []; // [{ clientId, npub, host, score }] (otros, del backend)
+      let pollTimer = null;
       const lobbyEl = document.getElementById("lobby");
       const rosterEl = document.getElementById("roster");
       const teamEl = document.getElementById("team");
@@ -152,7 +133,7 @@
       function renderRoster() {
         const all = [];
         if (me) all.push({ npub: me.npub, host: me.host, score, you: true });
-        for (const p of peers.values())
+        for (const p of peers)
           all.push({ npub: p.npub, host: p.host, score: p.score, you: false });
         rosterEl.innerHTML = all
           .map(
@@ -169,79 +150,37 @@
         teamEl.textContent = all.reduce((s, p) => s + (p.score || 0), 0);
       }
 
-      async function send(type) {
-        if (!pool || !me) return;
-        const evt = finalizeEvent(
-          {
-            kind: KIND,
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [["r", roomTag]],
-            content: JSON.stringify({
-              type,
-              clientId,
-              npub: me.npub,
-              host: me.host,
-              score,
-            }),
-          },
-          sk,
-        );
+      // Latido: postea mi puntaje y recibe el roster de la sala.
+      async function heartbeat(leave) {
+        if (!me) return;
         try {
-          await Promise.any(pool.publish(RELAYS, evt));
-        } catch {}
-      }
-
-      // Throttle de publicación de puntaje (evita spamear los relays).
-      let scoreTimer = null;
-      function publishScore() {
-        if (scoreTimer) return;
-        scoreTimer = setTimeout(() => {
-          scoreTimer = null;
-          send("score");
-        }, 250);
-      }
-
-      function onEvent(evt) {
-        if (seen.has(evt.id)) return;
-        seen.add(evt.id);
-        let m;
-        try {
-          m = JSON.parse(evt.content);
+          const r = await fetch(
+            "/api/rooms/" + encodeURIComponent(me.roomId) + "/presence",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              keepalive: !!leave,
+              body: JSON.stringify({ inviteToken, clientId, score, leave: !!leave }),
+            },
+          );
+          const d = await r.json();
+          if (Array.isArray(d.members)) {
+            peers = d.members.filter((m) => m.clientId !== clientId);
+            netEl.textContent =
+              "🛰️ conectado · sala " + me.roomId + " · " + d.members.length + " en línea";
+            renderRoster();
+          }
         } catch {
-          return;
+          netEl.textContent = "⚠️ reintentando conexión…";
         }
-        if (!m || m.clientId === clientId) return; // ignorar lo propio
-        if (m.type === "bye") {
-          peers.delete(m.clientId);
-          renderRoster();
-          return;
-        }
-        peers.set(m.clientId, {
-          npub: m.npub,
-          host: m.host,
-          score: m.score || 0,
-        });
-        // Al recibir un "hello", nos presentamos de vuelta para que nos vea.
-        if (m.type === "hello") send("welcome");
-        renderRoster();
       }
 
       async function setupLobby() {
         lobbyEl.style.display = "block";
-        sk = generateSecretKey();
-        roomTag = "lunanegra:room:" + me.roomId;
-        pool = new SimplePool();
-        sub = pool.subscribeMany(RELAYS, [{ kinds: [KIND], "#r": [roomTag] }], {
-          onevent: onEvent,
-        });
-        netEl.textContent = "🛰️ conectado · sala " + me.roomId;
-        await send("hello");
         renderRoster();
-        window.addEventListener("beforeunload", () => {
-          try {
-            send("bye");
-          } catch {}
-        });
+        await heartbeat(false);
+        pollTimer = setInterval(() => heartbeat(false), 2000);
+        window.addEventListener("beforeunload", () => heartbeat(true));
       }
 
       async function verifyAccess() {
@@ -302,6 +241,17 @@
         timer = null,
         playing = false;
 
+      // Empuja el puntaje al backend enseguida (con throttle), sin esperar al
+      // poll de 2s, para que el equipo lo vea casi en vivo.
+      let pushTimer = null;
+      function pushScore() {
+        if (pushTimer) return;
+        pushTimer = setTimeout(() => {
+          pushTimer = null;
+          heartbeat(false);
+        }, 600);
+      }
+
       function moveMoon() {
         const x = Math.random() * (arena.clientWidth - 50);
         const y = Math.random() * (arena.clientHeight - 50);
@@ -314,7 +264,7 @@
         score++;
         scoreEl.textContent = score;
         moveMoon();
-        publishScore();
+        pushScore();
         renderRoster();
       });
 
@@ -325,7 +275,7 @@
         startBtn.disabled = false;
         startBtn.textContent = "Jugar de nuevo";
         setStatus("info", "¡Terminó! Tu puntaje: " + score);
-        send("score");
+        if (me) heartbeat(false);
       }
 
       startBtn.addEventListener("click", () => {
@@ -337,7 +287,7 @@
         startBtn.disabled = true;
         moon.style.display = "block";
         moveMoon();
-        send("score");
+        if (me) heartbeat(false);
         renderRoster();
         timer = setInterval(() => {
           time--;

@@ -42,13 +42,21 @@ Reglas para el proveedor:
 
 ## Nota sobre el juego demo
 El juego demo de Luna Negra (`public/demo-game`) es estático (sin servidor). Su
-lobby usa **relays Nostr** como transporte (eventos efímeros kind `20987` tagueados
-con la sala, sobre los mismos relays que la app), así que la presencia y el puntaje
-de equipo se sincronizan **entre navegadores y dispositivos distintos** sin
-necesidad de un servidor. Es un stand-in válido para ver el flujo completo
-comprar→invitar→unirse→jugar; un proveedor real puede usar este mismo enfoque o su
-propio WebSocket, validando el token con el contrato de arriba.
+lobby usa **presencia por polling contra el backend**:
 
-> Requiere conexión a internet (relays). Cada cliente firma con una clave efímera
-> generada en el navegador; la identidad mostrada (`npub`) viene del token de
-> invitación verificado, no de esa clave.
+```
+POST /api/rooms/:roomId/presence   body: { inviteToken, clientId, score, leave? }
+→ 200 { members: [{ clientId, npub, host, score }] }
+```
+
+Cada cliente postea su puntaje cada ~2s (heartbeat) y recibe el roster de la sala.
+La identidad (`npub`/`host`) sale del **token verificado**, no del cliente. El estado
+vive en Postgres (`RoomPresence`), con TTL de 15s (sin heartbeat = fuera), así que
+funciona **entre navegadores y dispositivos distintos** de forma confiable en
+serverless.
+
+> **Por qué no relays Nostr:** se probó usar eventos efímeros sobre relays públicos
+> y, aunque los relays *aceptan* el evento, **no lo retransmiten** a los demás
+> suscriptores de forma confiable (ni cross-conexión). Por eso el demo usa el
+> backend. Un proveedor real puede usar su propio WebSocket validando el token con
+> `GET /api/rooms/verify` (contrato de arriba).

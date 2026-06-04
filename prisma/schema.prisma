@@ -81,6 +81,21 @@ model Purchase {
   @@unique([userId, gameId]) // un usuario posee un juego una sola vez (entitlement)
 }
 
+// Presencia efímera de salas multijugador (demo). Polling + limpieza por TTL.
+model RoomPresence {
+  id        String   @id @default(cuid())
+  roomId    String
+  clientId  String // distingue navegadores/pestañas aunque compartan npub
+  npub      String
+  host      Boolean  @default(false)
+  score     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, clientId])
+  @@index([roomId])
+}
+
 model Review {
   id        String   @id @default(cuid())
   userId    String
