@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPlayerAuth } from "@/lib/escrow-auth";
 import { signWithdrawToken } from "@/lib/auth";
+import { encodeLnurl } from "@/lib/lnurl";
 import { msatToSats } from "@/lib/money";
 
 export async function GET(
@@ -51,7 +52,10 @@ export async function GET(
         );
         const host =
           req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-        withdrawUrl = `lnurlw://${host}/api/escrow/lnurlw/${token}`;
+        const proto = req.headers.get("x-forwarded-proto") ?? "https";
+        withdrawUrl = encodeLnurl(
+          `${proto}://${host}/api/escrow/lnurlw/${token}`,
+        );
       }
       me = {
         paid: mine.depositStatus === "paid",
