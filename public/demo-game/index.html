@@ -70,8 +70,21 @@
       }
       #lobby h2 { margin: 0 0 8px; font-size: 15px; }
       #roster { list-style: none; margin: 0; padding: 0; font-size: 14px; }
-      #roster li { padding: 3px 0; }
+      #roster li {
+        padding: 3px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
       #roster b { color: #7dd3fc; }
+      .av {
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .av.ph { background: #ffffff1a; }
       .team { margin-top: 8px; font-size: 14px; }
       .team b { color: #86efac; font-size: 18px; }
       #net { font-size: 12px; color: #64748b; margin-top: 6px; }
@@ -121,7 +134,7 @@
       // (o dos sesiones) se distinguen aunque compartan npub.
       const clientId = Math.random().toString(36).slice(2, 10);
       let me = null; // { npub, host, roomId }
-      let peers = []; // [{ clientId, npub, host, score }] (otros, del backend)
+      let lastMembers = []; // roster del backend (incluye nombre/avatar cacheados)
       let pollTimer = null;
       const lobbyEl = document.getElementById("lobby");
       const rosterEl = document.getElementById("roster");
@@ -129,25 +142,56 @@
       const netEl = document.getElementById("net");
 
       const shortNpub = (n) => (n ? n.slice(0, 12) + "…" : "anónimo");
+      // Escapar HTML (el nombre/avatar vienen de perfiles de usuario).
+      const esc = (s) =>
+        String(s == null ? "" : s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+
+      function avatarHtml(url) {
+        if (typeof url === "string" && /^https?:\/\//.test(url)) {
+          return '<img class="av" src="' + esc(url) + '" alt="" />';
+        }
+        return '<span class="av ph"></span>';
+      }
 
       function renderRoster() {
-        const all = [];
-        if (me) all.push({ npub: me.npub, host: me.host, score, you: true });
-        for (const p of peers)
-          all.push({ npub: p.npub, host: p.host, score: p.score, you: false });
-        rosterEl.innerHTML = all
+        // Usar el roster del backend (con nombre/avatar); para mí, puntaje local.
+        const rows = lastMembers.length
+          ? lastMembers.map((m) => ({
+              npub: m.npub,
+              name: m.name,
+              avatar: m.avatar,
+              host: m.host,
+              score: m.clientId === clientId ? score : m.score,
+              you: m.clientId === clientId,
+            }))
+          : me
+            ? [{ npub: me.npub, name: null, avatar: null, host: me.host, score, you: true }]
+            : [];
+        rosterEl.innerHTML = rows
           .map(
             (p) =>
-              "<li>" +
+              '<li>' +
+              avatarHtml(p.avatar) +
+              "<span>" +
               (p.host ? "👑 " : "") +
-              shortNpub(p.npub) +
+              esc(p.name || shortNpub(p.npub)) +
               (p.you ? " (vos)" : "") +
               " — <b>" +
               (p.score || 0) +
-              "</b></li>",
+              "</b></span></li>",
           )
           .join("");
-        teamEl.textContent = all.reduce((s, p) => s + (p.score || 0), 0);
+        teamEl.textContent = rows.reduce((s, p) => s + (p.score || 0), 0);
       }
 
       // Latido: postea mi puntaje y recibe el roster de la sala.
@@ -165,7 +209,7 @@
           );
           const d = await r.json();
           if (Array.isArray(d.members)) {
-            peers = d.members.filter((m) => m.clientId !== clientId);
+            lastMembers = d.members;
             netEl.textContent =
               "🛰️ conectado · sala " + me.roomId + " · " + d.members.length + " en línea";
             renderRoster();

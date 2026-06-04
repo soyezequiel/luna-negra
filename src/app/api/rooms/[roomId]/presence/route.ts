@@ -63,11 +63,25 @@ export async function POST(
   await prisma.roomPresence.deleteMany({
     where: { roomId, updatedAt: { lt: cutoff } },
   });
-  const members = await prisma.roomPresence.findMany({
+  const rows = await prisma.roomPresence.findMany({
     where: { roomId, updatedAt: { gte: cutoff } },
     select: { clientId: true, npub: true, host: true, score: true },
     orderBy: { createdAt: "asc" },
   });
+
+  // Enriquecer con nombre/avatar cacheados (kind:0 al login) para mostrar el
+  // nombre de usuario y la foto en vez de la npub.
+  const npubs = [...new Set(rows.map((m) => m.npub))];
+  const users = await prisma.user.findMany({
+    where: { npub: { in: npubs } },
+    select: { npub: true, displayName: true, avatarUrl: true },
+  });
+  const byNpub = new Map(users.map((u) => [u.npub, u]));
+  const members = rows.map((m) => ({
+    ...m,
+    name: byNpub.get(m.npub)?.displayName ?? null,
+    avatar: byNpub.get(m.npub)?.avatarUrl ?? null,
+  }));
 
   return NextResponse.json({ members }, { headers: CORS });
 }
