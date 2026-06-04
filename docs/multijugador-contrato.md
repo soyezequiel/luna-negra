@@ -23,7 +23,8 @@ El lobby del proveedor recibe `inviteToken` y `room` (query param o subprotocolo
 del WebSocket) y los valida contra Luna Negra:
 
 ```
-GET https://<luna-negra>/api/rooms/verify?token=<inviteToken>
+GET https://<luna-negra>/api/v1/rooms/verify
+Authorization: Bearer <inviteToken>
 → 200 { valid: true, npub, gameId, slug, roomId, host }
 → 200 { valid: false }            // token inválido/expirado
 ```
@@ -45,7 +46,8 @@ El juego demo de Luna Negra (`public/demo-game`) es estático (sin servidor). Su
 lobby usa **presencia por polling contra el backend**:
 
 ```
-POST /api/rooms/:roomId/presence   body: { inviteToken, clientId, score, leave? }
+POST /api/v1/rooms/:roomId/presence   (Authorization: Bearer <inviteToken>)
+body: { clientId, score, leave? }
 → 200 { members: [{ clientId, npub, host, score }] }
 ```
 

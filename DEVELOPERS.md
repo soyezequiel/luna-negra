@@ -59,8 +59,6 @@ if (!valid) {
 - **Errores:** forma estándar `{ "error": { "code": "MISSING_TOKEN", "message": "…" } }`
   con el status HTTP correcto (400/401/…). Un token inválido/expirado devuelve
   `200 { "valid": false }`.
-- Las rutas viejas sin `/v1` siguen funcionando (con `?token=`) pero están
-  **deprecadas** (responden con el header `Deprecation: true`).
 
 ## 5. Multijugador / jugar con amigos (v1)
 Luna Negra emite **invite tokens** de sala; vos hosteás el lobby (WebSocket) y

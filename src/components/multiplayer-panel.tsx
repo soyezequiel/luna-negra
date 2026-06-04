@@ -12,7 +12,7 @@ type InviteResp = { token: string; roomId: string; host: boolean };
  * Multijugador por **link de invitación** (sin registro de salas en DB):
  * - El dueño crea una sala ("Jugar con amigos") → comparte el link.
  * - Quien abre el link (logueado y dueño del juego) se une con su propio token.
- * El lobby real lo hostea el proveedor; el token se valida en /api/rooms/verify.
+ * El lobby real lo hostea el proveedor; el token se valida en /api/v1/rooms/verify.
  */
 export function MultiplayerPanel({
   gameId,

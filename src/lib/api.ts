@@ -38,24 +38,12 @@ export function apiError(
   );
 }
 
-/**
- * Token de acceso desde `Authorization: Bearer <token>` (estándar).
- * Fallback a `?token=` para compatibilidad con la API vieja (deprecado).
- */
+/** Token de acceso desde `Authorization: Bearer <token>`. */
 export function bearerToken(req: Request): string | null {
   const auth = req.headers.get("authorization");
   if (auth && /^Bearer\s+/i.test(auth)) {
     const t = auth.replace(/^Bearer\s+/i, "").trim();
     if (t) return t;
   }
-  const q = new URL(req.url).searchParams.get("token");
-  return q?.trim() || null;
-}
-
-/** Headers que marcan una ruta como deprecada, apuntando a su sucesora. */
-export function deprecatedHeaders(successorPath: string): Record<string, string> {
-  return {
-    Deprecation: "true",
-    Link: `<${successorPath}>; rel="successor-version"`,
-  };
+  return null;
 }
