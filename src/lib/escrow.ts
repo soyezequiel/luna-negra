@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { nip19 } from "nostr-tools";
 import { satsToMsat } from "./money";
 
@@ -73,6 +74,34 @@ export function validateCreateBet(
     victoryCondition:
       typeof body.victoryCondition === "string" ? body.victoryCondition : "",
   };
+}
+
+/**
+ * Huella canónica de los términos económicos de la apuesta (stake, fee,
+ * participantes, condición). Se embebe como tag ["terms", hash] en el evento
+ * Nostr firmado (inmutable) y se guarda en el Bet. Antes de pagar se recalcula
+ * desde el registro vivo y se compara: si difiere, los términos fueron alterados
+ * después de firmar el contrato y NO se paga.
+ *
+ * Determinista: los npubs se ordenan (el orden de participantes no importa).
+ */
+export function computeContractHash(p: {
+  betId: string;
+  gameId: string;
+  stakeMsat: bigint;
+  feePct: number;
+  victoryCondition: string;
+  npubs: string[];
+}): string {
+  const canonical = JSON.stringify({
+    betId: p.betId,
+    gameId: p.gameId,
+    stakeMsat: p.stakeMsat.toString(),
+    feePct: p.feePct,
+    victoryCondition: p.victoryCondition,
+    npubs: [...p.npubs].sort(),
+  });
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /** Texto legible por humanos del contrato (se publica en Nostr). */

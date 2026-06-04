@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { recordOutflow } from "@/lib/ledger";
+import { computeContractHash } from "@/lib/escrow";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
 
@@ -50,6 +51,34 @@ export async function POST(req: Request) {
   });
   if (claimed.count !== 1) {
     return fail("NOT_READY", "La apuesta no está lista para resolver", 409);
+  }
+
+  // Integridad: los términos vivos deben coincidir con el contrato firmado.
+  // Si alguien alteró stake/fee/participantes después de firmar, NO pagamos:
+  // revertimos a ready → el timeout de resolución reembolsará a todos (seguro).
+  if (bet.contractHash) {
+    const liveHash = computeContractHash({
+      betId: bet.id,
+      gameId: bet.gameId,
+      stakeMsat: bet.stakeMsat,
+      feePct: bet.feePct,
+      victoryCondition: bet.victoryCondition,
+      npubs: bet.participants.map((p) => p.npub),
+    });
+    if (liveHash !== bet.contractHash) {
+      await prisma.bet.updateMany({
+        where: { id: betId, status: "settling" },
+        data: { status: "ready" },
+      });
+      console.error(
+        `[escrow] términos alterados en ${betId}: contrato=${bet.contractHash} vivo=${liveHash}`,
+      );
+      return fail(
+        "CONTRACT_MISMATCH",
+        "Los términos no coinciden con el contrato firmado; no se paga",
+        409,
+      );
+    }
   }
 
   // Ganadores declarados (tags "winner") que sean participantes.

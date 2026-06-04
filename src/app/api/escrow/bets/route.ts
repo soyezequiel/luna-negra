@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { verifyNip98 } from "@/lib/nip98";
-import { validateCreateBet, buildContractText } from "@/lib/escrow";
+import {
+  validateCreateBet,
+  buildContractText,
+  computeContractHash,
+} from "@/lib/escrow";
 import { publishContract } from "@/lib/nostr-server";
 import { msatToSats } from "@/lib/money";
 import {
@@ -64,6 +68,9 @@ export async function POST(req: Request) {
   }
 
   // 5) Crear la apuesta + participantes
+  // npubs canónicos (re-encodeados desde el pubkey): es la MISMA representación
+  // que se guarda y que se usa al verificar el hash en la liquidación.
+  const participantNpubs = users.map((u) => nip19.npubEncode(u.pubkey));
   const depositDeadline = new Date(Date.now() + DEPOSIT_WINDOW_MS);
   const bet = await prisma.bet.create({
     data: {
@@ -80,6 +87,16 @@ export async function POST(req: Request) {
     },
   });
 
+  // Huella de los términos: se firma en el evento Nostr y se verifica antes de pagar.
+  const contractHash = computeContractHash({
+    betId: bet.id,
+    gameId: game.id,
+    stakeMsat: v.stakeMsat,
+    feePct: BET_FEE_PCT,
+    victoryCondition: v.victoryCondition,
+    npubs: participantNpubs,
+  });
+
   // 6) Publicar contrato inmutable en Nostr (best-effort)
   const content = buildContractText({
     betId: bet.id,
@@ -93,15 +110,14 @@ export async function POST(req: Request) {
   const tags: string[][] = [
     ["t", "lunanegra:bet"],
     ["bet", bet.id],
+    ["terms", contractHash],
     ...v.pubkeys.map((pk) => ["p", pk]),
   ];
   const contractEventId = await publishContract(content, tags);
-  if (contractEventId) {
-    await prisma.bet.update({
-      where: { id: bet.id },
-      data: { contractEventId },
-    });
-  }
+  await prisma.bet.update({
+    where: { id: bet.id },
+    data: { contractHash, ...(contractEventId ? { contractEventId } : {}) },
+  });
 
   return NextResponse.json(
     { betId: bet.id, contractEventId, depositDeadline: depositDeadline.toISOString() },

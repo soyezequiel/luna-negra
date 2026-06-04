@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { nip19 } from "nostr-tools";
-import { validateCreateBet } from "@/lib/escrow";
+import { validateCreateBet, computeContractHash } from "@/lib/escrow";
 
 const pk1 = "1111111111111111111111111111111111111111111111111111111111111111";
 const pk2 = "2222222222222222222222222222222222222222222222222222222222222222";
@@ -40,5 +40,41 @@ describe("validateCreateBet", () => {
 
   it("falta gameId", () => {
     expect(validateCreateBet({ participants: [np1, np2], stakeSats: 10 }, cfg)).toMatchObject({ code: "MISSING_GAME" });
+  });
+});
+
+describe("computeContractHash", () => {
+  const base = {
+    betId: "bet1",
+    gameId: "g1",
+    stakeMsat: 10000n,
+    feePct: 5,
+    victoryCondition: "mayor puntaje",
+    npubs: [np1, np2],
+  };
+
+  it("es determinista y no depende del orden de participantes", () => {
+    const a = computeContractHash(base);
+    const b = computeContractHash({ ...base, npubs: [np2, np1] });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("cambia si se altera el stake", () => {
+    expect(computeContractHash({ ...base, stakeMsat: 20000n })).not.toBe(
+      computeContractHash(base),
+    );
+  });
+
+  it("cambia si se altera el fee", () => {
+    expect(computeContractHash({ ...base, feePct: 10 })).not.toBe(
+      computeContractHash(base),
+    );
+  });
+
+  it("cambia si cambian los participantes", () => {
+    expect(computeContractHash({ ...base, npubs: [np1] })).not.toBe(
+      computeContractHash(base),
+    );
   });
 });
