@@ -53,13 +53,15 @@ El refactor de auth es **plomería** (quién puede llamar la API). NO debe tocar
 
 ---
 
-## Fase 1 — Consistencia base *(S–M, alto valor)*
-- Namespace **`/api/v1/`** para el contrato de devs.
-- **Bearer en todo**: token a `Authorization: Bearer` (sacarlo de query/body).
-- **Envelope de error estándar**: `{ "error": { "code", "message" } }` + status
-  correcto. Helper `apiError(code, msg, status)` compartido.
-- **CORS unificado** (hoy duplicado en cada endpoint).
-- **Headers estándar de rate-limit** (`RateLimit-*`, `Retry-After` en 429).
+## Fase 1 — Consistencia base ✅ HECHO
+- ✅ Namespace **`/api/v1/`** para el contrato de devs (entitlements + rooms verify + presence).
+- ✅ **Bearer en todo**: token en `Authorization: Bearer` (helper `bearerToken`).
+- ✅ **Envelope de error estándar** `{ error: { code, message } }` + helper `apiError` (`src/lib/api.ts`).
+- ✅ **CORS unificado** (`corsPreflight`/`apiOk`/`apiError` en `src/lib/api.ts`).
+- ✅ **Sin retrocompatibilidad**: rutas viejas eliminadas (pre-launch).
+- ✅ **Headers estándar de rate-limit** (`RateLimit-Limit/Remaining/Reset` + `Retry-After`
+  en 429) vía `rateLimitHeaders` en `src/lib/rate-limit.ts`, aplicado a los 5 endpoints
+  con límite (auth challenge/verify, buy, escrow bets/deposit).
 
 ## Fase 2 — Tokens verificables offline (JWKS) *(M, el salto más "estándar")*
 - Tokens de acceso (entitlement, room) de **HS256 → ES256** (clave asimétrica).

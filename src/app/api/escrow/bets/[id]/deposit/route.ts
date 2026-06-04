@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getPlayerAuth } from "@/lib/escrow-auth";
 import { createInvoice, lightningConfigured } from "@/lib/lightning";
 import { msatToSats } from "@/lib/money";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 
 function fail(code: string, error: string, status: number) {
   return NextResponse.json({ error, code }, { status });
@@ -16,8 +16,12 @@ export async function POST(
 ) {
   const auth = await getPlayerAuth(req);
   if (!auth) return fail("UNAUTHENTICATED", "No autenticado", 401);
-  if (!(await checkRateLimit(`bet-deposit:${clientIp(req)}:${auth.sub}`, 30, 60_000))) {
-    return fail("RATE_LIMITED", "Demasiados intentos", 429);
+  const rl = await checkRateLimit(`bet-deposit:${clientIp(req)}:${auth.sub}`, 30, 60_000);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Demasiados intentos", code: "RATE_LIMITED" },
+      { status: 429, headers: rateLimitHeaders(rl) },
+    );
   }
 
   const { id } = await params;

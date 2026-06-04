@@ -2,15 +2,19 @@ import { NextResponse, after } from "next/server";
 import { verifyEvent, nip19, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, signSession, verifyChallenge } from "@/lib/auth";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { cacheProfile } from "@/lib/profile-cache";
 
 const AUTH_KIND = 27235; // NIP-98 (HTTP Auth event)
 const MAX_AGE_SECONDS = 300;
 
 export async function POST(req: Request) {
-  if (!(await checkRateLimit(`verify:${clientIp(req)}`, 30, 60_000))) {
-    return NextResponse.json({ error: "Demasiados intentos" }, { status: 429 });
+  const rl = await checkRateLimit(`verify:${clientIp(req)}`, 30, 60_000);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Demasiados intentos" },
+      { status: 429, headers: rateLimitHeaders(rl) },
+    );
   }
   const { token, event } = await req.json().catch(() => ({}));
 

@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { signChallenge } from "@/lib/auth";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
-  if (!(await checkRateLimit(`chal:${clientIp(req)}`, 30, 60_000))) {
-    return NextResponse.json({ error: "Demasiados intentos" }, { status: 429 });
+  const rl = await checkRateLimit(`chal:${clientIp(req)}`, 30, 60_000);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Demasiados intentos" },
+      { status: 429, headers: rateLimitHeaders(rl) },
+    );
   }
   const { pubkey } = await req.json().catch(() => ({}));
   if (typeof pubkey !== "string" || !/^[0-9a-f]{64}$/i.test(pubkey)) {

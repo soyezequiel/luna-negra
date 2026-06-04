@@ -15,7 +15,7 @@ import {
   BET_FEE_PCT,
   DEPOSIT_WINDOW_MS,
 } from "@/lib/escrow-config";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 function fail(code: string, error: string, status: number) {
   return NextResponse.json({ error, code }, { status });
@@ -28,8 +28,12 @@ export async function POST(req: Request) {
   const signer = verifyNip98(req.headers.get("authorization"), "POST", bodyText);
   if (!signer) return fail("INVALID_SIGNATURE", "Firma NIP-98 inválida", 401);
 
-  if (!(await checkRateLimit(`bet-create:${signer}`, 20, 60_000))) {
-    return fail("RATE_LIMITED", "Demasiados intentos", 429);
+  const rl = await checkRateLimit(`bet-create:${signer}`, 20, 60_000);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Demasiados intentos", code: "RATE_LIMITED" },
+      { status: 429, headers: rateLimitHeaders(rl) },
+    );
   }
 
   // 2) Validación de forma

@@ -1,20 +1,32 @@
 import { Ratelimit, type Duration } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
+export type RateLimitResult = {
+  success: boolean;
+  limit: number;
+  remaining: number;
+  reset: number; // segundos hasta el reset de la ventana
+};
+
 // --- Fallback en memoria (si no hay Upstash) ---
 // No se comparte entre instancias serverless; sirve solo como guard básico.
 type Hit = { count: number; reset: number };
 const store = new Map<string, Hit>();
-function memoryLimit(key: string, limit: number, windowMs: number): boolean {
+function memoryLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): RateLimitResult {
   const now = Date.now();
   const hit = store.get(key);
   if (!hit || hit.reset < now) {
     store.set(key, { count: 1, reset: now + windowMs });
-    return true;
+    return { success: true, limit, remaining: limit - 1, reset: Math.ceil(windowMs / 1000) };
   }
-  if (hit.count >= limit) return false;
+  const reset = Math.max(0, Math.ceil((hit.reset - now) / 1000));
+  if (hit.count >= limit) return { success: false, limit, remaining: 0, reset };
   hit.count++;
-  return true;
+  return { success: true, limit, remaining: Math.max(0, limit - hit.count), reset };
 }
 
 // --- Upstash Redis (rate-limit real, compartido entre instancias) ---
@@ -38,19 +50,36 @@ function getLimiter(limit: number, windowSec: number): Ratelimit {
   return l;
 }
 
-/** Devuelve true si la request está permitida (dentro del límite). */
+/** Verifica el límite y devuelve el estado (para emitir headers estándar). */
 export async function checkRateLimit(
   key: string,
   limit: number,
   windowMs: number,
-): Promise<boolean> {
+): Promise<RateLimitResult> {
   if (redis) {
-    const { success } = await getLimiter(limit, Math.ceil(windowMs / 1000)).limit(
-      key,
-    );
-    return success;
+    const r = await getLimiter(limit, Math.ceil(windowMs / 1000)).limit(key);
+    return {
+      success: r.success,
+      limit: r.limit,
+      remaining: Math.max(0, r.remaining),
+      reset: Math.max(0, Math.ceil((r.reset - Date.now()) / 1000)),
+    };
   }
   return memoryLimit(key, limit, windowMs);
+}
+
+/**
+ * Headers estándar de rate-limit (draft IETF `RateLimit-*`).
+ * En una respuesta 429 incluye además `Retry-After`.
+ */
+export function rateLimitHeaders(r: RateLimitResult): Record<string, string> {
+  const h: Record<string, string> = {
+    "RateLimit-Limit": String(r.limit),
+    "RateLimit-Remaining": String(r.remaining),
+    "RateLimit-Reset": String(r.reset),
+  };
+  if (!r.success) h["Retry-After"] = String(r.reset);
+  return h;
 }
 
 export function clientIp(req: Request): string {

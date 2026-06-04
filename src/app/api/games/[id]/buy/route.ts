@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { createInvoice, lightningConfigured } from "@/lib/lightning";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 
 export async function POST(
   req: Request,
@@ -13,8 +13,12 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-  if (!(await checkRateLimit(`buy:${clientIp(req)}:${session.sub}`, 15, 60_000))) {
-    return NextResponse.json({ error: "Demasiados intentos" }, { status: 429 });
+  const rl = await checkRateLimit(`buy:${clientIp(req)}:${session.sub}`, 15, 60_000);
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Demasiados intentos" },
+      { status: 429, headers: rateLimitHeaders(rl) },
+    );
   }
   const { id } = await params;
 
