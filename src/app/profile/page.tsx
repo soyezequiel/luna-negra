@@ -66,7 +66,7 @@ export default function ProfilePage() {
 }
 
 function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
-  const { user } = useSession();
+  const { user, updateUser } = useSession();
   const [value, setValue] = useState(user?.lud16 ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
     "idle",
@@ -82,14 +82,18 @@ function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
     e.preventDefault();
     setStatus("saving");
     setError(null);
+    const trimmed = value.trim();
     try {
       const res = await fetch("/api/users/me/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lud16: value.trim() }),
+        body: JSON.stringify({ lud16: trimmed }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar");
+      // Refleja el valor normalizado (minúsculas, o null si quedó vacío) en la
+      // sesión, para que el contexto no quede desincronizado con la DB.
+      updateUser({ lud16: trimmed ? trimmed.toLowerCase() : null });
       setStatus("saved");
     } catch (err) {
       setStatus("error");

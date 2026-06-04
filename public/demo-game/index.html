@@ -74,6 +74,7 @@
       #roster b { color: #7dd3fc; }
       .team { margin-top: 8px; font-size: 14px; }
       .team b { color: #86efac; font-size: 18px; }
+      #net { font-size: 12px; color: #64748b; margin-top: 6px; }
     </style>
   </head>
   <body>
@@ -84,6 +85,7 @@
       <h2>👥 Sala</h2>
       <ul id="roster"></ul>
       <div class="team">Puntaje del equipo: <b id="team">0</b></div>
+      <div id="net">conectando a relays…</div>
     </div>
 
     <div class="hud">
@@ -99,10 +101,25 @@
     <p class="muted">
       Juego demo de Luna Negra · entitlement vía
       <code>/api/entitlements/verify</code> · sala vía
-      <code>/api/rooms/verify</code>
+      <code>/api/rooms/verify</code> + relays Nostr
     </p>
 
-    <script>
+    <script type="module">
+      import {
+        SimplePool,
+        finalizeEvent,
+        generateSecretKey,
+      } from "https://esm.sh/nostr-tools@2.23.5";
+
+      // Relays (mismos que usa Luna Negra) + kind efímero para la sala.
+      const RELAYS = [
+        "wss://relay.damus.io",
+        "wss://nos.lol",
+        "wss://relay.primal.net",
+        "wss://relay.nostr.band",
+      ];
+      const KIND = 20987;
+
       const params = new URLSearchParams(location.search);
       const entToken = params.get("lnToken"); // acceso single-player
       const inviteToken = params.get("inviteToken"); // multijugador
@@ -115,20 +132,28 @@
       }
 
       // --- Estado multijugador ---
+      // Cada pestaña/navegador tiene un clientId propio, así dos personas
+      // (o dos sesiones) se distinguen aunque compartan npub.
+      const clientId = Math.random().toString(36).slice(2, 10);
       let me = null; // { npub, host }
-      let channel = null;
-      const peers = new Map(); // npub -> { host, score }
+      let pool = null,
+        sk = null,
+        roomTag = null,
+        sub = null;
+      const peers = new Map(); // clientId -> { npub, host, score }
+      const seen = new Set(); // ids de eventos ya vistos
       const lobbyEl = document.getElementById("lobby");
       const rosterEl = document.getElementById("roster");
       const teamEl = document.getElementById("team");
+      const netEl = document.getElementById("net");
 
-      const shortNpub = (n) => n.slice(0, 12) + "…";
+      const shortNpub = (n) => (n ? n.slice(0, 12) + "…" : "anónimo");
 
       function renderRoster() {
         const all = [];
         if (me) all.push({ npub: me.npub, host: me.host, score, you: true });
-        for (const [npub, p] of peers)
-          all.push({ npub, host: p.host, score: p.score, you: false });
+        for (const p of peers.values())
+          all.push({ npub: p.npub, host: p.host, score: p.score, you: false });
         rosterEl.innerHTML = all
           .map(
             (p) =>
@@ -144,54 +169,79 @@
         teamEl.textContent = all.reduce((s, p) => s + (p.score || 0), 0);
       }
 
-      function broadcastScore() {
-        if (channel && me)
-          channel.postMessage({
-            type: "score",
-            npub: me.npub,
-            host: me.host,
-            score,
-          });
-      }
-
-      function setupLobby(roomId) {
-        lobbyEl.style.display = "block";
-        channel = new BroadcastChannel("ln-room-" + roomId);
-        channel.onmessage = (ev) => {
-          const m = ev.data;
-          if (!m || !me || m.npub === me.npub) return;
-          if (m.type === "hello") {
-            peers.set(m.npub, { host: m.host, score: m.score || 0 });
-            // saludamos de vuelta para que el recién llegado nos vea
-            channel.postMessage({
-              type: "welcome",
+      async function send(type) {
+        if (!pool || !me) return;
+        const evt = finalizeEvent(
+          {
+            kind: KIND,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [["r", roomTag]],
+            content: JSON.stringify({
+              type,
+              clientId,
               npub: me.npub,
               host: me.host,
               score,
-            });
-          } else if (m.type === "welcome") {
-            peers.set(m.npub, { host: m.host, score: m.score || 0 });
-          } else if (m.type === "score") {
-            const p = peers.get(m.npub) || { host: m.host, score: 0 };
-            p.score = m.score;
-            peers.set(m.npub, p);
-          } else if (m.type === "bye") {
-            peers.delete(m.npub);
-          }
+            }),
+          },
+          sk,
+        );
+        try {
+          await Promise.any(pool.publish(RELAYS, evt));
+        } catch {}
+      }
+
+      // Throttle de publicación de puntaje (evita spamear los relays).
+      let scoreTimer = null;
+      function publishScore() {
+        if (scoreTimer) return;
+        scoreTimer = setTimeout(() => {
+          scoreTimer = null;
+          send("score");
+        }, 250);
+      }
+
+      function onEvent(evt) {
+        if (seen.has(evt.id)) return;
+        seen.add(evt.id);
+        let m;
+        try {
+          m = JSON.parse(evt.content);
+        } catch {
+          return;
+        }
+        if (!m || m.clientId === clientId) return; // ignorar lo propio
+        if (m.type === "bye") {
+          peers.delete(m.clientId);
           renderRoster();
-        };
-        channel.postMessage({
-          type: "hello",
-          npub: me.npub,
-          host: me.host,
-          score,
+          return;
+        }
+        peers.set(m.clientId, {
+          npub: m.npub,
+          host: m.host,
+          score: m.score || 0,
         });
+        // Al recibir un "hello", nos presentamos de vuelta para que nos vea.
+        if (m.type === "hello") send("welcome");
+        renderRoster();
+      }
+
+      async function setupLobby() {
+        lobbyEl.style.display = "block";
+        sk = generateSecretKey();
+        roomTag = "lunanegra:room:" + me.roomId;
+        pool = new SimplePool();
+        sub = pool.subscribeMany(RELAYS, [{ kinds: [KIND], "#r": [roomTag] }], {
+          onevent: onEvent,
+        });
+        netEl.textContent = "🛰️ conectado · sala " + me.roomId;
+        await send("hello");
+        renderRoster();
         window.addEventListener("beforeunload", () => {
           try {
-            channel.postMessage({ type: "bye", npub: me.npub });
+            send("bye");
           } catch {}
         });
-        renderRoster();
       }
 
       async function verifyAccess() {
@@ -203,14 +253,14 @@
             );
             const d = await r.json();
             if (d.valid) {
-              me = { npub: d.npub, host: d.host };
+              me = { npub: d.npub, host: d.host, roomId: d.roomId || room };
               setStatus(
                 "ok",
                 (d.host ? "👑 Sos el host · " : "Entraste a la sala · ") +
                   d.npub.slice(0, 16) +
                   "…",
               );
-              setupLobby(d.roomId || room);
+              setupLobby();
             } else {
               setStatus("bad", "Invitación inválida o expirada");
             }
@@ -264,7 +314,7 @@
         score++;
         scoreEl.textContent = score;
         moveMoon();
-        broadcastScore();
+        publishScore();
         renderRoster();
       });
 
@@ -275,6 +325,7 @@
         startBtn.disabled = false;
         startBtn.textContent = "Jugar de nuevo";
         setStatus("info", "¡Terminó! Tu puntaje: " + score);
+        send("score");
       }
 
       startBtn.addEventListener("click", () => {
@@ -286,7 +337,7 @@
         startBtn.disabled = true;
         moon.style.display = "block";
         moveMoon();
-        broadcastScore();
+        send("score");
         renderRoster();
         timer = setInterval(() => {
           time--;

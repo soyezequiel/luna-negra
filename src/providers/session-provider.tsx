@@ -25,6 +25,7 @@ type SessionContextValue = {
   error: string | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (patch: Partial<SessionUser>) => void;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -101,8 +102,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  // Actualiza el usuario en memoria tras guardar cambios (p. ej. lud16),
+  // para que el contexto no quede desincronizado con la DB.
+  const updateUser = useCallback((patch: Partial<SessionUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
   return (
-    <SessionContext.Provider value={{ user, loading, error, login, logout }}>
+    <SessionContext.Provider
+      value={{ user, loading, error, login, logout, updateUser }}
+    >
       {children}
     </SessionContext.Provider>
   );

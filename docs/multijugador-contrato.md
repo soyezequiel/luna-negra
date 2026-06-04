@@ -41,8 +41,14 @@ Reglas para el proveedor:
 - No hace falta worker always-on en Luna Negra para esto.
 
 ## Nota sobre el juego demo
-El juego demo de Luna Negra (`public/demo-game`) es estático (sin servidor), así
-que su lobby usa **`BroadcastChannel`** como stand-in: sincroniza presencia y
-puntaje **entre pestañas del mismo navegador**. Sirve para ver el flujo
-comprar→invitar→unirse→jugar de punta a punta en local; el multijugador real entre
-dispositivos lo provee el WebSocket del proveedor con el mismo contrato de arriba.
+El juego demo de Luna Negra (`public/demo-game`) es estático (sin servidor). Su
+lobby usa **relays Nostr** como transporte (eventos efímeros kind `20987` tagueados
+con la sala, sobre los mismos relays que la app), así que la presencia y el puntaje
+de equipo se sincronizan **entre navegadores y dispositivos distintos** sin
+necesidad de un servidor. Es un stand-in válido para ver el flujo completo
+comprar→invitar→unirse→jugar; un proveedor real puede usar este mismo enfoque o su
+propio WebSocket, validando el token con el contrato de arriba.
+
+> Requiere conexión a internet (relays). Cada cliente firma con una clave efímera
+> generada en el navegador; la identidad mostrada (`npub`) viene del token de
+> invitación verificado, no de esa clave.
