@@ -17,14 +17,25 @@ function getPool(): SimplePool {
   return pool;
 }
 
-/** Lee el metadata (kind:0) de un usuario desde relays públicos. */
+/** Lee el metadata (kind:0) de un usuario desde relays públicos.
+ *
+ * El kind:0 es un evento reemplazable: cada relay puede tener una versión
+ * distinta. Por eso no usamos `pool.get()` (que devuelve el primer evento que
+ * responda, posiblemente viejo), sino que consultamos todos los relays con
+ * `querySync` y nos quedamos con el de `created_at` más alto (el más reciente).
+ * Así reflejamos cambios de nombre/avatar hechos en otros clientes (Primal, etc.)
+ * aunque algún relay todavía sirva la versión anterior. */
 export async function fetchProfile(
   pubkey: string,
 ): Promise<NostrProfile | null> {
   try {
-    const ev = await getPool().get(RELAYS, { kinds: [0], authors: [pubkey] });
-    if (!ev) return null;
-    return JSON.parse(ev.content) as NostrProfile;
+    const evs = await getPool().querySync(RELAYS, {
+      kinds: [0],
+      authors: [pubkey],
+    });
+    if (evs.length === 0) return null;
+    const newest = evs.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+    return JSON.parse(newest.content) as NostrProfile;
   } catch {
     return null;
   }
