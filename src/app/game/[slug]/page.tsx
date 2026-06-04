@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
+import { MultiplayerPanel } from "@/components/multiplayer-panel";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
 import { priceLabel } from "@/lib/format";
@@ -79,6 +81,16 @@ export default async function GamePage({
               gameUrl={game.gameUrl}
             />
           </div>
+
+          {owned && game.gameUrl ? (
+            <Suspense fallback={null}>
+              <MultiplayerPanel
+                gameId={game.id}
+                slug={game.slug}
+                gameUrl={game.gameUrl}
+              />
+            </Suspense>
+          ) : null}
         </div>
       </div>
 

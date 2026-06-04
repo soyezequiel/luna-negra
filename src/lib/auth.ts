@@ -110,6 +110,44 @@ export async function verifyEntitlement(
   }
 }
 
+// --- Invite (token para unirse a la sala multijugador de un juego) ---
+
+export type InvitePayload = {
+  npub: string;
+  pubkey: string;
+  gameId: string;
+  slug: string;
+  roomId: string;
+  host: boolean;
+};
+
+export async function signInvite(payload: InvitePayload): Promise<string> {
+  return new SignJWT({ ...payload, purpose: "invite" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30m")
+    .sign(secret);
+}
+
+export async function verifyInvite(
+  token: string,
+): Promise<InvitePayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.purpose !== "invite") return null;
+    return {
+      npub: payload.npub as string,
+      pubkey: payload.pubkey as string,
+      gameId: payload.gameId as string,
+      slug: payload.slug as string,
+      roomId: payload.roomId as string,
+      host: payload.host as boolean,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- Bet-session (token Bearer para el modal de apuestas embebido) ---
 
 export type BetSession = { sub: string; npub: string; pubkey: string };

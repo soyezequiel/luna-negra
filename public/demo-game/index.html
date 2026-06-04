@@ -60,14 +60,34 @@
       }
       button.action:disabled { opacity: 0.5; cursor: default; }
       .muted { color: #94a3b8; font-size: 13px; }
+      #lobby {
+        display: none;
+        width: min(90vw, 520px);
+        border: 1px solid #ffffff1a;
+        border-radius: 12px;
+        background: #11141a;
+        padding: 14px 16px;
+      }
+      #lobby h2 { margin: 0 0 8px; font-size: 15px; }
+      #roster { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+      #roster li { padding: 3px 0; }
+      #roster b { color: #7dd3fc; }
+      .team { margin-top: 8px; font-size: 14px; }
+      .team b { color: #86efac; font-size: 18px; }
     </style>
   </head>
   <body>
     <h1>🌑 Atrapá la Luna</h1>
     <div id="status" class="badge info">Verificando acceso…</div>
 
+    <div id="lobby">
+      <h2>👥 Sala</h2>
+      <ul id="roster"></ul>
+      <div class="team">Puntaje del equipo: <b id="team">0</b></div>
+    </div>
+
     <div class="hud">
-      <div>Puntaje: <b id="score">0</b></div>
+      <div>Tu puntaje: <b id="score">0</b></div>
       <div>Tiempo: <b id="time">15</b>s</div>
     </div>
 
@@ -77,13 +97,16 @@
 
     <button class="action" id="start">Empezar</button>
     <p class="muted">
-      Juego demo de Luna Negra · verifica el entitlement vía
-      <code>/api/entitlements/verify</code>
+      Juego demo de Luna Negra · entitlement vía
+      <code>/api/entitlements/verify</code> · sala vía
+      <code>/api/rooms/verify</code>
     </p>
 
     <script>
       const params = new URLSearchParams(location.search);
-      const token = params.get("lnToken");
+      const entToken = params.get("lnToken"); // acceso single-player
+      const inviteToken = params.get("inviteToken"); // multijugador
+      const room = params.get("room");
       const statusEl = document.getElementById("status");
 
       function setStatus(kind, text) {
@@ -91,24 +114,129 @@
         statusEl.textContent = text;
       }
 
+      // --- Estado multijugador ---
+      let me = null; // { npub, host }
+      let channel = null;
+      const peers = new Map(); // npub -> { host, score }
+      const lobbyEl = document.getElementById("lobby");
+      const rosterEl = document.getElementById("roster");
+      const teamEl = document.getElementById("team");
+
+      const shortNpub = (n) => n.slice(0, 12) + "…";
+
+      function renderRoster() {
+        const all = [];
+        if (me) all.push({ npub: me.npub, host: me.host, score, you: true });
+        for (const [npub, p] of peers)
+          all.push({ npub, host: p.host, score: p.score, you: false });
+        rosterEl.innerHTML = all
+          .map(
+            (p) =>
+              "<li>" +
+              (p.host ? "👑 " : "") +
+              shortNpub(p.npub) +
+              (p.you ? " (vos)" : "") +
+              " — <b>" +
+              (p.score || 0) +
+              "</b></li>",
+          )
+          .join("");
+        teamEl.textContent = all.reduce((s, p) => s + (p.score || 0), 0);
+      }
+
+      function broadcastScore() {
+        if (channel && me)
+          channel.postMessage({
+            type: "score",
+            npub: me.npub,
+            host: me.host,
+            score,
+          });
+      }
+
+      function setupLobby(roomId) {
+        lobbyEl.style.display = "block";
+        channel = new BroadcastChannel("ln-room-" + roomId);
+        channel.onmessage = (ev) => {
+          const m = ev.data;
+          if (!m || !me || m.npub === me.npub) return;
+          if (m.type === "hello") {
+            peers.set(m.npub, { host: m.host, score: m.score || 0 });
+            // saludamos de vuelta para que el recién llegado nos vea
+            channel.postMessage({
+              type: "welcome",
+              npub: me.npub,
+              host: me.host,
+              score,
+            });
+          } else if (m.type === "welcome") {
+            peers.set(m.npub, { host: m.host, score: m.score || 0 });
+          } else if (m.type === "score") {
+            const p = peers.get(m.npub) || { host: m.host, score: 0 };
+            p.score = m.score;
+            peers.set(m.npub, p);
+          } else if (m.type === "bye") {
+            peers.delete(m.npub);
+          }
+          renderRoster();
+        };
+        channel.postMessage({
+          type: "hello",
+          npub: me.npub,
+          host: me.host,
+          score,
+        });
+        window.addEventListener("beforeunload", () => {
+          try {
+            channel.postMessage({ type: "bye", npub: me.npub });
+          } catch {}
+        });
+        renderRoster();
+      }
+
       async function verifyAccess() {
-        if (!token) {
-          setStatus("info", "Modo invitado (sin token de Luna Negra)");
+        // Multijugador: validar la invitación y armar el lobby.
+        if (inviteToken && room) {
+          try {
+            const r = await fetch(
+              "/api/rooms/verify?token=" + encodeURIComponent(inviteToken),
+            );
+            const d = await r.json();
+            if (d.valid) {
+              me = { npub: d.npub, host: d.host };
+              setStatus(
+                "ok",
+                (d.host ? "👑 Sos el host · " : "Entraste a la sala · ") +
+                  d.npub.slice(0, 16) +
+                  "…",
+              );
+              setupLobby(d.roomId || room);
+            } else {
+              setStatus("bad", "Invitación inválida o expirada");
+            }
+          } catch {
+            setStatus("bad", "No se pudo verificar la invitación");
+          }
           return;
         }
-        try {
-          const r = await fetch(
-            "/api/entitlements/verify?token=" + encodeURIComponent(token),
-          );
-          const d = await r.json();
-          if (d.valid) {
-            setStatus("ok", "Acceso verificado · " + d.npub.slice(0, 16) + "…");
-          } else {
-            setStatus("bad", "Token inválido o expirado");
+        // Single-player: entitlement.
+        if (entToken) {
+          try {
+            const r = await fetch(
+              "/api/entitlements/verify?token=" + encodeURIComponent(entToken),
+            );
+            const d = await r.json();
+            if (d.valid) {
+              setStatus("ok", "Acceso verificado · " + d.npub.slice(0, 16) + "…");
+            } else {
+              setStatus("bad", "Token inválido o expirado");
+            }
+          } catch {
+            setStatus("bad", "No se pudo verificar el acceso");
           }
-        } catch {
-          setStatus("bad", "No se pudo verificar el acceso");
+          return;
         }
+        setStatus("info", "Modo invitado (sin token de Luna Negra)");
       }
       verifyAccess();
 
@@ -136,6 +264,8 @@
         score++;
         scoreEl.textContent = score;
         moveMoon();
+        broadcastScore();
+        renderRoster();
       });
 
       function endGame() {
@@ -144,7 +274,7 @@
         moon.style.display = "none";
         startBtn.disabled = false;
         startBtn.textContent = "Jugar de nuevo";
-        setStatus("info", "¡Terminó! Puntaje final: " + score);
+        setStatus("info", "¡Terminó! Tu puntaje: " + score);
       }
 
       startBtn.addEventListener("click", () => {
@@ -156,6 +286,8 @@
         startBtn.disabled = true;
         moon.style.display = "block";
         moveMoon();
+        broadcastScore();
+        renderRoster();
         timer = setInterval(() => {
           time--;
           timeEl.textContent = time;

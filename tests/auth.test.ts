@@ -14,6 +14,8 @@ import {
   verifyEntitlement,
   signBetSession,
   verifyBetSession,
+  signInvite,
+  verifyInvite,
 } from "@/lib/auth";
 
 describe("sesión JWT", () => {
@@ -70,5 +72,27 @@ describe("bet-session", () => {
   it("un entitlement no se acepta como bet-session", async () => {
     const t = await signEntitlement({ npub: "n", pubkey: "p", gameId: "g", slug: "s" });
     expect(await verifyBetSession(t)).toBeNull();
+  });
+});
+
+describe("invite (multijugador)", () => {
+  it("round-trip con roomId y host", async () => {
+    const t = await signInvite({
+      npub: "n",
+      pubkey: "p",
+      gameId: "g1",
+      slug: "s1",
+      roomId: "abc123",
+      host: true,
+    });
+    const i = await verifyInvite(t);
+    expect(i?.roomId).toBe("abc123");
+    expect(i?.host).toBe(true);
+    expect(i?.gameId).toBe("g1");
+  });
+
+  it("un entitlement no se acepta como invite", async () => {
+    const t = await signEntitlement({ npub: "n", pubkey: "p", gameId: "g", slug: "s" });
+    expect(await verifyInvite(t)).toBeNull();
   });
 });

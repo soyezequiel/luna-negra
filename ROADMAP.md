@@ -43,9 +43,12 @@ La razón de ser de Luna Negra. La más delicada. **Necesita un servicio always-
 - **C5 · Confianza/disputas** (L): mitigar el oráculo (ventana de disputa, límites, reputación del proveedor).
 
 ## Fase D — Multijugador / jugar con amigos
-- **D1 · "Unirse a la sala"** (M): Luna Negra emite un **invite token** y un endpoint para que el jugador entre al lobby del proveedor (similar a entitlements).
-- **D2 · Contrato para proveedores** (S): documentar cómo exponen su lobby WebSocket y validan el token.
-- **D3 · Presencia mejorada** (S): auto-publicar NIP-38 "jugando X" al lanzar un juego.
+> **D1 + D2 implementados ✅** (vía **link de invitación**, sin registro de salas en DB).
+> Plan: [`multijugador-plan.md`](multijugador-plan.md) · Contrato: [`multijugador-contrato.md`](multijugador-contrato.md).
+
+- **D1 · "Unirse a la sala"** ✅ (hecho): invite token (`signInvite`/`verifyInvite`), `POST /api/games/:id/invite` (host crea sala / invitado se une) y `GET /api/rooms/verify` (público, CORS) para el lobby del proveedor. UI: panel "Jugar con amigos" en la página del juego. El juego demo trae un lobby con presencia + puntaje de equipo (vía `BroadcastChannel`, entre pestañas).
+- **D2 · Contrato para proveedores** ✅ (hecho): [`docs/multijugador-contrato.md`](multijugador-contrato.md).
+- **D3 · Presencia mejorada** ⏳ (pendiente): auto-publicar NIP-38 "jugando X" al lanzar un juego. (No hace falta para el descubrimiento por link; encaja con descubrimiento vía Nostr.)
 - Infra: el lobby lo hostea el proveedor; si Luna Negra hace señalización, necesita always-on.
 
 ## Fase E — Inclusión y cuentas
