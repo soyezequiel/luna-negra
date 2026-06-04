@@ -52,7 +52,33 @@ if (!valid) {
 ```
 
 > Mejor aún: validá el token **en tu backend** antes de servir contenido pago.
-> El token es un JWT corto (5 min) firmado por Luna Negra.
+
+### Verificación OFFLINE (recomendado, sin llamar a Luna Negra)
+Los tokens son **JWT firmados con ES256**. Podés validarlos localmente con la clave
+pública publicada en el JWKS estándar — más rápido y sin depender de Luna Negra:
+
+```
+GET https://<luna-negra>/.well-known/jwks.json
+```
+
+```js
+import { jwtVerify, createRemoteJWKSet } from "jose";
+
+const JWKS = createRemoteJWKSet(
+  new URL("https://<luna-negra>/.well-known/jwks.json"),
+);
+
+const { payload } = await jwtVerify(token, JWKS, {
+  issuer: "luna-negra",        // claim iss
+  audience: "lunanegra:game",  // claim aud
+});
+// payload: { scope: "entitlement", npub, gameId, slug, exp, … }
+if (payload.scope !== "entitlement") throw new Error("token equivocado");
+```
+
+> Claims: `iss` (issuer), `aud` (`lunanegra:game`), `sub` (npub), `exp` (5 min) y
+> `scope` (`entitlement` o `invite`). El endpoint `/verify` de arriba es una
+> alternativa más simple si no querés verificar JWT vos mismo.
 
 ### Convenciones de la API v1
 - **Auth:** token en `Authorization: Bearer <token>`.

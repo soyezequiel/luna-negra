@@ -63,13 +63,17 @@ El refactor de auth es **plomería** (quién puede llamar la API). NO debe tocar
   en 429) vía `rateLimitHeaders` en `src/lib/rate-limit.ts`, aplicado a los 5 endpoints
   con límite (auth challenge/verify, buy, escrow bets/deposit).
 
-## Fase 2 — Tokens verificables offline (JWKS) *(M, el salto más "estándar")*
-- Tokens de acceso (entitlement, room) de **HS256 → ES256** (clave asimétrica).
-- Publicar **`/.well-known/jwks.json`** con la clave pública.
-- → El dev valida el token **localmente** con cualquier librería JWT (como OIDC),
-  sin llamar a Luna Negra en cada request. `/verify` queda como conveniencia.
-- **Claims estándar**: `iss`, `aud`, `sub` (npub), `exp`, `scope` (en vez de `purpose`).
-- Rotación: publicar 2 claves durante la transición.
+## Fase 2 — Tokens verificables offline (JWKS) ✅ HECHO
+- ✅ Tokens de dev (entitlement, invite) de **HS256 → ES256** (asimétrica) — `src/lib/jwks.ts`.
+  Los internos (session, challenge, bet-session, withdraw) siguen en HS256.
+- ✅ **`/.well-known/jwks.json`** (ruta `/api/v1/jwks` + rewrite en `next.config.ts`).
+- ✅ El dev valida el token **offline** con `createRemoteJWKSet` (jose); `/verify`
+  queda como conveniencia.
+- ✅ **Claims estándar**: `iss`, `aud` (`lunanegra:game`), `sub` (npub), `exp`,
+  `scope` (reemplaza `purpose`).
+- ✅ Clave: `LN_SIGNING_JWK` (env, obligatoria en prod) o efímera en dev.
+- Pendiente menor: rotación con 2 claves en el JWKS (estructura ya lista — el JWKS
+  devuelve un array y la verificación resuelve por `kid`).
 
 ## Fase 3 — Naming RESTful *(M, con alias deprecados)*
 | Hoy | Propuesto |

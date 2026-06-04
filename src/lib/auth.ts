@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { getSigningKeys, TOKEN_ISSUER, TOKEN_AUDIENCE } from "@/lib/jwks";
 
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
   throw new Error("JWT_SECRET es obligatorio en producción");
@@ -83,22 +84,38 @@ export type EntitlementPayload = {
   slug: string;
 };
 
+// Firmado con ES256 (clave asimétrica) → el game server lo valida offline con la
+// clave pública de /.well-known/jwks.json. Claims estándar: iss/aud/sub/exp/scope.
 export async function signEntitlement(
   payload: EntitlementPayload,
 ): Promise<string> {
-  return new SignJWT({ ...payload, purpose: "entitlement" })
-    .setProtectedHeader({ alg: "HS256" })
+  const { privateKey, kid } = await getSigningKeys();
+  return new SignJWT({
+    npub: payload.npub,
+    pubkey: payload.pubkey,
+    gameId: payload.gameId,
+    slug: payload.slug,
+    scope: "entitlement",
+  })
+    .setProtectedHeader({ alg: "ES256", kid })
+    .setIssuer(TOKEN_ISSUER)
+    .setAudience(TOKEN_AUDIENCE)
+    .setSubject(payload.npub)
     .setIssuedAt()
     .setExpirationTime("5m")
-    .sign(secret);
+    .sign(privateKey);
 }
 
 export async function verifyEntitlement(
   token: string,
 ): Promise<EntitlementPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, secret);
-    if (payload.purpose !== "entitlement") return null;
+    const { publicKey } = await getSigningKeys();
+    const { payload } = await jwtVerify(token, publicKey, {
+      issuer: TOKEN_ISSUER,
+      audience: TOKEN_AUDIENCE,
+    });
+    if (payload.scope !== "entitlement") return null;
     return {
       npub: payload.npub as string,
       pubkey: payload.pubkey as string,
@@ -121,20 +138,37 @@ export type InvitePayload = {
   host: boolean;
 };
 
+// ES256 (asimétrica) → verificable offline vía JWKS, como el entitlement.
 export async function signInvite(payload: InvitePayload): Promise<string> {
-  return new SignJWT({ ...payload, purpose: "invite" })
-    .setProtectedHeader({ alg: "HS256" })
+  const { privateKey, kid } = await getSigningKeys();
+  return new SignJWT({
+    npub: payload.npub,
+    pubkey: payload.pubkey,
+    gameId: payload.gameId,
+    slug: payload.slug,
+    roomId: payload.roomId,
+    host: payload.host,
+    scope: "invite",
+  })
+    .setProtectedHeader({ alg: "ES256", kid })
+    .setIssuer(TOKEN_ISSUER)
+    .setAudience(TOKEN_AUDIENCE)
+    .setSubject(payload.npub)
     .setIssuedAt()
     .setExpirationTime("30m")
-    .sign(secret);
+    .sign(privateKey);
 }
 
 export async function verifyInvite(
   token: string,
 ): Promise<InvitePayload | null> {
   try {
-    const { payload } = await jwtVerify(token, secret);
-    if (payload.purpose !== "invite") return null;
+    const { publicKey } = await getSigningKeys();
+    const { payload } = await jwtVerify(token, publicKey, {
+      issuer: TOKEN_ISSUER,
+      audience: TOKEN_AUDIENCE,
+    });
+    if (payload.scope !== "invite") return null;
     return {
       npub: payload.npub as string,
       pubkey: payload.pubkey as string,
