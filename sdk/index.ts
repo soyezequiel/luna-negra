@@ -12,6 +12,31 @@ export type LunaNegraOptions = {
   baseUrl: string;
   /** Issuer esperado (claim `iss`). Default: "luna-negra". */
   issuer?: string;
+  /** API key del proveedor (`ln_sk_…`), necesaria para crear apuestas. */
+  apiKey?: string;
+};
+
+export type CreateBetInput = {
+  gameId: string;
+  /** npubs de los participantes (mínimo 2). */
+  participants: string[];
+  /** Monto por jugador, en sats. */
+  stakeSats: number;
+  victoryCondition?: string;
+};
+
+export type Bet = {
+  betId: string;
+  contractEventId: string | null;
+  depositDeadline: string;
+};
+
+/** Plantilla de evento Nostr SIN firmar (la firma el proveedor con su clave). */
+export type UnsignedEvent = {
+  kind: number;
+  created_at: number;
+  tags: string[][];
+  content: string;
 };
 
 export type Entitlement = { npub: string; gameId: string; slug: string };
@@ -29,6 +54,12 @@ export type LunaNegraClient = {
   verifyAccess(token: string): Promise<Entitlement | null>;
   /** Valida un invite token de sala. Devuelve la info o `null`. */
   verifyRoom(token: string): Promise<RoomInvite | null>;
+  /** Crea una apuesta (requiere `apiKey`). */
+  createBet(input: CreateBetInput): Promise<Bet>;
+  /** Construye el evento (sin firmar) del resultado; firmalo con tu clave Nostr. */
+  buildResultEvent(betId: string, winnerNpubs: string[]): UnsignedEvent;
+  /** Reporta el resultado posteando el evento firmado por el proveedor. */
+  reportResult(betId: string, signedEvent: unknown): Promise<boolean>;
 };
 
 export function createClient(opts: LunaNegraOptions): LunaNegraClient {
@@ -72,6 +103,46 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       } catch {
         return null;
       }
+    },
+
+    async createBet(input) {
+      if (!opts.apiKey) throw new Error("createBet requiere `apiKey`");
+      const r = await fetch(base + "/api/v1/bets", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + opts.apiKey,
+        },
+        body: JSON.stringify(input),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo crear la apuesta");
+      return d as Bet;
+    },
+
+    buildResultEvent(betId, winnerNpubs) {
+      return {
+        kind: 30078,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ["t", "lunanegra:result"],
+          ["bet", betId],
+          ...winnerNpubs.map((n) => ["winner", n]),
+        ],
+        content: "",
+      };
+    },
+
+    async reportResult(betId, signedEvent) {
+      const r = await fetch(
+        base + "/api/v1/bets/" + encodeURIComponent(betId) + "/result",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ event: signedEvent }),
+        },
+      );
+      return r.ok;
     },
   };
 }

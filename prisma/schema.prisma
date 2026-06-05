@@ -38,8 +38,25 @@ model Provider {
   status           String   @default("pending") // pending | approved
   createdAt        DateTime @default(now())
 
-  games Game[]
-  bets  Bet[]
+  games   Game[]
+  bets    Bet[]
+  apiKeys ApiKey[]
+}
+
+// Claves de API del proveedor (auth server-to-server, ej. crear apuestas).
+// Se guarda solo el hash; la clave en claro se muestra una sola vez al crearla.
+model ApiKey {
+  id         String    @id @default(cuid())
+  providerId String
+  provider   Provider  @relation(fields: [providerId], references: [id])
+  name       String
+  prefix     String // primeros chars, para mostrar (ej. "ln_sk_ab12cd")
+  hash       String    @unique // sha256(key)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([providerId])
 }
 
 model Game {

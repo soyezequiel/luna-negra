@@ -102,7 +102,35 @@ Authorization: Bearer <inviteToken>
 
 Detalle completo del flujo en [`docs/multijugador-contrato.md`](docs/multijugador-contrato.md).
 
-## 6. Feed de actividad (opcional)
+## 6. Apuestas / escrow (v1)
+Tu game server crea apuestas y Luna Negra **custodia el pozo** y paga a los
+ganadores. Necesitás una **API key** (creala en el panel **/provider** → "Claves de
+API"; se muestra una sola vez).
+
+**Crear** (auth con API key):
+```
+POST https://<luna-negra>/api/v1/bets
+Authorization: Bearer ln_sk_…
+{ "gameId": "…", "participants": ["npub1…","npub1…"], "stakeSats": 10, "victoryCondition": "…" }
+→ 201 { "betId", "contractEventId", "depositDeadline" }
+```
+Al crearla, Luna Negra **publica el contrato firmado en Nostr** (`contractEventId`)
+para que los jugadores verifiquen los términos.
+
+**Reportar el resultado** (auth = evento Nostr **firmado por vos**, el proveedor —
+la firma es la prueba del oráculo):
+```
+POST https://<luna-negra>/api/v1/bets/{betId}/result
+{ "event": <evento Nostr firmado con tags ["bet", betId] y ["winner", npub]> }
+→ 200 { "ok": true }
+```
+Antes de pagar, Luna Negra recalcula el hash de los términos y lo compara con el
+contrato firmado: si no coincide (`CONTRACT_MISMATCH`), **no paga**.
+
+> Con el SDK: `luna.createBet({...})`, `luna.buildResultEvent(betId, winners)` (lo
+> firmás con tu clave Nostr) y `luna.reportResult(betId, signedEvent)`.
+
+## 7. Feed de actividad (opcional)
 Para que tus novedades aparezcan en la pestaña **Actividad** del juego, publicá una
 nota de Nostr (kind:1) con el tag:
 

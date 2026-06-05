@@ -18,6 +18,11 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "description": "Token emitido por Luna Negra (entitlement o invite)."
+      },
+      "apiKeyAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API key del proveedor (`ln_sk_…`), creada en el panel /provider."
       }
     },
     "schemas": {
@@ -71,6 +76,28 @@
         "type": "object",
         "properties": {
           "keys": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "CreateBetRequest": {
+        "type": "object",
+        "required": ["gameId", "participants", "stakeSats"],
+        "properties": {
+          "gameId": { "type": "string" },
+          "participants": {
+            "type": "array",
+            "items": { "type": "string", "description": "npub" },
+            "minItems": 2
+          },
+          "stakeSats": { "type": "integer", "description": "Monto por jugador (sats)" },
+          "victoryCondition": { "type": "string" }
+        }
+      },
+      "CreateBetResponse": {
+        "type": "object",
+        "properties": {
+          "betId": { "type": "string" },
+          "contractEventId": { "type": ["string", "null"], "description": "Evento Nostr del contrato firmado" },
+          "depositDeadline": { "type": "string", "format": "date-time" }
         }
       }
     }
@@ -188,6 +215,98 @@
           },
           "401": {
             "description": "Token inválido para esta sala",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bets": {
+      "post": {
+        "summary": "Crear una apuesta (escrow)",
+        "description": "El game server crea una apuesta; Luna Negra custodia el pozo y publica el contrato firmado en Nostr. Autenticación con API key del proveedor.",
+        "tags": ["Apuestas"],
+        "security": [{ "apiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateBetRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Apuesta creada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateBetResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "403": {
+            "description": "El juego no es de tu proveedor",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bets/{id}/result": {
+      "post": {
+        "summary": "Reportar el resultado de una apuesta",
+        "description": "El proveedor firma el resultado con su identidad Nostr (la firma es la prueba del oráculo). Body: `{ event }` con el evento Nostr firmado (tags `bet`, `winner`). Luna Negra verifica el contrato (CONTRACT_MISMATCH) antes de pagar.",
+        "tags": ["Apuestas"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event": { "type": "object", "description": "Evento Nostr firmado por el proveedor" }
+                },
+                "required": ["event"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resuelta y pagada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean" } }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Firma inválida",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "409": {
+            "description": "Estado inválido o CONTRACT_MISMATCH",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
             }

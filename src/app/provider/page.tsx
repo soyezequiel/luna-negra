@@ -69,11 +69,22 @@ function parseShots(json: string): string[] {
   }
 }
 
+type ApiKeyRow = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
 export default function ProviderPage() {
   const { user, login, loading } = useSession();
   const [provider, setProvider] = useState<Provider | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
+  const [keyName, setKeyName] = useState("");
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const [name, setName] = useState("");
@@ -84,9 +95,10 @@ export default function ProviderPage() {
   const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
-    const [d, s] = await Promise.all([
+    const [d, s, k] = await Promise.all([
       fetch("/api/provider").then((r) => r.json()).catch(() => null),
       fetch("/api/provider/sales").then((r) => r.json()).catch(() => ({ sales: [] })),
+      fetch("/api/provider/api-keys").then((r) => r.json()).catch(() => ({ keys: [] })),
     ]);
     if (d?.provider) {
       setProvider(d.provider);
@@ -95,7 +107,28 @@ export default function ProviderPage() {
     }
     setGames(d?.games ?? []);
     setSales(s?.sales ?? []);
+    setApiKeys(k?.keys ?? []);
   }, []);
+
+  async function createKey() {
+    setMsg(null);
+    const r = await fetch("/api/provider/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: keyName.trim() || "Clave de API" }),
+    });
+    const d = await r.json();
+    if (!r.ok) return setMsg(d.error ?? "No se pudo crear la clave");
+    setCreatedKey(d.key); // se muestra una sola vez
+    setKeyName("");
+    load();
+  }
+
+  async function revokeKey(id: string) {
+    if (!confirm("¿Revocar esta clave? Dejará de funcionar al instante.")) return;
+    await fetch(`/api/provider/api-keys/${id}`, { method: "DELETE" });
+    load();
+  }
 
   useEffect(() => {
     if (user) load();
@@ -468,6 +501,77 @@ export default function ProviderPage() {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="mt-8">
+            <h2 className="mb-1 font-semibold">Claves de API</h2>
+            <p className="mb-3 text-xs text-zinc-500">
+              Para que tu game server cree apuestas (Bearer). Ver{" "}
+              <a href="/developers" className="text-sky-400 hover:underline">
+                /developers
+              </a>
+              .
+            </p>
+
+            {createdKey ? (
+              <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <p className="text-sm text-emerald-300">
+                  Copiá tu clave ahora — no se vuelve a mostrar:
+                </p>
+                <code className="mt-2 block break-all rounded bg-black/40 px-3 py-2 font-mono text-xs text-zinc-200">
+                  {createdKey}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdKey);
+                    setMsg("Clave copiada.");
+                  }}
+                  className="mt-2 text-xs text-sky-400 hover:underline"
+                >
+                  Copiar
+                </button>
+                <button
+                  onClick={() => setCreatedKey(null)}
+                  className="ml-4 text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  Listo
+                </button>
+              </div>
+            ) : null}
+
+            <div className="flex gap-2">
+              <input
+                className={inputCls}
+                placeholder="Nombre (ej. servidor-prod)"
+                value={keyName}
+                onChange={(e) => setKeyName(e.target.value)}
+              />
+              <Button type="button" variant="outline" onClick={createKey}>
+                Crear clave
+              </Button>
+            </div>
+
+            {apiKeys.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {apiKeys.map((k) => (
+                  <li
+                    key={k.id}
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm"
+                  >
+                    <div>
+                      <span className="font-medium">{k.name}</span>{" "}
+                      <code className="text-xs text-zinc-500">{k.prefix}…</code>
+                      <span className="ml-2 text-xs text-zinc-600">
+                        {k.lastUsedAt ? "usada" : "sin usar"}
+                      </span>
+                    </div>
+                    <Button variant="ghost" onClick={() => revokeKey(k.id)}>
+                      Revocar
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </section>
         </>
       ) : null}

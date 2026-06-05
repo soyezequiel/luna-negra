@@ -88,12 +88,16 @@ Endpoints internos (cookie) renombrados a recursos, sin retrocompat:
 > endpoints **internos** con cookie del propio web app; `/v1` es el contrato público
 > (verify/presence/jwks). Los de escrow son dev-facing → se mueven a `/v1` en Fase 4.
 
-## Fase 4 — Auth server-to-server unificada *(M) ← decisión*
-**Decisión tomada: Opción C (híbrido).**
-- **API keys (Bearer)** como camino principal para acciones del game server
-  (lo más estándar y fácil; emisión/rotación/hash en el panel de proveedor).
-- **Firma Nostr SOLO para reportar el resultado** de la apuesta, porque ahí la
-  firma del proveedor *es* la prueba del oráculo (ver invariante).
+## Fase 4 — Auth server-to-server unificada ✅ HECHO (Opción C híbrida)
+- ✅ **API keys** (`ln_sk_…`, guardadas hasheadas): modelo `ApiKey`, lib
+  `src/lib/api-keys.ts` (`generateApiKey`/`verifyApiKey`), CRUD en
+  `/api/provider/api-keys` + sección en el panel `/provider` (se muestran 1 vez).
+- ✅ **`POST /api/v1/bets`** (auth API key) — reemplaza `/api/escrow/bets` (NIP-98).
+- ✅ **`POST /api/v1/bets/:id/result`** (auth = **evento Nostr firmado** por el
+  proveedor) — reemplaza `/api/escrow/result`. La firma sigue siendo la prueba del
+  oráculo; **invariante del contrato intacta** (publish + `CONTRACT_MISMATCH`).
+- ✅ Viejas eliminadas; OpenAPI + DEVELOPERS + SDK (`createBet`, `buildResultEvent`,
+  `reportResult`) actualizados.
 
 ## Fase 5 — Developer Experience *(mayormente HECHO)*
 - ✅ **OpenAPI 3.1** como fuente de verdad (`public/openapi.json`).

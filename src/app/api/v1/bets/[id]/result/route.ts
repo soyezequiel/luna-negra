@@ -1,47 +1,58 @@
-import { NextResponse } from "next/server";
 import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { recordOutflow } from "@/lib/ledger";
 import { computeContractHash } from "@/lib/escrow";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
+import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 const MAX_AGE = 1800; // 30 min
 
-function fail(code: string, error: string, status: number) {
-  return NextResponse.json({ error, code }, { status });
+// Reportar el resultado de una apuesta. Auth = EVENTO NOSTR FIRMADO por el
+// proveedor (la firma ES la prueba del oráculo; ver invariante del contrato).
+export function OPTIONS() {
+  return corsPreflight();
 }
 
-export async function POST(req: Request) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
   const parsed = await req.json().catch(() => ({}));
   const ev = parsed?.event as Event | undefined;
   if (!ev || typeof ev !== "object" || !Array.isArray(ev.tags)) {
-    return fail("BAD_EVENT", "Evento inválido", 400);
+    return apiError("BAD_EVENT", "Evento inválido", 400);
   }
 
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - (ev.created_at ?? 0)) > MAX_AGE) {
-    return fail("STALE", "Evento expirado", 400);
+    return apiError("STALE", "Evento expirado", 400);
   }
-  if (!verifyEvent(ev)) return fail("BAD_SIGNATURE", "Firma inválida", 401);
+  if (!verifyEvent(ev)) return apiError("BAD_SIGNATURE", "Firma inválida", 401);
 
-  const betId = ev.tags.find((t) => t[0] === "bet")?.[1];
-  if (!betId) return fail("MISSING_BET", "Falta el tag bet", 400);
+  // El evento firmado debe corresponder a la apuesta de la URL.
+  const evBetId = ev.tags.find((t) => t[0] === "bet")?.[1];
+  if (!evBetId) return apiError("MISSING_BET", "Falta el tag bet en el evento", 400);
+  if (evBetId !== id) {
+    return apiError("BET_MISMATCH", "El evento firmado no corresponde a esta apuesta", 400);
+  }
+  const betId = id;
 
   const bet = await prisma.bet.findUnique({
     where: { id: betId },
     include: { provider: { include: { owner: true } }, participants: true },
   });
-  if (!bet) return fail("BET_NOT_FOUND", "Apuesta no encontrada", 404);
+  if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
 
   // El firmante debe ser el dueño del proveedor del juego.
   if (ev.pubkey !== bet.provider.owner.pubkey) {
-    return fail("WRONG_SIGNER", "El resultado no está firmado por el proveedor", 403);
+    return apiError("WRONG_SIGNER", "El resultado no está firmado por el proveedor", 403);
   }
 
-  if (bet.status === "settled") return fail("ALREADY_RESOLVED", "Ya resuelta", 409);
+  if (bet.status === "settled") return apiError("ALREADY_RESOLVED", "Ya resuelta", 409);
   if (["cancelled_incomplete", "cancelled_admin", "refunded_timeout"].includes(bet.status)) {
-    return fail("TOO_LATE", "La apuesta ya fue reembolsada/cancelada", 410);
+    return apiError("TOO_LATE", "La apuesta ya fue reembolsada/cancelada", 410);
   }
 
   // Claim ready → settling (solo un request gana la carrera).
@@ -50,12 +61,10 @@ export async function POST(req: Request) {
     data: { status: "settling" },
   });
   if (claimed.count !== 1) {
-    return fail("NOT_READY", "La apuesta no está lista para resolver", 409);
+    return apiError("NOT_READY", "La apuesta no está lista para resolver", 409);
   }
 
   // Integridad: los términos vivos deben coincidir con el contrato firmado.
-  // Si alguien alteró stake/fee/participantes después de firmar, NO pagamos:
-  // revertimos a ready → el timeout de resolución reembolsará a todos (seguro).
   if (bet.contractHash) {
     const liveHash = computeContractHash({
       betId: bet.id,
@@ -73,7 +82,7 @@ export async function POST(req: Request) {
       console.error(
         `[escrow] términos alterados en ${betId}: contrato=${bet.contractHash} vivo=${liveHash}`,
       );
-      return fail(
+      return apiError(
         "CONTRACT_MISMATCH",
         "Los términos no coinciden con el contrato firmado; no se paga",
         409,
@@ -89,10 +98,10 @@ export async function POST(req: Request) {
       where: { id: betId, status: "settling" },
       data: { status: "ready" },
     });
-    return fail("INVALID_WINNER", "No se declaró un ganador válido", 400);
+    return apiError("INVALID_WINNER", "No se declaró un ganador válido", 400);
   }
 
-  // Montos (msat). El pozo = stake * cantidad de participantes (todos pagaron al estar ready).
+  // Montos (msat). Pozo = stake * participantes (todos pagaron al estar ready).
   const pot = bet.stakeMsat * BigInt(bet.participants.length);
   const feeMsat = (pot * BigInt(bet.feePct)) / 100n;
   const winnings = pot - feeMsat;
@@ -132,5 +141,5 @@ export async function POST(req: Request) {
   // Republicar el evento firmado del proveedor (prueba en Nostr).
   await publishSignedEvent(ev);
 
-  return NextResponse.json({ ok: true });
+  return apiOk({ ok: true });
 }
