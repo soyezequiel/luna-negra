@@ -99,6 +99,19 @@
           "contractEventId": { "type": ["string", "null"], "description": "Evento Nostr del contrato firmado" },
           "depositDeadline": { "type": "string", "format": "date-time" }
         }
+      },
+      "WebhookEvent": {
+        "type": "object",
+        "description": "Cuerpo de un webhook. Cabeceras: X-LunaNegra-Event y X-LunaNegra-Signature (HMAC-SHA256 del cuerpo con el secreto del proveedor).",
+        "properties": {
+          "id": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["purchase.completed", "bet.settled", "payout.sent"]
+          },
+          "created": { "type": "string", "format": "date-time" },
+          "data": { "type": "object" }
+        }
       }
     }
   },
@@ -312,6 +325,44 @@
             }
           }
         }
+      }
+    }
+  },
+  "webhooks": {
+    "purchase.completed": {
+      "post": {
+        "summary": "Un jugador compró tu juego",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "bet.settled": {
+      "post": {
+        "summary": "Una apuesta se resolvió y se pagó",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "payout.sent": {
+      "post": {
+        "summary": "Te enviamos tu parte (payout)",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
       }
     }
   }

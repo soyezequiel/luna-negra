@@ -1,6 +1,8 @@
 import * as Sentry from "@sentry/nextjs";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { lightningConfigured, payToLightningAddress } from "@/lib/lightning";
+import { emitPayoutSent } from "@/lib/webhooks";
 
 /**
  * Reparte el % del proveedor (revenueShare) a su Lightning Address.
@@ -45,6 +47,7 @@ export async function maybePayout(purchaseId: string): Promise<void> {
       where: { id: p.id },
       data: { payoutStatus: "paid", payoutHash: preimage },
     });
+    after(() => emitPayoutSent(p.id));
   } catch (err) {
     // El proveedor no cobró su parte: alertar (queda en "failed" para reintento).
     Sentry.captureException(err, {

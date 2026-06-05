@@ -1,9 +1,11 @@
+import { after } from "next/server";
 import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { recordOutflow } from "@/lib/ledger";
 import { computeContractHash } from "@/lib/escrow";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
+import { emitBetSettled } from "@/lib/webhooks";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 const MAX_AGE = 1800; // 30 min
@@ -141,5 +143,6 @@ export async function POST(
   // Republicar el evento firmado del proveedor (prueba en Nostr).
   await publishSignedEvent(ev);
 
+  after(() => emitBetSettled(betId));
   return apiOk({ ok: true });
 }

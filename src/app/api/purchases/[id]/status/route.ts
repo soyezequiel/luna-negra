@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isInvoicePaid, lightningConfigured } from "@/lib/lightning";
 import { maybePayout } from "@/lib/payments";
+import { emitPurchaseCompleted } from "@/lib/webhooks";
 
 export async function GET(
   _req: Request,
@@ -38,6 +39,7 @@ export async function GET(
       data: { status: "paid", paidAt: new Date() },
     });
     await maybePayout(purchase.id);
+    after(() => emitPurchaseCompleted(purchase.id));
     return NextResponse.json({ status: "paid" });
   }
 

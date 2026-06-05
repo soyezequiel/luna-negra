@@ -130,7 +130,32 @@ contrato firmado: si no coincide (`CONTRACT_MISMATCH`), **no paga**.
 > Con el SDK: `luna.createBet({...})`, `luna.buildResultEvent(betId, winners)` (lo
 > firmás con tu clave Nostr) y `luna.reportResult(betId, signedEvent)`.
 
-## 7. Feed de actividad (opcional)
+## 7. Webhooks
+Configurá una **URL de webhook** en el panel **/provider**. Luna Negra te avisa
+(POST JSON, con reintentos vía QStash) cuando pasa:
+
+| Evento | Cuándo |
+|---|---|
+| `purchase.completed` | un jugador compró tu juego |
+| `bet.settled` | una apuesta se resolvió y se pagó |
+| `payout.sent` | te enviamos tu parte (70%) |
+
+Cada request trae las cabeceras `X-LunaNegra-Event` y `X-LunaNegra-Signature`
+(HMAC-SHA256 del cuerpo con tu **secreto de webhook**). Verificá la firma:
+
+```ts
+import { verifyWebhook } from "@lunanegra/sdk";
+
+// rawBody = cuerpo crudo (sin parsear). secret = tu secreto del panel.
+if (!verifyWebhook(rawBody, req.headers["x-lunanegra-signature"], secret)) {
+  return res.status(401).end();
+}
+const { type, data } = JSON.parse(rawBody);
+```
+
+Cuerpo: `{ id, type, created, data }`.
+
+## 8. Feed de actividad (opcional)
 Para que tus novedades aparezcan en la pestaña **Actividad** del juego, publicá una
 nota de Nostr (kind:1) con el tag:
 

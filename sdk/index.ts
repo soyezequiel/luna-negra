@@ -4,8 +4,28 @@
 //
 // Requiere `jose` (peer dependency):  npm i jose
 import { jwtVerify, createRemoteJWKSet } from "jose";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 const AUDIENCE = "lunanegra:game";
+
+/**
+ * Verifica la firma de un webhook entrante (cabecera `X-LunaNegra-Signature`)
+ * usando el secreto del proveedor. `rawBody` es el cuerpo crudo (sin parsear).
+ */
+export function verifyWebhook(
+  rawBody: string,
+  signature: string,
+  secret: string,
+): boolean {
+  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  try {
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    return a.length === b.length && timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
 
 export type LunaNegraOptions = {
   /** Base URL de Luna Negra, ej. "https://luna-negra-three.vercel.app" */

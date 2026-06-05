@@ -8,7 +8,13 @@ import { CATEGORIES } from "@/lib/categories";
 const inputCls =
   "w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50";
 
-type Provider = { id: string; name: string; lightningAddress: string | null };
+type Provider = {
+  id: string;
+  name: string;
+  lightningAddress: string | null;
+  webhookUrl?: string | null;
+  webhookSecret?: string | null;
+};
 type Game = {
   id: string;
   title: string;
@@ -85,6 +91,8 @@ export default function ProviderPage() {
   const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
   const [keyName, setKeyName] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const [name, setName] = useState("");
@@ -104,6 +112,8 @@ export default function ProviderPage() {
       setProvider(d.provider);
       setName(d.provider.name);
       setLn(d.provider.lightningAddress ?? "");
+      setWebhookUrl(d.provider.webhookUrl ?? "");
+      setWebhookSecret(d.provider.webhookSecret ?? null);
     }
     setGames(d?.games ?? []);
     setSales(s?.sales ?? []);
@@ -128,6 +138,19 @@ export default function ProviderPage() {
     if (!confirm("¿Revocar esta clave? Dejará de funcionar al instante.")) return;
     await fetch(`/api/provider/api-keys/${id}`, { method: "DELETE" });
     load();
+  }
+
+  async function saveWebhook(regenerate = false) {
+    setMsg(null);
+    const r = await fetch("/api/provider/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ webhookUrl: webhookUrl.trim(), regenerate }),
+    });
+    const d = await r.json();
+    if (!r.ok) return setMsg(d.error ?? "No se pudo guardar el webhook");
+    setWebhookSecret(d.webhookSecret ?? null);
+    setMsg("Webhook guardado.");
   }
 
   useEffect(() => {
@@ -571,6 +594,43 @@ export default function ProviderPage() {
                   </li>
                 ))}
               </ul>
+            ) : null}
+          </section>
+
+          <section className="mt-8">
+            <h2 className="mb-1 font-semibold">Webhooks</h2>
+            <p className="mb-3 text-xs text-zinc-500">
+              Luna Negra notifica a esta URL los eventos{" "}
+              <code>purchase.completed</code>, <code>bet.settled</code> y{" "}
+              <code>payout.sent</code> (firmados con HMAC).
+            </p>
+            <div className="flex gap-2">
+              <input
+                className={inputCls}
+                placeholder="https://tu-server.com/webhooks/luna"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+              />
+              <Button type="button" variant="outline" onClick={() => saveWebhook()}>
+                Guardar
+              </Button>
+            </div>
+            {webhookSecret ? (
+              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                <p className="text-xs text-zinc-400">
+                  Secreto de firma (verificá la cabecera{" "}
+                  <code>X-LunaNegra-Signature</code>):
+                </p>
+                <code className="mt-1 block break-all font-mono text-xs text-zinc-200">
+                  {webhookSecret}
+                </code>
+                <button
+                  onClick={() => saveWebhook(true)}
+                  className="mt-2 text-xs text-sky-400 hover:underline"
+                >
+                  Regenerar secreto
+                </button>
+              </div>
             ) : null}
           </section>
         </>

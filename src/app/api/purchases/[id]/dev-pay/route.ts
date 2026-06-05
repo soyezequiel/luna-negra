@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { emitPurchaseCompleted } from "@/lib/webhooks";
 
 // Solo dev: simula el pago de un invoice para probar el flujo sin wallet.
 export async function POST(
@@ -26,5 +27,6 @@ export async function POST(
     data: { status: "paid", paidAt: new Date(), payoutStatus: "skipped" },
   });
 
+  after(() => emitPurchaseCompleted(purchase.id));
   return NextResponse.json({ status: "paid" });
 }

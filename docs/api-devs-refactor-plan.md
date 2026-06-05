@@ -107,10 +107,13 @@ Endpoints internos (cookie) renombrados a recursos, sin retrocompat:
 - ✅ `DEVELOPERS.md` con multijugador + verificación offline + links a `/developers` y SDK.
 - ⏳ Pendiente: **`Idempotency-Key`** (estilo Stripe) en endpoints de dinero (buy/escrow).
 
-## Fase 6 — Webhooks *(L, opcional pero muy estándar)*
-- Eventos firmados a una URL del proveedor: `purchase.completed`, `bet.settled`,
-  `payout.sent`.
-- **Reusar QStash** (ya está para el tick) como motor de entrega con reintentos.
+## Fase 6 — Webhooks ✅ HECHO
+- ✅ Eventos firmados (HMAC-SHA256, cabecera `X-LunaNegra-Signature`) a la URL del
+  proveedor: **`purchase.completed`**, **`bet.settled`**, **`payout.sent`**.
+- ✅ Entrega vía **QStash** (`QSTASH_TOKEN`, con reintentos) o fetch directo en dev.
+  Lib `src/lib/webhooks.ts`; hooks con `after()` en status/dev-pay/payout/bet-result.
+- ✅ Config en `/provider` (URL + secreto que se muestra/regenera).
+- ✅ SDK `verifyWebhook()`; OpenAPI `webhooks`; DEVELOPERS.md.
 
 ---
 
