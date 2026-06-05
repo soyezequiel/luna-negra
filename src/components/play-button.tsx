@@ -22,7 +22,7 @@ export function PlayButton({
   async function play() {
     setLoading(true);
     try {
-      const r = await fetch(`/api/games/${gameId}/play-token`, {
+      const r = await fetch(`/api/games/${gameId}/sessions`, {
         method: "POST",
       })
         .then((res) => res.json())

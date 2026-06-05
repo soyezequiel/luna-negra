@@ -75,14 +75,18 @@ El refactor de auth es **plomería** (quién puede llamar la API). NO debe tocar
 - Pendiente menor: rotación con 2 claves en el JWKS (estructura ya lista — el JWKS
   devuelve un array y la verificación resuelve por `kid`).
 
-## Fase 3 — Naming RESTful *(M, con alias deprecados)*
-| Hoy | Propuesto |
-|---|---|
-| `POST /api/games/:id/play-token` | `POST /api/v1/games/:id/sessions` |
-| `POST /api/games/:id/invite` | `POST /api/v1/games/:id/rooms` (+ `/rooms/:id/members`) |
-| `POST /api/escrow/bets` | `POST /api/v1/bets` |
-| `POST /api/escrow/result` | `POST /api/v1/bets/:id/result` |
-| `GET /api/entitlements/verify` | `GET /api/v1/tokens/introspect` (o se elimina con JWKS) |
+## Fase 3 — Naming RESTful *(parcial)*
+Endpoints internos (cookie) renombrados a recursos, sin retrocompat:
+| Antes | Ahora | Estado |
+|---|---|---|
+| `POST /api/games/:id/play-token` | `POST /api/games/:id/sessions` | ✅ |
+| `POST /api/games/:id/invite` (crear/unirse) | `POST /api/games/:id/rooms` + `.../rooms/:roomId/members` | ✅ |
+| `POST /api/escrow/bets` | `POST /api/v1/bets` | ⏳ con Fase 4 |
+| `POST /api/escrow/result` | `POST /api/v1/bets/:id/result` | ⏳ con Fase 4 |
+
+> Nota: `sessions`/`rooms` quedan bajo `/api/games/...` (no `/v1`) porque son
+> endpoints **internos** con cookie del propio web app; `/v1` es el contrato público
+> (verify/presence/jwks). Los de escrow son dev-facing → se mueven a `/v1` en Fase 4.
 
 ## Fase 4 — Auth server-to-server unificada *(M) ← decisión*
 **Decisión tomada: Opción C (híbrido).**

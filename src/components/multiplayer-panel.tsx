@@ -51,16 +51,12 @@ export function MultiplayerPanel({
     [gameUrl, slug, title],
   );
 
-  const mintInvite = useCallback(
-    async (roomId?: string): Promise<InviteResp | null> => {
+  const post = useCallback(
+    async (path: string): Promise<InviteResp | null> => {
       setLoading(true);
       setError(null);
       try {
-        const r = await fetch(`/api/games/${gameId}/invite`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(roomId ? { roomId } : {}),
-        });
+        const r = await fetch(path, { method: "POST" });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) {
           setError(d.error ?? "No se pudo crear la invitación");
@@ -71,17 +67,21 @@ export function MultiplayerPanel({
         setLoading(false);
       }
     },
-    [gameId],
+    [],
   );
 
   async function joinRoom() {
     if (!roomParam) return;
-    const d = await mintInvite(roomParam);
+    // Unirse a una sala existente.
+    const d = await post(
+      `/api/games/${gameId}/rooms/${encodeURIComponent(roomParam)}/members`,
+    );
     if (d) launch(d.token, d.roomId);
   }
 
   async function createRoom() {
-    const d = await mintInvite();
+    // Crear una sala nueva (host).
+    const d = await post(`/api/games/${gameId}/rooms`);
     if (!d) return;
     setInviteLink(`${window.location.origin}/game/${slug}?room=${d.roomId}`);
     launch(d.token, d.roomId);

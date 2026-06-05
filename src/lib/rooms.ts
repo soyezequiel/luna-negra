@@ -1,5 +1,59 @@
 import { prisma } from "@/lib/prisma";
-import { verifyInvite } from "@/lib/auth";
+import { verifyInvite, signInvite, type SessionPayload } from "@/lib/auth";
+
+const ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+export type MintInviteResult =
+  | { ok: true; token: string; roomId: string; host: boolean; slug: string }
+  | { ok: false; code: string; message: string; status: number };
+
+/**
+ * Mintea un invite token de sala multijugador para un jugador que posee el juego.
+ * `roomId === null` → crea una sala (host). Con `roomId` → se une a una existente.
+ * Compartido por `POST /games/:id/rooms` (crear) y `.../rooms/:roomId/members` (unirse).
+ */
+export async function mintRoomInvite(
+  session: SessionPayload,
+  gameId: string,
+  roomId: string | null,
+): Promise<MintInviteResult> {
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  if (!game || game.status !== "published") {
+    return { ok: false, code: "GAME_NOT_FOUND", message: "Juego no encontrado", status: 404 };
+  }
+
+  let owns = game.priceSats === 0;
+  if (!owns) {
+    const p = await prisma.purchase.findUnique({
+      where: { userId_gameId: { userId: session.sub, gameId } },
+    });
+    owns = p?.status === "paid";
+  }
+  if (!owns) {
+    return { ok: false, code: "NOT_OWNED", message: "No tenés acceso a este juego", status: 403 };
+  }
+
+  let finalRoomId: string;
+  if (roomId) {
+    if (!ROOM_RE.test(roomId)) {
+      return { ok: false, code: "INVALID_ROOM", message: "Sala inválida", status: 400 };
+    }
+    finalRoomId = roomId;
+  } else {
+    finalRoomId = crypto.randomUUID().slice(0, 8);
+  }
+  const host = !roomId;
+
+  const token = await signInvite({
+    npub: session.npub,
+    pubkey: session.pubkey,
+    gameId,
+    slug: game.slug,
+    roomId: finalRoomId,
+    host,
+  });
+  return { ok: true, token, roomId: finalRoomId, host, slug: game.slug };
+}
 
 // Núcleo de la presencia de salas multijugador, compartido por la ruta v1 y la
 // vieja. TTL: 15s sin heartbeat = fuera de la sala.

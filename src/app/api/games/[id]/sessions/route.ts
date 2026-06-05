@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, signInvite } from "@/lib/auth";
+import { getSession, signEntitlement, signBetSession } from "@/lib/auth";
 
-const ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
-
-/**
- * Mintea un token de invitación a una sala multijugador.
- * - Sin `roomId` en el body → el jugador es **host**, se genera una sala nueva.
- * - Con `roomId` → el jugador **se une** a una sala existente.
- * Solo si posee el juego (o es gratis), igual que play-token.
- */
+// Crea una "sesión de juego": mintea el token de acceso (entitlement) para lanzar
+// el juego, si el jugador lo posee (o es gratis).
 export async function POST(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
@@ -39,26 +33,17 @@ export async function POST(
     );
   }
 
-  const body = await req.json().catch(() => ({}));
-  const joining = typeof body.roomId === "string" && body.roomId.trim();
-  let roomId: string;
-  if (joining) {
-    roomId = body.roomId.trim();
-    if (!ROOM_RE.test(roomId)) {
-      return NextResponse.json({ error: "Sala inválida" }, { status: 400 });
-    }
-  } else {
-    roomId = crypto.randomUUID().slice(0, 8);
-  }
-  const host = !joining;
-
-  const token = await signInvite({
+  const token = await signEntitlement({
     npub: session.npub,
     pubkey: session.pubkey,
     gameId: id,
     slug: game.slug,
-    roomId,
-    host,
   });
-  return NextResponse.json({ token, roomId, host, slug: game.slug });
+  // Token de mínimo privilegio para que el modal de apuestas opere como el jugador.
+  const betSession = await signBetSession({
+    sub: session.sub,
+    npub: session.npub,
+    pubkey: session.pubkey,
+  });
+  return NextResponse.json({ token, betSession });
 }
