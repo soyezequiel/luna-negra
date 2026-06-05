@@ -6,32 +6,8 @@ const prisma = new PrismaClient();
 const OWNER_PUBKEY =
   "1111111111111111111111111111111111111111111111111111111111111111";
 
-const GAMES = [
-  {
-    slug: "orbital-clicker",
-    title: "Orbital Clicker",
-    description:
-      "Un clicker idle en el espacio. Acumulá energía orbital y desbloqueá estaciones. Gratis para empezar.",
-    category: "arcade",
-    priceSats: 0,
-  },
-  {
-    slug: "cripto-tetris",
-    title: "Cripto Tetris",
-    description:
-      "El clásico de bloques con un giro: cada línea completada suma sats a tu puntaje.",
-    category: "puzzle",
-    priceSats: 5,
-  },
-  {
-    slug: "luna-runner",
-    title: "Luna Runner",
-    description:
-      "Endless runner por la superficie lunar. Esquivá cráteres y batí tu récord.",
-    category: "arcade",
-    priceSats: 10,
-  },
-];
+// Sin juegos de relleno: el catálogo lo cargan los proveedores reales.
+const GAMES = [];
 
 async function main() {
   const owner = await prisma.user.upsert({
@@ -58,7 +34,7 @@ async function main() {
     });
   }
 
-  const gameUrl = "/demo-game/index.html"; // todos apuntan al juego demo
+  const gameUrl = "/demo-game/index.html"; // relleno por si se reactivan juegos demo
   for (const g of GAMES) {
     await prisma.game.upsert({
       where: { slug: g.slug },
