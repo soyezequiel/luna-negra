@@ -105,7 +105,9 @@ Endpoints internos (cookie) renombrados a recursos, sin retrocompat:
 - ✅ **SDK de TS** (`sdk/`, `@lunanegra/sdk`): `verifyAccess()`, `verifyRoom()`
   (validación offline con JWKS). `createBet()`/`reportResult()` se suman con la Fase 4.
 - ✅ `DEVELOPERS.md` con multijugador + verificación offline + links a `/developers` y SDK.
-- ⏳ Pendiente: **`Idempotency-Key`** (estilo Stripe) en endpoints de dinero (buy/escrow).
+- ✅ **`Idempotency-Key`** (estilo Stripe) en `POST /api/v1/bets`: claim-first con
+  `IdempotencyKey` (unique), reintento devuelve la respuesta original sin duplicar.
+  Lib `src/lib/idempotency.ts`.
 
 ## Fase 6 — Webhooks ✅ HECHO
 - ✅ Eventos firmados (HMAC-SHA256, cabecera `X-LunaNegra-Signature`) a la URL del

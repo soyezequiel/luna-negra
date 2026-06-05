@@ -100,6 +100,19 @@ model Purchase {
   @@unique([userId, gameId]) // un usuario posee un juego una sola vez (entitlement)
 }
 
+// Idempotencia de endpoints de dinero (header Idempotency-Key). Guarda la
+// respuesta para devolverla en reintentos sin re-ejecutar la acción.
+model IdempotencyKey {
+  id         String   @id @default(cuid())
+  scope      String // ej. providerId
+  key        String
+  statusCode Int? // null = en progreso (claim sin respuesta aún)
+  response   String? // JSON del body
+  createdAt  DateTime @default(now())
+
+  @@unique([scope, key])
+}
+
 // Presencia efímera de salas multijugador (demo). Polling + limpieza por TTL.
 model RoomPresence {
   id        String   @id @default(cuid())

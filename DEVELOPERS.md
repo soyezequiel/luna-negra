@@ -117,6 +117,9 @@ Authorization: Bearer ln_sk_…
 Al crearla, Luna Negra **publica el contrato firmado en Nostr** (`contractEventId`)
 para que los jugadores verifiquen los términos.
 
+> **Reintentos seguros:** mandá un header `Idempotency-Key: <único>`. Si reintentás
+> con la misma key, recibís la respuesta original **sin crear otra apuesta**.
+
 **Reportar el resultado** (auth = evento Nostr **firmado por vos**, el proveedor —
 la firma es la prueba del oráculo):
 ```

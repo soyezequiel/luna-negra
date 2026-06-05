@@ -241,6 +241,15 @@
         "description": "El game server crea una apuesta; Luna Negra custodia el pozo y publica el contrato firmado en Nostr. Autenticación con API key del proveedor.",
         "tags": ["Apuestas"],
         "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Clave única para reintentos seguros: un reintento con la misma key devuelve la respuesta original sin crear otra apuesta.",
+            "schema": { "type": "string" }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {

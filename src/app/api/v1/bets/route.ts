@@ -17,64 +17,52 @@ import {
 } from "@/lib/escrow-config";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiError, corsPreflight, CORS } from "@/lib/api";
+import { beginIdempotent } from "@/lib/idempotency";
 
 export function OPTIONS() {
   return corsPreflight();
 }
 
-export async function POST(req: Request) {
-  // 1) Auth: API key del proveedor (Authorization: Bearer ln_sk_…)
-  const providerId = await verifyApiKey(req);
-  if (!providerId) {
-    return apiError(
-      "INVALID_API_KEY",
-      "API key inválida (Authorization: Bearer ln_sk_…)",
-      401,
-    );
-  }
+type Result = { status: number; body: unknown };
+const err = (code: string, message: string, status: number): Result => ({
+  status,
+  body: { error: { code, message } },
+});
 
-  const rl = await checkRateLimit(`bet-create:${providerId}`, 20, 60_000);
-  if (!rl.success) {
-    return apiError("RATE_LIMITED", "Demasiados intentos", 429, rateLimitHeaders(rl));
-  }
-
-  // 2) Validación de forma
-  const bodyText = await req.text();
+// Lógica de crear apuesta, devuelve {status, body} (para idempotencia).
+async function createBet(bodyText: string, providerId: string): Promise<Result> {
   let body: unknown;
   try {
     body = JSON.parse(bodyText);
   } catch {
-    return apiError("BAD_JSON", "Body inválido", 400);
+    return err("BAD_JSON", "Body inválido", 400);
   }
   const v = validateCreateBet(body as object, {
     minSats: BET_MIN_SATS,
     maxSats: BET_MAX_SATS,
   });
-  if (!v.ok) return apiError(v.code, v.error, 400);
+  if (!v.ok) return err(v.code, v.error, 400);
 
-  // 3) El juego existe y pertenece al proveedor de la API key
   const game = await prisma.game.findUnique({
     where: { id: v.gameId },
     include: { provider: true },
   });
-  if (!game) return apiError("GAME_NOT_FOUND", "Juego no encontrado", 404);
+  if (!game) return err("GAME_NOT_FOUND", "Juego no encontrado", 404);
   if (game.providerId !== providerId) {
-    return apiError("NOT_GAME_OWNER", "El juego no es de tu proveedor", 403);
+    return err("NOT_GAME_OWNER", "El juego no es de tu proveedor", 403);
   }
 
-  // 4) Todos los participantes deben ser usuarios de Luna Negra
   const users = await prisma.user.findMany({
     where: { pubkey: { in: v.pubkeys } },
   });
   if (users.length !== v.pubkeys.length) {
-    return apiError(
+    return err(
       "PARTICIPANT_NOT_REGISTERED",
       "Todos los participantes deben tener cuenta en Luna Negra",
       400,
     );
   }
 
-  // 5) Crear la apuesta + participantes
   const participantNpubs = users.map((u) => nip19.npubEncode(u.pubkey));
   const depositDeadline = new Date(Date.now() + DEPOSIT_WINDOW_MS);
   const bet = await prisma.bet.create({
@@ -83,7 +71,7 @@ export async function POST(req: Request) {
       providerId: game.providerId,
       status: "pending_deposits",
       stakeMsat: v.stakeMsat,
-      feePct: BET_FEE_PCT, // lo fija Luna Negra, no el server
+      feePct: BET_FEE_PCT,
       victoryCondition: v.victoryCondition,
       depositDeadline,
       participants: {
@@ -95,7 +83,6 @@ export async function POST(req: Request) {
     },
   });
 
-  // Huella de los términos: se firma en Nostr y se verifica antes de pagar.
   const contractHash = computeContractHash({
     betId: bet.id,
     gameId: game.id,
@@ -105,7 +92,7 @@ export async function POST(req: Request) {
     npubs: participantNpubs,
   });
 
-  // 6) Publicar contrato inmutable en Nostr (best-effort) — invariante de confianza.
+  // Publicar contrato inmutable en Nostr (invariante de confianza).
   const content = buildContractText({
     betId: bet.id,
     gameTitle: game.title,
@@ -127,12 +114,59 @@ export async function POST(req: Request) {
     data: { contractHash, ...(contractEventId ? { contractEventId } : {}) },
   });
 
-  return NextResponse.json(
-    {
+  return {
+    status: 201,
+    body: {
       betId: bet.id,
       contractEventId,
       depositDeadline: depositDeadline.toISOString(),
     },
-    { status: 201, headers: CORS },
-  );
+  };
+}
+
+export async function POST(req: Request) {
+  // 1) Auth: API key del proveedor
+  const providerId = await verifyApiKey(req);
+  if (!providerId) {
+    return apiError(
+      "INVALID_API_KEY",
+      "API key inválida (Authorization: Bearer ln_sk_…)",
+      401,
+    );
+  }
+
+  const rl = await checkRateLimit(`bet-create:${providerId}`, 20, 60_000);
+  if (!rl.success) {
+    return apiError("RATE_LIMITED", "Demasiados intentos", 429, rateLimitHeaders(rl));
+  }
+
+  // 2) Idempotencia (opcional): reintentos con la misma key no duplican apuestas.
+  const idemKey = req.headers.get("idempotency-key")?.trim() || null;
+  let idem: Awaited<ReturnType<typeof beginIdempotent>> | null = null;
+  if (idemKey) {
+    const r = await beginIdempotent(providerId, idemKey);
+    if (r.kind === "replay") {
+      return NextResponse.json(r.body, { status: r.statusCode, headers: CORS });
+    }
+    if (r.kind === "in_progress") {
+      return apiError(
+        "IDEMPOTENCY_IN_PROGRESS",
+        "Otra request con esta Idempotency-Key está en curso",
+        409,
+      );
+    }
+    idem = r;
+  }
+
+  // 3) Crear la apuesta
+  const bodyText = await req.text();
+  const result = await createBet(bodyText, providerId);
+
+  // 4) Guardar la respuesta (éxito) o liberar la key (error → permite reintento).
+  if (idem && idem.kind === "fresh") {
+    if (result.status === 201) await idem.commit(result.status, result.body);
+    else await idem.release();
+  }
+
+  return NextResponse.json(result.body, { status: result.status, headers: CORS });
 }
