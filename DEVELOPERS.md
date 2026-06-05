@@ -187,7 +187,7 @@ Vos y los jugadores pueden postear ahí.
 | GET | `/api/v1/entitlements/verify` | Bearer (entitlement) | Confirmar compra |
 | GET | `/api/v1/rooms/verify` | Bearer (invite) | Validar quien se une |
 | POST | `/api/v1/bets` | Bearer (API key) | Crear apuesta |
-| POST | `/api/v1/bets/{id}/result` | Evento Nostr firmado | Reportar ganador |
+| POST | `/api/v1/bets/{betId}/result` | Evento Nostr firmado | Reportar ganador |
 
 ## Checklist de integración
 - [ ] Publicaste tu juego en /provider (con Lightning Address).
