@@ -251,12 +251,32 @@ Cuando alguien intenta unirse a una sala, llega con un token y vos lo validás:
 ```ts
 const room = await luna.verifyRoom(inviteToken);    // viene de ?inviteToken=&room=
 if (!room || room.roomId !== expectedRoom) return reject();
-console.log(room.npub, "se une", room.host ? "(host)" : "");
+
+// La identidad REAL del jugador es su Nostr, no un número que invente el navegador.
+// Usá npub o pubkey como "playerId" — son estables y únicos.
+const playerId = room.pubkey;
+console.log(playerId, "se une", room.host ? "(es el host)" : `(host real: ${room.hostNpub})`);
+
+// El nombre y el avatar son solo para mostrar (pueden venir vacíos) y NO viajan en el
+// token. Pedilos aparte cuando los necesites para la UI:
+const perfil = await luna.getPlayerProfile(room.npub);
+if (perfil) console.log("mostrar:", perfil.displayName, perfil.avatarUrl);
 ```
 
 O por endpoint, si preferís HTTP crudo:
 `GET /api/v1/rooms/verify` con `Authorization: Bearer <inviteToken>`
-→ `{ valid, npub, gameId, slug, roomId, host }`.
+→ `{ valid, npub, pubkey, displayName, avatarUrl, gameId, slug, roomId, host, hostNpub, hostPubkey, expiresAt }`.
+
+Qué significa cada cosa:
+
+- **`npub` / `pubkey`** → la identidad **estable** del jugador. Usala como su ID; nunca
+  generes un identificador local en el navegador.
+- **`displayName` / `avatarUrl`** → solo para mostrar (pueden ser `null`). Si los querés
+  frescos sin depender del token, pedilos a `GET /api/v1/players/:npub/profile`
+  → `{ npub, pubkey, displayName, avatarUrl }`.
+- **`host: true`** → marca a quien **creó** la sala.
+- **`hostNpub` / `hostPubkey`** → así un invitado sabe **quién es el host real** de la sala.
+- **`expiresAt`** → cuándo caduca la invitación, para mostrar un error claro si ya venció.
 
 > El flujo completo (crear la sala, que los jugadores la descubran por Nostr, y el
 > "contrato" de cómo debe comportarse tu lobby) está en
@@ -365,7 +385,8 @@ sirve para agrupar/filtrar eventos; acá agrupa todo lo relacionado a tu juego.)
 |---|---|---|---|
 | GET | `/.well-known/jwks.json` | — | Obtener la clave pública para validar tokens offline |
 | GET | `/api/v1/entitlements/verify` | Bearer (entitlement) | Confirmar compra |
-| GET | `/api/v1/rooms/verify` | Bearer (invite) | Validar quién se une a una sala |
+| GET | `/api/v1/rooms/verify` | Bearer (invite) | Validar quién se une a una sala (identidad + host) |
+| GET | `/api/v1/players/{npub}/profile` | — | Refrescar el nombre/avatar de un jugador |
 | POST | `/api/v1/bets` | Bearer (API key) | Crear apuesta |
 | POST | `/api/v1/bets/{betId}/result` | Evento Nostr firmado | Reportar ganador |
 

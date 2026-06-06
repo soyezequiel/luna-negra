@@ -109,10 +109,25 @@ validás a quien se une:
 ```ts
 const room = await luna.verifyRoom(inviteToken);   // del ?inviteToken=&room=
 if (!room || room.roomId !== expectedRoom) return reject();
-console.log(room.npub, "se une", room.host ? "(host)" : "");
+
+// Identidad ESTABLE del jugador: usá npub/pubkey como playerId, nunca un UUID local.
+const playerId = room.pubkey;
+const esHost = room.host;                  // creó la sala
+const hostReal = room.hostNpub;            // quién es el host original (para invitados)
+
+// Nombre/avatar NO viajan en el token (verifyRoom es offline). Refrescalos para la UI:
+const perfil = await luna.getPlayerProfile(room.npub);
+console.log(playerId, perfil?.displayName ?? "(sin nombre)", esHost ? "(host)" : `host: ${hostReal}`);
 ```
 O por endpoint: `GET /api/v1/rooms/verify` con `Authorization: Bearer <inviteToken>`
-→ `{ valid, npub, gameId, slug, roomId, host }`.
+→ `{ valid, npub, pubkey, displayName, avatarUrl, gameId, slug, roomId, host, hostNpub, hostPubkey, expiresAt }`.
+Este endpoint sí incluye `displayName`/`avatarUrl` (cache kind:0); el SDK offline los deja en `null`.
+
+- `npub`/`pubkey` = identidad **estable** (tu `playerId`); no generes UUIDs locales.
+- `displayName`/`avatarUrl` son **solo presentación** (pueden ser `null`); refrescables con
+  `GET /api/v1/players/:npub/profile` → `{ npub, pubkey, displayName, avatarUrl }`.
+- `hostNpub`/`hostPubkey` dejan que los invitados sepan quién es el host real.
+- `expiresAt` (ISO 8601) permite mostrar un error claro cuando la invitación expiró.
 
 Flujo completo (crear sala, descubrir por Nostr, contrato del lobby) en
 [`docs/multijugador-contrato.md`](docs/multijugador-contrato.md).
@@ -185,7 +200,8 @@ Vos y los jugadores pueden postear ahí.
 |---|---|---|---|
 | GET | `/.well-known/jwks.json` | — | Validar tokens offline |
 | GET | `/api/v1/entitlements/verify` | Bearer (entitlement) | Confirmar compra |
-| GET | `/api/v1/rooms/verify` | Bearer (invite) | Validar quien se une |
+| GET | `/api/v1/rooms/verify` | Bearer (invite) | Validar quien se une (identidad + host) |
+| GET | `/api/v1/players/{npub}/profile` | — | Refrescar nombre/avatar de un jugador |
 | POST | `/api/v1/bets` | Bearer (API key) | Crear apuesta |
 | POST | `/api/v1/bets/{betId}/result` | Evento Nostr firmado | Reportar ganador |
 
