@@ -84,11 +84,16 @@ describe("invite (multijugador)", () => {
       slug: "s1",
       roomId: "abc123",
       host: true,
+      hostNpub: "n",
+      hostPubkey: "p",
     });
     const i = await verifyInvite(t);
     expect(i?.roomId).toBe("abc123");
     expect(i?.host).toBe(true);
     expect(i?.gameId).toBe("g1");
+    expect(i?.hostNpub).toBe("n");
+    expect(i?.hostPubkey).toBe("p");
+    expect(typeof i?.expiresAt).toBe("string");
   });
 
   it("un entitlement no se acepta como invite", async () => {

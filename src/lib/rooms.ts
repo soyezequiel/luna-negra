@@ -33,16 +33,37 @@ export async function mintRoomInvite(
     return { ok: false, code: "NOT_OWNED", message: "No tenés acceso a este juego", status: 403 };
   }
 
+  const host = !roomId;
   let finalRoomId: string;
-  if (roomId) {
+  // Identidad Nostr del host original: del creador al crear, o de la fila Room al unirse.
+  let hostNpub: string | null;
+  let hostPubkey: string | null;
+
+  if (host) {
+    // Crear: generamos un roomId único y persistimos al host original.
+    finalRoomId = crypto.randomUUID().slice(0, 8);
+    await prisma.room.create({
+      data: {
+        gameId,
+        roomId: finalRoomId,
+        hostNpub: session.npub,
+        hostPubkey: session.pubkey,
+      },
+    });
+    hostNpub = session.npub;
+    hostPubkey = session.pubkey;
+  } else {
     if (!ROOM_RE.test(roomId)) {
       return { ok: false, code: "INVALID_ROOM", message: "Sala inválida", status: 400 };
     }
     finalRoomId = roomId;
-  } else {
-    finalRoomId = crypto.randomUUID().slice(0, 8);
+    // Unirse: resolvemos quién es el host real (null si la sala es externa/legacy).
+    const room = await prisma.room.findUnique({
+      where: { gameId_roomId: { gameId, roomId } },
+    });
+    hostNpub = room?.hostNpub ?? null;
+    hostPubkey = room?.hostPubkey ?? null;
   }
-  const host = !roomId;
 
   const token = await signInvite({
     npub: session.npub,
@@ -51,6 +72,8 @@ export async function mintRoomInvite(
     slug: game.slug,
     roomId: finalRoomId,
     host,
+    hostNpub,
+    hostPubkey,
   });
   return { ok: true, token, roomId: finalRoomId, host, slug: game.slug };
 }

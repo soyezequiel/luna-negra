@@ -53,13 +53,28 @@
         "type": "object",
         "properties": {
           "valid": { "type": "boolean" },
-          "npub": { "type": "string" },
+          "npub": { "type": "string", "description": "Identidad estable del jugador" },
+          "pubkey": { "type": "string", "description": "Pubkey hex (identidad estable)" },
+          "displayName": { "type": ["string", "null"], "description": "Solo presentación" },
+          "avatarUrl": { "type": ["string", "null"], "description": "Solo presentación" },
           "gameId": { "type": "string" },
           "slug": { "type": "string" },
           "roomId": { "type": "string" },
-          "host": { "type": "boolean" }
+          "host": { "type": "boolean", "description": "true = creador de la sala" },
+          "hostNpub": { "type": ["string", "null"], "description": "Host original de la sala" },
+          "hostPubkey": { "type": ["string", "null"], "description": "Host original (pubkey hex)" },
+          "expiresAt": { "type": ["string", "null"], "format": "date-time", "description": "Caducidad de la invitación" }
         },
         "required": ["valid"]
+      },
+      "PlayerProfile": {
+        "type": "object",
+        "properties": {
+          "npub": { "type": "string" },
+          "pubkey": { "type": "string" },
+          "displayName": { "type": ["string", "null"] },
+          "avatarUrl": { "type": ["string", "null"] }
+        }
       },
       "PresenceMember": {
         "type": "object",
@@ -172,6 +187,37 @@
           },
           "400": {
             "description": "Falta el token",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/players/{npub}/profile": {
+      "get": {
+        "summary": "Perfil público de un jugador",
+        "description": "Devuelve nombre y avatar (kind:0 cacheado) por npub, para refrescar la presentación sin depender del invite token. Público (CORS abierto).",
+        "tags": ["Multijugador"],
+        "parameters": [
+          {
+            "name": "npub",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Perfil del jugador (displayName/avatarUrl pueden ser null)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlayerProfile" }
+              }
+            }
+          },
+          "400": {
+            "description": "npub inválido",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
             }

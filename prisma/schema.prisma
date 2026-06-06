@@ -113,6 +113,21 @@ model IdempotencyKey {
   @@unique([scope, key])
 }
 
+// Sala multijugador: registra al host original (identidad Nostr estable) para
+// que los invitados sepan quién creó la sala, aunque el host se desconecte y
+// la presencia efímera (RoomPresence) caduque. Una sala por (gameId, roomId).
+model Room {
+  id         String   @id @default(cuid())
+  gameId     String
+  roomId     String
+  hostNpub   String
+  hostPubkey String // hex
+  createdAt  DateTime @default(now())
+
+  @@unique([gameId, roomId])
+  @@index([gameId])
+}
+
 // Presencia efímera de salas multijugador (demo). Polling + limpieza por TTL.
 model RoomPresence {
   id        String   @id @default(cuid())

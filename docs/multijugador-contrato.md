@@ -16,7 +16,9 @@
    - Se abre el juego del proveedor con `?inviteToken=<token>&room=<roomId>`.
 
 El token es un JWT corto (30 min) firmado por Luna Negra. Payload:
-`{ npub, pubkey, gameId, slug, roomId, host, purpose: "invite" }`.
+`{ npub, pubkey, gameId, slug, roomId, host, hostNpub, hostPubkey, scope: "invite" }`.
+`hostNpub`/`hostPubkey` identifican al host original de la sala (null en salas
+externas/legacy sin registrar).
 
 ## Cómo lo valida el proveedor
 El lobby del proveedor recibe `inviteToken` y `room` (query param o subprotocolo
@@ -25,7 +27,14 @@ del WebSocket) y los valida contra Luna Negra:
 ```
 GET https://<luna-negra>/api/v1/rooms/verify
 Authorization: Bearer <inviteToken>
-→ 200 { valid: true, npub, gameId, slug, roomId, host }
+→ 200 {
+    valid: true,
+    npub, pubkey,                  // identidad ESTABLE del jugador (usar como playerId)
+    displayName, avatarUrl,        // presentación (pueden ser null), NO identidad
+    gameId, slug, roomId, host,
+    hostNpub, hostPubkey,          // host original de la sala (null si externa/legacy)
+    expiresAt                      // ISO 8601: cuándo caduca la invitación
+  }
 → 200 { valid: false }            // token inválido/expirado
 ```
 
@@ -33,8 +42,12 @@ El endpoint es **público con CORS abierto** (se puede llamar desde otro origen)
 Reglas para el proveedor:
 - Rechazar la conexión si `valid !== true`.
 - Verificar que `roomId` coincide con la sala a la que se conecta.
-- Usar `npub` como identidad del jugador en la sala.
+- Usar `npub`/`pubkey` como identidad del jugador en la sala (nunca un UUID local).
+- `displayName`/`avatarUrl` son solo para la UI; refrescables con
+  `GET /api/v1/players/:npub/profile` → `{ npub, pubkey, displayName, avatarUrl }`.
 - `host: true` marca a quien creó la sala (útil para permisos de la partida).
+- `hostNpub`/`hostPubkey` permiten a los invitados saber quién es el host real.
+- `expiresAt` permite mostrar un error claro cuando la invitación expiró.
 
 ## Infraestructura
 - Luna Negra: **serverless** (solo mint + verify de tokens). No hostea el lobby.

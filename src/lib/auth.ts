@@ -136,6 +136,10 @@ export type InvitePayload = {
   slug: string;
   roomId: string;
   host: boolean;
+  // Identidad Nostr del host original de la sala (para que los invitados sepan
+  // quién la creó). Null en tokens viejos o salas sin Room registrada.
+  hostNpub: string | null;
+  hostPubkey: string | null;
 };
 
 // ES256 (asimétrica) → verificable offline vía JWKS, como el entitlement.
@@ -148,6 +152,8 @@ export async function signInvite(payload: InvitePayload): Promise<string> {
     slug: payload.slug,
     roomId: payload.roomId,
     host: payload.host,
+    hostNpub: payload.hostNpub,
+    hostPubkey: payload.hostPubkey,
     scope: "invite",
   })
     .setProtectedHeader({ alg: "ES256", kid })
@@ -159,9 +165,13 @@ export async function signInvite(payload: InvitePayload): Promise<string> {
     .sign(privateKey);
 }
 
+// Lo que devuelve verifyInvite: el payload + `expiresAt` derivado del claim `exp`
+// (para que el lobby muestre errores claros cuando la invitación caducó).
+export type VerifiedInvite = InvitePayload & { expiresAt: string | null };
+
 export async function verifyInvite(
   token: string,
-): Promise<InvitePayload | null> {
+): Promise<VerifiedInvite | null> {
   try {
     const { publicKey } = await getSigningKeys();
     const { payload } = await jwtVerify(token, publicKey, {
@@ -176,6 +186,12 @@ export async function verifyInvite(
       slug: payload.slug as string,
       roomId: payload.roomId as string,
       host: payload.host as boolean,
+      hostNpub: (payload.hostNpub as string | undefined) ?? null,
+      hostPubkey: (payload.hostPubkey as string | undefined) ?? null,
+      expiresAt:
+        typeof payload.exp === "number"
+          ? new Date(payload.exp * 1000).toISOString()
+          : null,
     };
   } catch {
     return null;

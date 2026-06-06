@@ -61,12 +61,38 @@ export type UnsignedEvent = {
 
 export type Entitlement = { npub: string; gameId: string; slug: string };
 
+/**
+ * Identidad + contexto de un invitado a una sala multijugador.
+ *
+ * `npub`/`pubkey` son la identidad Nostr ESTABLE del jugador: usalos como
+ * `playerId`, nunca generes un UUID local. `displayName`/`avatarUrl` son solo
+ * presentación (pueden ser null). `host: true` marca al creador de la sala;
+ * `hostNpub`/`hostPubkey` identifican al host original para que los invitados
+ * sepan quién es. `expiresAt` (ISO 8601) es cuándo caduca la invitación.
+ *
+ * Nota: `verifyRoom` valida el token OFFLINE, así que `displayName`/`avatarUrl`
+ * vienen null (no van en el token). Para obtenerlos usá `getPlayerProfile(npub)`
+ * o `GET /api/v1/rooms/verify` (que sí consulta el cache de perfiles).
+ */
 export type RoomInvite = {
   npub: string;
+  pubkey: string;
+  displayName: string | null;
+  avatarUrl: string | null;
   gameId: string;
   slug: string;
   roomId: string;
   host: boolean;
+  hostNpub: string | null;
+  hostPubkey: string | null;
+  expiresAt: string | null;
+};
+
+export type PlayerProfile = {
+  npub: string;
+  pubkey: string;
+  displayName: string | null;
+  avatarUrl: string | null;
 };
 
 export type LunaNegraClient = {
@@ -74,6 +100,8 @@ export type LunaNegraClient = {
   verifyAccess(token: string): Promise<Entitlement | null>;
   /** Valida un invite token de sala. Devuelve la info o `null`. */
   verifyRoom(token: string): Promise<RoomInvite | null>;
+  /** Refresca nombre/avatar de un jugador por npub (sin depender del token). */
+  getPlayerProfile(npub: string): Promise<PlayerProfile | null>;
   /** Crea una apuesta (requiere `apiKey`). */
   createBet(input: CreateBetInput): Promise<Bet>;
   /** Construye el evento (sin firmar) del resultado; firmalo con tu clave Nostr. */
@@ -115,11 +143,33 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
         if (p.scope !== "invite") return null;
         return {
           npub: p.npub as string,
+          pubkey: p.pubkey as string,
+          // No viajan en el token; usá getPlayerProfile() para poblarlos.
+          displayName: null,
+          avatarUrl: null,
           gameId: p.gameId as string,
           slug: p.slug as string,
           roomId: p.roomId as string,
           host: Boolean(p.host),
+          hostNpub: (p.hostNpub as string | undefined) ?? null,
+          hostPubkey: (p.hostPubkey as string | undefined) ?? null,
+          expiresAt:
+            typeof p.exp === "number"
+              ? new Date(p.exp * 1000).toISOString()
+              : null,
         };
+      } catch {
+        return null;
+      }
+    },
+
+    async getPlayerProfile(npub) {
+      try {
+        const r = await fetch(
+          base + "/api/v1/players/" + encodeURIComponent(npub) + "/profile",
+        );
+        if (!r.ok) return null;
+        return (await r.json()) as PlayerProfile;
       } catch {
         return null;
       }

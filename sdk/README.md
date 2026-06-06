@@ -27,10 +27,18 @@ console.log("compró:", ent.npub, ent.gameId);
 // Unirse a una sala multijugador (token del lobby)
 const room = await luna.verifyRoom(inviteToken);
 if (!room || room.roomId !== expectedRoom) return reject();
-console.log(room.npub, "se une", room.host ? "(host)" : "");
+// Identidad ESTABLE del jugador: usá npub/pubkey como playerId, nunca un UUID local.
+const playerId = room.pubkey;
+console.log(playerId, "se une", room.host ? "(host)" : `(host real: ${room.hostNpub})`);
+
+// Nombre/avatar son solo presentación y NO viajan en el token (verifyRoom es offline).
+// Refrescalos cuando los necesites para la UI:
+const profile = await luna.getPlayerProfile(room.npub);
+if (profile) console.log(profile.displayName, profile.avatarUrl);
 ```
 
-`verifyAccess` / `verifyRoom` devuelven `null` si el token es inválido o expiró.
+`verifyAccess` / `verifyRoom` devuelven `null` si el token es inválido o expiró
+(`room.expiresAt` es ISO 8601, útil para mostrar un mensaje claro al usuario).
 
 ## Cómo funciona
 - Los tokens son JWT **ES256**. El SDK trae la clave pública de
