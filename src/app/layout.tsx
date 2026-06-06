@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/providers/session-provider";
+import { NotificationsProvider } from "@/providers/notifications-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
@@ -23,9 +24,11 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-[#0a0c10] text-zinc-100">
         <SessionProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <NotificationsProvider>
+            <Navbar />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </NotificationsProvider>
         </SessionProvider>
       </body>
     </html>

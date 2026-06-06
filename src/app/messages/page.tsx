@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { parseInvite, inviteHref } from "@/lib/invite";
 import {
   fetchDmEvents,
   dmCounterpart,
@@ -186,18 +188,33 @@ export default function MessagesPage() {
                     Sin mensajes todavía. Escribí el primero.
                   </p>
                 ) : (
-                  thread.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                        m.fromMe
-                          ? "ml-auto bg-sky-500/30 text-sky-50"
-                          : "bg-white/10 text-zinc-100"
-                      }`}
-                    >
-                      {m.text}
-                    </div>
-                  ))
+                  thread.map((m) => {
+                    const invite = parseInvite(m.text);
+                    return (
+                      <div
+                        key={m.id}
+                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                          m.fromMe
+                            ? "ml-auto bg-sky-500/30 text-sky-50"
+                            : "bg-white/10 text-zinc-100"
+                        }`}
+                      >
+                        {invite ? (
+                          <div className="flex flex-col gap-2">
+                            <span>🎮 Invitación a una sala multijugador</span>
+                            <Link
+                              href={inviteHref(invite)}
+                              className="self-start rounded-md bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30"
+                            >
+                              Unirse a la sala
+                            </Link>
+                          </div>
+                        ) : (
+                          m.text
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
               <div className="flex gap-2 border-t border-white/10 p-3">

@@ -1,4 +1,5 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
+import type { SubCloser } from "nostr-tools/abstract-pool";
 import { RELAYS } from "./constants";
 
 export type Profile = {
@@ -203,6 +204,23 @@ export async function decryptDm(ev: Event, myPubkey: string): Promise<string> {
   } catch {
     return "[no se pudo descifrar]";
   }
+}
+
+/**
+ * Suscripción en vivo a DMs entrantes (kind:4 dirigidos a `myPubkey`).
+ * `since` (segundos) acota al presente para no re-notificar el historial.
+ * Devuelve un SubCloser; el caller debe llamar `.close()` al desmontar.
+ */
+export function subscribeDms(
+  myPubkey: string,
+  onEvent: (ev: Event) => void,
+  since: number = now(),
+): SubCloser {
+  return pool().subscribe(
+    RELAYS,
+    { kinds: [4], "#p": [myPubkey], since },
+    { onevent: onEvent },
+  );
 }
 
 export async function sendDm(
