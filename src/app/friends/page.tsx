@@ -15,22 +15,18 @@ import {
 } from "@/lib/nostr-social";
 import {
   buildInviteMessage,
+  parseInvite,
   getActiveRoom,
   clearActiveRoom,
   onActiveRoomChange,
   type ActiveRoom,
+  type Invite,
 } from "@/lib/invite";
+import { joinRoomAndPlay } from "@/lib/room-launch";
 
-/** Si el estado del amigo apunta a una sala unible, devuelve el path relativo. */
-function roomHref(status?: Status): string | null {
-  if (!status?.url) return null;
-  try {
-    const u = new URL(status.url);
-    if (!u.searchParams.get("room")) return null;
-    return u.pathname + u.search;
-  } catch {
-    return null;
-  }
+/** Si el estado del amigo apunta a una sala unible, devuelve la invitación. */
+function roomInvite(status?: Status): Invite | null {
+  return status?.url ? parseInvite(status.url) : null;
 }
 
 export default function FriendsPage() {
@@ -80,6 +76,18 @@ export default function FriendsPage() {
   function dismissActiveRoom() {
     clearActiveRoom();
     setActiveRoomState(null);
+  }
+
+  // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
+  // no lo bloquea el navegador). La tienda queda en esta pestaña.
+  function joinRoom(invite: Invite) {
+    const win = window.open("", "_blank");
+    void joinRoomAndPlay({
+      slug: invite.slug,
+      roomId: invite.roomId,
+      win,
+      onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
+    });
   }
 
   async function setStatus() {
@@ -185,13 +193,13 @@ export default function FriendsPage() {
                       <p className="truncate text-xs text-emerald-400">
                         🎮 {f.status.content}
                       </p>
-                      {roomHref(f.status) ? (
-                        <Link
-                          href={roomHref(f.status)!}
+                      {roomInvite(f.status) ? (
+                        <button
+                          onClick={() => joinRoom(roomInvite(f.status)!)}
                           className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/30"
                         >
                           Unirse
-                        </Link>
+                        </button>
                       ) : null}
                     </div>
                   ) : null}

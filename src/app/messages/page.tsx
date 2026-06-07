@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
+import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
-import { parseInvite, inviteHref } from "@/lib/invite";
+import { parseInvite, type Invite } from "@/lib/invite";
+import { joinRoomAndPlay } from "@/lib/room-launch";
 import {
   fetchDmEvents,
   dmCounterpart,
@@ -23,6 +24,7 @@ type Msg = { id: string; fromMe: boolean; text: string; created_at: number };
 
 export default function MessagesPage() {
   const { user, login, loading } = useSession();
+  const { notify } = useNotify();
   const [events, setEvents] = useState<Event[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -30,6 +32,18 @@ export default function MessagesPage() {
   const [text, setText] = useState("");
   const [newNpub, setNewNpub] = useState("");
   const [sending, setSending] = useState(false);
+
+  // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
+  // no lo bloquea el navegador). La tienda queda en esta pestaña.
+  function joinRoom(invite: Invite) {
+    const win = window.open("", "_blank");
+    void joinRoomAndPlay({
+      slug: invite.slug,
+      roomId: invite.roomId,
+      win,
+      onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
+    });
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -221,12 +235,12 @@ export default function MessagesPage() {
                                 Invitación reemplazada por una más nueva
                               </span>
                             ) : (
-                              <Link
-                                href={inviteHref(invite)}
+                              <button
+                                onClick={() => joinRoom(invite)}
                                 className="self-start rounded-md bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30"
                               >
                                 Unirse a la sala
-                              </Link>
+                              </button>
                             )}
                           </div>
                         ) : (

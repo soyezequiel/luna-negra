@@ -9,32 +9,33 @@ import { useFriends } from "@/hooks/use-friends";
 import { profileName, shortId, sendDm, type Status } from "@/lib/nostr-social";
 import {
   buildInviteMessage,
+  parseInvite,
   getActiveRoom,
   setActiveRoom,
   onActiveRoomChange,
   type ActiveRoom,
+  type Invite,
 } from "@/lib/invite";
-import { launchGameRoom } from "@/lib/room-launch";
+import { launchGameRoom, joinRoomAndPlay } from "@/lib/room-launch";
 import { Button } from "@/components/ui/button";
 
-/** Si el estado del amigo apunta a una sala unible, devuelve el path relativo. */
-function roomHref(status?: Status): string | null {
-  if (!status?.url) return null;
-  try {
-    const u = new URL(status.url);
-    if (!u.searchParams.get("room")) return null;
-    return u.pathname + u.search;
-  } catch {
-    return null;
-  }
+/** Si el estado del amigo apunta a una sala unible, devuelve la invitación. */
+function roomInvite(status?: Status): Invite | null {
+  return status?.url ? parseInvite(status.url) : null;
 }
+
+/** Miembro presente en la sala (roster en vivo del proveedor). */
+type RosterMember = { clientId: string; npub: string; host: boolean };
 
 /**
  * Lista de amigos persistente, anclada a la derecha de Luna Negra (visible en
  * pantallas anchas). Cuando el usuario tiene abierta la página de un juego que
- * puede jugar, cada amigo muestra un botón para invitarlo a jugar ese juego:
- * la primera invitación crea la sala y abre el juego; las siguientes reutilizan
- * la misma sala.
+ * puede jugar, cada amigo muestra un botón para invitarlo a jugar ese juego.
+ *
+ * Flujo: invitar **no** abre el juego — solo crea la sala (una vez) y manda el
+ * DM. El host invita a quien quiera y, cuando sus amigos hayan entrado, toca
+ * "Abrir juego" para entrar a la misma sala ya poblada. Mientras tanto, se
+ * sondea la presencia para mostrar cuántos amigos entraron.
  */
 export function FriendsSidebar() {
   const { user, login, loading } = useSession();
@@ -45,6 +46,11 @@ export function FriendsSidebar() {
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Roster indexado por sala para no mostrar datos de una sala anterior.
+  const [roster, setRoster] = useState<{
+    roomId: string;
+    members: RosterMember[];
+  } | null>(null);
 
   useEffect(() => {
     setActiveRoomState(getActiveRoom());
@@ -61,41 +67,77 @@ export function FriendsSidebar() {
     setInvited(new Set());
   }
 
+  // Sala del juego que está abierto (si la creamos en esta sesión de invitación).
+  const roomForGame =
+    activeRoom && currentGame && activeRoom.slug === currentGame.slug
+      ? activeRoom
+      : null;
+
+  // Sondeo de presencia: mostramos cuántos amigos ya entraron a la sala. Usamos
+  // `leave: true` con un clientId de "espía" para leer el roster sin contarnos.
+  const peekRoomId = roomForGame?.hostToken ? roomForGame.roomId : null;
+  const peekToken = roomForGame?.hostToken;
+  useEffect(() => {
+    if (!peekRoomId || !peekToken) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/v1/rooms/${peekRoomId}/presence`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${peekToken}`,
+          },
+          body: JSON.stringify({ clientId: `peek-${peekRoomId}`, leave: true }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!cancelled && r.ok) {
+          setRoster({
+            roomId: peekRoomId,
+            members: Array.isArray(d.members) ? d.members : [],
+          });
+        }
+      } catch {
+        /* sin red / proveedor caído: reintentamos en el próximo tick */
+      }
+    };
+    void tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [peekRoomId, peekToken]);
+
+  // Roster que corresponde a la sala del juego abierto (descarta los obsoletos).
+  const inRoom =
+    roster && roomForGame && roster.roomId === roomForGame.roomId
+      ? roster.members
+      : null;
+
+  // Crea la sala (una vez) y manda el DM. NO abre el juego: el host lo abre
+  // después con "Abrir juego", cuando los invitados ya entraron.
   async function inviteToGame(recipientPubkey: string, name: string) {
     if (!currentGame || invitingPk) return;
     setInvitingPk(recipientPubkey);
     try {
-      // Reutilizar la sala activa si es de este mismo juego; si no, crear una.
-      let room: ActiveRoom | null =
-        activeRoom && activeRoom.slug === currentGame.slug ? activeRoom : null;
+      let room: ActiveRoom | null = roomForGame;
 
       if (!room) {
-        // Abrimos la pestaña del juego YA (dentro del gesto del click) para que
-        // el navegador no bloquee el popup; la dirigimos recién con el token.
-        const win = window.open("", "_blank");
         const r = await fetch(`/api/games/${currentGame.gameId}/rooms`, {
           method: "POST",
         });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          win?.close();
-          throw new Error(d.error ?? "No se pudo crear la sala");
-        }
+        if (!r.ok) throw new Error(d.error ?? "No se pudo crear la sala");
         room = {
           slug: currentGame.slug,
           roomId: d.roomId,
           title: currentGame.title,
+          gameUrl: currentGame.gameUrl,
+          hostToken: d.token,
         };
         setActiveRoom(room);
         setActiveRoomState(room);
-        launchGameRoom({
-          gameUrl: currentGame.gameUrl,
-          slug: currentGame.slug,
-          title: currentGame.title,
-          token: d.token,
-          roomId: d.roomId,
-          win,
-        });
       }
 
       await sendDm(
@@ -119,6 +161,34 @@ export function FriendsSidebar() {
     }
   }
 
+  // Abre el juego entrando a la sala ya creada (con quien haya entrado).
+  function openGame() {
+    const room = roomForGame;
+    if (!room?.hostToken || !room.gameUrl) return;
+    // Abrimos la pestaña YA (gesto del click) para esquivar el bloqueo de popups.
+    const win = window.open("", "_blank");
+    launchGameRoom({
+      gameUrl: room.gameUrl,
+      slug: room.slug,
+      title: room.title,
+      token: room.hostToken,
+      roomId: room.roomId,
+      win,
+    });
+  }
+
+  // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
+  // no lo bloquea el navegador). La tienda queda en esta pestaña.
+  function joinRoom(invite: Invite) {
+    const win = window.open("", "_blank");
+    void joinRoomAndPlay({
+      slug: invite.slug,
+      roomId: invite.roomId,
+      win,
+      onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
+    });
+  }
+
   const canInvite = Boolean(currentGame);
 
   return (
@@ -131,11 +201,31 @@ export function FriendsSidebar() {
       </div>
 
       {canInvite ? (
-        <div className="border-b border-white/10 bg-emerald-500/10 px-4 py-2">
-          <p className="text-xs text-emerald-200">
-            🎮 Invitá a un amigo a jugar{" "}
-            <span className="font-medium">{currentGame!.title}</span>.
-          </p>
+        <div className="border-b border-white/10 bg-emerald-500/10 px-4 py-2.5">
+          {roomForGame ? (
+            <>
+              <button
+                onClick={openGame}
+                className="w-full rounded-md bg-emerald-500/90 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+              >
+                ▶ Abrir juego
+                {inRoom && inRoom.length > 0
+                  ? ` · ${inRoom.length} en la sala`
+                  : ""}
+              </button>
+              <p className="mt-1.5 text-[11px] text-emerald-300/80">
+                {inRoom && inRoom.length > 0
+                  ? "Tus amigos ya entraron. Abrí el juego cuando quieras."
+                  : "Invitaste a tus amigos. Esperando que entren…"}
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-emerald-200">
+              🎮 Invitá amigos a jugar{" "}
+              <span className="font-medium">{currentGame!.title}</span>. Cuando
+              hayan entrado, abrí el juego.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -159,7 +249,7 @@ export function FriendsSidebar() {
           <ul className="space-y-1">
             {friends.map((f) => {
               const name = profileName(f.profile, shortId(f.npub));
-              const href = roomHref(f.status);
+              const invite = roomInvite(f.status);
               return (
                 <li
                   key={f.pubkey}
@@ -192,13 +282,13 @@ export function FriendsSidebar() {
                           <p className="truncate text-[11px] text-emerald-400">
                             🎮 {f.status.content}
                           </p>
-                          {href ? (
-                            <Link
-                              href={href}
+                          {invite ? (
+                            <button
+                              onClick={() => joinRoom(invite)}
                               className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-medium text-emerald-300 hover:bg-emerald-500/30"
                             >
                               Unirse
-                            </Link>
+                            </button>
                           ) : null}
                         </div>
                       ) : null}

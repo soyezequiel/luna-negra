@@ -128,8 +128,8 @@ export function MultiplayerPanel({
     }
     setRoomId(d.roomId);
     setInviteLink(`${window.location.origin}/game/${slug}?room=${d.roomId}`);
-    // Recordar la sala activa para poder invitar desde /friends.
-    setActiveRoom({ slug, roomId: d.roomId, title });
+    // Recordar la sala activa para poder invitar/abrir desde la sidebar y /friends.
+    setActiveRoom({ slug, roomId: d.roomId, title, gameUrl, hostToken: d.token });
     launch(d.token, d.roomId, { win });
   }
 

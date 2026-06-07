@@ -47,7 +47,15 @@ export function inviteHref({ slug, roomId }: Invite): string {
 // Se guarda en localStorage para que otras páginas (p. ej. /friends) puedan
 // invitar a esa sala. Expira igual que la presencia NIP-38 (1h).
 
-export type ActiveRoom = { slug: string; roomId: string; title: string };
+export type ActiveRoom = {
+  slug: string;
+  roomId: string;
+  title: string;
+  /** URL del juego (para poder abrirlo después, no solo al crear la sala). */
+  gameUrl?: string;
+  /** Invite token del host: abre el juego más tarde y consulta la presencia. */
+  hostToken?: string;
+};
 
 const ACTIVE_ROOM_KEY = "ln_active_room";
 const ACTIVE_ROOM_TTL_MS = 3_600_000; // 1h
@@ -73,7 +81,13 @@ export function getActiveRoom(): ActiveRoom | null {
       clearActiveRoom();
       return null;
     }
-    return { slug: d.slug, roomId: d.roomId, title: d.title };
+    return {
+      slug: d.slug,
+      roomId: d.roomId,
+      title: d.title,
+      gameUrl: d.gameUrl,
+      hostToken: d.hostToken,
+    };
   } catch {
     return null;
   }

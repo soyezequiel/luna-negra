@@ -43,3 +43,47 @@ export function launchGameRoom({
     clearPlayingStatus().catch(() => {});
   });
 }
+
+/**
+ * Acepta una invitación (slug + roomId) y abre el juego en una pestaña nueva,
+ * sin reemplazar la tienda. Pensado para los botones "Unirse" de cualquier
+ * página (chat, /friends, sidebar, notificaciones): el caller DEBE abrir la
+ * pestaña sincrónicamente dentro del gesto del click y pasarla en `win` para
+ * esquivar el bloqueo de popups; la dirigimos recién cuando tenemos el token.
+ */
+export async function joinRoomAndPlay({
+  slug,
+  roomId,
+  win,
+  onError,
+}: {
+  slug: string;
+  roomId: string;
+  win?: Window | null;
+  onError?: (message: string) => void;
+}): Promise<void> {
+  try {
+    const r = await fetch("/api/rooms/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, roomId }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      win?.close();
+      onError?.(d.error ?? "No se pudo unir a la sala");
+      return;
+    }
+    launchGameRoom({
+      gameUrl: d.gameUrl,
+      slug: d.slug,
+      title: d.title,
+      token: d.token,
+      roomId: d.roomId,
+      win,
+    });
+  } catch (e) {
+    win?.close();
+    onError?.(e instanceof Error ? e.message : "No se pudo unir a la sala");
+  }
+}

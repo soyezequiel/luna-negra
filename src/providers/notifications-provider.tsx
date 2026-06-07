@@ -20,6 +20,7 @@ import {
   type Profile,
 } from "@/lib/nostr-social";
 import { parseInvite, inviteHref } from "@/lib/invite";
+import { joinRoomAndPlay } from "@/lib/room-launch";
 
 type Toast = { id: number; title: string; body?: string; href?: string };
 
@@ -62,7 +63,27 @@ export function NotificationsProvider({
     [dismiss],
   );
 
-  // Notificación nativa de Chrome (si hay permiso). Click → enfoca y navega.
+  // Abre el destino de una notificación. Si es una invitación a sala, abre el
+  // juego en una pestaña nueva (sin reemplazar la tienda); si no, navega normal.
+  const openHref = useCallback(
+    (href: string) => {
+      const invite = parseInvite(href);
+      if (invite) {
+        const win = window.open("", "_blank");
+        void joinRoomAndPlay({
+          slug: invite.slug,
+          roomId: invite.roomId,
+          win,
+          onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
+        });
+      } else {
+        router.push(href);
+      }
+    },
+    [router, notify],
+  );
+
+  // Notificación nativa de Chrome (si hay permiso). Click → enfoca y abre.
   const fireDesktop = useCallback(
     (title: string, body: string, href?: string) => {
       if (typeof Notification === "undefined") return;
@@ -71,14 +92,14 @@ export function NotificationsProvider({
         const n = new Notification(title, { body, icon: "/globe.svg" });
         n.onclick = () => {
           window.focus();
-          if (href) router.push(href);
+          if (href) openHref(href);
           n.close();
         };
       } catch {
         /* algunos navegadores exigen Service Worker; ignoramos */
       }
     },
-    [router],
+    [openHref],
   );
 
   // Banner para pedir permiso de notificaciones (requiere gesto del usuario).
@@ -206,7 +227,7 @@ export function NotificationsProvider({
                 {t.href ? (
                   <button
                     onClick={() => {
-                      router.push(t.href!);
+                      openHref(t.href!);
                       dismiss(t.id);
                     }}
                     className="mt-2 rounded-md bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/30"
