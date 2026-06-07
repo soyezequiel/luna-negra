@@ -42,3 +42,47 @@ export function parseInvite(text: string): Invite | null {
 export function inviteHref({ slug, roomId }: Invite): string {
   return `/game/${slug}?room=${encodeURIComponent(roomId)}`;
 }
+
+// --- Sala activa (la que el host creó y tiene abierta) ---
+// Se guarda en localStorage para que otras páginas (p. ej. /friends) puedan
+// invitar a esa sala. Expira igual que la presencia NIP-38 (1h).
+
+export type ActiveRoom = { slug: string; roomId: string; title: string };
+
+const ACTIVE_ROOM_KEY = "ln_active_room";
+const ACTIVE_ROOM_TTL_MS = 3_600_000; // 1h
+
+export function setActiveRoom(room: ActiveRoom): void {
+  try {
+    localStorage.setItem(
+      ACTIVE_ROOM_KEY,
+      JSON.stringify({ ...room, at: Date.now() }),
+    );
+  } catch {
+    /* sin localStorage: no pasa nada */
+  }
+}
+
+export function getActiveRoom(): ActiveRoom | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_ROOM_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as ActiveRoom & { at?: number };
+    if (!d.slug || !d.roomId || typeof d.at !== "number") return null;
+    if (Date.now() - d.at > ACTIVE_ROOM_TTL_MS) {
+      clearActiveRoom();
+      return null;
+    }
+    return { slug: d.slug, roomId: d.roomId, title: d.title };
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveRoom(): void {
+  try {
+    localStorage.removeItem(ACTIVE_ROOM_KEY);
+  } catch {
+    /* no-op */
+  }
+}

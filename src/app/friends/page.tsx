@@ -3,18 +3,26 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
+import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import {
   fetchContacts,
   fetchProfiles,
   fetchStatuses,
   publishStatus,
+  sendDm,
   npubOf,
   profileName,
   shortId,
   type Profile,
   type Status,
 } from "@/lib/nostr-social";
+import {
+  buildInviteMessage,
+  getActiveRoom,
+  clearActiveRoom,
+  type ActiveRoom,
+} from "@/lib/invite";
 
 /** Si el estado del amigo apunta a una sala unible, devuelve el path relativo. */
 function roomHref(status?: Status): string | null {
@@ -46,9 +54,49 @@ type Friend = {
 
 export default function FriendsPage() {
   const { user, login, loading } = useSession();
+  const { notify } = useNotify();
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [statusText, setStatusText] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  // Sala que el host tiene abierta (si la hay): permite invitar amigos a ella.
+  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
+  const [invitingPk, setInvitingPk] = useState<string | null>(null);
+  const [invited, setInvited] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setActiveRoomState(getActiveRoom());
+  }, []);
+
+  async function inviteToActiveRoom(recipientPubkey: string, name: string) {
+    if (!activeRoom || invitingPk) return;
+    setInvitingPk(recipientPubkey);
+    try {
+      await sendDm(
+        recipientPubkey,
+        buildInviteMessage({
+          slug: activeRoom.slug,
+          roomId: activeRoom.roomId,
+          title: activeRoom.title,
+          origin: window.location.origin,
+        }),
+      );
+      setInvited((prev) => new Set(prev).add(recipientPubkey));
+      notify({ title: `Invitación a ${activeRoom.title} enviada a ${name}` });
+    } catch (e) {
+      notify({
+        title: "No se pudo invitar",
+        body: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setInvitingPk(null);
+    }
+  }
+
+  function dismissActiveRoom() {
+    clearActiveRoom();
+    setActiveRoomState(null);
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -144,6 +192,21 @@ export default function FriendsPage() {
         <p className="mt-2 text-sm text-sky-400">{statusMsg}</p>
       ) : null}
 
+      {activeRoom ? (
+        <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <p className="min-w-0 flex-1 text-sm text-emerald-200">
+            🎮 Tenés <span className="font-medium">{activeRoom.title}</span>{" "}
+            abierto. Invitá a un amigo a tu sala desde la lista.
+          </p>
+          <button
+            onClick={dismissActiveRoom}
+            className="shrink-0 text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            Cerrar
+          </button>
+        </div>
+      ) : null}
+
       <div className="mt-6">
         {friends === null ? (
           <p className="text-sm text-zinc-500">Cargando desde relays…</p>
@@ -209,6 +272,26 @@ export default function FriendsPage() {
                     </div>
                   ) : null}
                 </div>
+                {activeRoom ? (
+                  <button
+                    onClick={() =>
+                      inviteToActiveRoom(
+                        f.pubkey,
+                        profileName(f.profile, shortId(f.npub)),
+                      )
+                    }
+                    disabled={
+                      invited.has(f.pubkey) || invitingPk === f.pubkey
+                    }
+                    className="shrink-0 rounded-md border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+                  >
+                    {invited.has(f.pubkey)
+                      ? "✓ Invitado"
+                      : invitingPk === f.pubkey
+                        ? "Enviando…"
+                        : "Invitar"}
+                  </button>
+                ) : null}
                 {f.isMember ? (
                   <Link href={`/messages?to=${f.npub}`}>
                     <Button variant="outline">Mensaje</Button>

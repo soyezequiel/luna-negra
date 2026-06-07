@@ -15,7 +15,7 @@ import {
   shortId,
   pubkeyFromNpub,
 } from "@/lib/nostr-social";
-import { buildInviteMessage } from "@/lib/invite";
+import { buildInviteMessage, setActiveRoom } from "@/lib/invite";
 
 type InviteResp = { token: string; roomId: string; host: boolean };
 
@@ -61,17 +61,26 @@ export function MultiplayerPanel({
   const [invited, setInvited] = useState<Set<string>>(new Set());
 
   const launch = useCallback(
-    (token: string, roomId: string, opts?: { sameTab?: boolean }) => {
+    (
+      token: string,
+      roomId: string,
+      opts?: { sameTab?: boolean; win?: Window | null },
+    ) => {
       const url = new URL(gameUrl, window.location.origin);
       url.searchParams.set("inviteToken", token);
       url.searchParams.set("room", roomId);
+      const dest = url.toString();
       // Auto-unirse (invitado): navegamos en la misma pestaña. window.open tras un
       // fetch async lo bloquea el navegador por no ser un gesto directo.
       if (opts?.sameTab) {
-        window.location.href = url.toString();
+        window.location.href = dest;
         return;
       }
-      window.open(url.toString(), "_blank", "noopener");
+      // Pestaña nueva: si el caller ya abrió una (sincrónicamente, dentro del
+      // gesto del click) la reutilizamos para esquivar el bloqueo de popups; el
+      // host se queda en la tienda para poder invitar amigos.
+      if (opts?.win) opts.win.location.href = dest;
+      else window.open(dest, "_blank", "noopener");
       // Presencia NIP-38 "jugando X" con el link de la sala → los amigos pueden
       // unirse desde /friends sin que les pase el link (descubrimiento vía Nostr).
       const link = new URL(
@@ -125,12 +134,20 @@ export function MultiplayerPanel({
   }, [roomParam, user, canPlay, joinRoom]);
 
   async function createRoom() {
-    // Crear una sala nueva (host).
+    // Abrimos la pestaña del juego YA (dentro del gesto del click) para que el
+    // navegador no bloquee el popup; la dirigimos recién con el token. El host
+    // se queda en esta pestaña (la tienda) para invitar amigos.
+    const win = window.open("", "_blank");
     const d = await post(`/api/games/${gameId}/rooms`);
-    if (!d) return;
+    if (!d) {
+      win?.close();
+      return;
+    }
     setRoomId(d.roomId);
     setInviteLink(`${window.location.origin}/game/${slug}?room=${d.roomId}`);
-    launch(d.token, d.roomId);
+    // Recordar la sala activa para poder invitar desde /friends.
+    setActiveRoom({ slug, roomId: d.roomId, title });
+    launch(d.token, d.roomId, { win });
   }
 
   // Cargar amigos (Nostr) una vez creada la sala, con los de Luna Negra arriba.
