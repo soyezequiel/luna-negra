@@ -188,9 +188,23 @@ export type LunaNegraClient = {
   getBetDeposits(betId: string): Promise<BetDeposits>;
   /** Cancela una apuesta no resuelta y reembolsa depósitos (requiere `apiKey`). */
   cancelBet(betId: string): Promise<{ ok: boolean; status: string }>;
-  /** Construye el evento (sin firmar) del resultado; firmalo con tu clave Nostr. */
+  /**
+   * Reporta los ganadores usando SOLO la API key (recomendado): Luna Negra firma
+   * el resultado con tu oráculo gestionado, no necesitás tocar Nostr.
+   * `winnerNpubs` vacío = empate/anulación → reembolso total.
+   */
+  reportWinners(
+    betId: string,
+    winnerNpubs: string[],
+  ): Promise<{ ok: boolean; voided?: boolean }>;
+  /** Publica una nota en el feed de Actividad del juego (API key; Luna Negra firma). */
+  postActivity(
+    slug: string,
+    content: string,
+  ): Promise<{ ok: boolean; eventId: string; pubkey: string }>;
+  /** [Avanzado] Construye el evento (sin firmar) del resultado; firmalo con tu clave de oráculo. */
   buildResultEvent(betId: string, winnerNpubs: string[]): UnsignedEvent;
-  /** Reporta el resultado posteando el evento firmado por el proveedor. */
+  /** [Avanzado] Reporta el resultado posteando el evento firmado por tu oráculo. */
   reportResult(betId: string, signedEvent: unknown): Promise<boolean>;
 };
 
@@ -305,6 +319,42 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo cancelar la apuesta");
       return d as { ok: boolean; status: string };
+    },
+
+    async reportWinners(betId, winnerNpubs) {
+      if (!opts.apiKey) throw new Error("reportWinners requiere `apiKey`");
+      const r = await fetch(
+        base + "/api/v1/bets/" + encodeURIComponent(betId) + "/result",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer " + opts.apiKey,
+          },
+          body: JSON.stringify({ winners: winnerNpubs }),
+        },
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo reportar el resultado");
+      return d as { ok: boolean; voided?: boolean };
+    },
+
+    async postActivity(slug, content) {
+      if (!opts.apiKey) throw new Error("postActivity requiere `apiKey`");
+      const r = await fetch(
+        base + "/api/v1/games/" + encodeURIComponent(slug) + "/activity",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer " + opts.apiKey,
+          },
+          body: JSON.stringify({ content }),
+        },
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo publicar la actividad");
+      return d as { ok: boolean; eventId: string; pubkey: string };
     },
 
     buildResultEvent(betId, winnerNpubs) {

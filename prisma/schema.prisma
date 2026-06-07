@@ -38,6 +38,13 @@ model Provider {
   status           String   @default("pending") // pending | approved
   webhookUrl       String? // URL para notificar eventos (purchase/bet/payout)
   webhookSecret    String? // secreto para firmar los webhooks (HMAC) — whsec_…
+  // Oráculo gestionado: clave Nostr que Luna Negra custodia para firmar el
+  // resultado/actividad en nombre del proveedor (así el game server solo usa su
+  // API key). `oraclePubkey` (hex) es público y valida los eventos firmados;
+  // `oracleSecretEnc` es el secreto cifrado en reposo (AES-256-GCM). Ver
+  // src/lib/oracle-keys.ts y src/lib/crypto-vault.ts.
+  oraclePubkey     String? // hex; contra esta clave se valida el evento de resultado
+  oracleSecretEnc  String? // secreto cifrado (nunca se loguea ni se expone por API)
   createdAt        DateTime @default(now())
 
   games   Game[]

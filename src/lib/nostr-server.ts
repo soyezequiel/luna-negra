@@ -2,6 +2,7 @@ import { finalizeEvent } from "nostr-tools/pure";
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import { APP_NAME, RELAYS, gameTag } from "./constants";
 import { priceLabel } from "./format";
+import { buildResultEventTemplate } from "./escrow";
 
 // Identidad Nostr de Luna Negra (server) para firmar el contrato.
 function getSecretKey(): Uint8Array | null {
@@ -66,6 +67,46 @@ export async function publishContract(
 /** Republica un evento ya firmado (ej. el resultado firmado por el proveedor). */
 export async function publishSignedEvent(ev: Event): Promise<void> {
   await publishToRelays(ev).catch(() => 0);
+}
+
+/**
+ * Construye y firma el evento de resultado con la clave del oráculo gestionado
+ * (camino con API key: Luna Negra firma en nombre del proveedor). No publica;
+ * el núcleo de liquidación lo republica tras pagar.
+ */
+export function signResultEvent(
+  sk: Uint8Array,
+  betId: string,
+  winnerNpubs: string[],
+): Event {
+  return finalizeEvent(buildResultEventTemplate({ betId, winnerNpubs }), sk);
+}
+
+/**
+ * Firma (con el oráculo gestionado del proveedor) y publica una nota de
+ * actividad del juego (kind:1) tagueada `lunanegra:game:<slug>` para que aparezca
+ * en la pestaña Actividad. Devuelve `{ id, pubkey }` si algún relay la aceptó.
+ */
+export async function publishGameActivity(
+  sk: Uint8Array,
+  slug: string,
+  content: string,
+): Promise<{ id: string; pubkey: string } | null> {
+  const ev = finalizeEvent(
+    {
+      kind: 1,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [["t", gameTag(slug)]],
+      content,
+    },
+    sk,
+  );
+  const accepted = await publishToRelays(ev).catch(() => 0);
+  if (accepted === 0) {
+    console.error("[nostr] la actividad del juego no fue aceptada:", ev.id);
+    return null;
+  }
+  return { id: ev.id, pubkey: ev.pubkey };
 }
 
 export type GameAnnouncement = {

@@ -542,8 +542,9 @@
     "/api/v1/bets/{id}/result": {
       "post": {
         "summary": "Reportar el resultado de una apuesta",
-        "description": "El proveedor firma el resultado con su identidad Nostr (la firma es la prueba del oráculo). Body: `{ event }` con el evento Nostr firmado (tags `bet`, `winner`). Luna Negra verifica el contrato (CONTRACT_MISMATCH) antes de pagar.",
+        "description": "Dos caminos:\n\n1. **API key (recomendado):** `Authorization: Bearer ln_sk_…` + body `{ winners }` (array de npubs; vacío = empate/anulación). Luna Negra construye y firma el resultado con el oráculo gestionado del proveedor — el game server no toca Nostr.\n2. **Evento firmado (avanzado):** body `{ event }` con un evento Nostr firmado por el oráculo del proveedor (tags `bet`, `winner`). La firma se valida contra `oraclePubkey`.\n\nLuna Negra verifica el contrato (CONTRACT_MISMATCH) antes de pagar.",
         "tags": ["Apuestas"],
+        "security": [{ "apiKeyAuth": [] }, {}],
         "parameters": [
           {
             "name": "id",
@@ -557,11 +558,28 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "event": { "type": "object", "description": "Evento Nostr firmado por el proveedor" }
-                },
-                "required": ["event"]
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "description": "Camino API key: ganadores por npub.",
+                    "properties": {
+                      "winners": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "npubs ganadores; array vacío = empate/anulación (reembolso total)."
+                      }
+                    },
+                    "required": ["winners"]
+                  },
+                  {
+                    "type": "object",
+                    "description": "Camino avanzado: evento Nostr firmado por el oráculo del proveedor.",
+                    "properties": {
+                      "event": { "type": "object", "description": "Evento Nostr firmado (tags bet, winner)" }
+                    },
+                    "required": ["event"]
+                  }
+                ]
               }
             }
           }
@@ -573,19 +591,87 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean" } }
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "voided": { "type": "boolean", "description": "true si fue empate/anulación (reembolso)" }
+                  }
                 }
               }
             }
           },
           "401": {
-            "description": "Firma inválida",
+            "description": "Firma inválida o API key inválida",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "403": {
+            "description": "La API key no es del proveedor de la apuesta (FORBIDDEN) o firmante incorrecto (WRONG_SIGNER)",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
             }
           },
           "409": {
-            "description": "Estado inválido o CONTRACT_MISMATCH",
+            "description": "Estado inválido, CONTRACT_MISMATCH o ORACLE_NOT_PROVISIONED",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/games/{slug}/activity": {
+      "post": {
+        "summary": "Publicar una nota en el feed de Actividad del juego",
+        "description": "Publica una nota (kind:1, tag `lunanegra:game:<slug>`) en la pestaña Actividad. Auth = API key del proveedor; Luna Negra firma con el oráculo gestionado, así el game server no toca Nostr.",
+        "tags": ["Apuestas"],
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": { "type": "string", "description": "Texto de la nota (1–2000 chars)" }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Nota publicada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "eventId": { "type": "string" },
+                    "pubkey": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "El juego no es de tu proveedor (FORBIDDEN)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "409": {
+            "description": "ORACLE_NOT_PROVISIONED",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
             }

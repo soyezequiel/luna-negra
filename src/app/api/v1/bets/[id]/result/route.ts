@@ -1,29 +1,107 @@
-import { after } from "next/server";
 import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
-import { recordOutflow } from "@/lib/ledger";
-import { computeContractHash } from "@/lib/escrow";
-import { computeEconomics, splitWinnings } from "@/lib/escrow-math";
-import { payParticipant } from "@/lib/escrow-payout";
-import { publishSignedEvent } from "@/lib/nostr-server";
-import { emitBetSettled, emitBetRefunded } from "@/lib/webhooks";
+import { signResultEvent } from "@/lib/nostr-server";
+import { getOracleSecret } from "@/lib/oracle-keys";
+import { verifyApiKey } from "@/lib/api-keys";
+import { settleBetWithResult, type SettleResult } from "@/lib/escrow-settle";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 const MAX_AGE = 1800; // 30 min
 
-// Reportar el resultado de una apuesta. Auth = EVENTO NOSTR FIRMADO por el
-// proveedor (la firma ES la prueba del oráculo; ver invariante del contrato).
+// Reportar el resultado de una apuesta. Dos caminos de autenticación:
+//
+//  1) API KEY (recomendado): `Authorization: Bearer ln_sk_…` + body `{ winners }`.
+//     Luna Negra construye y FIRMA el evento de resultado con el oráculo
+//     gestionado del proveedor — el game server no toca Nostr.
+//
+//  2) EVENTO FIRMADO (avanzado): body `{ event }` firmado por la clave del
+//     oráculo del proveedor (la firma ES la prueba; se valida contra oraclePubkey).
+//
+// Ambos comparten el mismo núcleo de liquidación (settleBetWithResult).
 export function OPTIONS() {
   return corsPreflight();
+}
+
+function toResponse(r: SettleResult) {
+  if (r.ok) return apiOk({ ok: true, ...(r.voided ? { voided: true } : {}) });
+  return apiError(r.code, r.message, r.status);
 }
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const parsed = await req.json().catch(() => ({}));
-  const ev = parsed?.event as Event | undefined;
+  const { id: betId } = await params;
+  const body = await req.json().catch(() => ({}));
+
+  // ── Camino 1: API key (Luna Negra firma con el oráculo gestionado) ──
+  // Se elige si NO viene un evento firmado y hay un header Authorization.
+  const hasEvent = body?.event && typeof body.event === "object";
+  if (!hasEvent && req.headers.get("authorization")) {
+    return handleApiKey(req, betId, body);
+  }
+
+  // ── Camino 2: evento Nostr firmado por el proveedor ──
+  return handleSignedEvent(betId, body);
+}
+
+// ───────────────────────────── API key ─────────────────────────────
+async function handleApiKey(req: Request, betId: string, body: unknown) {
+  const providerId = await verifyApiKey(req);
+  if (!providerId) {
+    return apiError(
+      "INVALID_API_KEY",
+      "API key inválida (Authorization: Bearer ln_sk_…)",
+      401,
+    );
+  }
+
+  const rl = await checkRateLimit(`bet-result:${providerId}`, 30, 60_000);
+  if (!rl.success) {
+    return apiError("RATE_LIMITED", "Demasiados intentos", 429, rateLimitHeaders(rl));
+  }
+
+  // Validar winners: array de npubs (vacío = empate/anulación → reembolso).
+  const winners = (body as { winners?: unknown })?.winners;
+  if (!Array.isArray(winners) || winners.some((w) => typeof w !== "string")) {
+    return apiError(
+      "BAD_WINNERS",
+      "winners debe ser un array de npubs (vacío = anular)",
+      400,
+    );
+  }
+  const winnerNpubs = winners as string[];
+
+  const bet = await prisma.bet.findUnique({
+    where: { id: betId },
+    include: { provider: { include: { owner: true } }, participants: true },
+  });
+  if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
+
+  // Autorización: la API key debe pertenecer al proveedor dueño de la apuesta.
+  if (bet.providerId !== providerId) {
+    return apiError("FORBIDDEN", "La API key no es del proveedor de esta apuesta", 403);
+  }
+
+  // Firmar con el oráculo gestionado del proveedor.
+  const sk = await getOracleSecret(providerId);
+  if (!sk) {
+    return apiError(
+      "ORACLE_NOT_PROVISIONED",
+      "El proveedor no tiene clave de oráculo gestionada; contactá soporte para provisionarla",
+      409,
+    );
+  }
+  const resultEvent = signResultEvent(sk, betId, winnerNpubs);
+
+  const result = await settleBetWithResult({ bet, winnerNpubs, resultEvent });
+  return toResponse(result);
+}
+
+// ──────────────────────── Evento firmado (legacy) ───────────────────────
+async function handleSignedEvent(betId: string, body: unknown) {
+  const ev = (body as { event?: Event })?.event;
   if (!ev || typeof ev !== "object" || !Array.isArray(ev.tags)) {
     return apiError("BAD_EVENT", "Evento inválido", 400);
   }
@@ -37,10 +115,9 @@ export async function POST(
   // El evento firmado debe corresponder a la apuesta de la URL.
   const evBetId = ev.tags.find((t) => t[0] === "bet")?.[1];
   if (!evBetId) return apiError("MISSING_BET", "Falta el tag bet en el evento", 400);
-  if (evBetId !== id) {
+  if (evBetId !== betId) {
     return apiError("BET_MISMATCH", "El evento firmado no corresponde a esta apuesta", 400);
   }
-  const betId = id;
 
   const bet = await prisma.bet.findUnique({
     where: { id: betId },
@@ -48,111 +125,12 @@ export async function POST(
   });
   if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
 
-  // El firmante debe ser el dueño del proveedor del juego.
-  if (ev.pubkey !== bet.provider.owner.pubkey) {
-    return apiError("WRONG_SIGNER", "El resultado no está firmado por el proveedor", 403);
+  // El firmante debe ser el ORÁCULO del proveedor (no el dueño humano).
+  if (!bet.provider.oraclePubkey || ev.pubkey !== bet.provider.oraclePubkey) {
+    return apiError("WRONG_SIGNER", "El resultado no está firmado por el oráculo del proveedor", 403);
   }
 
-  if (bet.status === "settled") return apiError("ALREADY_RESOLVED", "Ya resuelta", 409);
-  if (["cancelled_incomplete", "cancelled_admin", "refunded_timeout"].includes(bet.status)) {
-    return apiError("TOO_LATE", "La apuesta ya fue reembolsada/cancelada", 410);
-  }
-
-  // Claim ready → settling (solo un request gana la carrera).
-  const claimed = await prisma.bet.updateMany({
-    where: { id: betId, status: "ready" },
-    data: { status: "settling" },
-  });
-  if (claimed.count !== 1) {
-    return apiError("NOT_READY", "La apuesta no está lista para resolver", 409);
-  }
-
-  // Integridad: los términos vivos deben coincidir con el contrato firmado.
-  if (bet.contractHash) {
-    const liveHash = computeContractHash({
-      betId: bet.id,
-      gameId: bet.gameId,
-      stakeMsat: bet.stakeMsat,
-      feePct: bet.feePct,
-      victoryCondition: bet.victoryCondition,
-      npubs: bet.participants.map((p) => p.npub),
-    });
-    if (liveHash !== bet.contractHash) {
-      await prisma.bet.updateMany({
-        where: { id: betId, status: "settling" },
-        data: { status: "ready" },
-      });
-      console.error(
-        `[escrow] términos alterados en ${betId}: contrato=${bet.contractHash} vivo=${liveHash}`,
-      );
-      return apiError(
-        "CONTRACT_MISMATCH",
-        "Los términos no coinciden con el contrato firmado; no se paga",
-        409,
-      );
-    }
-  }
-
-  // Ganadores declarados (tags "winner") que sean participantes.
   const winnerNpubs = ev.tags.filter((t) => t[0] === "winner").map((t) => t[1]);
-  const winners = bet.participants.filter((p) => winnerNpubs.includes(p.npub));
-
-  // Sin ganadores válidos ⇒ empate/anulación ⇒ reembolso total a TODOS (sin fee).
-  if (winners.length === 0) {
-    for (const p of bet.participants) {
-      await prisma.betParticipant.update({ where: { id: p.id }, data: { result: "tie" } });
-      await payParticipant({ bet, participant: p, amountMsat: bet.stakeMsat, kind: "refund" });
-    }
-    await prisma.bet.update({
-      where: { id: betId },
-      data: { status: "voided", settledAt: new Date(), resultEventId: ev.id },
-    });
-    await publishSignedEvent(ev);
-    after(() => emitBetRefunded(betId, "void"));
-    return apiOk({ ok: true, voided: true });
-  }
-
-  // Montos (msat). Pozo = stake * participantes (todos pagaron al estar ready).
-  const { netMsat, feeMsat } = computeEconomics({
-    stakeMsat: bet.stakeMsat,
-    participantCount: bet.participants.length,
-    feePct: bet.feePct,
-  });
-  const { perWinner, dust } = splitWinnings(netMsat, winners.length);
-
-  // Fee de la casa (la guarda Luna Negra; se asienta al toque).
-  const feeRec = await recordOutflow({
-    betId,
-    userId: null,
-    kind: "fee",
-    amountMsat: feeMsat + dust,
-    idempotencyKey: `fee:${betId}`,
-  });
-  if (feeRec.ok) {
-    await prisma.ledgerEntry.update({
-      where: { idempotencyKey: `fee:${betId}` },
-      data: { status: "settled" },
-    });
-  }
-
-  const resultVal = winners.length > 1 ? "tie" : "won";
-  for (const w of winners) {
-    await prisma.betParticipant.update({ where: { id: w.id }, data: { result: resultVal } });
-    await payParticipant({ bet, participant: w, amountMsat: perWinner, kind: "payout" });
-  }
-  await prisma.betParticipant.updateMany({
-    where: { betId, id: { notIn: winners.map((w) => w.id) } },
-    data: { result: "lost" },
-  });
-
-  await prisma.bet.update({
-    where: { id: betId },
-    data: { status: "settled", settledAt: new Date(), resultEventId: ev.id },
-  });
-
-  // Republicar el evento firmado del proveedor (prueba en Nostr).
-  await publishSignedEvent(ev);
-
-  after(() => emitBetSettled(betId));
-  return apiOk({ ok: true });
+  const result = await settleBetWithResult({ bet, winnerNpubs, resultEvent: ev });
+  return toResponse(result);
 }

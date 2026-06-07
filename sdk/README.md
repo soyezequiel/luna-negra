@@ -59,9 +59,12 @@ const { deposits } = await luna.getBetDeposits(bet.betId);
 // 3) Consultar estado cuando quieras
 const info = await luna.getBet(bet.betId);   // info.status, info.potSats, …
 
-// 4a) Resolver (vacío = empate/anulación → reembolso total)
-const evt = luna.buildResultEvent(bet.betId, [npubGanador]);
-await luna.reportResult(bet.betId, finalizeEvent(evt, miClave));
+// 4a) Resolver con la API key (recomendado, sin tocar Nostr)
+//     [] = empate/anulación → reembolso total
+await luna.reportWinners(bet.betId, [npubGanador]);
+// Avanzado (self-sign): firmá vos con tu clave de oráculo
+// const evt = luna.buildResultEvent(bet.betId, [npubGanador]);
+// await luna.reportResult(bet.betId, finalizeEvent(evt, miOraculo));
 
 // 4b) …o cancelar antes de resolver (reembolsa depósitos)
 await luna.cancelBet(bet.betId);

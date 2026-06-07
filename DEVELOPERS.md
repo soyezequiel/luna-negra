@@ -183,13 +183,30 @@ const b = await luna.getBet(bet.betId);
 ```
 Equivalente HTTP: `GET /api/v1/bets/{betId}` (Bearer API key).
 
-**Reportar el resultado** (tu firma Nostr es la prueba del oráculo):
+**Reportar el resultado** — con tu API key, **no necesitás tocar Nostr**. Luna
+Negra firma el resultado con tu **oráculo gestionado** (una clave Nostr que Luna
+Negra genera y custodia por proveedor; solo se expone su pubkey):
+```ts
+await luna.reportWinners(bet.betId, ["npub1ganador…"]);   // ganadores por npub
+await luna.reportWinners(bet.betId, []);                   // [] = empate/anulación → reembolso
+```
+Equivalente HTTP: `POST /api/v1/bets/{betId}/result` con `Authorization: Bearer ln_sk_…`
+y body `{ "winners": ["npub1…"] }`.
+
+<details><summary><b>Avanzado:</b> firmar el resultado vos mismo (self-sign)</summary>
+
+Si preferís ser tu propio oráculo, firmá el evento con **tu clave de oráculo** y
+posteá el evento firmado. La firma se valida contra tu `oraclePubkey` (NO contra
+la clave con la que entrás a /provider). Para usar tu propia clave, rotá el
+oráculo a tu pubkey desde /provider.
 ```ts
 const evt = luna.buildResultEvent(bet.betId, ["npub1ganador…"]);
-const signed = finalizeEvent(evt, miClaveNostr);   // lo firmás vos (nostr-tools)
+const signed = finalizeEvent(evt, miClaveDeOraculo);   // lo firmás vos (nostr-tools)
 await luna.reportResult(bet.betId, signed);
 ```
 Equivalente HTTP: `POST /api/v1/bets/{betId}/result` con `{ "event": <firmado> }`.
+</details>
+
 - **Un ganador:** se lleva el pozo menos la comisión (`netPayoutSats`).
 - **Varios ganadores** (tags `winner` múltiples): el neto se **divide en partes
   iguales**; el resto indivisible (sub-msat) lo retiene la casa con la comisión.
@@ -242,12 +259,17 @@ const { id, type, data } = JSON.parse(rawBody);
 ```
 
 ## Paso 7 · Feed de actividad (opcional)
-Para que tus novedades aparezcan en la pestaña **Actividad** de tu juego, publicá una
-nota de Nostr (kind:1) con el tag:
+Para que tus novedades aparezcan en la pestaña **Actividad** de tu juego, publicá
+una nota — con tu **API key**, sin tocar Nostr (Luna Negra firma con tu oráculo):
+```ts
+await luna.postActivity("mi-juego", "¡Nuevo torneo este finde! 🎮");
 ```
-["t", "lunanegra:game:<slug>"]
-```
-Vos y los jugadores pueden postear ahí.
+Equivalente HTTP: `POST /api/v1/games/{slug}/activity` con `Authorization: Bearer ln_sk_…`
+y body `{ "content": "…" }`. La nota se publica como kind:1 con el tag
+`["t", "lunanegra:game:<slug>"]`.
+
+> **Avanzado:** también podés postear vos mismo una nota Nostr (kind:1) con ese tag
+> desde cualquier cliente; los jugadores también pueden comentar ahí.
 
 ---
 
@@ -262,7 +284,8 @@ Vos y los jugadores pueden postear ahí.
 | GET | `/api/v1/bets/{betId}` | Bearer (API key) | Estado + economía de la apuesta |
 | GET | `/api/v1/bets/{betId}/deposits` | Bearer (API key) | Handles de pago por participante |
 | POST | `/api/v1/bets/{betId}/cancel` | Bearer (API key) | Cancelar y reembolsar |
-| POST | `/api/v1/bets/{betId}/result` | Evento Nostr firmado | Reportar ganador (vacío = anular) |
+| POST | `/api/v1/bets/{betId}/result` | Bearer (API key) · o evento firmado | Reportar ganador (`winners:[]` = anular) |
+| POST | `/api/v1/games/{slug}/activity` | Bearer (API key) | Publicar nota en el feed de Actividad |
 
 ## Checklist de integración
 - [ ] Publicaste tu juego en /provider (con Lightning Address).

@@ -122,6 +122,29 @@ export function computeContractHash(p: {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
+/**
+ * Plantilla (sin firmar) del evento de resultado de una apuesta. Misma forma
+ * que produce el SDK (`buildResultEvent`): kind 30078, tags `t`/`bet`/`winner`.
+ * Determinista salvo `created_at`. La firma la pone el proveedor (self-sign) o
+ * Luna Negra con el oráculo gestionado.
+ */
+export function buildResultEventTemplate(p: {
+  betId: string;
+  winnerNpubs: string[];
+  createdAt?: number;
+}): { kind: number; created_at: number; tags: string[][]; content: string } {
+  return {
+    kind: 30078,
+    created_at: p.createdAt ?? Math.floor(Date.now() / 1000),
+    tags: [
+      ["t", "lunanegra:result"],
+      ["bet", p.betId],
+      ...p.winnerNpubs.map((n) => ["winner", n]),
+    ],
+    content: "",
+  };
+}
+
 /** Texto legible por humanos del contrato (se publica en Nostr). */
 export function buildContractText(p: {
   betId: string;
