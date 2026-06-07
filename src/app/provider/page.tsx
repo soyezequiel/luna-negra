@@ -141,6 +141,14 @@ export default function ProviderPage() {
   }
 
   async function saveWebhook(regenerate = false) {
+    if (
+      regenerate &&
+      !confirm(
+        "Regenerar el secreto invalida el anterior: los webhooks firmados con el viejo dejarán de validar hasta que actualices tu game server. ¿Continuar?",
+      )
+    ) {
+      return;
+    }
     setMsg(null);
     const r = await fetch("/api/provider/webhook", {
       method: "POST",
