@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getPlayerAuth } from "@/lib/escrow-auth";
-import { createInvoice, lightningConfigured } from "@/lib/lightning";
-import { msatToSats } from "@/lib/money";
+import { ensureDepositInvoice } from "@/lib/escrow-deposit";
 import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 
 function fail(code: string, error: string, status: number) {
@@ -43,32 +41,6 @@ export async function POST(
     return fail("ALREADY_PAID", "Ya depositaste", 409);
   }
 
-  // Idempotente: reusar el invoice ya generado.
-  if (part.depositInvoice && part.depositPaymentHash) {
-    return NextResponse.json({
-      invoice: part.depositInvoice,
-      paymentHash: part.depositPaymentHash,
-      devMode: !lightningConfigured(),
-    });
-  }
-
-  const sats = Number(msatToSats(bet.stakeMsat));
-  const devMode = !lightningConfigured();
-  const inv = devMode
-    ? {
-        invoice: `lnbc-dev-${randomBytes(12).toString("hex")}`,
-        paymentHash: `dev-${randomBytes(16).toString("hex")}`,
-      }
-    : await createInvoice(sats, `Luna Negra · apuesta ${bet.id}`);
-
-  await prisma.betParticipant.update({
-    where: { id: part.id },
-    data: { depositInvoice: inv.invoice, depositPaymentHash: inv.paymentHash },
-  });
-
-  return NextResponse.json({
-    invoice: inv.invoice,
-    paymentHash: inv.paymentHash,
-    devMode,
-  });
+  const inv = await ensureDepositInvoice(bet, part);
+  return NextResponse.json(inv);
 }

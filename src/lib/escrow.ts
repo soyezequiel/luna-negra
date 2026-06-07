@@ -16,6 +16,8 @@ export type CreateBetBody = {
   participants?: unknown;
   stakeSats?: unknown;
   victoryCondition?: unknown;
+  roomId?: unknown;
+  metadata?: unknown;
 };
 
 export type CreateBetValid = {
@@ -25,6 +27,9 @@ export type CreateBetValid = {
   pubkeys: string[];
   stakeMsat: bigint;
   victoryCondition: string;
+  roomId: string | null;
+  /** Metadata libre serializada como JSON (o null). */
+  metadataJson: string | null;
 };
 export type CreateBetError = { ok: false; code: string; error: string };
 
@@ -65,6 +70,17 @@ export function validateCreateBet(
     return err("DUPLICATE_PARTICIPANT", "Hay participantes duplicados");
   }
 
+  if (body.roomId !== undefined && typeof body.roomId !== "string") {
+    return err("INVALID_ROOM_ID", "roomId debe ser un string");
+  }
+  let metadataJson: string | null = null;
+  if (body.metadata !== undefined && body.metadata !== null) {
+    if (typeof body.metadata !== "object" || Array.isArray(body.metadata)) {
+      return err("INVALID_METADATA", "metadata debe ser un objeto");
+    }
+    metadataJson = JSON.stringify(body.metadata);
+  }
+
   return {
     ok: true,
     gameId: body.gameId,
@@ -73,6 +89,8 @@ export function validateCreateBet(
     stakeMsat: satsToMsat(stake),
     victoryCondition:
       typeof body.victoryCondition === "string" ? body.victoryCondition : "",
+    roomId: typeof body.roomId === "string" ? body.roomId : null,
+    metadataJson,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   buildContractText,
   computeContractHash,
 } from "@/lib/escrow";
+import { computeEconomics } from "@/lib/escrow-math";
 import { publishContract } from "@/lib/nostr-server";
 import { msatToSats } from "@/lib/money";
 import {
@@ -73,6 +74,8 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       stakeMsat: v.stakeMsat,
       feePct: BET_FEE_PCT,
       victoryCondition: v.victoryCondition,
+      roomId: v.roomId,
+      metadataJson: v.metadataJson,
       depositDeadline,
       participants: {
         create: users.map((u) => ({
@@ -114,12 +117,26 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     data: { contractHash, ...(contractEventId ? { contractEventId } : {}) },
   });
 
+  const econ = computeEconomics({
+    stakeMsat: v.stakeMsat,
+    participantCount: v.pubkeys.length,
+    feePct: BET_FEE_PCT,
+  });
+
   return {
     status: 201,
     body: {
       betId: bet.id,
       contractEventId,
       depositDeadline: depositDeadline.toISOString(),
+      stakeSats: Number(msatToSats(v.stakeMsat)),
+      potTargetSats: Number(msatToSats(econ.potMsat)),
+      feePct: BET_FEE_PCT,
+      feeBps: econ.feeBps,
+      feeSats: Number(msatToSats(econ.feeMsat)),
+      netPayoutSats: Number(msatToSats(econ.netMsat)),
+      roomId: v.roomId,
+      metadata: v.metadataJson ? JSON.parse(v.metadataJson) : null,
     },
   };
 }

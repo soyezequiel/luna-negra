@@ -137,19 +137,51 @@ Tu game server crea apuestas y Luna Negra **custodia el pozo** y paga a los
 ganadores (menos un fee configurable). Necesitás una **API key** (panel /provider →
 "Claves de API"; se muestra una sola vez).
 
-**Crear una apuesta:**
+**Crear una apuesta** (pozo "winner-takes-all"):
 ```ts
 const bet = await luna.createBet({
   gameId: "…",
   participants: ["npub1…", "npub1…"],   // ≥2, usuarios de Luna Negra
   stakeSats: 10,
   victoryCondition: "primero en llegar a 100",
+  roomId: "sala-123",                    // opcional: correlación con tu sala
+  metadata: { matchId: "m-42" },          // opcional: objeto libre
 });
-// bet.betId, bet.contractEventId (contrato firmado en Nostr), bet.depositDeadline
+// bet.betId, bet.contractEventId, bet.depositDeadline
+// + economía: bet.stakeSats, bet.potTargetSats, bet.feePct, bet.feeBps,
+//   bet.feeSats, bet.netPayoutSats
 ```
 Equivalente HTTP: `POST /api/v1/bets` con `Authorization: Bearer ln_sk_…`.
 > **Reintentos seguros:** mandá `Idempotency-Key: <único>` — reintentar con la misma
 > key devuelve la respuesta original **sin crear otra apuesta**.
+> **Límites de stake:** `stakeSats` debe estar entre `minStakeSats` y `maxStakeSats`
+> (beta: 5–100 sats, configurable). Fuera de rango → error `STAKE_OUT_OF_RANGE` (400).
+
+**Cómo deposita cada jugador (escrow).** Cada participante paga su stake al pozo.
+Pedí los handles de pago y entregáselos a cada jugador:
+```ts
+const dep = await luna.getBetDeposits(bet.betId);
+// dep.deposits[i] = { npub, depositStatus, bolt11, lnurl, payUrl }
+//   bolt11 → invoice Lightning fijo (= stake)
+//   lnurl  → LNURL-pay (bech32) equivalente, para wallets
+//   payUrl → deep-link a la pantalla de pago de Luna Negra (el jugador entra y paga)
+// dep.potSats / dep.potTargetSats / dep.depositsReceived / dep.depositsTotal
+```
+Equivalente HTTP: `GET /api/v1/bets/{betId}/deposits` (Bearer API key).
+- **`depositDeadline`** es el plazo para completar **todos** los depósitos. Si vence
+  sin que el pozo esté completo, Luna Negra **reembolsa** lo depositado y cancela la
+  apuesta (webhooks `bet.expired` + `bet.refunded`). Los handles vuelven `null` cuando
+  el depósito ya cerró (pagado, vencido o estado no abierto).
+- Cuando **todos** depositan, la apuesta pasa a `funded` (webhook `bet.funded`, alias
+  `bet.ready`) y queda lista para resolverse.
+
+**Consultar el estado** en cualquier momento:
+```ts
+const b = await luna.getBet(bet.betId);
+// b.status: "pending_deposits" | "funded" | "settled" | "cancelled" | "expired" | "refunded"
+// b.participants[i].depositStatus, b.potSats, b.feeSats, b.netPayoutSats, b.metadata…
+```
+Equivalente HTTP: `GET /api/v1/bets/{betId}` (Bearer API key).
 
 **Reportar el resultado** (tu firma Nostr es la prueba del oráculo):
 ```ts
@@ -158,20 +190,43 @@ const signed = finalizeEvent(evt, miClaveNostr);   // lo firmás vos (nostr-tool
 await luna.reportResult(bet.betId, signed);
 ```
 Equivalente HTTP: `POST /api/v1/bets/{betId}/result` con `{ "event": <firmado> }`.
+- **Un ganador:** se lleva el pozo menos la comisión (`netPayoutSats`).
+- **Varios ganadores** (tags `winner` múltiples): el neto se **divide en partes
+  iguales**; el resto indivisible (sub-msat) lo retiene la casa con la comisión.
+- **Sin ganadores** (array vacío) ⇒ **empate/anulación**: se **reembolsa el stake
+  completo a cada participante, sin comisión** (estado `refunded`, webhook
+  `bet.refunded` con `reason: "void"`).
+
+**Cancelar** una apuesta no resuelta (reembolsa los depósitos confirmados):
+```ts
+await luna.cancelBet(bet.betId);   // POST /api/v1/bets/{betId}/cancel (Bearer API key)
+```
+Emite `bet.cancelled` + `bet.refunded`. Solo se puede cancelar en `pending_deposits`
+o `funded` (no después de resolverse): si no, error `CANNOT_CANCEL` / `ALREADY_RESOLVED`.
 
 > 🔒 **Confianza:** el contrato (stake, fee, participantes) se **publica firmado en
 > Nostr** al crear la apuesta. Antes de pagar, Luna Negra recalcula el hash y lo
 > compara: si los términos fueron alterados (`CONTRACT_MISMATCH`), **no paga**.
+> 💰 **Reconciliación:** el pozo siempre cuadra — toda apuesta cancelada/vencida/anulada
+> reembolsa cada depósito confirmado, y los pagos = pozo − comisión.
 
 ## Paso 6 · Webhooks
 Configurá una **URL de webhook** en /provider. Luna Negra te avisa (POST JSON, con
 reintentos) cuando pasa algo:
 
-| Evento | Cuándo |
-|---|---|
-| `purchase.completed` | un jugador compró tu juego |
-| `bet.settled` | una apuesta se resolvió y se pagó |
-| `payout.sent` | te enviamos tu parte |
+| Evento | Cuándo | `data` (campos clave) |
+|---|---|---|
+| `purchase.completed` | un jugador compró tu juego | `purchaseId, gameId, slug, npub, amountSats` |
+| `deposit.received` | un participante depositó su stake | `betId, npub, amountSats, potSats, potTargetSats, depositsReceived, depositsTotal` |
+| `bet.funded` | el pozo se completó (alias `bet.ready`) | `betId, potSats, participants` |
+| `bet.settled` | una apuesta se resolvió y se pagó | `betId, winners, payouts:[{npub,amountSats}], feeSats` |
+| `bet.cancelled` | el proveedor canceló la apuesta | `betId, reason:"provider_cancel"` |
+| `bet.expired` | venció el plazo de depósito sin completarse el pozo | `betId, reason:"deposit_timeout"` |
+| `bet.refunded` | se reembolsaron depósitos (acompaña cancelled/expired/void/timeout) | `betId, reason, refunds:[{npub,amountSats}]` |
+| `payout.sent` | te enviamos tu parte | `purchaseId, gameId, shareSats` |
+
+Todos los eventos de **apuesta** incluyen además `roomId` y `metadata` (los que pasaste
+en `createBet`), para correlacionar la apuesta con tu sala sin tabla propia.
 
 Cada request trae `X-LunaNegra-Event` y `X-LunaNegra-Signature` (HMAC-SHA256 del
 cuerpo con tu secreto). Verificá la firma:
@@ -182,7 +237,8 @@ if (!verifyWebhook(rawBody, req.headers["x-lunanegra-signature"], secret)) {
   return res.status(401).end();
 }
 const { id, type, data } = JSON.parse(rawBody);
-// type: "purchase.completed" | "bet.settled" | "payout.sent"
+// type: "purchase.completed" | "deposit.received" | "bet.funded" | "bet.settled"
+//     | "bet.cancelled" | "bet.expired" | "bet.refunded" | "payout.sent"
 ```
 
 ## Paso 7 · Feed de actividad (opcional)
@@ -203,7 +259,10 @@ Vos y los jugadores pueden postear ahí.
 | GET | `/api/v1/rooms/verify` | Bearer (invite) | Validar quien se une (identidad + host) |
 | GET | `/api/v1/players/{npub}/profile` | — | Refrescar nombre/avatar de un jugador |
 | POST | `/api/v1/bets` | Bearer (API key) | Crear apuesta |
-| POST | `/api/v1/bets/{betId}/result` | Evento Nostr firmado | Reportar ganador |
+| GET | `/api/v1/bets/{betId}` | Bearer (API key) | Estado + economía de la apuesta |
+| GET | `/api/v1/bets/{betId}/deposits` | Bearer (API key) | Handles de pago por participante |
+| POST | `/api/v1/bets/{betId}/cancel` | Bearer (API key) | Cancelar y reembolsar |
+| POST | `/api/v1/bets/{betId}/result` | Evento Nostr firmado | Reportar ganador (vacío = anular) |
 
 ## Checklist de integración
 - [ ] Publicaste tu juego en /provider (con Lightning Address).

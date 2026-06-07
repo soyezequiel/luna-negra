@@ -40,6 +40,37 @@ if (profile) console.log(profile.displayName, profile.avatarUrl);
 `verifyAccess` / `verifyRoom` devuelven `null` si el token es inválido o expiró
 (`room.expiresAt` es ISO 8601, útil para mostrar un mensaje claro al usuario).
 
+## Apuestas / escrow (pozo winner-takes-all)
+
+Requiere `apiKey` (`ln_sk_…`) en `createClient({ baseUrl, apiKey })`.
+
+```ts
+// 1) Crear el pozo
+const bet = await luna.createBet({
+  gameId, participants: [npub1, npub2], stakeSats: 10,
+  victoryCondition: "primero a 100", roomId, metadata: { matchId },
+});
+// bet.netPayoutSats, bet.feeSats, bet.potTargetSats…
+
+// 2) Repartir los handles de pago a cada jugador
+const { deposits } = await luna.getBetDeposits(bet.betId);
+// deposits[i] = { npub, depositStatus, bolt11, lnurl, payUrl }
+
+// 3) Consultar estado cuando quieras
+const info = await luna.getBet(bet.betId);   // info.status, info.potSats, …
+
+// 4a) Resolver (vacío = empate/anulación → reembolso total)
+const evt = luna.buildResultEvent(bet.betId, [npubGanador]);
+await luna.reportResult(bet.betId, finalizeEvent(evt, miClave));
+
+// 4b) …o cancelar antes de resolver (reembolsa depósitos)
+await luna.cancelBet(bet.betId);
+```
+
+Webhooks (firma HMAC, verificá con `verifyWebhook`): `deposit.received`, `bet.funded`,
+`bet.settled`, `bet.cancelled`, `bet.expired`, `bet.refunded`. Los de apuesta traen
+`roomId`/`metadata` para correlacionar con tu sala.
+
 ## Cómo funciona
 - Los tokens son JWT **ES256**. El SDK trae la clave pública de
   `/.well-known/jwks.json` (cacheada) y valida la firma + `iss`/`aud`/`exp`/`scope`.

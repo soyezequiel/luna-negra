@@ -103,26 +103,132 @@
             "items": { "type": "string", "description": "npub" },
             "minItems": 2
           },
-          "stakeSats": { "type": "integer", "description": "Monto por jugador (sats)" },
-          "victoryCondition": { "type": "string" }
+          "stakeSats": {
+            "type": "integer",
+            "description": "Monto por jugador (sats). Debe estar entre minStakeSats y maxStakeSats; fuera de rango → STAKE_OUT_OF_RANGE."
+          },
+          "victoryCondition": { "type": "string" },
+          "roomId": { "type": "string", "description": "Sala multijugador del juego (correlación, opcional)" },
+          "metadata": { "type": "object", "description": "Metadata libre; se persiste y vuelve en GET y en cada webhook" }
+        }
+      },
+      "BetEconomics": {
+        "type": "object",
+        "description": "Economía de la apuesta (sats).",
+        "properties": {
+          "stakeSats": { "type": "integer", "description": "Stake por jugador" },
+          "potTargetSats": { "type": "integer", "description": "Pozo total cuando esté completo (stake × participantes)" },
+          "feePct": { "type": "integer", "description": "Comisión de Luna Negra (%)" },
+          "feeBps": { "type": "integer", "description": "Comisión en basis points (feePct × 100)" },
+          "feeSats": { "type": "integer", "description": "Comisión absoluta" },
+          "netPayoutSats": { "type": "integer", "description": "Pago neto a repartir entre ganadores (pozo − comisión)" }
         }
       },
       "CreateBetResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BetEconomics" },
+          {
+            "type": "object",
+            "properties": {
+              "betId": { "type": "string" },
+              "contractEventId": { "type": ["string", "null"], "description": "Evento Nostr del contrato firmado" },
+              "depositDeadline": { "type": "string", "format": "date-time" },
+              "roomId": { "type": ["string", "null"] },
+              "metadata": { "type": ["object", "null"] }
+            }
+          }
+        ]
+      },
+      "BetParticipantView": {
+        "type": "object",
+        "properties": {
+          "npub": { "type": "string" },
+          "depositStatus": { "type": "string", "enum": ["pending", "paid", "refunded", "failed"] },
+          "result": { "type": "string", "enum": ["pending", "won", "lost", "tie"] },
+          "payoutStatus": { "type": "string" },
+          "payoutSats": { "type": ["integer", "null"] }
+        }
+      },
+      "BetDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BetEconomics" },
+          {
+            "type": "object",
+            "properties": {
+              "betId": { "type": "string" },
+              "gameId": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["pending_deposits", "funded", "settled", "cancelled", "expired", "refunded"]
+              },
+              "victoryCondition": { "type": "string" },
+              "depositDeadline": { "type": ["string", "null"], "format": "date-time" },
+              "resolveDeadline": { "type": ["string", "null"], "format": "date-time" },
+              "potSats": { "type": "integer", "description": "Pozo depositado hasta ahora" },
+              "participants": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/BetParticipantView" }
+              },
+              "roomId": { "type": ["string", "null"] },
+              "metadata": { "type": ["object", "null"] },
+              "contractEventId": { "type": ["string", "null"] },
+              "resultEventId": { "type": ["string", "null"] }
+            }
+          }
+        ]
+      },
+      "DepositHandle": {
+        "type": "object",
+        "description": "Cómo paga su stake un participante. Los handles son null si el depósito ya cerró (pagado, vencido o estado no abierto).",
+        "properties": {
+          "npub": { "type": "string" },
+          "depositStatus": { "type": "string", "enum": ["pending", "paid", "refunded", "failed"] },
+          "bolt11": { "type": ["string", "null"], "description": "Invoice Lightning fijo (BOLT11) por el stake" },
+          "lnurl": { "type": ["string", "null"], "description": "LNURL-pay (bech32) equivalente" },
+          "payUrl": { "type": ["string", "null"], "description": "Deep-link a la pantalla de pago de Luna Negra" }
+        }
+      },
+      "BetDeposits": {
         "type": "object",
         "properties": {
           "betId": { "type": "string" },
-          "contractEventId": { "type": ["string", "null"], "description": "Evento Nostr del contrato firmado" },
-          "depositDeadline": { "type": "string", "format": "date-time" }
+          "status": {
+            "type": "string",
+            "enum": ["pending_deposits", "funded", "settled", "cancelled", "expired", "refunded"]
+          },
+          "stakeSats": { "type": "integer" },
+          "potSats": { "type": "integer", "description": "Depositado hasta ahora" },
+          "potTargetSats": { "type": "integer" },
+          "depositsReceived": { "type": "integer" },
+          "depositsTotal": { "type": "integer" },
+          "depositDeadline": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Plazo para completar los depósitos; si vence sin completarse el pozo, se reembolsa y se cancela (bet.expired)."
+          },
+          "deposits": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DepositHandle" }
+          }
         }
       },
       "WebhookEvent": {
         "type": "object",
-        "description": "Cuerpo de un webhook. Cabeceras: X-LunaNegra-Event y X-LunaNegra-Signature (HMAC-SHA256 del cuerpo con el secreto del proveedor).",
+        "description": "Cuerpo de un webhook. Cabeceras: X-LunaNegra-Event y X-LunaNegra-Signature (HMAC-SHA256 del cuerpo con el secreto del proveedor). Los eventos de apuesta incluyen roomId/metadata para correlación.",
         "properties": {
           "id": { "type": "string" },
           "type": {
             "type": "string",
-            "enum": ["purchase.completed", "bet.settled", "payout.sent"]
+            "enum": [
+              "purchase.completed",
+              "bet.settled",
+              "payout.sent",
+              "deposit.received",
+              "bet.funded",
+              "bet.cancelled",
+              "bet.expired",
+              "bet.refunded"
+            ]
           },
           "created": { "type": "string", "format": "date-time" },
           "data": { "type": "object" }
@@ -328,6 +434,111 @@
         }
       }
     },
+    "/api/v1/bets/{id}": {
+      "get": {
+        "summary": "Estado y economía de una apuesta",
+        "description": "Devuelve estado público, depósitos por participante, pozo, comisión y pago neto. Autenticación con API key del proveedor dueño.",
+        "tags": ["Apuestas"],
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado de la apuesta",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/BetDetail" } }
+            }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": {
+            "description": "La apuesta no es de tu proveedor (NOT_BET_OWNER)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": {
+            "description": "Apuesta no encontrada",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/bets/{id}/deposits": {
+      "get": {
+        "summary": "Handles de pago por participante",
+        "description": "Para cada participante devuelve cómo deposita su stake en escrow: bolt11 (invoice fijo), lnurl (LNURL-pay) y payUrl (deep-link a la pantalla de pago de Luna Negra). El plazo es `depositDeadline`. Autenticación con API key del proveedor dueño.",
+        "tags": ["Apuestas"],
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vista de depósitos con handles de pago",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/BetDeposits" } }
+            }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": {
+            "description": "La apuesta no es de tu proveedor (NOT_BET_OWNER)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": {
+            "description": "Apuesta no encontrada",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/bets/{id}/cancel": {
+      "post": {
+        "summary": "Cancelar una apuesta y reembolsar",
+        "description": "Cancela una apuesta NO resuelta (pending_deposits o funded) y reembolsa los depósitos confirmados. Emite bet.cancelled + bet.refunded. Autenticación con API key del proveedor dueño.",
+        "tags": ["Apuestas"],
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelada (reembolsos en curso)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "status": { "type": "string", "example": "cancelled" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": {
+            "description": "La apuesta no es de tu proveedor (NOT_BET_OWNER)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "404": {
+            "description": "Apuesta no encontrada",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "409": {
+            "description": "No se puede cancelar (ya resuelta o estado inválido: ALREADY_RESOLVED / CANNOT_CANCEL)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
     "/api/v1/bets/{id}/result": {
       "post": {
         "summary": "Reportar el resultado de una apuesta",
@@ -411,6 +622,71 @@
     "payout.sent": {
       "post": {
         "summary": "Te enviamos tu parte (payout)",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "deposit.received": {
+      "post": {
+        "summary": "Un participante depositó su stake",
+        "description": "data: { betId, gameId, npub, amountSats, potSats, potTargetSats, depositsReceived, depositsTotal, roomId, metadata }",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "bet.funded": {
+      "post": {
+        "summary": "El pozo se completó (alias: bet.ready)",
+        "description": "Todos depositaron; la apuesta está en juego. data: { betId, gameId, potSats, participants, roomId, metadata }",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "bet.cancelled": {
+      "post": {
+        "summary": "El proveedor canceló la apuesta",
+        "description": "data: { betId, gameId, reason: \"provider_cancel\", roomId, metadata }. Acompañada de bet.refunded por los depósitos devueltos.",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "bet.expired": {
+      "post": {
+        "summary": "Venció el plazo de depósito sin completarse el pozo",
+        "description": "data: { betId, gameId, reason: \"deposit_timeout\", roomId, metadata }. Acompañada de bet.refunded por los depósitos devueltos.",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEvent" } }
+          }
+        },
+        "responses": { "200": { "description": "Recibido (responder 2xx)" } }
+      }
+    },
+    "bet.refunded": {
+      "post": {
+        "summary": "Se reembolsaron depósitos",
+        "description": "Evento \"de plata\" que acompaña a cancelled/expired/void/resolve_timeout. data: { betId, gameId, reason: \"cancelled\"|\"expired\"|\"void\"|\"resolve_timeout\", refunds: [{ npub, amountSats }], roomId, metadata }",
         "tags": ["Webhooks"],
         "requestBody": {
           "content": {

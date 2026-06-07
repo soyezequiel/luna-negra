@@ -142,7 +142,7 @@ export function BetView({ betId }: { betId: string }) {
       <div className="mt-6">
         {!bet.me ? (
           <p className="text-sm text-zinc-400">No sos participante de esta apuesta.</p>
-        ) : ["cancelled_incomplete", "refunded_timeout", "cancelled_admin"].includes(bet.status) ? (
+        ) : ["cancelled_incomplete", "refunded_timeout", "cancelled_admin", "voided"].includes(bet.status) ? (
           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
             Apuesta cancelada/reembolsada. {bet.me.paid ? "Te devolvimos tu depósito." : ""}
           </p>

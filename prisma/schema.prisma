@@ -175,11 +175,13 @@ model Bet {
   providerId       String
   provider         Provider  @relation(fields: [providerId], references: [id])
   // created | pending_deposits | ready | settling | settled |
-  // refunding | cancelled_incomplete | cancelled_admin | refunded_timeout
+  // refunding | cancelled_incomplete | cancelled_admin | refunded_timeout | voided
   status           String    @default("created")
   stakeMsat        BigInt // monto por jugador (msat)
   feePct           Int       @default(5) // fijado por Luna Negra
   victoryCondition String    @default("")
+  roomId           String? // sala multijugador del juego (correlación, opcional)
+  metadataJson     String? // metadata libre del proveedor (JSON serializado, opcional)
   depositDeadline  DateTime? // +10 min al crear
   resolveDeadline  DateTime? // +15 min al quedar ready
   contractEventId  String? // evento Nostr del contrato (inmutable)

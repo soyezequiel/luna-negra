@@ -5,15 +5,18 @@ describe("bet-state", () => {
   it("transición válida", () => {
     expect(canTransition("ready", "settling")).toBe(true);
     expect(canTransition("pending_deposits", "ready")).toBe(true);
+    expect(canTransition("settling", "voided")).toBe(true);
   });
   it("transición inválida", () => {
     expect(canTransition("created", "settled")).toBe(false);
     expect(canTransition("settled", "ready")).toBe(false);
+    expect(canTransition("ready", "voided")).toBe(false);
   });
   it("estados terminales no tienen salida", () => {
     expect(isTerminal("settled")).toBe(true);
     expect(isTerminal("cancelled_admin")).toBe(true);
     expect(isTerminal("refunded_timeout")).toBe(true);
+    expect(isTerminal("voided")).toBe(true);
   });
   it("estados no terminales", () => {
     expect(isTerminal("ready")).toBe(false);

@@ -5,12 +5,13 @@ export const BET_TRANSITIONS: Record<string, readonly string[]> = {
   created: ["pending_deposits", "cancelled_admin"],
   pending_deposits: ["ready", "refunding", "cancelled_admin"],
   ready: ["settling", "refunding"],
-  settling: ["settled"],
+  settling: ["settled", "voided"],
   refunding: ["cancelled_incomplete", "cancelled_admin", "refunded_timeout"],
   settled: [],
   cancelled_incomplete: [],
   cancelled_admin: [],
   refunded_timeout: [],
+  voided: [],
 };
 
 export function canTransition(from: string, to: string): boolean {

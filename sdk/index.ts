@@ -43,12 +43,90 @@ export type CreateBetInput = {
   /** Monto por jugador, en sats. */
   stakeSats: number;
   victoryCondition?: string;
+  /** Sala multijugador del juego (correlación, opcional). */
+  roomId?: string;
+  /** Metadata libre (objeto). Se persiste y vuelve en GET y en cada webhook. */
+  metadata?: Record<string, unknown>;
 };
 
-export type Bet = {
+/** Economía de una apuesta (presente en createBet y getBet). */
+export type BetEconomics = {
+  stakeSats: number;
+  /** Pozo total cuando esté completo (stake × participantes). */
+  potTargetSats: number;
+  feePct: number;
+  /** Comisión en basis points (feePct × 100). */
+  feeBps: number;
+  /** Comisión absoluta, en sats. */
+  feeSats: number;
+  /** Pago neto a repartir entre ganadores (pozo − comisión), en sats. */
+  netPayoutSats: number;
+};
+
+export type Bet = BetEconomics & {
   betId: string;
   contractEventId: string | null;
   depositDeadline: string;
+  roomId: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+/** Estado público de una apuesta. */
+export type BetStatus =
+  | "pending_deposits"
+  | "funded"
+  | "settled"
+  | "cancelled"
+  | "expired"
+  | "refunded";
+
+export type BetParticipantView = {
+  npub: string;
+  depositStatus: "pending" | "paid" | "refunded" | "failed";
+  result: "pending" | "won" | "lost" | "tie";
+  payoutStatus: string;
+  payoutSats: number | null;
+};
+
+export type BetDetail = BetEconomics & {
+  betId: string;
+  gameId: string;
+  status: BetStatus;
+  victoryCondition: string;
+  depositDeadline: string | null;
+  resolveDeadline: string | null;
+  /** Pozo depositado hasta ahora, en sats. */
+  potSats: number;
+  participants: BetParticipantView[];
+  roomId: string | null;
+  metadata: Record<string, unknown> | null;
+  contractEventId: string | null;
+  resultEventId: string | null;
+};
+
+/** Handle de pago de un participante (cómo deposita su stake en escrow). */
+export type DepositHandle = {
+  npub: string;
+  depositStatus: "pending" | "paid" | "refunded" | "failed";
+  /** Invoice Lightning fijo (BOLT11) por el stake. `null` si el depósito cerró. */
+  bolt11: string | null;
+  /** LNURL-pay (bech32) equivalente al invoice. `null` si cerró. */
+  lnurl: string | null;
+  /** Deep-link a la pantalla de pago de Luna Negra. `null` si cerró. */
+  payUrl: string | null;
+};
+
+export type BetDeposits = {
+  betId: string;
+  status: BetStatus;
+  stakeSats: number;
+  potSats: number;
+  potTargetSats: number;
+  depositsReceived: number;
+  depositsTotal: number;
+  /** Plazo para completar los depósitos; si vence, se reembolsa y se cancela. */
+  depositDeadline: string | null;
+  deposits: DepositHandle[];
 };
 
 /** Plantilla de evento Nostr SIN firmar (la firma el proveedor con su clave). */
@@ -104,6 +182,12 @@ export type LunaNegraClient = {
   getPlayerProfile(npub: string): Promise<PlayerProfile | null>;
   /** Crea una apuesta (requiere `apiKey`). */
   createBet(input: CreateBetInput): Promise<Bet>;
+  /** Estado + economía de una apuesta (requiere `apiKey`). */
+  getBet(betId: string): Promise<BetDetail>;
+  /** Handles de pago por participante: bolt11 / lnurl / deep-link (requiere `apiKey`). */
+  getBetDeposits(betId: string): Promise<BetDeposits>;
+  /** Cancela una apuesta no resuelta y reembolsa depósitos (requiere `apiKey`). */
+  cancelBet(betId: string): Promise<{ ok: boolean; status: string }>;
   /** Construye el evento (sin firmar) del resultado; firmalo con tu clave Nostr. */
   buildResultEvent(betId: string, winnerNpubs: string[]): UnsignedEvent;
   /** Reporta el resultado posteando el evento firmado por el proveedor. */
@@ -188,6 +272,39 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo crear la apuesta");
       return d as Bet;
+    },
+
+    async getBet(betId) {
+      if (!opts.apiKey) throw new Error("getBet requiere `apiKey`");
+      const r = await fetch(
+        base + "/api/v1/bets/" + encodeURIComponent(betId),
+        { headers: { authorization: "Bearer " + opts.apiKey } },
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo leer la apuesta");
+      return d as BetDetail;
+    },
+
+    async getBetDeposits(betId) {
+      if (!opts.apiKey) throw new Error("getBetDeposits requiere `apiKey`");
+      const r = await fetch(
+        base + "/api/v1/bets/" + encodeURIComponent(betId) + "/deposits",
+        { headers: { authorization: "Bearer " + opts.apiKey } },
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudieron leer los depósitos");
+      return d as BetDeposits;
+    },
+
+    async cancelBet(betId) {
+      if (!opts.apiKey) throw new Error("cancelBet requiere `apiKey`");
+      const r = await fetch(
+        base + "/api/v1/bets/" + encodeURIComponent(betId) + "/cancel",
+        { method: "POST", headers: { authorization: "Bearer " + opts.apiKey } },
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo cancelar la apuesta");
+      return d as { ok: boolean; status: string };
     },
 
     buildResultEvent(betId, winnerNpubs) {

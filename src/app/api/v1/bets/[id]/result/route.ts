@@ -3,9 +3,10 @@ import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { recordOutflow } from "@/lib/ledger";
 import { computeContractHash } from "@/lib/escrow";
+import { computeEconomics, splitWinnings } from "@/lib/escrow-math";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
-import { emitBetSettled } from "@/lib/webhooks";
+import { emitBetSettled, emitBetRefunded } from "@/lib/webhooks";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 const MAX_AGE = 1800; // 30 min
@@ -95,20 +96,29 @@ export async function POST(
   // Ganadores declarados (tags "winner") que sean participantes.
   const winnerNpubs = ev.tags.filter((t) => t[0] === "winner").map((t) => t[1]);
   const winners = bet.participants.filter((p) => winnerNpubs.includes(p.npub));
+
+  // Sin ganadores válidos ⇒ empate/anulación ⇒ reembolso total a TODOS (sin fee).
   if (winners.length === 0) {
-    await prisma.bet.updateMany({
-      where: { id: betId, status: "settling" },
-      data: { status: "ready" },
+    for (const p of bet.participants) {
+      await prisma.betParticipant.update({ where: { id: p.id }, data: { result: "tie" } });
+      await payParticipant({ bet, participant: p, amountMsat: bet.stakeMsat, kind: "refund" });
+    }
+    await prisma.bet.update({
+      where: { id: betId },
+      data: { status: "voided", settledAt: new Date(), resultEventId: ev.id },
     });
-    return apiError("INVALID_WINNER", "No se declaró un ganador válido", 400);
+    await publishSignedEvent(ev);
+    after(() => emitBetRefunded(betId, "void"));
+    return apiOk({ ok: true, voided: true });
   }
 
   // Montos (msat). Pozo = stake * participantes (todos pagaron al estar ready).
-  const pot = bet.stakeMsat * BigInt(bet.participants.length);
-  const feeMsat = (pot * BigInt(bet.feePct)) / 100n;
-  const winnings = pot - feeMsat;
-  const perWinner = winnings / BigInt(winners.length);
-  const dust = winnings - perWinner * BigInt(winners.length);
+  const { netMsat, feeMsat } = computeEconomics({
+    stakeMsat: bet.stakeMsat,
+    participantCount: bet.participants.length,
+    feePct: bet.feePct,
+  });
+  const { perWinner, dust } = splitWinnings(netMsat, winners.length);
 
   // Fee de la casa (la guarda Luna Negra; se asienta al toque).
   const feeRec = await recordOutflow({

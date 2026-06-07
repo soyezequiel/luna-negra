@@ -24,6 +24,7 @@ const STATUS: Record<string, string> = {
   cancelled_incomplete: "Cancelada",
   cancelled_admin: "Cancelada",
   refunded_timeout: "Reembolsada",
+  voided: "Anulada",
 };
 
 export default function BetsHistoryPage() {

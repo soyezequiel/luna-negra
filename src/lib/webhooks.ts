@@ -1,5 +1,7 @@
+import type { Bet } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { msatToSats } from "@/lib/money";
 
 // Webhooks salientes: notifican al proveedor (compra, apuesta, payout).
 // Firmados con HMAC-SHA256 usando el secreto del proveedor. Entrega vía QStash
@@ -13,7 +15,15 @@ export function signWebhook(body: string, secret: string): string {
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
-type WebhookType = "purchase.completed" | "payout.sent" | "bet.settled";
+export type WebhookType =
+  | "purchase.completed"
+  | "payout.sent"
+  | "bet.settled"
+  | "deposit.received"
+  | "bet.funded"
+  | "bet.cancelled"
+  | "bet.expired"
+  | "bet.refunded";
 
 async function deliver(
   providerId: string,
@@ -88,18 +98,130 @@ export async function emitPayoutSent(purchaseId: string): Promise<void> {
   });
 }
 
+/**
+ * Metadata de correlación que se adjunta a TODO webhook de apuesta, para que el
+ * juego mapee la apuesta a su sala multijugador sin mantener su propia tabla.
+ */
+function correlation(bet: Bet): { roomId: string | null; metadata: unknown } {
+  let metadata: unknown = null;
+  if (bet.metadataJson) {
+    try {
+      metadata = JSON.parse(bet.metadataJson);
+    } catch {
+      /* metadata corrupta → null */
+    }
+  }
+  return { roomId: bet.roomId ?? null, metadata };
+}
+
+const sats = (msat: bigint) => Number(msatToSats(msat));
+
 export async function emitBetSettled(betId: string): Promise<void> {
   const bet = await prisma.bet.findUnique({
     where: { id: betId },
     include: { participants: true },
   });
   if (!bet) return;
-  const winners = bet.participants
-    .filter((p) => p.result === "won" || p.result === "tie")
-    .map((p) => p.npub);
+  const won = bet.participants.filter((p) => p.result === "won" || p.result === "tie");
+  const payouts = won
+    .filter((p) => p.payoutMsat != null)
+    .map((p) => ({ npub: p.npub, amountSats: sats(p.payoutMsat as bigint) }));
+  const fee = await prisma.ledgerEntry.findFirst({
+    where: { betId: bet.id, kind: "fee" },
+  });
   await deliver(bet.providerId, "bet.settled", {
     betId: bet.id,
     gameId: bet.gameId,
-    winners,
+    winners: won.map((p) => p.npub),
+    payouts,
+    feeSats: fee ? sats(fee.amountMsat) : 0,
+    ...correlation(bet),
+  });
+}
+
+/** Un participante depositó su stake; informa el pozo acumulado y el progreso. */
+export async function emitDepositReceived(betId: string, npub: string): Promise<void> {
+  const bet = await prisma.bet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  const paid = bet.participants.filter((p) => p.depositStatus === "paid");
+  await deliver(bet.providerId, "deposit.received", {
+    betId: bet.id,
+    gameId: bet.gameId,
+    npub,
+    amountSats: sats(bet.stakeMsat),
+    potSats: sats(bet.stakeMsat) * paid.length,
+    potTargetSats: sats(bet.stakeMsat) * bet.participants.length,
+    depositsReceived: paid.length,
+    depositsTotal: bet.participants.length,
+    ...correlation(bet),
+  });
+}
+
+/** El pozo se completó (todos depositaron). Alias documentado: "bet.ready". */
+export async function emitBetFunded(betId: string): Promise<void> {
+  const bet = await prisma.bet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  await deliver(bet.providerId, "bet.funded", {
+    betId: bet.id,
+    gameId: bet.gameId,
+    potSats: sats(bet.stakeMsat) * bet.participants.length,
+    participants: bet.participants.map((p) => p.npub),
+    ...correlation(bet),
+  });
+}
+
+/** El proveedor canceló la apuesta antes de resolverse. */
+export async function emitBetCancelled(betId: string): Promise<void> {
+  const bet = await prisma.bet.findUnique({ where: { id: betId } });
+  if (!bet) return;
+  await deliver(bet.providerId, "bet.cancelled", {
+    betId: bet.id,
+    gameId: bet.gameId,
+    reason: "provider_cancel",
+    ...correlation(bet),
+  });
+}
+
+/** Venció el plazo de depósito sin completarse el pozo. */
+export async function emitBetExpired(betId: string): Promise<void> {
+  const bet = await prisma.bet.findUnique({ where: { id: betId } });
+  if (!bet) return;
+  await deliver(bet.providerId, "bet.expired", {
+    betId: bet.id,
+    gameId: bet.gameId,
+    reason: "deposit_timeout",
+    ...correlation(bet),
+  });
+}
+
+/**
+ * Se reembolsaron depósitos. Acompaña a cancelled/expired/void/resolve_timeout
+ * (es el evento "de plata"; el otro es el de ciclo de vida). `refunds` lista a
+ * cada participante reembolsado con su monto.
+ */
+export async function emitBetRefunded(
+  betId: string,
+  reason: "cancelled" | "expired" | "void" | "resolve_timeout",
+): Promise<void> {
+  const bet = await prisma.bet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  const refunds = bet.participants
+    .filter((p) => p.depositStatus === "refunded")
+    .map((p) => ({ npub: p.npub, amountSats: sats(bet.stakeMsat) }));
+  await deliver(bet.providerId, "bet.refunded", {
+    betId: bet.id,
+    gameId: bet.gameId,
+    reason,
+    refunds,
+    ...correlation(bet),
   });
 }

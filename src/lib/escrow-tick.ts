@@ -3,6 +3,12 @@ import { isInvoicePaid, lightningConfigured } from "@/lib/lightning";
 import { recordDeposit } from "@/lib/ledger";
 import { payParticipant } from "@/lib/escrow-payout";
 import { RESOLVE_WINDOW_MS } from "@/lib/escrow-config";
+import {
+  emitDepositReceived,
+  emitBetFunded,
+  emitBetExpired,
+  emitBetRefunded,
+} from "@/lib/webhooks";
 
 /**
  * Procesa el ciclo de vida de las apuestas (lo dispara QStash cada ~1 min).
@@ -46,6 +52,7 @@ export async function runTick(): Promise<{
               idempotencyKey: `deposit:${bet.id}:${p.userId}`,
               paymentHash: p.depositPaymentHash,
             });
+            await emitDepositReceived(bet.id, p.npub);
             deposits++;
           }
         }
@@ -71,7 +78,10 @@ export async function runTick(): Promise<{
           resolveDeadline: new Date(Date.now() + RESOLVE_WINDOW_MS),
         },
       });
-      if (claimed.count === 1) ready++;
+      if (claimed.count === 1) {
+        await emitBetFunded(bet.id);
+        ready++;
+      }
     }
   }
 
@@ -94,6 +104,8 @@ export async function runTick(): Promise<{
       where: { id: bet.id },
       data: { status: "cancelled_incomplete" },
     });
+    await emitBetExpired(bet.id);
+    await emitBetRefunded(bet.id, "expired");
   }
 
   // D) Timeout de resolución (15 min sin resultado) → reembolso total.
@@ -115,6 +127,7 @@ export async function runTick(): Promise<{
       where: { id: bet.id },
       data: { status: "refunded_timeout" },
     });
+    await emitBetRefunded(bet.id, "resolve_timeout");
   }
 
   // E) Forfeit: retiros (QR) no reclamados pasada la ventana de 60 min.
