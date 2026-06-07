@@ -1,6 +1,6 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import type { SubCloser } from "nostr-tools/abstract-pool";
-import { APP_NAME, RELAYS } from "./constants";
+import { APP_NAME, RELAYS, gameTag } from "./constants";
 
 export type Profile = {
   name?: string;
@@ -206,11 +206,17 @@ export async function clearPlayingStatus(): Promise<void> {
   );
 }
 
-// --- Actividad por juego (kind:1 con tag lunanegra:game:<slug>) ---
+// --- Actividad por juego (respuestas NIP-10 al anuncio del juego) ---
+//
+// Al aprobar un juego, Luna Negra publica un anuncio (kind:1) — ver
+// `nostr-server.ts#publishGameAnnouncement`. Comentarios y reseñas se cuelgan de
+// ese anuncio como respuestas (tags `e` root + `p` autor), de modo que en
+// cualquier cliente Nostr se ven dentro del hilo del juego y no como notas
+// sueltas. Si el juego todavía no tiene anuncio, los comentarios caen al modo
+// "nota suelta con pie de contexto" (fallback).
 
-export function gameTag(slug: string): string {
-  return `lunanegra:game:${slug}`;
-}
+/** Anuncio raíz de un juego en Nostr, al que se responde con comentarios/reseñas. */
+export type GameRoot = { id: string; pubkey: string };
 
 export type ActivityNote = {
   id: string;
@@ -219,12 +225,27 @@ export type ActivityNote = {
   created_at: number;
 };
 
-export async function fetchGameActivity(slug: string): Promise<ActivityNote[]> {
-  const evs = await pool().querySync(RELAYS, {
-    kinds: [1],
-    "#t": [gameTag(slug)],
-  });
-  return evs
+/**
+ * Trae los comentarios de un juego. Si hay anuncio (`rootId`), pide las
+ * respuestas a ese evento (`#e`); además sigue trayendo notas con el tag `t`
+ * (compatibilidad con comentarios viejos y el fallback). El propio anuncio se
+ * excluye del listado.
+ */
+export async function fetchGameActivity(
+  slug: string,
+  rootId?: string | null,
+): Promise<ActivityNote[]> {
+  const filters: Parameters<SimplePool["querySync"]>[1][] = [
+    { kinds: [1], "#t": [gameTag(slug)] },
+  ];
+  if (rootId) filters.push({ kinds: [1], "#e": [rootId] });
+  const batches = await Promise.all(
+    filters.map((f) => pool().querySync(RELAYS, f)),
+  );
+  const byId = new Map<string, (typeof batches)[number][number]>();
+  for (const e of batches.flat()) byId.set(e.id, e);
+  return [...byId.values()]
+    .filter((e) => e.id !== rootId) // el anuncio no es un comentario
     .sort((a, b) => b.created_at - a.created_at)
     .slice(0, 50)
     .map((e) => ({
@@ -235,38 +256,76 @@ export async function fetchGameActivity(slug: string): Promise<ActivityNote[]> {
     }));
 }
 
-// Marca que separa el texto del usuario del pie de contexto. Empezar el pie con
-// este string permite recortarlo al mostrar la nota dentro de Luna Negra.
+// Marca que separa el texto del usuario del pie de contexto (modo fallback,
+// cuando el juego aún no tiene anuncio raíz). Empezar el pie con este string
+// permite recortarlo al mostrar la nota dentro de Luna Negra.
 const GAME_NOTE_FOOTER_MARK = "\n\n🎮 Sobre «";
 
+function replyTags(root: GameRoot, gameUrl: string): string[][] {
+  return [
+    ["e", root.id, "", "root"],
+    ["p", root.pubkey],
+    ["r", gameUrl],
+  ];
+}
+
 /**
- * Publica un comentario de juego como kind:1. El `content` lleva un pie con el
- * título, link a la ficha y mención de Luna Negra para que la nota tenga
- * contexto en cualquier cliente Nostr (no solo dentro de la tienda).
+ * Publica un comentario de juego como kind:1.
+ * - Con anuncio (`root`): respuesta NIP-10 al hilo del juego; el contenido es el
+ *   texto tal cual (el contexto lo da el hilo). Lleva el tag `t` para poder
+ *   listarlo también por juego.
+ * - Sin anuncio: nota suelta con un pie (título + link + Luna Negra) para que
+ *   tenga contexto igual en cualquier cliente.
  */
 export async function publishGameNote(
   slug: string,
   content: string,
   title: string,
   gameUrl: string,
+  root?: GameRoot | null,
 ): Promise<void> {
-  const footer = `${GAME_NOTE_FOOTER_MARK}${title}» en ${APP_NAME}\n${gameUrl}`;
+  const text = content.trim();
+  const tags: string[][] = [["t", gameTag(slug)]];
+  let body: string;
+  if (root) {
+    tags.push(...replyTags(root, gameUrl).filter((t) => t[0] !== "t"));
+    body = text;
+  } else {
+    tags.push(["r", gameUrl]);
+    body = `${text}${GAME_NOTE_FOOTER_MARK}${title}» en ${APP_NAME}\n${gameUrl}`;
+  }
+  await publish(await sign({ kind: 1, created_at: now(), tags, content: body }));
+}
+
+/**
+ * Publica una reseña como respuesta NIP-10 al anuncio del juego, firmada por el
+ * usuario. El rating se persiste en la DB aparte (para el promedio); acá solo se
+ * deja la reseña visible en el hilo público. NO lleva el tag `t` para no
+ * mezclarse con los comentarios en `fetchGameActivity`.
+ */
+export async function publishGameReview(
+  root: GameRoot,
+  rating: number,
+  body: string,
+  title: string,
+  gameUrl: string,
+): Promise<void> {
+  const stars = "★".repeat(rating) + "☆".repeat(Math.max(0, 5 - rating));
+  const header = `${stars} (${rating}/5) · Reseña de «${title}» en ${APP_NAME}`;
+  const text = body.trim();
   await publish(
     await sign({
       kind: 1,
       created_at: now(),
-      tags: [
-        ["t", gameTag(slug)],
-        ["r", gameUrl],
-      ],
-      content: `${content.trim()}${footer}`,
+      tags: replyTags(root, gameUrl),
+      content: text ? `${header}\n\n${text}` : header,
     }),
   );
 }
 
 /**
- * Devuelve solo el texto que escribió el usuario, sin el pie de contexto que
- * `publishGameNote` agrega. Las notas antiguas (sin pie) se devuelven intactas.
+ * Devuelve solo el texto que escribió el usuario, sin el pie de contexto del
+ * modo fallback. Las notas sin pie (respuestas o notas viejas) van intactas.
  */
 export function gameNoteText(content: string): string {
   const i = content.indexOf(GAME_NOTE_FOOTER_MARK);

@@ -49,6 +49,7 @@ const BET_STATUS: Record<string, string> = {
 export default function AdminPage() {
   const { user, login, loading } = useSession();
   const [games, setGames] = useState<Row[] | null>(null);
+  const [unannounced, setUnannounced] = useState<Row[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [bets, setBets] = useState<BetRow[]>([]);
   const [forbidden, setForbidden] = useState(false);
@@ -64,6 +65,7 @@ export default function AdminPage() {
     const d = await r.json();
     setForbidden(false);
     setGames(d.games ?? []);
+    setUnannounced(d.unannounced ?? []);
     const p = await fetch("/api/admin/payouts")
       .then((res) => res.json())
       .catch(() => ({ payouts: [] }));
@@ -86,6 +88,22 @@ export default function AdminPage() {
   async function reject(id: string) {
     await fetch(`/api/admin/games/${id}/reject`, { method: "POST" });
     load();
+  }
+
+  async function announce(id: string) {
+    setBusy(id);
+    try {
+      const r = await fetch(`/api/admin/games/${id}/announce`, {
+        method: "POST",
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error ?? "No se pudo anunciar el juego");
+      }
+      await load();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function retry(id: string) {
@@ -160,6 +178,32 @@ export default function AdminPage() {
           </ul>
         )}
       </section>
+
+      {unannounced.length > 0 ? (
+        <section className="mt-10">
+          <h2 className="mb-1 font-semibold">Sin anuncio en Nostr</h2>
+          <p className="mb-3 text-xs text-zinc-500">
+            Juegos publicados sin posteo raíz. Anunciá para que comentarios y
+            reseñas se cuelguen de un hilo en Nostr.
+          </p>
+          <ul className="space-y-2">
+            {unannounced.map((g) => (
+              <li
+                key={g.id}
+                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{g.title}</p>
+                  <p className="text-xs text-zinc-500">{g.provider.name}</p>
+                </div>
+                <Button onClick={() => announce(g.id)} disabled={busy === g.id}>
+                  {busy === g.id ? "Anunciando…" : "Anunciar en Nostr"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="mt-10">
         <h2 className="mb-3 font-semibold">Payouts a resolver</h2>

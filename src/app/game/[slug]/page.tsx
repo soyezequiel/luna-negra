@@ -35,6 +35,11 @@ export default async function GamePage({
   }
 
   const screenshots: string[] = JSON.parse(game.screenshots || "[]");
+  // Anuncio raíz en Nostr (si existe) al que se cuelgan comentarios y reseñas.
+  const root =
+    game.nostrEventId && game.nostrPubkey
+      ? { id: game.nostrEventId, pubkey: game.nostrPubkey }
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -123,8 +128,14 @@ export default async function GamePage({
         </section>
       ) : null}
 
-      <ActivitySection slug={game.slug} title={game.title} />
-      <ReviewsSection gameId={game.id} owned={owned} />
+      <ActivitySection slug={game.slug} title={game.title} root={root} />
+      <ReviewsSection
+        gameId={game.id}
+        owned={owned}
+        title={game.title}
+        slug={game.slug}
+        root={root}
+      />
     </div>
   );
 }

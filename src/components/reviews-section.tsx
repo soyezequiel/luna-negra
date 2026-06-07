@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { publishGameReview, type GameRoot } from "@/lib/nostr-social";
 
 type Review = {
   id: string;
@@ -23,9 +24,15 @@ function Stars({ n }: { n: number }) {
 export function ReviewsSection({
   gameId,
   owned,
+  title,
+  slug,
+  root,
 }: {
   gameId: string;
   owned: boolean;
+  title: string;
+  slug: string;
+  root: GameRoot | null;
 }) {
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [average, setAverage] = useState(0);
@@ -58,6 +65,21 @@ export function ReviewsSection({
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "Error");
+
+    // Además del registro en la DB, publicamos la reseña como respuesta al
+    // anuncio del juego en Nostr (firmada por el usuario). Best-effort: si falla
+    // o no hay anuncio, la reseña igual queda guardada.
+    if (root) {
+      try {
+        const gameUrl = `${window.location.origin}/game/${slug}`;
+        await publishGameReview(root, rating, text, title, gameUrl);
+      } catch {
+        setMsg("Reseña guardada (no se pudo publicar en Nostr).");
+        setText("");
+        return load();
+      }
+    }
+
     setText("");
     setMsg("¡Gracias por tu reseña!");
     load();

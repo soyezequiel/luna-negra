@@ -1,6 +1,7 @@
 import { finalizeEvent } from "nostr-tools/pure";
 import { SimplePool, nip19, type Event } from "nostr-tools";
-import { RELAYS } from "./constants";
+import { APP_NAME, RELAYS, gameTag } from "./constants";
+import { priceLabel } from "./format";
 
 // Identidad Nostr de Luna Negra (server) para firmar el contrato.
 function getSecretKey(): Uint8Array | null {
@@ -65,4 +66,57 @@ export async function publishContract(
 /** Republica un evento ya firmado (ej. el resultado firmado por el proveedor). */
 export async function publishSignedEvent(ev: Event): Promise<void> {
   await publishToRelays(ev).catch(() => 0);
+}
+
+export type GameAnnouncement = {
+  slug: string;
+  title: string;
+  description?: string | null;
+  coverUrl?: string | null;
+  priceSats: number;
+  gameUrl: string; // URL absoluta a la ficha del juego en la tienda
+};
+
+/**
+ * Publica el anuncio raíz de un juego como nota Nostr (kind:1) firmada por Luna
+ * Negra al aprobarlo. Comentarios y reseñas se cuelgan de este evento como
+ * respuestas (NIP-10). El cuerpo incluye título, descripción, precio, link a la
+ * ficha y la portada (URL en su propia línea, para que los clientes la muestren).
+ *
+ * Devuelve `{ id, pubkey }` solo si algún relay aceptó el evento; `null` si no
+ * hay clave configurada o si ningún relay lo aceptó (para no guardar un id muerto).
+ */
+export async function publishGameAnnouncement(
+  game: GameAnnouncement,
+): Promise<{ id: string; pubkey: string } | null> {
+  const sk = getSecretKey();
+  if (!sk) return null;
+
+  const lines = [`🎮 ${game.title} — ya disponible en ${APP_NAME}`];
+  const desc = game.description?.trim();
+  if (desc) lines.push("", desc.slice(0, 500));
+  lines.push("", `💰 ${priceLabel(game.priceSats)}`, `🔗 ${game.gameUrl}`);
+  if (game.coverUrl) lines.push("", game.coverUrl);
+
+  const tags: string[][] = [
+    ["t", gameTag(game.slug)],
+    ["r", game.gameUrl],
+  ];
+  if (game.coverUrl) tags.push(["r", game.coverUrl], ["image", game.coverUrl]);
+
+  const ev = finalizeEvent(
+    {
+      kind: 1,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: lines.join("\n"),
+    },
+    sk,
+  );
+  const accepted = await publishToRelays(ev).catch(() => 0);
+  if (accepted === 0) {
+    console.error("[nostr] el anuncio del juego no fue aceptado:", ev.id);
+    return null;
+  }
+  return { id: ev.id, pubkey: ev.pubkey };
 }

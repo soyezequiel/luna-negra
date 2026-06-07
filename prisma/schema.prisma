@@ -75,6 +75,10 @@ model Game {
   gameUrl      String? // subdominio donde el proveedor hostea el juego
   status       String   @default("draft") // draft | in_review | published
   revenueShare Int      @default(70) // % para el proveedor
+  // Posteo raíz en Nostr (kind:1) que Luna Negra publica al aprobar el juego.
+  // Comentarios y reseñas se cuelgan de aquí como respuestas (NIP-10).
+  nostrEventId String? // id del evento anuncio
+  nostrPubkey  String? // pubkey de Luna Negra que firmó el anuncio (tag p de las respuestas)
   createdAt    DateTime @default(now())
 
   purchases Purchase[]

@@ -12,6 +12,7 @@ import {
   shortId,
   npubOf,
   type ActivityNote,
+  type GameRoot,
   type Profile,
 } from "@/lib/nostr-social";
 import { timeAgo } from "@/lib/format";
@@ -19,9 +20,11 @@ import { timeAgo } from "@/lib/format";
 export function ActivitySection({
   slug,
   title,
+  root,
 }: {
   slug: string;
   title: string;
+  root: GameRoot | null;
 }) {
   const { user } = useSession();
   const [notes, setNotes] = useState<ActivityNote[] | null>(null);
@@ -31,11 +34,11 @@ export function ActivitySection({
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const ns = await fetchGameActivity(slug);
+    const ns = await fetchGameActivity(slug, root?.id);
     setNotes(ns);
     const authors = [...new Set(ns.map((n) => n.pubkey))];
     if (authors.length) setProfiles(await fetchProfiles(authors));
-  }, [slug]);
+  }, [slug, root?.id]);
 
   useEffect(() => {
     load();
@@ -47,7 +50,7 @@ export function ActivitySection({
     setErr(null);
     try {
       const gameUrl = `${window.location.origin}/game/${slug}`;
-      await publishGameNote(slug, text.trim(), title, gameUrl);
+      await publishGameNote(slug, text.trim(), title, gameUrl, root);
       setText("");
       setTimeout(load, 1000);
     } catch (e) {
