@@ -85,4 +85,44 @@ export function clearActiveRoom(): void {
   } catch {
     /* no-op */
   }
+  emitActiveRoomChange();
+}
+
+// --- Vigilancia de la pestaña del juego ---
+// El juego se abre en una pestaña aparte. Vigilamos esa referencia: cuando el
+// usuario la cierra, limpiamos la sala activa (banner local) e invocamos
+// `onClose` (p. ej. para limpiar la presencia NIP-38) así dejamos de mostrar
+// que tiene el juego abierto. El timer es a nivel de módulo para sobrevivir a la
+// navegación SPA dentro de la pestaña de la tienda.
+
+const ACTIVE_ROOM_EVENT = "ln:active-room-change";
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+
+function emitActiveRoomChange(): void {
+  try {
+    window.dispatchEvent(new Event(ACTIVE_ROOM_EVENT));
+  } catch {
+    /* SSR / sin window: no-op */
+  }
+}
+
+export function watchGameWindow(
+  win: Window | null,
+  onClose?: () => void,
+): void {
+  if (!win) return;
+  if (watchTimer) clearInterval(watchTimer);
+  watchTimer = setInterval(() => {
+    if (!win.closed) return;
+    if (watchTimer) clearInterval(watchTimer);
+    watchTimer = null;
+    clearActiveRoom();
+    onClose?.();
+  }, 2000);
+}
+
+/** Suscribe a cambios de la sala activa (cierre de pestaña, dismiss). */
+export function onActiveRoomChange(cb: () => void): () => void {
+  window.addEventListener(ACTIVE_ROOM_EVENT, cb);
+  return () => window.removeEventListener(ACTIVE_ROOM_EVENT, cb);
 }

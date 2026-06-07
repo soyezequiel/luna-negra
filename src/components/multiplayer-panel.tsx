@@ -7,6 +7,7 @@ import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import {
   publishPlayingStatus,
+  clearPlayingStatus,
   fetchContacts,
   fetchProfiles,
   sendDm,
@@ -15,7 +16,7 @@ import {
   shortId,
   pubkeyFromNpub,
 } from "@/lib/nostr-social";
-import { buildInviteMessage, setActiveRoom } from "@/lib/invite";
+import { buildInviteMessage, setActiveRoom, watchGameWindow } from "@/lib/invite";
 
 type InviteResp = { token: string; roomId: string; host: boolean };
 
@@ -78,6 +79,11 @@ export function MultiplayerPanel({
         window.location.origin,
       ).toString();
       publishPlayingStatus(title, link).catch(() => {});
+      // Al cerrar la pestaña del juego: limpiar la presencia y la sala activa
+      // para dejar de mostrar que lo tenemos abierto (acá y en /friends).
+      watchGameWindow(opts?.win ?? null, () => {
+        clearPlayingStatus().catch(() => {});
+      });
     },
     [gameUrl, slug, title],
   );

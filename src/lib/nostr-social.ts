@@ -19,6 +19,10 @@ function pool(): SimplePool {
 
 const now = () => Math.floor(Date.now() / 1000);
 
+// Tope de espera por consulta a relays: si un relay está caído o lento, no
+// bloquea el resto (nostr-tools resuelve con lo recibido al cumplirse el plazo).
+const MAX_WAIT = 4000;
+
 export function npubOf(pubkey: string): string {
   return nip19.npubEncode(pubkey);
 }
@@ -93,7 +97,11 @@ export async function warmUpPermissions(pubkey: string): Promise<void> {
 // --- Amigos (NIP-02) y perfiles (kind:0) ---
 
 export async function fetchContacts(pubkey: string): Promise<string[]> {
-  const ev = await pool().get(RELAYS, { kinds: [3], authors: [pubkey] });
+  const ev = await pool().get(
+    RELAYS,
+    { kinds: [3], authors: [pubkey] },
+    { maxWait: MAX_WAIT },
+  );
   if (!ev) return [];
   return ev.tags.filter((t) => t[0] === "p" && t[1]).map((t) => t[1]);
 }
@@ -102,7 +110,11 @@ export async function fetchProfiles(
   pubkeys: string[],
 ): Promise<Record<string, Profile>> {
   if (pubkeys.length === 0) return {};
-  const evs = await pool().querySync(RELAYS, { kinds: [0], authors: pubkeys });
+  const evs = await pool().querySync(
+    RELAYS,
+    { kinds: [0], authors: pubkeys },
+    { maxWait: MAX_WAIT },
+  );
   const map: Record<string, Profile> = {};
   for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
     try {
@@ -122,11 +134,15 @@ export async function fetchStatuses(
   pubkeys: string[],
 ): Promise<Record<string, Status>> {
   if (pubkeys.length === 0) return {};
-  const evs = await pool().querySync(RELAYS, {
-    kinds: [30315],
-    authors: pubkeys,
-    "#d": ["general"],
-  });
+  const evs = await pool().querySync(
+    RELAYS,
+    {
+      kinds: [30315],
+      authors: pubkeys,
+      "#d": ["general"],
+    },
+    { maxWait: MAX_WAIT },
+  );
   const map: Record<string, Status> = {};
   // Ascendente → el último (más nuevo) gana.
   for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
@@ -167,6 +183,25 @@ export async function publishPlayingStatus(
       created_at: now(),
       tags,
       content: `Jugando ${title} en Luna Negra`,
+    }),
+  );
+}
+
+/**
+ * Limpia la presencia "jugando" (NIP-38): publica un estado vacío con
+ * expiración inmediata para que los amigos dejen de ver el juego como abierto
+ * (`fetchStatuses` ignora los estados sin contenido). Best-effort.
+ */
+export async function clearPlayingStatus(): Promise<void> {
+  await publish(
+    await sign({
+      kind: 30315,
+      created_at: now(),
+      tags: [
+        ["d", "general"],
+        ["expiration", String(now() + 1)],
+      ],
+      content: "",
     }),
   );
 }
