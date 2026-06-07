@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
 import { MultiplayerPanel } from "@/components/multiplayer-panel";
+import { RegisterGame } from "@/providers/game-context";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
 import { priceLabel } from "@/lib/format";
@@ -86,6 +87,13 @@ export default async function GamePage({
 
           {game.gameUrl && (owned || game.priceSats === 0) ? (
             <Suspense fallback={null}>
+              {/* Registra el juego para que la lista de amigos ofrezca invitar. */}
+              <RegisterGame
+                gameId={game.id}
+                slug={game.slug}
+                title={game.title}
+                gameUrl={game.gameUrl}
+              />
               <MultiplayerPanel
                 gameId={game.id}
                 slug={game.slug}

@@ -3,8 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/providers/session-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
+import { GameContextProvider } from "@/providers/game-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
+import { FriendsSidebar } from "@/components/friends-sidebar";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -25,9 +27,13 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col bg-[#0a0c10] text-zinc-100">
         <SessionProvider>
           <NotificationsProvider>
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
+            <GameContextProvider>
+              <Navbar />
+              {/* Reservamos espacio a la derecha para la lista de amigos fija. */}
+              <main className="flex-1 xl:pr-72">{children}</main>
+              <Footer />
+              <FriendsSidebar />
+            </GameContextProvider>
           </NotificationsProvider>
         </SessionProvider>
       </body>

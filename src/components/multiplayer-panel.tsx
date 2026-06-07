@@ -6,8 +6,6 @@ import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import {
-  publishPlayingStatus,
-  clearPlayingStatus,
   fetchContacts,
   fetchProfiles,
   sendDm,
@@ -16,7 +14,8 @@ import {
   shortId,
   pubkeyFromNpub,
 } from "@/lib/nostr-social";
-import { buildInviteMessage, setActiveRoom, watchGameWindow } from "@/lib/invite";
+import { buildInviteMessage, setActiveRoom } from "@/lib/invite";
+import { launchGameRoom } from "@/lib/room-launch";
 
 type InviteResp = { token: string; roomId: string; host: boolean };
 
@@ -63,26 +62,15 @@ export function MultiplayerPanel({
 
   const launch = useCallback(
     (token: string, roomId: string, opts?: { win?: Window | null }) => {
-      const url = new URL(gameUrl, window.location.origin);
-      url.searchParams.set("inviteToken", token);
-      url.searchParams.set("room", roomId);
-      const dest = url.toString();
-      // Pestaña nueva: si el caller ya abrió una (sincrónicamente, dentro del
-      // gesto del click) la reutilizamos para esquivar el bloqueo de popups; el
-      // host se queda en la tienda para poder invitar amigos.
-      if (opts?.win) opts.win.location.href = dest;
-      else window.open(dest, "_blank", "noopener");
-      // Presencia NIP-38 "jugando X" con el link de la sala → los amigos pueden
-      // unirse desde /friends sin que les pase el link (descubrimiento vía Nostr).
-      const link = new URL(
-        `/game/${slug}?room=${encodeURIComponent(roomId)}`,
-        window.location.origin,
-      ).toString();
-      publishPlayingStatus(title, link).catch(() => {});
-      // Al cerrar la pestaña del juego: limpiar la presencia y la sala activa
-      // para dejar de mostrar que lo tenemos abierto (acá y en /friends).
-      watchGameWindow(opts?.win ?? null, () => {
-        clearPlayingStatus().catch(() => {});
+      // El host se queda en la tienda para poder invitar amigos; el juego se
+      // abre en la pestaña que el caller ya abrió (esquiva el bloqueo de popups).
+      launchGameRoom({
+        gameUrl,
+        slug,
+        title,
+        token,
+        roomId,
+        win: opts?.win,
       });
     },
     [gameUrl, slug, title],
