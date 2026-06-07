@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
@@ -34,11 +34,14 @@ export function MultiplayerPanel({
   slug,
   title,
   gameUrl,
+  canPlay,
 }: {
   gameId: string;
   slug: string;
   title: string;
   gameUrl: string;
+  /** El usuario puede jugar ya (lo compró o el juego es gratis) → auto-unirse. */
+  canPlay: boolean;
 }) {
   const { user, login } = useSession();
   const { notify } = useNotify();
@@ -58,10 +61,16 @@ export function MultiplayerPanel({
   const [invited, setInvited] = useState<Set<string>>(new Set());
 
   const launch = useCallback(
-    (token: string, roomId: string) => {
+    (token: string, roomId: string, opts?: { sameTab?: boolean }) => {
       const url = new URL(gameUrl, window.location.origin);
       url.searchParams.set("inviteToken", token);
       url.searchParams.set("room", roomId);
+      // Auto-unirse (invitado): navegamos en la misma pestaña. window.open tras un
+      // fetch async lo bloquea el navegador por no ser un gesto directo.
+      if (opts?.sameTab) {
+        window.location.href = url.toString();
+        return;
+      }
       window.open(url.toString(), "_blank", "noopener");
       // Presencia NIP-38 "jugando X" con el link de la sala → los amigos pueden
       // unirse desde /friends sin que les pase el link (descubrimiento vía Nostr).
@@ -93,14 +102,27 @@ export function MultiplayerPanel({
     [],
   );
 
-  async function joinRoom() {
-    if (!roomParam) return;
-    // Unirse a una sala existente.
-    const d = await post(
-      `/api/games/${gameId}/rooms/${encodeURIComponent(roomParam)}/members`,
-    );
-    if (d) launch(d.token, d.roomId);
-  }
+  const joinRoom = useCallback(
+    async (opts?: { sameTab?: boolean }) => {
+      if (!roomParam) return;
+      // Unirse a una sala existente.
+      const d = await post(
+        `/api/games/${gameId}/rooms/${encodeURIComponent(roomParam)}/members`,
+      );
+      if (d) launch(d.token, d.roomId, opts);
+    },
+    [roomParam, post, gameId, launch],
+  );
+
+  // Auto-unirse al entrar por una invitación si ya puede jugar (comprado/gratis):
+  // lo lleva directo al juego, en la misma pestaña.
+  const autoJoined = useRef(false);
+  useEffect(() => {
+    if (autoJoined.current) return;
+    if (!roomParam || !user || !canPlay) return;
+    autoJoined.current = true;
+    void joinRoom({ sameTab: true });
+  }, [roomParam, user, canPlay, joinRoom]);
 
   async function createRoom() {
     // Crear una sala nueva (host).
@@ -206,15 +228,20 @@ export function MultiplayerPanel({
     );
   }
 
-  // Modo "unirse" (vino por un link de invitación).
+  // Modo "unirse" (vino por un link de invitación). Si puede jugar, el efecto de
+  // auto-unirse ya lo está mandando al juego; mostramos "Entrando…".
   if (roomParam) {
     return (
       <div className="mt-4 rounded-lg border border-sky-500/30 bg-sky-500/10 p-4">
         <p className="text-sm text-zinc-300">
           Te invitaron a la sala <code className="text-sky-300">{roomParam}</code>.
         </p>
-        <Button className="mt-3" onClick={joinRoom} disabled={loading}>
-          {loading ? "Entrando…" : "Unirse y jugar"}
+        <Button
+          className="mt-3"
+          onClick={() => joinRoom()}
+          disabled={loading || (canPlay && !error)}
+        >
+          {canPlay && !error ? "Entrando…" : loading ? "Entrando…" : "Unirse y jugar"}
         </Button>
         {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
       </div>

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { fetchProfile, profileName } from "@/lib/nostr";
+import { warmUpPermissions } from "@/lib/nostr-social";
 
 export type SessionUser = {
   id: string;
@@ -42,6 +43,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Pide todos los permisos NIP-07 de una sola vez al establecer la sesión (login
+  // o restauración por cookie), para no ir pidiéndolos por cada acción. Una vez
+  // por sesión de navegador; si ya están "recordados", no muestra ningún prompt.
+  useEffect(() => {
+    if (!user) return;
+    if (typeof window === "undefined" || !window.nostr) return;
+    if (sessionStorage.getItem("ln_nostr_warmed")) return;
+    sessionStorage.setItem("ln_nostr_warmed", "1");
+    void warmUpPermissions(user.pubkey);
+  }, [user]);
 
   const login = useCallback(async () => {
     setError(null);

@@ -84,13 +84,14 @@ export default async function GamePage({
             />
           </div>
 
-          {owned && game.gameUrl ? (
+          {game.gameUrl && (owned || game.priceSats === 0) ? (
             <Suspense fallback={null}>
               <MultiplayerPanel
                 gameId={game.id}
                 slug={game.slug}
                 title={game.title}
                 gameUrl={game.gameUrl}
+                canPlay={owned || game.priceSats === 0}
               />
             </Suspense>
           ) : null}
@@ -114,7 +115,7 @@ export default async function GamePage({
         </section>
       ) : null}
 
-      <ActivitySection slug={game.slug} />
+      <ActivitySection slug={game.slug} title={game.title} />
       <ReviewsSection gameId={game.id} owned={owned} />
     </div>
   );

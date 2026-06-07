@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   fetchGameActivity,
   fetchProfiles,
+  gameNoteText,
   profileName,
   publishGameNote,
   shortId,
@@ -15,7 +16,13 @@ import {
 } from "@/lib/nostr-social";
 import { timeAgo } from "@/lib/format";
 
-export function ActivitySection({ slug }: { slug: string }) {
+export function ActivitySection({
+  slug,
+  title,
+}: {
+  slug: string;
+  title: string;
+}) {
   const { user } = useSession();
   const [notes, setNotes] = useState<ActivityNote[] | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
@@ -39,7 +46,8 @@ export function ActivitySection({ slug }: { slug: string }) {
     setPosting(true);
     setErr(null);
     try {
-      await publishGameNote(slug, text.trim());
+      const gameUrl = `${window.location.origin}/game/${slug}`;
+      await publishGameNote(slug, text.trim(), title, gameUrl);
       setText("");
       setTimeout(load, 1000);
     } catch (e) {
@@ -93,7 +101,7 @@ export function ActivitySection({ slug }: { slug: string }) {
                 <span>· {timeAgo(n.created_at)}</span>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-200">
-                {n.content}
+                {gameNoteText(n.content)}
               </p>
             </li>
           ))}

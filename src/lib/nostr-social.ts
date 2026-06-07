@@ -1,6 +1,6 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import type { SubCloser } from "nostr-tools/abstract-pool";
-import { RELAYS } from "./constants";
+import { APP_NAME, RELAYS } from "./constants";
 
 export type Profile = {
   name?: string;
@@ -52,6 +52,42 @@ async function sign(unsigned: {
 
 async function publish(ev: Event): Promise<void> {
   await Promise.allSettled(pool().publish(RELAYS, ev));
+}
+
+// Kinds que Luna Negra firma con la extensión: 1 (notas), 4 (DM),
+// 27235 (login NIP-98), 30315 (presencia NIP-38).
+const SIGN_KINDS = [1, 4, 27235, 30315];
+
+/**
+ * "Calienta" los permisos NIP-07 al inicio de la sesión: dispara una vez cada
+ * operación que usa Luna Negra (nip04 encrypt/decrypt + signEvent de cada kind)
+ * para que el usuario los apruebe todos juntos (marcando "recordar" en la
+ * extensión) y no le salten permisos por cada acción.
+ *
+ * Best-effort: los eventos NO se publican y cada denegación se ignora.
+ */
+export async function warmUpPermissions(pubkey: string): Promise<void> {
+  const nostr = window.nostr;
+  if (!nostr) return;
+
+  // nip04: lo más repetitivo (chat + notificaciones descifran constantemente).
+  if (nostr.nip04) {
+    try {
+      const ct = await nostr.nip04.encrypt(pubkey, "warmup");
+      await nostr.nip04.decrypt(pubkey, ct);
+    } catch {
+      /* permiso denegado: seguimos */
+    }
+  }
+
+  // signEvent por cada kind (eventos descartables, nunca se publican).
+  for (const kind of SIGN_KINDS) {
+    try {
+      await nostr.signEvent({ kind, created_at: now(), tags: [], content: "" });
+    } catch {
+      /* permiso denegado: seguimos */
+    }
+  }
 }
 
 // --- Amigos (NIP-02) y perfiles (kind:0) ---
@@ -164,18 +200,42 @@ export async function fetchGameActivity(slug: string): Promise<ActivityNote[]> {
     }));
 }
 
+// Marca que separa el texto del usuario del pie de contexto. Empezar el pie con
+// este string permite recortarlo al mostrar la nota dentro de Luna Negra.
+const GAME_NOTE_FOOTER_MARK = "\n\n🎮 Sobre «";
+
+/**
+ * Publica un comentario de juego como kind:1. El `content` lleva un pie con el
+ * título, link a la ficha y mención de Luna Negra para que la nota tenga
+ * contexto en cualquier cliente Nostr (no solo dentro de la tienda).
+ */
 export async function publishGameNote(
   slug: string,
   content: string,
+  title: string,
+  gameUrl: string,
 ): Promise<void> {
+  const footer = `${GAME_NOTE_FOOTER_MARK}${title}» en ${APP_NAME}\n${gameUrl}`;
   await publish(
     await sign({
       kind: 1,
       created_at: now(),
-      tags: [["t", gameTag(slug)]],
-      content,
+      tags: [
+        ["t", gameTag(slug)],
+        ["r", gameUrl],
+      ],
+      content: `${content.trim()}${footer}`,
     }),
   );
+}
+
+/**
+ * Devuelve solo el texto que escribió el usuario, sin el pie de contexto que
+ * `publishGameNote` agrega. Las notas antiguas (sin pie) se devuelven intactas.
+ */
+export function gameNoteText(content: string): string {
+  const i = content.indexOf(GAME_NOTE_FOOTER_MARK);
+  return i === -1 ? content : content.slice(0, i);
 }
 
 // --- Chat (NIP-04, kind:4) ---
