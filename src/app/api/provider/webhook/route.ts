@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { generateWebhookSecret } from "@/lib/webhooks";
+import { buildWebhookUpdate } from "@/lib/webhooks";
 
 // Configura la URL de webhook del proveedor y (re)genera su secreto de firma.
 export async function POST(req: Request) {
@@ -20,21 +20,15 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const url = typeof body.webhookUrl === "string" ? body.webhookUrl.trim() : "";
-  if (url && !/^https?:\/\//.test(url)) {
+  const data = buildWebhookUpdate(body.webhookUrl, {
+    regenerate: body.regenerate === true,
+    currentSecret: provider.webhookSecret,
+  });
+  if (!data) {
     return NextResponse.json(
       { error: "La URL debe empezar con http(s)://" },
       { status: 400 },
     );
-  }
-
-  const data: { webhookUrl: string | null; webhookSecret?: string | null } = {
-    webhookUrl: url || null,
-  };
-  if (!url) {
-    data.webhookSecret = null; // sin URL, no hace falta secreto
-  } else if (body.regenerate === true || !provider.webhookSecret) {
-    data.webhookSecret = generateWebhookSecret();
   }
 
   const updated = await prisma.provider.update({

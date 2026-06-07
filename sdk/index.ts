@@ -173,6 +173,12 @@ export type PlayerProfile = {
   avatarUrl: string | null;
 };
 
+/** Config de webhook del proveedor. `secret` (whsec_…) firma los webhooks; `null` si no hay URL. */
+export type WebhookConfig = {
+  url: string | null;
+  secret: string | null;
+};
+
 export type LunaNegraClient = {
   /** Valida un token de acceso. Devuelve el entitlement o `null` si no es válido. */
   verifyAccess(token: string): Promise<Entitlement | null>;
@@ -202,6 +208,14 @@ export type LunaNegraClient = {
     slug: string,
     content: string,
   ): Promise<{ ok: boolean; eventId: string; pubkey: string }>;
+  /** Lee la config de webhook actual del proveedor (URL + secreto), sin rotar (requiere `apiKey`). */
+  getWebhook(): Promise<WebhookConfig>;
+  /**
+   * Registra/actualiza la URL de webhook usando solo la API key y devuelve el
+   * secreto de firma (requiere `apiKey`). `url` vacía borra la config.
+   * `opts.regenerate: true` ROTA el secreto e invalida el anterior.
+   */
+  setWebhook(url: string, opts?: { regenerate?: boolean }): Promise<WebhookConfig>;
   /** [Avanzado] Construye el evento (sin firmar) del resultado; firmalo con tu clave de oráculo. */
   buildResultEvent(betId: string, winnerNpubs: string[]): UnsignedEvent;
   /** [Avanzado] Reporta el resultado posteando el evento firmado por tu oráculo. */
@@ -355,6 +369,31 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo publicar la actividad");
       return d as { ok: boolean; eventId: string; pubkey: string };
+    },
+
+    async getWebhook() {
+      if (!opts.apiKey) throw new Error("getWebhook requiere `apiKey`");
+      const r = await fetch(base + "/api/v1/provider/webhook", {
+        headers: { authorization: "Bearer " + opts.apiKey },
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo leer el webhook");
+      return d as WebhookConfig;
+    },
+
+    async setWebhook(url, opts2) {
+      if (!opts.apiKey) throw new Error("setWebhook requiere `apiKey`");
+      const r = await fetch(base + "/api/v1/provider/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + opts.apiKey,
+        },
+        body: JSON.stringify({ url, regenerate: opts2?.regenerate === true }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo configurar el webhook");
+      return d as WebhookConfig;
     },
 
     buildResultEvent(betId, winnerNpubs) {

@@ -39,6 +39,21 @@
           }
         }
       },
+      "WebhookConfig": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL de webhook configurada (null si no hay)."
+          },
+          "secret": {
+            "type": "string",
+            "nullable": true,
+            "description": "Secreto de firma HMAC (whsec_…); null si no hay URL."
+          }
+        }
+      },
       "EntitlementVerify": {
         "type": "object",
         "properties": {
@@ -672,6 +687,84 @@
           },
           "409": {
             "description": "ORACLE_NOT_PROVISIONED",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider/webhook": {
+      "get": {
+        "summary": "Leer la config de webhook del proveedor",
+        "description": "Devuelve la URL y el secreto de firma (`whsec_…`) actuales del proveedor de la API key, sin rotarlos. Pensado para leer el secreto al arrancar el game server.",
+        "tags": ["Webhooks"],
+        "security": [{ "apiKeyAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Config actual",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WebhookConfig" }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Registrar la URL de webhook y obtener/rotar el secreto",
+        "description": "Auto-registro usando solo la API key (sin panel humano). Setea `webhookUrl` y devuelve el secreto de firma. Genera el secreto si no había, o lo ROTA (invalidando el anterior) si `regenerate:true`. Una `url` vacía/ausente borra URL y secreto. El secreto solo se devuelve por este endpoint al dueño de la key; nunca se loguea.",
+        "tags": ["Webhooks"],
+        "security": [{ "apiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "URL http(s) del webhook. Vacía/ausente borra la config."
+                  },
+                  "regenerate": {
+                    "type": "boolean",
+                    "description": "Si true, rota el secreto e invalida el anterior."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Config aplicada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WebhookConfig" }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_WEBHOOK_URL (la URL no empieza con http(s)://)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
             }

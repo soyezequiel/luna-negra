@@ -228,8 +228,28 @@ o `funded` (no después de resolverse): si no, error `CANNOT_CANCEL` / `ALREADY_
 > reembolsa cada depósito confirmado, y los pagos = pozo − comisión.
 
 ## Paso 6 · Webhooks
-Configurá una **URL de webhook** en /provider. Luna Negra te avisa (POST JSON, con
-reintentos) cuando pasa algo:
+Luna Negra te avisa (POST JSON, con reintentos) cuando pasa algo. Configurás la
+**URL de webhook** y obtenés tu **secreto de firma** (`whsec_…`).
+
+**Auto-registro por API key (recomendado).** Tu game server registra su URL y lee
+el secreto usando solo la API key — sin pasar por el panel humano:
+```ts
+const { secret } = await luna.setWebhook("https://tu-juego.com/lunanegra/webhook");
+// guardá `secret` (whsec_…): es lo único que necesitás para verificar firmas.
+const cfg = await luna.getWebhook();   // { url, secret } actual, al arrancar
+```
+Equivalente HTTP: `POST /api/v1/provider/webhook` con `Authorization: Bearer ln_sk_…`
+y body `{ "url": "https://…", "regenerate"?: true }` → `{ url, secret }`.
+`GET /api/v1/provider/webhook` (misma auth) devuelve `{ url, secret }` sin rotar.
+> El **secreto solo se devuelve por estos endpoints** al dueño de la API key; nunca
+> se loguea. `regenerate: true` **rota** el secreto e **invalida el anterior** (los
+> webhooks en vuelo firmados con el viejo dejarán de validar). `url` vacía borra la
+> config (URL y secreto).
+
+**Alternativa manual (panel).** También podés cargar la URL a mano en /provider; ahí
+se muestra y regenera el secreto.
+
+Eventos disponibles: 
 
 | Evento | Cuándo | `data` (campos clave) |
 |---|---|---|
@@ -286,6 +306,8 @@ y body `{ "content": "…" }`. La nota se publica como kind:1 con el tag
 | POST | `/api/v1/bets/{betId}/cancel` | Bearer (API key) | Cancelar y reembolsar |
 | POST | `/api/v1/bets/{betId}/result` | Bearer (API key) · o evento firmado | Reportar ganador (`winners:[]` = anular) |
 | POST | `/api/v1/games/{slug}/activity` | Bearer (API key) | Publicar nota en el feed de Actividad |
+| GET | `/api/v1/provider/webhook` | Bearer (API key) | Leer URL + secreto de webhook |
+| POST | `/api/v1/provider/webhook` | Bearer (API key) | Registrar URL y obtener/rotar secreto |
 
 ## Checklist de integración
 - [ ] Publicaste tu juego en /provider (con Lightning Address).

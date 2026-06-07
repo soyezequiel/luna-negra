@@ -11,6 +11,40 @@ export function generateWebhookSecret(): string {
   return "whsec_" + randomBytes(24).toString("base64url");
 }
 
+const WEBHOOK_URL_RE = /^https?:\/\//;
+
+/** Patch de Prisma para `provider.webhookUrl` / `webhookSecret`. */
+export type WebhookUpdate = {
+  webhookUrl: string | null;
+  webhookSecret?: string | null;
+};
+
+/**
+ * Resuelve la config de webhook a aplicar (compartido entre la ruta de sesión y
+ * la ruta v1 por API key). Devuelve el patch de Prisma, o `null` si la URL es
+ * inválida (no empieza con http(s)://).
+ *
+ * Semántica:
+ *  - URL vacía/ausente ⇒ borra `webhookUrl` y `webhookSecret`.
+ *  - `regenerate === true` o sin secreto previo ⇒ genera un secreto nuevo
+ *    (rotarlo invalida el anterior).
+ *  - URL válida con secreto existente y sin `regenerate` ⇒ conserva el secreto.
+ */
+export function buildWebhookUpdate(
+  rawUrl: unknown,
+  opts: { regenerate?: boolean; currentSecret: string | null },
+): WebhookUpdate | null {
+  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (url && !WEBHOOK_URL_RE.test(url)) return null; // URL inválida
+  const data: WebhookUpdate = { webhookUrl: url || null };
+  if (!url) {
+    data.webhookSecret = null; // sin URL, no hace falta secreto
+  } else if (opts.regenerate === true || !opts.currentSecret) {
+    data.webhookSecret = generateWebhookSecret();
+  }
+  return data;
+}
+
 export function signWebhook(body: string, secret: string): string {
   return createHmac("sha256", secret).update(body).digest("hex");
 }
