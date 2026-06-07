@@ -19,7 +19,12 @@ import {
   shortId,
   type Profile,
 } from "@/lib/nostr-social";
-import { parseInvite, inviteHref } from "@/lib/invite";
+import {
+  parseInvite,
+  parseInviteTitle,
+  inviteHref,
+  addPendingInvite,
+} from "@/lib/invite";
 import { joinRoomAndPlay } from "@/lib/room-launch";
 
 type Toast = { id: number; title: string; body?: string; href?: string };
@@ -163,6 +168,14 @@ export function NotificationsProvider({
       if (plain && plain !== DECRYPT_FAIL) {
         const invite = parseInvite(plain);
         if (invite) {
+          // Persistimos la invitación para que quede anclada en la barra de
+          // amigos (no solo como toast efímero).
+          addPendingInvite({
+            ...invite,
+            fromPubkey: senderPubkey,
+            title: parseInviteTitle(plain) ?? invite.slug,
+            at: Date.now(),
+          });
           const title = `🎮 ${name} te invitó a jugar`;
           const body = "Tocá para unirte a la sala";
           const href = inviteHref(invite);

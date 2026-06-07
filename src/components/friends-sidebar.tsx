@@ -6,15 +6,25 @@ import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { useGameContext } from "@/providers/game-context";
 import { useFriends } from "@/hooks/use-friends";
-import { profileName, shortId, sendDm, type Status } from "@/lib/nostr-social";
+import {
+  profileName,
+  shortId,
+  npubOf,
+  sendDm,
+  type Status,
+} from "@/lib/nostr-social";
 import {
   buildInviteMessage,
   parseInvite,
   getActiveRoom,
   setActiveRoom,
   onActiveRoomChange,
+  getPendingInvites,
+  onPendingInvitesChange,
+  removePendingInvite,
   type ActiveRoom,
   type Invite,
+  type PendingInvite,
 } from "@/lib/invite";
 import { launchGameRoom, joinRoomAndPlay } from "@/lib/room-launch";
 import { Button } from "@/components/ui/button";
@@ -46,6 +56,8 @@ export function FriendsSidebar() {
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Invitaciones recibidas (DMs): anclan al amigo arriba con opción de unirse.
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   // Roster indexado por sala para no mostrar datos de una sala anterior.
   const [roster, setRoster] = useState<{
     roomId: string;
@@ -55,6 +67,11 @@ export function FriendsSidebar() {
   useEffect(() => {
     setActiveRoomState(getActiveRoom());
     return onActiveRoomChange(() => setActiveRoomState(getActiveRoom()));
+  }, []);
+
+  useEffect(() => {
+    setPendingInvites(getPendingInvites());
+    return onPendingInvitesChange(() => setPendingInvites(getPendingInvites()));
   }, []);
 
   // Al cambiar de juego, reseteamos a quién marcamos como invitado. Lo hacemos
@@ -217,7 +234,32 @@ export function FriendsSidebar() {
     });
   }
 
+  // Aceptar una invitación recibida por DM: une a la sala y la saca del anclado.
+  function joinPendingInvite(invite: PendingInvite) {
+    joinRoom(invite);
+    removePendingInvite(invite.fromPubkey);
+  }
+
   const canInvite = Boolean(currentGame);
+
+  // Invitaciones recibidas indexadas por emisor, para anclar a ese amigo arriba.
+  const inviteByPk = new Map(pendingInvites.map((i) => [i.fromPubkey, i]));
+
+  // Amigos con invitación pendiente primero (orden estable conserva el resto).
+  const sortedFriends = friends
+    ? [...friends].sort(
+        (a, b) =>
+          (inviteByPk.has(a.pubkey) ? 0 : 1) -
+          (inviteByPk.has(b.pubkey) ? 0 : 1),
+      )
+    : friends;
+
+  // Invitaciones de alguien que no seguís: no entran en la lista, las anclamos
+  // arriba para que no se pierdan.
+  const friendPks = new Set((friends ?? []).map((f) => f.pubkey));
+  const orphanInvites = pendingInvites.filter(
+    (i) => !friendPks.has(i.fromPubkey),
+  );
 
   return (
     <aside className="fixed right-0 top-14 bottom-0 z-40 hidden w-72 flex-col border-l border-white/10 bg-[#0b0d12]/80 backdrop-blur xl:flex">
@@ -258,6 +300,42 @@ export function FriendsSidebar() {
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {orphanInvites.length > 0 ? (
+          <ul className="mb-2 space-y-1">
+            {orphanInvites.map((inv) => (
+              <li
+                key={inv.fromPubkey}
+                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 py-2"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
+                  <span className="truncate text-sm font-medium">
+                    {shortId(npubOf(inv.fromPubkey))}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-emerald-300">
+                  🎮 Te invitó a jugar{" "}
+                  <span className="font-medium">{inv.title}</span>
+                </p>
+                <div className="mt-1 flex gap-1.5">
+                  <button
+                    onClick={() => joinPendingInvite(inv)}
+                    className="flex-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                  >
+                    Unirse
+                  </button>
+                  <button
+                    onClick={() => removePendingInvite(inv.fromPubkey)}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                    aria-label="Descartar invitación"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {loading ? null : !user ? (
           <div className="px-1 py-2">
             <p className="text-xs text-zinc-400">
@@ -275,13 +353,18 @@ export function FriendsSidebar() {
           </p>
         ) : (
           <ul className="space-y-1">
-            {friends.map((f) => {
+            {sortedFriends!.map((f) => {
               const name = profileName(f.profile, shortId(f.npub));
               const invite = roomInvite(f.status);
+              const pending = inviteByPk.get(f.pubkey);
               return (
                 <li
                   key={f.pubkey}
-                  className="rounded-lg px-2 py-2 hover:bg-white/5"
+                  className={
+                    pending
+                      ? "rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 py-2"
+                      : "rounded-lg px-2 py-2 hover:bg-white/5"
+                  }
                 >
                   <div className="flex items-center gap-2">
                     {f.profile?.picture ? (
@@ -322,6 +405,29 @@ export function FriendsSidebar() {
                       ) : null}
                     </div>
                   </div>
+                  {pending ? (
+                    <div className="mt-1.5">
+                      <p className="text-[11px] text-emerald-300">
+                        🎮 Te invitó a jugar{" "}
+                        <span className="font-medium">{pending.title}</span>
+                      </p>
+                      <div className="mt-1 flex gap-1.5">
+                        <button
+                          onClick={() => joinPendingInvite(pending)}
+                          className="flex-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                        >
+                          Unirse
+                        </button>
+                        <button
+                          onClick={() => removePendingInvite(f.pubkey)}
+                          className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+                          aria-label="Descartar invitación"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {canInvite ? (
                     <button
                       onClick={() => inviteToGame(f.pubkey, name)}

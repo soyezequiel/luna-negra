@@ -10,12 +10,14 @@ export function PlayButton({
   title,
   slug,
   className,
+  label = "Jugar",
 }: {
   gameId: string;
   gameUrl: string;
   title?: string;
   slug?: string;
   className?: string;
+  label?: string;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -44,7 +46,7 @@ export function PlayButton({
 
   return (
     <Button className={className} onClick={play} disabled={loading}>
-      {loading ? "Abriendo…" : "Jugar"}
+      {loading ? "Abriendo…" : label}
     </Button>
   );
 }

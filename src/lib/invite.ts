@@ -38,6 +38,12 @@ export function parseInvite(text: string): Invite | null {
   return { slug: m[1], roomId: m[2] };
 }
 
+/** Extrae el título del juego del texto de invitación (ver buildInviteMessage). */
+export function parseInviteTitle(text: string): string | null {
+  const m = /Te invito a jugar (.+?) en Luna Negra/i.exec(text);
+  return m ? m[1].trim() : null;
+}
+
 /** Path relativo para los <Link> internos de la app. */
 export function inviteHref({ slug, roomId }: Invite): string {
   return `/game/${slug}?room=${encodeURIComponent(roomId)}`;
@@ -139,4 +145,78 @@ export function watchGameWindow(
 export function onActiveRoomChange(cb: () => void): () => void {
   window.addEventListener(ACTIVE_ROOM_EVENT, cb);
   return () => window.removeEventListener(ACTIVE_ROOM_EVENT, cb);
+}
+
+// --- Invitaciones recibidas (pendientes de aceptar) ---
+// Cuando llega un DM de invitación, lo guardamos acá para que la barra de amigos
+// pueda anclar al amigo que invitó arriba de todo con la opción de unirse. Se
+// guarda una invitación por emisor (la última gana) y expira como la presencia.
+
+export type PendingInvite = Invite & {
+  /** Pubkey (hex) de quien invitó. */
+  fromPubkey: string;
+  /** Título del juego, para mostrar "te invitó a jugar X". */
+  title: string;
+  at: number;
+};
+
+const PENDING_INVITES_KEY = "ln_pending_invites";
+const PENDING_INVITE_TTL_MS = 3_600_000; // 1h
+const PENDING_INVITES_EVENT = "ln:pending-invites-change";
+
+function emitPendingInvitesChange(): void {
+  try {
+    window.dispatchEvent(new Event(PENDING_INVITES_EVENT));
+  } catch {
+    /* SSR / sin window: no-op */
+  }
+}
+
+/** Invitaciones pendientes vigentes (descarta las expiradas). */
+export function getPendingInvites(): PendingInvite[] {
+  try {
+    const raw = localStorage.getItem(PENDING_INVITES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as PendingInvite[];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (i) =>
+        i &&
+        typeof i.at === "number" &&
+        Date.now() - i.at <= PENDING_INVITE_TTL_MS,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writePendingInvites(list: PendingInvite[]): void {
+  try {
+    localStorage.setItem(PENDING_INVITES_KEY, JSON.stringify(list));
+  } catch {
+    /* sin localStorage: no pasa nada */
+  }
+  emitPendingInvitesChange();
+}
+
+/** Registra (o reemplaza) la invitación pendiente de un emisor. */
+export function addPendingInvite(invite: PendingInvite): void {
+  const list = getPendingInvites().filter(
+    (i) => i.fromPubkey !== invite.fromPubkey,
+  );
+  list.push(invite);
+  writePendingInvites(list);
+}
+
+/** Quita la invitación pendiente de un emisor (al unirse o descartar). */
+export function removePendingInvite(fromPubkey: string): void {
+  writePendingInvites(
+    getPendingInvites().filter((i) => i.fromPubkey !== fromPubkey),
+  );
+}
+
+/** Suscribe a cambios en las invitaciones pendientes. */
+export function onPendingInvitesChange(cb: () => void): () => void {
+  window.addEventListener(PENDING_INVITES_EVENT, cb);
+  return () => window.removeEventListener(PENDING_INVITES_EVENT, cb);
 }

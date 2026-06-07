@@ -80,6 +80,7 @@ export default function LibraryPage() {
                   title={g.title}
                   slug={g.slug}
                   className="w-full"
+                  label="Abrir"
                 />
               ) : (
                 <Button variant="outline" className="w-full" disabled>
