@@ -94,6 +94,17 @@ export default function MessagesPage() {
     };
   }, [events, selected, user]);
 
+  // Solo la última invitación recibida en este chat es válida; las anteriores
+  // quedan invalidadas. El hilo está ordenado ascendente, así que la última que
+  // coincide es la más nueva. (Se aplica a las recibidas, no a las que envié yo.)
+  const latestInviteId = useMemo(() => {
+    let id: string | null = null;
+    for (const m of thread) {
+      if (!m.fromMe && parseInvite(m.text)) id = m.id;
+    }
+    return id;
+  }, [thread]);
+
   async function send() {
     if (!selected || !text.trim()) return;
     setSending(true);
@@ -190,6 +201,9 @@ export default function MessagesPage() {
                 ) : (
                   thread.map((m) => {
                     const invite = parseInvite(m.text);
+                    // Invitación recibida superada por otra más nueva del chat.
+                    const superseded =
+                      !!invite && !m.fromMe && m.id !== latestInviteId;
                     return (
                       <div
                         key={m.id}
@@ -202,12 +216,18 @@ export default function MessagesPage() {
                         {invite ? (
                           <div className="flex flex-col gap-2">
                             <span>🎮 Invitación a una sala multijugador</span>
-                            <Link
-                              href={inviteHref(invite)}
-                              className="self-start rounded-md bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30"
-                            >
-                              Unirse a la sala
-                            </Link>
+                            {superseded ? (
+                              <span className="self-start rounded-md bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-500 line-through">
+                                Invitación reemplazada por una más nueva
+                              </span>
+                            ) : (
+                              <Link
+                                href={inviteHref(invite)}
+                                className="self-start rounded-md bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30"
+                              >
+                                Unirse a la sala
+                              </Link>
+                            )}
                           </div>
                         ) : (
                           m.text
