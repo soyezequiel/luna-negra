@@ -143,12 +143,26 @@ export async function fetchStatuses(
     },
     { maxWait: MAX_WAIT },
   );
+  // kind:30315 es reemplazable: nos quedamos con el evento MÁS NUEVO por autor.
+  // (Distintos relays pueden devolver versiones viejas y nuevas a la vez.)
+  const latest = new Map<string, (typeof evs)[number]>();
+  for (const ev of evs) {
+    const prev = latest.get(ev.pubkey);
+    if (!prev || ev.created_at > prev.created_at) latest.set(ev.pubkey, ev);
+  }
+
+  const nowSec = now();
   const map: Record<string, Status> = {};
-  // Ascendente → el último (más nuevo) gana.
-  for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
+  for (const [pubkey, ev] of latest) {
+    // Estado limpiado (content vacío): el amigo dejó de jugar. Lo evaluamos acá,
+    // sobre el evento más nuevo, para que el "clear" pise al "Jugando X" viejo.
     if (!ev.content) continue;
+    // NIP-40: muchos relays no descartan eventos vencidos, así que filtramos por
+    // el tag `expiration` nosotros mismos.
+    const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
+    if (exp && Number(exp) <= nowSec) continue;
     const url = ev.tags.find((t) => t[0] === "r")?.[1];
-    map[ev.pubkey] = { content: ev.content, url: url || undefined };
+    map[pubkey] = { content: ev.content, url: url || undefined };
   }
   return map;
 }
@@ -166,13 +180,15 @@ export async function publishStatus(content: string): Promise<void> {
 
 /**
  * Auto-publica presencia "jugando X" (NIP-38) al lanzar un juego.
- * Best-effort: incluye link al juego y expira (por defecto 1h) para que se
- * limpie solo. El contenido NO lleva emoji (la UI de /friends antepone 🎮).
+ * Best-effort: incluye link al juego y expira (por defecto 20 min) para que se
+ * limpie solo si el cierre limpio (clearPlayingStatus) no llega a correr —p. ej.
+ * el jugador cerró todo el navegador. El contenido NO lleva emoji (la UI de
+ * /friends antepone 🎮).
  */
 export async function publishPlayingStatus(
   title: string,
   gameUrl?: string,
-  ttlSeconds = 3600,
+  ttlSeconds = 1200,
 ): Promise<void> {
   const tags: string[][] = [["d", "general"]];
   if (gameUrl) tags.push(["r", gameUrl]);
