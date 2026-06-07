@@ -464,6 +464,22 @@ export default function ProviderPage() {
                         {STATUS_LABEL[g.status] ?? g.status} ·{" "}
                         {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
                       </p>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
+                        <span>ID:</span>
+                        <code className="break-all font-mono text-zinc-400">
+                          {g.id}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(g.id);
+                            setMsg("ID del juego copiado.");
+                          }}
+                          className="text-sky-400 hover:underline"
+                        >
+                          Copiar
+                        </button>
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button variant="ghost" onClick={() => startEdit(g)}>
