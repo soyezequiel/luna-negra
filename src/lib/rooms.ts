@@ -99,7 +99,13 @@ export type PresenceInput = {
 };
 
 export type PresenceResult =
-  | { ok: true; members: PresenceMember[]; missingPubkeys: string[] }
+  | {
+      ok: true;
+      members: PresenceMember[];
+      missingPubkeys: string[];
+      /** El host cerró el juego: la sala está cerrada y no readmite a nadie. */
+      closed: boolean;
+    }
   | { ok: false; code: string; message: string; status: number };
 
 /**
@@ -132,6 +138,20 @@ export async function resolvePresence(
   const leaving = input.leave === true;
   const score = Math.max(0, Math.min(1_000_000, Math.floor(Number(input.score) || 0)));
 
+  // Fila de la sala: nos dice quién es el host y si ya está cerrada. (Las salas
+  // externas/legacy sin fila Room no tienen cierre automático.)
+  const room = await prisma.room.findUnique({
+    where: { gameId_roomId: { gameId: inv.gameId, roomId } },
+  });
+
+  // Sala ya cerrada por el host: no readmitir. Limpiar mi presencia y avisar.
+  if (room?.closedAt) {
+    await prisma.roomPresence
+      .delete({ where: { roomId_clientId: { roomId, clientId } } })
+      .catch(() => {});
+    return { ok: true, members: [], missingPubkeys: [], closed: true };
+  }
+
   if (leaving) {
     await prisma.roomPresence
       .delete({ where: { roomId_clientId: { roomId, clientId } } })
@@ -142,6 +162,12 @@ export async function resolvePresence(
       create: { roomId, clientId, npub: inv.npub, host: inv.host, score },
       update: { npub: inv.npub, host: inv.host, score },
     });
+    // Sellar la llegada del host al primer latido (guard del cierre por ausencia).
+    if (inv.host && room && !room.hostSeenAt) {
+      await prisma.room
+        .update({ where: { id: room.id }, data: { hostSeenAt: new Date() } })
+        .catch(() => {});
+    }
   }
 
   const cutoff = new Date(Date.now() - STALE_MS);
@@ -151,6 +177,22 @@ export async function resolvePresence(
     select: { clientId: true, npub: true, host: true, score: true },
     orderBy: { createdAt: "asc" },
   });
+
+  // ¿El host cerró el juego? Dos señales: leave explícito del host, o el host ya
+  // estuvo presente (hostSeenAt) pero su presencia venció y no queda ninguno en
+  // el roster fresco. En ambos casos cerramos la sala para siempre y echamos a
+  // todos: los invitados reciben closed:true en su próximo latido.
+  const hostPresent = rows.some((r) => r.host);
+  const hostClosed =
+    !!room &&
+    ((leaving && inv.host) || (!!room.hostSeenAt && !hostPresent));
+  if (hostClosed && room) {
+    await prisma.room
+      .update({ where: { id: room.id }, data: { closedAt: new Date() } })
+      .catch(() => {});
+    await prisma.roomPresence.deleteMany({ where: { roomId } });
+    return { ok: true, members: [], missingPubkeys: [], closed: true };
+  }
 
   // Enriquecer con nombre/avatar cacheados (kind:0).
   const npubs = [...new Set(rows.map((m) => m.npub))];
@@ -169,5 +211,5 @@ export async function resolvePresence(
     .filter((u) => !u.displayName || !u.avatarUrl)
     .map((u) => u.pubkey);
 
-  return { ok: true, members, missingPubkeys };
+  return { ok: true, members, missingPubkeys, closed: false };
 }

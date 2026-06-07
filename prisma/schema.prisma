@@ -121,12 +121,18 @@ model IdempotencyKey {
 // que los invitados sepan quién creó la sala, aunque el host se desconecte y
 // la presencia efímera (RoomPresence) caduque. Una sala por (gameId, roomId).
 model Room {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   gameId     String
   roomId     String
   hostNpub   String
   hostPubkey String // hex
-  createdAt  DateTime @default(now())
+  // Latido del host: se sella al primer heartbeat del host. Sirve para no cerrar
+  // la sala por "host ausente" antes de que el host haya llegado siquiera.
+  hostSeenAt DateTime?
+  // Si el host cierra el juego (leave explícito o presencia vencida) la sala se
+  // cierra para siempre: nadie se readmite y los invitados reciben closed:true.
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
 
   @@unique([gameId, roomId])
   @@index([gameId])

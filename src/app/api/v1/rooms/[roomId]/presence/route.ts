@@ -36,5 +36,5 @@ export async function POST(
     );
   }
 
-  return apiOk({ members: result.members });
+  return apiOk({ members: result.members, closed: result.closed });
 }

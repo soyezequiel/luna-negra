@@ -218,6 +218,11 @@
             },
           );
           const d = await r.json();
+          // El host cerró el juego → la sala se cerró: echar a este invitado.
+          if (d.closed) {
+            roomClosed();
+            return;
+          }
           if (Array.isArray(d.members)) {
             lastMembers = d.members;
             netEl.textContent =
@@ -227,6 +232,21 @@
         } catch {
           netEl.textContent = "⚠️ reintentando conexión…";
         }
+      }
+
+      // La sala se cerró (el host cerró el juego): frenar todo y avisar.
+      function roomClosed() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        me = null; // corta futuros latidos
+        playing = false;
+        clearInterval(timer);
+        moon.style.display = "none";
+        startBtn.disabled = true;
+        netEl.textContent = "🚪 el host cerró la sala";
+        setStatus("bad", "El host cerró la sala");
       }
 
       async function setupLobby() {
