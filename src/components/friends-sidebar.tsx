@@ -162,19 +162,47 @@ export function FriendsSidebar() {
   }
 
   // Abre el juego entrando a la sala ya creada (con quien haya entrado).
-  function openGame() {
+  async function openGame() {
     const room = roomForGame;
-    if (!room?.hostToken || !room.gameUrl) return;
+    if (!room) return;
     // Abrimos la pestaña YA (gesto del click) para esquivar el bloqueo de popups.
     const win = window.open("", "_blank");
-    launchGameRoom({
-      gameUrl: room.gameUrl,
-      slug: room.slug,
-      title: room.title,
-      token: room.hostToken,
-      roomId: room.roomId,
-      win,
-    });
+    try {
+      let token = room.hostToken;
+      // Sala sin token guardado (creada en otra sesión/versión): minteamos uno
+      // para esta misma sala uniéndonos como miembro.
+      if (!token) {
+        if (!currentGame) {
+          throw new Error("Abrí la página del juego para entrar a la sala");
+        }
+        const r = await fetch(
+          `/api/games/${currentGame.gameId}/rooms/${encodeURIComponent(
+            room.roomId,
+          )}/members`,
+          { method: "POST" },
+        );
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error ?? "No se pudo entrar a la sala");
+        token = d.token;
+      }
+      if (!token) throw new Error("No se pudo obtener el acceso a la sala");
+      const gameUrl = room.gameUrl ?? currentGame?.gameUrl;
+      if (!gameUrl) throw new Error("No se encontró el juego de esta sala");
+      launchGameRoom({
+        gameUrl,
+        slug: room.slug,
+        title: room.title,
+        token,
+        roomId: room.roomId,
+        win,
+      });
+    } catch (e) {
+      win?.close();
+      notify({
+        title: "No se pudo abrir el juego",
+        body: e instanceof Error ? e.message : undefined,
+      });
+    }
   }
 
   // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
