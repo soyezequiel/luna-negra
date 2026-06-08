@@ -179,16 +179,16 @@ export async function publishStatus(content: string): Promise<void> {
 }
 
 /**
- * Auto-publica presencia "jugando X" (NIP-38) al lanzar un juego.
- * Best-effort: incluye link al juego y expira (por defecto 20 min) para que se
- * limpie solo si el cierre limpio (clearPlayingStatus) no llega a correr —p. ej.
- * el jugador cerró todo el navegador. El contenido NO lleva emoji (la UI de
- * /friends antepone 🎮).
+ * Publica/renueva la presencia "jugando X" (NIP-38). Best-effort: incluye link
+ * al juego y una expiración corta (NIP-40). El lifecycle lo gobierna el heartbeat
+ * del juego desde `playing-presence.ts`: se re-llama mientras lleguen latidos y la
+ * expiración corta hace que el estado se auto-limpie si la tienda muere sin poder
+ * publicar el `clearPlayingStatus`. El contenido NO lleva emoji (la UI antepone 🎮).
  */
 export async function publishPlayingStatus(
   title: string,
   gameUrl?: string,
-  ttlSeconds = 1200,
+  ttlSeconds = 30,
 ): Promise<void> {
   const tags: string[][] = [["d", "general"]];
   if (gameUrl) tags.push(["r", gameUrl]);

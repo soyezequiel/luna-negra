@@ -129,6 +129,27 @@
         statusEl.textContent = text;
       }
 
+      // --- Presencia "Jugando" en Luna Negra (heartbeat al opener) ---
+      // El estado NIP-38 lo firma la tienda (nuestro opener) con la llave Nostr
+      // del jugador; nosotros sólo le avisamos "sigo vivo" cada ~10s. Si dejamos
+      // de latir más de 20s (cerramos la pestaña, se cae el navegador), la tienda
+      // baja la presencia. Así no quedamos "Jugando" colgados. No-op si el juego
+      // se abrió sin opener (acceso directo, fuera de Luna Negra).
+      (function () {
+        if (!window.opener) return;
+        const ping = (type) => {
+          try {
+            window.opener.postMessage({ type }, "*");
+          } catch {}
+        };
+        ping("lunanegra:heartbeat");
+        const hb = setInterval(() => ping("lunanegra:heartbeat"), 10000);
+        window.addEventListener("beforeunload", () => {
+          clearInterval(hb);
+          ping("lunanegra:stopped");
+        });
+      })();
+
       // --- Estado multijugador (presencia por polling al backend) ---
       // Cada pestaña/navegador tiene un clientId propio, así dos personas
       // (o dos sesiones) se distinguen aunque compartan npub.

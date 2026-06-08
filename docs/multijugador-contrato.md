@@ -49,6 +49,36 @@ Reglas para el proveedor:
 - `hostNpub`/`hostPubkey` permiten a los invitados saber quién es el host real.
 - `expiresAt` permite mostrar un error claro cuando la invitación expiró.
 
+## Presencia «Jugando» (heartbeat al opener)
+
+Los amigos del jugador ven un badge **«🎮 Jugando <juego> en Luna Negra»** (estado
+NIP-38, kind:30315). Ese estado lo **firma la pestaña de la tienda** con la llave
+Nostr del jugador (`window.nostr`) — el juego, que corre en otra pestaña y a veces
+en otro dominio, **no puede firmarlo**. Para que la presencia sea fiel (y no quede
+colgada cuando el jugador cierra el juego), **el juego debe latirle a su opener**:
+
+```js
+// Cada ~10s mientras el jugador esté en el juego:
+window.opener?.postMessage({ type: "lunanegra:heartbeat" }, "*");
+
+// Al salir (game over, cerrar pestaña):
+window.addEventListener("beforeunload", () =>
+  window.opener?.postMessage({ type: "lunanegra:stopped" }, "*"),
+);
+```
+
+Reglas:
+- La tienda sólo acepta latidos de **la ventana que ella abrió** (valida
+  `event.source`), así que basta con postear a `window.opener`.
+- Si pasan **más de 20s sin latido**, la tienda considera que el jugador **dejó de
+  jugar** y limpia su presencia. Por eso conviene latir cada ~10s.
+- `lunanegra:stopped` baja la presencia al instante (no hace falta esperar el
+  timeout). Es best-effort: si no llega, el timeout de 20s la limpia igual.
+- No hace falta token ni autenticación: el mensaje sólo le dice a la tienda del
+  propio jugador que sigue activo. No-op si el juego se abrió sin opener.
+
+> El juego demo (`public/demo-game`) implementa este heartbeat como referencia.
+
 ## Infraestructura
 - Luna Negra: **serverless** (solo mint + verify de tokens). No hostea el lobby.
 - El **WebSocket/realtime lo corre el proveedor** en su subdominio.
