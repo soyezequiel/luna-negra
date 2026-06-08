@@ -22,7 +22,7 @@ import {
   type ActiveRoom,
   type Invite,
 } from "@/lib/invite";
-import { joinRoomAndPlay } from "@/lib/room-launch";
+import { joinRoomAndPlay, preopenGameWindowIfNeeded } from "@/lib/room-launch";
 
 /** Si el estado del amigo apunta a una sala unible, devuelve la invitación. */
 function roomInvite(status?: Status): Invite | null {
@@ -78,10 +78,10 @@ export default function FriendsPage() {
     setActiveRoomState(null);
   }
 
-  // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
-  // no lo bloquea el navegador). La tienda queda en esta pestaña.
+  // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
+  // dentro del click si todavía no existe.
   function joinRoom(invite: Invite) {
-    const win = window.open("", "_blank");
+    const win = preopenGameWindowIfNeeded(invite.slug);
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,

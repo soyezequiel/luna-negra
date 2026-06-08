@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { startPlayingPresence } from "@/lib/playing-presence";
+import { launchStandaloneGame } from "@/lib/room-launch";
 
 export function PlayButton({
   gameId,
@@ -29,17 +29,7 @@ export function PlayButton({
       })
         .then((res) => res.json())
         .catch(() => null);
-      const url = new URL(gameUrl, window.location.origin);
-      if (r?.token) url.searchParams.set("lnToken", r.token);
-      window.open(url.toString(), "_blank", "noopener");
-      // Presencia NIP-38 "jugando X": la tienda la deriva de la presencia que el
-      // juego reporta a la API (ver playing-presence.ts). El juego no toca Nostr.
-      if (title) {
-        const link = slug
-          ? new URL(`/game/${slug}`, window.location.origin).toString()
-          : undefined;
-        startPlayingPresence({ title, link });
-      }
+      launchStandaloneGame({ gameUrl, slug, title, token: r?.token });
     } finally {
       setLoading(false);
     }

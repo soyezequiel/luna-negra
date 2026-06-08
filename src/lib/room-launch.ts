@@ -1,5 +1,5 @@
 /**
- * Abre el juego en una pestaña nueva con el token de sala y arranca la presencia
+ * Abre o reutiliza la pestaña del juego con el token de sala y arranca la presencia
  * NIP-38 ("jugando X" con el link de la sala), derivada de la presencia que el
  * juego reporta a la API (ver playing-presence.ts). Compartido por el
  * MultiplayerPanel (página de juego) y la FriendsSidebar (invitar desde cualquier
@@ -8,6 +8,82 @@
 
 import { startPlayingPresence } from "@/lib/playing-presence";
 import { inviteHref, watchGameWindow } from "@/lib/invite";
+
+const gameWindows = new Map<string, Window>();
+const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
+
+export function getOpenGameWindow(slug: string): Window | null {
+  const win = gameWindows.get(slug);
+  if (!win) return null;
+  try {
+    if (!win.closed) return win;
+  } catch {
+    return win;
+  }
+  unregisterGameWindow(slug, win);
+  return null;
+}
+
+export function preopenGameWindowIfNeeded(slug: string): Window | null {
+  return getOpenGameWindow(slug)
+    ? null
+    : window.open("", gameWindowTarget(slug));
+}
+
+export function registerGameWindow(slug: string, win: Window | null): void {
+  if (!win) return;
+  gameWindows.set(slug, win);
+  try {
+    win.opener = null;
+  } catch {
+    /* algunos navegadores no permiten escribir opener; el handle igual sirve */
+  }
+
+  const previous = gameWindowWatchers.get(slug);
+  if (previous) clearInterval(previous);
+  const watcher = setInterval(() => {
+    const current = gameWindows.get(slug);
+    if (current !== win) {
+      clearInterval(watcher);
+      return;
+    }
+    try {
+      if (!win.closed) return;
+    } catch {
+      return;
+    }
+    unregisterGameWindow(slug, win);
+  }, 2000);
+  gameWindowWatchers.set(slug, watcher);
+}
+
+export function launchStandaloneGame({
+  gameUrl,
+  slug,
+  title,
+  token,
+}: {
+  gameUrl: string;
+  slug?: string;
+  title?: string;
+  token?: string;
+}): void {
+  const url = new URL(gameUrl, window.location.origin);
+  if (token) url.searchParams.set("lnToken", token);
+  const dest = url.toString();
+  const existing = slug ? getOpenGameWindow(slug) : null;
+  const gameWin =
+    existing ?? window.open(dest, slug ? gameWindowTarget(slug) : "_blank");
+  if (existing) navigateGameWindow(existing, dest);
+  if (slug) registerGameWindow(slug, gameWin);
+
+  if (title) {
+    const link = slug
+      ? new URL(`/game/${slug}`, window.location.origin).toString()
+      : undefined;
+    startPlayingPresence({ title, link });
+  }
+}
 
 export function launchGameRoom({
   gameUrl,
@@ -30,10 +106,12 @@ export function launchGameRoom({
   url.searchParams.set("inviteToken", token);
   url.searchParams.set("room", roomId);
   const dest = url.toString();
-  // Conservamos el handle de la pestaña solo para `watchGameWindow` (limpiar el
-  // banner de sala local al cerrarla). La presencia NIP-38 ya no depende de él.
-  const gameWin = win ?? window.open(dest, "_blank");
-  if (win) win.location.href = dest;
+  // Si el juego ya esta abierto desde Luna Negra, reutilizamos esa pestaña.
+  const existing = getOpenGameWindow(slug);
+  if (existing && win && existing !== win) win.close();
+  const gameWin = existing ?? win ?? window.open(dest, gameWindowTarget(slug));
+  if (gameWin) navigateGameWindow(gameWin, dest);
+  registerGameWindow(slug, gameWin);
 
   // Presencia NIP-38 con el link de la sala → los amigos pueden unirse vía Nostr.
   // La tienda la deriva de la presencia que el juego reporta a la API; al cerrar
@@ -49,11 +127,10 @@ export function launchGameRoom({
 }
 
 /**
- * Acepta una invitación (slug + roomId) y abre el juego en una pestaña nueva,
- * sin reemplazar la tienda. Pensado para los botones "Unirse" de cualquier
- * página (chat, /friends, sidebar, notificaciones): el caller DEBE abrir la
- * pestaña sincrónicamente dentro del gesto del click y pasarla en `win` para
- * esquivar el bloqueo de popups; la dirigimos recién cuando tenemos el token.
+ * Acepta una invitación (slug + roomId) y entra al juego sin reemplazar la
+ * tienda. Si Luna Negra ya tiene la pestaña del juego abierta, la reutiliza; si
+ * no, el caller puede pasar una pestaña preabierta en `win` para esquivar el
+ * bloqueo de popups mientras esperamos el token.
  */
 export async function joinRoomAndPlay({
   slug,
@@ -90,4 +167,24 @@ export async function joinRoomAndPlay({
     win?.close();
     onError?.(e instanceof Error ? e.message : "No se pudo unir a la sala");
   }
+}
+
+function navigateGameWindow(win: Window, dest: string): void {
+  try {
+    win.location.href = dest;
+    win.focus();
+  } catch {
+    /* si la ventana ya no es navegable, el caller mantiene el error visible */
+  }
+}
+
+function gameWindowTarget(slug: string): string {
+  return `luna-negra-game-${slug.replace(/[^a-z0-9_-]/gi, "_")}`;
+}
+
+function unregisterGameWindow(slug: string, win: Window): void {
+  if (gameWindows.get(slug) === win) gameWindows.delete(slug);
+  const watcher = gameWindowWatchers.get(slug);
+  if (watcher) clearInterval(watcher);
+  gameWindowWatchers.delete(slug);
 }

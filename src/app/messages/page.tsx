@@ -5,7 +5,7 @@ import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import { parseInvite, type Invite } from "@/lib/invite";
-import { joinRoomAndPlay } from "@/lib/room-launch";
+import { joinRoomAndPlay, preopenGameWindowIfNeeded } from "@/lib/room-launch";
 import {
   fetchDmEvents,
   dmCounterpart,
@@ -33,10 +33,10 @@ export default function MessagesPage() {
   const [newNpub, setNewNpub] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
-  // no lo bloquea el navegador). La tienda queda en esta pestaña.
+  // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
+  // dentro del click si todavía no existe.
   function joinRoom(invite: Invite) {
-    const win = window.open("", "_blank");
+    const win = preopenGameWindowIfNeeded(invite.slug);
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,

@@ -26,7 +26,7 @@ import {
   inviteHref,
   addPendingInvite,
 } from "@/lib/invite";
-import { joinRoomAndPlay } from "@/lib/room-launch";
+import { joinRoomAndPlay, preopenGameWindowIfNeeded } from "@/lib/room-launch";
 
 type Toast = { id: number; title: string; body?: string; href?: string };
 
@@ -69,24 +69,21 @@ export function NotificationsProvider({
     [dismiss],
   );
 
-  // Abre el destino de una notificación. Si es una invitación a sala, abre el
-  // juego en una pestaña nueva (sin reemplazar la tienda); si no, navega normal.
+  // Abre el destino de una notificación. Si es una invitación a sala, reutiliza
+  // la pestaña del juego abierta por Luna Negra; si no existe, abre una nueva.
   const openHref = useCallback(
     (href: string) => {
-      // URL absoluta (p. ej. invitación a sala de un juego externo): abrir aparte.
-      if (/^https?:\/\//.test(href)) {
-        window.open(href, "_blank", "noopener");
-        return;
-      }
       const invite = parseInvite(href);
       if (invite) {
-        const win = window.open("", "_blank");
+        const win = preopenGameWindowIfNeeded(invite.slug);
         void joinRoomAndPlay({
           slug: invite.slug,
           roomId: invite.roomId,
           win,
           onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
         });
+      } else if (/^https?:\/\//.test(href)) {
+        window.open(href, "_blank", "noopener");
       } else {
         router.push(href);
       }

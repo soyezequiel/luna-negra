@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
-import { launchGameRoom } from "@/lib/room-launch";
+import { launchGameRoom, preopenGameWindowIfNeeded } from "@/lib/room-launch";
 
 type InviteResp = { token: string; roomId: string; host: boolean };
 
@@ -77,11 +77,11 @@ export function MultiplayerPanel({
     [roomParam, post, gameId, launch],
   );
 
-  // Aceptar la invitación → abrir el juego en una pestaña nueva. Abrimos la
-  // pestaña YA (dentro del gesto del click) para esquivar el bloqueo de popups;
-  // la dirigimos recién cuando tenemos el token. La tienda queda en esta pestaña.
+  // Aceptar la invitación reutiliza la pestaña del juego si Luna Negra ya la
+  // tiene abierta. Si no existe, preabrimos una pestaña dentro del click para
+  // esquivar el bloqueo de popups y la dirigimos recién cuando tenemos el token.
   function joinAndPlay() {
-    const win = window.open("", "_blank");
+    const win = preopenGameWindowIfNeeded(slug);
     void joinRoom({ win });
   }
 

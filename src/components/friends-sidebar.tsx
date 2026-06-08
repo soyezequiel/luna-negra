@@ -26,7 +26,11 @@ import {
   type Invite,
   type PendingInvite,
 } from "@/lib/invite";
-import { launchGameRoom, joinRoomAndPlay } from "@/lib/room-launch";
+import {
+  launchGameRoom,
+  joinRoomAndPlay,
+  preopenGameWindowIfNeeded,
+} from "@/lib/room-launch";
 import { Button } from "@/components/ui/button";
 
 /** Si el estado del amigo apunta a una sala unible, devuelve la invitación. */
@@ -182,8 +186,9 @@ export function FriendsSidebar() {
   async function openGame() {
     const room = roomForGame;
     if (!room) return;
-    // Abrimos la pestaña YA (gesto del click) para esquivar el bloqueo de popups.
-    const win = window.open("", "_blank");
+    // Reutilizamos la pestaña del juego si existe; si no, preabrimos una dentro
+    // del click para esquivar el bloqueo de popups.
+    const win = preopenGameWindowIfNeeded(room.slug);
     try {
       let token = room.hostToken;
       // Sala sin token guardado (creada en otra sesión/versión): minteamos uno
@@ -222,10 +227,10 @@ export function FriendsSidebar() {
     }
   }
 
-  // Aceptar una invitación: abrir el juego en pestaña nueva (gesto del click →
-  // no lo bloquea el navegador). La tienda queda en esta pestaña.
+  // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
+  // dentro del click si todavía no existe.
   function joinRoom(invite: Invite) {
-    const win = window.open("", "_blank");
+    const win = preopenGameWindowIfNeeded(invite.slug);
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
