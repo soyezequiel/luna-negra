@@ -12,6 +12,7 @@ import { inviteHref, watchGameWindow } from "@/lib/invite";
 const gameWindows = new Map<string, Window>();
 const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
 const ENTER_ROOM_MESSAGE_TYPE = "luna-negra:enter-room";
+const JOIN_ROOM_ERROR = "No se pudo unir a la sala";
 
 export function getOpenGameWindow(slug: string): Window | null {
   const win = gameWindows.get(slug);
@@ -153,7 +154,7 @@ export async function joinRoomAndPlay({
   slug: string;
   roomId: string;
   win?: Window | null;
-  onError?: (message: string) => void;
+  onError?: (message: string | null) => void;
 }): Promise<void> {
   try {
     const r = await fetch("/api/rooms/join", {
@@ -164,7 +165,7 @@ export async function joinRoomAndPlay({
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
       win?.close();
-      onError?.(d.error ?? "No se pudo unir a la sala");
+      onError?.(joinRoomErrorDetail(d.error));
       return;
     }
     const existing = getOpenGameWindow(d.slug ?? slug);
@@ -182,8 +183,13 @@ export async function joinRoomAndPlay({
     });
   } catch (e) {
     win?.close();
-    onError?.(e instanceof Error ? e.message : "No se pudo unir a la sala");
+    onError?.(joinRoomErrorDetail(e instanceof Error ? e.message : null));
   }
+}
+
+function joinRoomErrorDetail(value: unknown): string | null {
+  const message = typeof value === "string" ? value.trim() : "";
+  return message && message !== JOIN_ROOM_ERROR ? message : null;
 }
 
 function navigateGameWindow(win: Window, dest: string): boolean {

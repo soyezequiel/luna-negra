@@ -38,7 +38,7 @@ export function MultiplayerPanel({
       await joinRoomAndPlay({
         slug,
         roomId: roomParam,
-        onError: setError,
+        onError: (message) => setError(message ?? "No se pudo unir a la sala"),
       });
     } finally {
       setLoading(false);

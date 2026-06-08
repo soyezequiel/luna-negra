@@ -84,7 +84,7 @@ export default function FriendsPage() {
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
-      onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
+      onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
     });
   }
 

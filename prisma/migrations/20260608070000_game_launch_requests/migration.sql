@@ -1,4 +1,4 @@
-﻿-- CreateTable
+-- CreateTable
 CREATE TABLE "GameLaunchRequest" (
     "id" TEXT NOT NULL,
     "providerId" TEXT NOT NULL,
