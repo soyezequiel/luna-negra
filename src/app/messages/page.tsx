@@ -5,7 +5,7 @@ import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import { parseInvite, type Invite } from "@/lib/invite";
-import { joinRoomAndPlay, preopenGameWindowIfNeeded } from "@/lib/room-launch";
+import { joinRoomAndPlay } from "@/lib/room-launch";
 import {
   fetchDmEvents,
   dmCounterpart,
@@ -36,11 +36,9 @@ export default function MessagesPage() {
   // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
   // dentro del click si todavía no existe.
   function joinRoom(invite: Invite) {
-    const win = preopenGameWindowIfNeeded(invite.slug);
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
-      win,
       onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
     });
   }

@@ -47,11 +47,13 @@ model Provider {
   oracleSecretEnc  String? // secreto cifrado (nunca se loguea ni se expone por API)
   createdAt        DateTime @default(now())
 
-  games        Game[]
-  bets         Bet[]
-  apiKeys      ApiKey[]
-  gamePresence GamePresence[]
-  gameInvites  GameInvite[]
+  games               Game[]
+  bets                Bet[]
+  apiKeys             ApiKey[]
+  gamePresence        GamePresence[]
+  gameInvites         GameInvite[]
+  gameLaunchRequests  GameLaunchRequest[]
+  gameLaunchListeners GameLaunchListener[]
 }
 
 // Presencia por-juego (proveedor), keyed por npub, TTL ~30s. La pobla el game
@@ -88,6 +90,41 @@ model GameInvite {
   seenAt     DateTime?
 
   @@index([toNpub, expiresAt])
+}
+
+// Orden pendiente para que un juego YA abierto entre a una sala cuando el usuario
+// aceptó una invitación en Luna Negra. La consume el game server vía API key.
+model GameLaunchRequest {
+  id          String    @id @default(cuid())
+  providerId  String
+  provider    Provider  @relation(fields: [providerId], references: [id])
+  npub        String
+  roomId      String
+  inviteToken String
+  slug        String
+  title       String
+  gameUrl     String
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  consumedAt  DateTime?
+
+  @@index([providerId, npub, expiresAt])
+  @@index([expiresAt])
+}
+
+// PestaÃ±a de juego viva que consulta ordenes pendientes. No alimenta NIP-38 ni
+// la lista social de "jugando"; solo evita abrir otra pestaÃ±a al aceptar una
+// invitaciÃ³n si el juego ya estÃ¡ escuchando.
+model GameLaunchListener {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  npub       String
+  updatedAt  DateTime @updatedAt
+  expiresAt  DateTime
+
+  @@unique([providerId, npub])
+  @@index([expiresAt])
 }
 
 // Claves de API del proveedor (auth server-to-server, ej. crear apuestas).
@@ -282,4 +319,3 @@ model LedgerEntry {
 
   @@index([betId])
 }
-

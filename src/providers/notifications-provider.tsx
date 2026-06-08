@@ -26,7 +26,7 @@ import {
   inviteHref,
   addPendingInvite,
 } from "@/lib/invite";
-import { joinRoomAndPlay, preopenGameWindowIfNeeded } from "@/lib/room-launch";
+import { joinRoomAndPlay } from "@/lib/room-launch";
 
 type Toast = { id: number; title: string; body?: string; href?: string };
 
@@ -75,11 +75,9 @@ export function NotificationsProvider({
     (href: string) => {
       const invite = parseInvite(href);
       if (invite) {
-        const win = preopenGameWindowIfNeeded(invite.slug);
         void joinRoomAndPlay({
           slug: invite.slug,
           roomId: invite.roomId,
-          win,
           onError: (body) => notify({ title: "No se pudo unir a la sala", body }),
         });
       } else if (/^https?:\/\//.test(href)) {

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { mintRoomInvite } from "@/lib/rooms";
+import {
+  createGameLaunchRequest,
+  hasGameLaunchListener,
+} from "@/lib/game-launch-requests";
 
 /**
  * Unirse a una sala por **slug** (no por gameId). Lo usan los puntos de entrada
@@ -32,6 +36,18 @@ export async function POST(req: Request) {
   if (!r.ok) {
     return NextResponse.json({ error: r.message }, { status: r.status });
   }
+  const openGame = Boolean(
+    await hasGameLaunchListener({ providerId: game.providerId, npub: session.npub }),
+  );
+  await createGameLaunchRequest({
+    providerId: game.providerId,
+    npub: session.npub,
+    roomId: r.roomId,
+    inviteToken: r.token,
+    slug: r.slug,
+    title: game.title,
+    gameUrl: game.gameUrl,
+  });
   return NextResponse.json({
     token: r.token,
     roomId: r.roomId,
@@ -39,5 +55,6 @@ export async function POST(req: Request) {
     slug: r.slug,
     title: game.title,
     gameUrl: game.gameUrl,
+    openGame,
   });
 }

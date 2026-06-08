@@ -167,6 +167,11 @@ export async function joinRoomAndPlay({
       onError?.(d.error ?? "No se pudo unir a la sala");
       return;
     }
+    const existing = getOpenGameWindow(d.slug ?? slug);
+    if (d.openGame === true && !existing) {
+      win?.close();
+      return;
+    }
     launchGameRoom({
       gameUrl: d.gameUrl,
       slug: d.slug,
