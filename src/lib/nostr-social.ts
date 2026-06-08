@@ -180,10 +180,11 @@ export async function publishStatus(content: string): Promise<void> {
 
 /**
  * Publica/renueva la presencia "jugando X" (NIP-38). Best-effort: incluye link
- * al juego y una expiración corta (NIP-40). El lifecycle lo gobierna el heartbeat
- * del juego desde `playing-presence.ts`: se re-llama mientras lleguen latidos y la
- * expiración corta hace que el estado se auto-limpie si la tienda muere sin poder
- * publicar el `clearPlayingStatus`. El contenido NO lleva emoji (la UI antepone 🎮).
+ * al juego y una expiración corta (NIP-40). El lifecycle lo gobierna
+ * `playing-presence.ts`: se re-llama mientras la API confirme que el jugador sigue
+ * jugando y la expiración corta hace que el estado se auto-limpie si la tienda
+ * muere sin poder publicar el `clearPlayingStatus`. El contenido NO lleva emoji
+ * (la UI antepone 🎮).
  */
 export async function publishPlayingStatus(
   title: string,

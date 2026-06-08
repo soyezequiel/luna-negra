@@ -129,25 +129,28 @@
         statusEl.textContent = text;
       }
 
-      // --- Presencia "Jugando" en Luna Negra (heartbeat al opener) ---
-      // El estado NIP-38 lo firma la tienda (nuestro opener) con la llave Nostr
-      // del jugador; nosotros sólo le avisamos "sigo vivo" cada ~10s. Si dejamos
-      // de latir más de 20s (cerramos la pestaña, se cae el navegador), la tienda
-      // baja la presencia. Así no quedamos "Jugando" colgados. No-op si el juego
-      // se abrió sin opener (acceso directo, fuera de Luna Negra).
+      // --- Presencia "Jugando" en Luna Negra (vía API, same-origin) ---
+      // El juego NO toca Nostr ni usa window.opener. Reporta presencia a Luna
+      // Negra cada ~10s con la cookie de sesión del jugador (mismo origen); la
+      // tienda firma el estado NIP-38 a partir de esa presencia. Al cerrar la
+      // pestaña dejamos de reportar y la presencia caduca (~30s), así la tienda
+      // baja el estado. No-op fuera de Luna Negra (sin sesión → 401, ignorado).
+      // Un juego con backend propio haría lo mismo contra /api/v1/presence con su
+      // API key (ver docs/multijugador-contrato.md).
       (function () {
-        if (!window.opener) return;
-        const ping = (type) => {
+        const report = () => {
+          if (document.visibilityState !== "visible") return;
           try {
-            window.opener.postMessage({ type }, "*");
+            fetch("/api/demo/presence", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ status: "online", roomId: room || null }),
+            }).catch(() => {});
           } catch {}
         };
-        ping("lunanegra:heartbeat");
-        const hb = setInterval(() => ping("lunanegra:heartbeat"), 10000);
-        window.addEventListener("beforeunload", () => {
-          clearInterval(hb);
-          ping("lunanegra:stopped");
-        });
+        report();
+        setInterval(report, 10000);
       })();
 
       // --- Estado multijugador (presencia por polling al backend) ---

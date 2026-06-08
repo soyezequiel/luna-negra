@@ -49,35 +49,36 @@ Reglas para el proveedor:
 - `hostNpub`/`hostPubkey` permiten a los invitados saber quién es el host real.
 - `expiresAt` permite mostrar un error claro cuando la invitación expiró.
 
-## Presencia «Jugando» (heartbeat al opener)
+## Presencia «Jugando» (derivada de la API)
 
 Los amigos del jugador ven un badge **«🎮 Jugando <juego> en Luna Negra»** (estado
 NIP-38, kind:30315). Ese estado lo **firma la pestaña de la tienda** con la llave
-Nostr del jugador (`window.nostr`) — el juego, que corre en otra pestaña y a veces
-en otro dominio, **no puede firmarlo**. Para que la presencia sea fiel (y no quede
-colgada cuando el jugador cierra el juego), **el juego debe latirle a su opener**:
+Nostr del jugador (`window.nostr`) — el juego **nunca toca Nostr**. Tampoco hay
+acoplamiento de ventana (`window.opener`, `postMessage`): **el juego solo reporta
+su presencia por la API** y Luna Negra deriva el estado social de ahí.
 
-```js
-// Cada ~10s mientras el jugador esté en el juego:
-window.opener?.postMessage({ type: "lunanegra:heartbeat" }, "*");
-
-// Al salir (game over, cerrar pestaña):
-window.addEventListener("beforeunload", () =>
-  window.opener?.postMessage({ type: "lunanegra:stopped" }, "*"),
-);
-```
+Flujo:
+1. El juego late su presencia a Luna Negra cada ~10s mientras el jugador esté
+   activo: `POST /api/v1/presence` (Bearer **API key** del proveedor, server-side)
+   con `{ npub, status, roomId }`. La presencia tiene TTL ~30s.
+2. La pestaña de la tienda sondea su propia presencia: `GET /api/me/playing` (auth
+   por cookie de sesión). Mientras la API confirme `playing: true`, **renueva** el
+   estado NIP-38; cuando deja de confirmarlo (el juego cerró → la presencia
+   caducó), lo **limpia**.
 
 Reglas:
-- La tienda sólo acepta latidos de **la ventana que ella abrió** (valida
-  `event.source`), así que basta con postear a `window.opener`.
-- Si pasan **más de 20s sin latido**, la tienda considera que el jugador **dejó de
-  jugar** y limpia su presencia. Por eso conviene latir cada ~10s.
-- `lunanegra:stopped` baja la presencia al instante (no hace falta esperar el
-  timeout). Es best-effort: si no llega, el timeout de 20s la limpia igual.
-- No hace falta token ni autenticación: el mensaje sólo le dice a la tienda del
-  propio jugador que sigue activo. No-op si el juego se abrió sin opener.
+- El juego **no** necesita conocer Nostr, ni abrir sin `noopener`, ni postear a
+  `window.opener`. Todo va por la interfaz REST de Luna Negra.
+- Al cerrar el juego, la presencia de la API caduca por TTL (~30s) y la tienda baja
+  el estado. La tienda publica el estado **optimista** al lanzar y lo retira solo
+  si el juego nunca reporta dentro de una gracia inicial (~30s).
+- El estado NIP-38 lleva una expiración corta (NIP-40), así se auto-limpia aunque
+  la propia tienda muera sin poder publicar el `clear`.
 
-> El juego demo (`public/demo-game`) implementa este heartbeat como referencia.
+> El juego demo (`public/demo-game`) reporta presencia por `POST /api/demo/presence`
+> (same-origin, autenticado con la cookie de sesión) porque es estático y no puede
+> sostener una API key; un juego con backend usa `POST /api/v1/presence` con su API
+> key. Ambos caminos alimentan `GET /api/me/playing` igual.
 
 ## Infraestructura
 - Luna Negra: **serverless** (solo mint + verify de tokens). No hostea el lobby.

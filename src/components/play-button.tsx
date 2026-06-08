@@ -31,15 +31,14 @@ export function PlayButton({
         .catch(() => null);
       const url = new URL(gameUrl, window.location.origin);
       if (r?.token) url.searchParams.set("lnToken", r.token);
-      // Sin `noopener`: el juego le late a su opener para mantener viva la
-      // presencia NIP-38 (ver playing-presence.ts).
-      const win = window.open(url.toString(), "_blank");
-      // Presencia NIP-38 "jugando X" gobernada por el heartbeat del juego.
-      if (title && win) {
+      window.open(url.toString(), "_blank", "noopener");
+      // Presencia NIP-38 "jugando X": la tienda la deriva de la presencia que el
+      // juego reporta a la API (ver playing-presence.ts). El juego no toca Nostr.
+      if (title) {
         const link = slug
           ? new URL(`/game/${slug}`, window.location.origin).toString()
           : undefined;
-        startPlayingPresence({ win, title, link });
+        startPlayingPresence({ title, link });
       }
     } finally {
       setLoading(false);

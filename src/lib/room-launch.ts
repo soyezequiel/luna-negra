@@ -1,8 +1,9 @@
 /**
  * Abre el juego en una pestaña nueva con el token de sala y arranca la presencia
- * NIP-38 ("jugando X" con el link de la sala), gobernada por el heartbeat del
- * juego. Compartido por el MultiplayerPanel (página de juego) y la FriendsSidebar
- * (invitar desde cualquier página).
+ * NIP-38 ("jugando X" con el link de la sala), derivada de la presencia que el
+ * juego reporta a la API (ver playing-presence.ts). Compartido por el
+ * MultiplayerPanel (página de juego) y la FriendsSidebar (invitar desde cualquier
+ * página).
  */
 
 import { startPlayingPresence } from "@/lib/playing-presence";
@@ -29,21 +30,21 @@ export function launchGameRoom({
   url.searchParams.set("inviteToken", token);
   url.searchParams.set("room", roomId);
   const dest = url.toString();
-  // Conservamos el handle de la pestaña (sin `noopener`) para que el juego pueda
-  // latirle a su opener (presencia NIP-38, ver playing-presence.ts).
+  // Conservamos el handle de la pestaña solo para `watchGameWindow` (limpiar el
+  // banner de sala local al cerrarla). La presencia NIP-38 ya no depende de él.
   const gameWin = win ?? window.open(dest, "_blank");
   if (win) win.location.href = dest;
 
   // Presencia NIP-38 con el link de la sala → los amigos pueden unirse vía Nostr.
-  // El heartbeat del juego la mantiene viva; al cerrar/caer, se limpia sola.
+  // La tienda la deriva de la presencia que el juego reporta a la API; al cerrar
+  // el juego deja de reportar y el estado se limpia solo.
   const link = new URL(
     inviteHref({ slug, roomId }),
     window.location.origin,
   ).toString();
-  if (gameWin) startPlayingPresence({ win: gameWin, title, link });
+  startPlayingPresence({ title, link });
 
-  // Al cerrar la pestaña del juego: limpiar la sala activa (banner local). La
-  // presencia NIP-38 la apaga su propio watchdog al detectar el cierre.
+  // Al cerrar la pestaña del juego: limpiar la sala activa (banner local).
   watchGameWindow(gameWin);
 }
 

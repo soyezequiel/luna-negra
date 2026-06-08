@@ -70,6 +70,28 @@ async function getPresence(
   );
 }
 
+/**
+ * Presencia vigente del PROPIO jugador en cualquier juego del catálogo (keyed por
+ * npub). La tienda la consulta vía `GET /api/me/playing` para gobernar su estado
+ * NIP-38 "Jugando X": mientras el juego siga reportando presencia por la API, la
+ * tienda renueva el estado; cuando deja de reportar (TTL vencido), lo limpia. El
+ * juego nunca toca Nostr — solo reporta por la API y Luna Negra deriva lo social.
+ */
+export async function getOwnPresence(
+  npub: string,
+): Promise<{ status: Presence; roomId: string | null } | null> {
+  const row = await prisma.gamePresence.findFirst({
+    where: { npub, expiresAt: { gt: new Date() } },
+    orderBy: { updatedAt: "desc" },
+    select: { status: true, roomId: true },
+  });
+  if (!row) return null;
+  return {
+    status: row.status === "in-game" ? "in-game" : "online",
+    roomId: row.roomId,
+  };
+}
+
 const RANK: Record<Presence, number> = { "in-game": 0, online: 1, offline: 2 };
 
 /**
