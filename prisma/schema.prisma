@@ -47,9 +47,47 @@ model Provider {
   oracleSecretEnc  String? // secreto cifrado (nunca se loguea ni se expone por API)
   createdAt        DateTime @default(now())
 
-  games   Game[]
-  bets    Bet[]
-  apiKeys ApiKey[]
+  games        Game[]
+  bets         Bet[]
+  apiKeys      ApiKey[]
+  gamePresence GamePresence[]
+  gameInvites  GameInvite[]
+}
+
+// Presencia por-juego (proveedor), keyed por npub, TTL ~30s. La pobla el game
+// server vía POST /api/v1/presence (Bearer API key). Distinta de RoomPresence,
+// que es por sala/clientId y la maneja Luna Negra en su demo multijugador.
+model GamePresence {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  npub       String
+  status     String // "in-game" | "online"
+  roomId     String?
+  expiresAt  DateTime // now + 30s
+  updatedAt  DateTime @updatedAt
+
+  @@unique([providerId, npub])
+  @@index([providerId])
+  @@index([expiresAt])
+}
+
+// Buzón de invitaciones a sala que el proveedor envía vía POST /api/v1/friends/invite;
+// Luna Negra se las muestra al invitado (toast in-app). TTL ~1h, como las
+// invitaciones por DM existentes.
+model GameInvite {
+  id         String    @id @default(cuid())
+  providerId String
+  provider   Provider  @relation(fields: [providerId], references: [id])
+  fromNpub   String
+  toNpub     String
+  roomId     String
+  inviteUrl  String // URL del deploy del juego (externa), p. ej. .../?join=AB12
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime // now + 1h
+  seenAt     DateTime?
+
+  @@index([toNpub, expiresAt])
 }
 
 // Claves de API del proveedor (auth server-to-server, ej. crear apuestas).

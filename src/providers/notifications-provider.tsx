@@ -16,6 +16,7 @@ import {
   fetchProfiles,
   profileName,
   npubOf,
+  pubkeyFromNpub,
   shortId,
   type Profile,
 } from "@/lib/nostr-social";
@@ -72,6 +73,11 @@ export function NotificationsProvider({
   // juego en una pestaña nueva (sin reemplazar la tienda); si no, navega normal.
   const openHref = useCallback(
     (href: string) => {
+      // URL absoluta (p. ej. invitación a sala de un juego externo): abrir aparte.
+      if (/^https?:\/\//.test(href)) {
+        window.open(href, "_blank", "noopener");
+        return;
+      }
       const invite = parseInvite(href);
       if (invite) {
         const win = window.open("", "_blank");
@@ -195,6 +201,51 @@ export function NotificationsProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, notify, fireDesktop, nameOf]);
 
+  // Polling del buzón de invitaciones a sala que envían los proveedores de juegos
+  // (POST /api/v1/friends/invite → persistidas; acá las mostramos como toast). La
+  // `inviteUrl` es del deploy externo del juego, así que se abre en pestaña nueva.
+  useEffect(() => {
+    if (!user) return;
+    let stopped = false;
+
+    type GameInvite = {
+      id: string;
+      fromNpub: string;
+      roomId: string;
+      inviteUrl: string;
+    };
+
+    async function poll() {
+      try {
+        const r = await fetch("/api/invites");
+        if (!r.ok) return;
+        const d = (await r.json()) as { invites?: GameInvite[] };
+        for (const inv of d.invites ?? []) {
+          if (seen.current.has(inv.id)) continue; // dedup (cuid ≠ id de evento DM)
+          seen.current.add(inv.id);
+          const fromPubkey = pubkeyFromNpub(inv.fromNpub);
+          const name = fromPubkey ? await nameOf(fromPubkey) : shortId(inv.fromNpub);
+          const title = `🎮 ${name} te invitó a una sala`;
+          const body = "Tocá para unirte";
+          notify({ title, body, href: inv.inviteUrl });
+          fireDesktop(title, body, inv.inviteUrl);
+        }
+      } catch {
+        /* best-effort: sin red, reintenta en el próximo tick */
+      }
+    }
+
+    void poll();
+    const id = setInterval(() => {
+      if (!stopped) void poll();
+    }, 15_000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, notify, fireDesktop, nameOf]);
+
   return (
     <NotificationsContext.Provider value={{ notify }}>
       {children}
@@ -245,7 +296,9 @@ export function NotificationsProvider({
                     }}
                     className="mt-2 rounded-md bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/30"
                   >
-                    {t.href.startsWith("/game/") ? "Unirse a la sala" : "Ver mensaje"}
+                    {t.href.startsWith("/game/") || /^https?:\/\//.test(t.href)
+                      ? "Unirse a la sala"
+                      : "Ver mensaje"}
                   </button>
                 ) : null}
               </div>
