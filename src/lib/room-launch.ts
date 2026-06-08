@@ -11,6 +11,7 @@ import { inviteHref, watchGameWindow } from "@/lib/invite";
 
 const gameWindows = new Map<string, Window>();
 const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
+const ENTER_ROOM_MESSAGE_TYPE = "luna-negra:enter-room";
 
 export function getOpenGameWindow(slug: string): Window | null {
   const win = gameWindows.get(slug);
@@ -69,6 +70,7 @@ export function launchStandaloneGame({
   token?: string;
 }): void {
   const url = new URL(gameUrl, window.location.origin);
+  url.searchParams.set("lnOrigin", window.location.origin);
   if (token) url.searchParams.set("lnToken", token);
   const dest = url.toString();
   const existing = slug ? getOpenGameWindow(slug) : null;
@@ -103,6 +105,7 @@ export function launchGameRoom({
   win?: Window | null;
 }): void {
   const url = new URL(gameUrl, window.location.origin);
+  url.searchParams.set("lnOrigin", window.location.origin);
   url.searchParams.set("inviteToken", token);
   url.searchParams.set("room", roomId);
   const dest = url.toString();
@@ -110,7 +113,16 @@ export function launchGameRoom({
   const existing = getOpenGameWindow(slug);
   if (existing && win && existing !== win) win.close();
   const gameWin = existing ?? win ?? window.open(dest, gameWindowTarget(slug));
-  if (gameWin) navigateGameWindow(gameWin, dest);
+  if (gameWin) {
+    const navigated = navigateGameWindow(gameWin, dest);
+    if (!navigated) {
+      postEnterRoomMessage(gameWin, {
+        gameUrl,
+        inviteToken: token,
+        roomId,
+      });
+    }
+  }
   registerGameWindow(slug, gameWin);
 
   // Presencia NIP-38 con el link de la sala → los amigos pueden unirse vía Nostr.
@@ -169,17 +181,42 @@ export async function joinRoomAndPlay({
   }
 }
 
-function navigateGameWindow(win: Window, dest: string): void {
+function navigateGameWindow(win: Window, dest: string): boolean {
   try {
     win.location.href = dest;
     win.focus();
+    return true;
   } catch {
-    /* si la ventana ya no es navegable, el caller mantiene el error visible */
+    return false;
   }
 }
 
 function gameWindowTarget(slug: string): string {
   return `luna-negra-game-${slug.replace(/[^a-z0-9_-]/gi, "_")}`;
+}
+
+function postEnterRoomMessage(
+  win: Window,
+  {
+    gameUrl,
+    inviteToken,
+    roomId,
+  }: { gameUrl: string; inviteToken: string; roomId: string },
+): void {
+  try {
+    const targetOrigin = new URL(gameUrl, window.location.origin).origin;
+    win.postMessage(
+      {
+        type: ENTER_ROOM_MESSAGE_TYPE,
+        inviteToken,
+        roomId,
+      },
+      targetOrigin,
+    );
+    win.focus();
+  } catch {
+    /* si la ventana ya no acepta mensajes, el usuario conserva el error visible */
+  }
 }
 
 function unregisterGameWindow(slug: string, win: Window): void {
