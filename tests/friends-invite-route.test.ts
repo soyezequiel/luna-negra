@@ -4,9 +4,7 @@ const mocks = vi.hoisted(() => ({
   providerId: "prov1" as string | null,
   gameInviteCreate: vi.fn(),
   userFindUnique: vi.fn(),
-  gameFindFirst: vi.fn(),
-  mintRoomInvite: vi.fn(),
-  createGameLaunchRequest: vi.fn(),
+  queueGameLaunchRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/api-keys", () => ({
@@ -28,18 +26,11 @@ vi.mock("@/lib/prisma", () => ({
     user: {
       findUnique: mocks.userFindUnique,
     },
-    game: {
-      findFirst: mocks.gameFindFirst,
-    },
   },
 }));
 
-vi.mock("@/lib/rooms", () => ({
-  mintRoomInvite: mocks.mintRoomInvite,
-}));
-
 vi.mock("@/lib/game-launch-requests", () => ({
-  createGameLaunchRequest: mocks.createGameLaunchRequest,
+  queueGameLaunchRequest: mocks.queueGameLaunchRequest,
 }));
 
 async function postInvite(body: unknown) {
@@ -63,20 +54,7 @@ beforeEach(() => {
     npub: "npub-guest",
     pubkey: "guest",
   });
-  mocks.gameFindFirst.mockReset().mockResolvedValue({
-    id: "game1",
-    slug: "tetris",
-    title: "TETRA",
-    gameUrl: "https://tetris.example",
-  });
-  mocks.mintRoomInvite.mockReset().mockResolvedValue({
-    ok: true,
-    token: "invite-token",
-    roomId: "ROOM1",
-    host: false,
-    slug: "tetris",
-  });
-  mocks.createGameLaunchRequest.mockReset().mockResolvedValue(undefined);
+  mocks.queueGameLaunchRequest.mockReset().mockResolvedValue(true);
 });
 
 describe("POST /api/v1/friends/invite", () => {
@@ -99,33 +77,11 @@ describe("POST /api/v1/friends/invite", () => {
         roomId: "ROOM1",
       }),
     });
-    expect(mocks.gameFindFirst).toHaveBeenCalledWith({
-      where: {
-        id: "game1",
-        providerId: "prov1",
-        status: "published",
-        gameUrl: { not: null },
-      },
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        gameUrl: true,
-      },
-    });
-    expect(mocks.mintRoomInvite).toHaveBeenCalledWith(
-      { sub: "user-guest", npub: "npub-guest", pubkey: "guest" },
-      "game1",
-      "ROOM1",
-    );
-    expect(mocks.createGameLaunchRequest).toHaveBeenCalledWith({
+    expect(mocks.queueGameLaunchRequest).toHaveBeenCalledWith({
       providerId: "prov1",
-      npub: "npub-guest",
+      user: { id: "user-guest", npub: "npub-guest", pubkey: "guest" },
       roomId: "ROOM1",
-      inviteToken: "invite-token",
-      slug: "tetris",
-      title: "TETRA",
-      gameUrl: "https://tetris.example",
+      gameId: "game1",
     });
   });
 
@@ -143,6 +99,6 @@ describe("POST /api/v1/friends/invite", () => {
     expect(status).toBe(200);
     expect(json).toEqual({ delivered: false, launchQueued: false });
     expect(mocks.gameInviteCreate).toHaveBeenCalledTimes(1);
-    expect(mocks.createGameLaunchRequest).not.toHaveBeenCalled();
+    expect(mocks.queueGameLaunchRequest).not.toHaveBeenCalled();
   });
 });

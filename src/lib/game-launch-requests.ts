@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { mintRoomInvite } from "@/lib/rooms";
 
 const LAUNCH_REQUEST_TTL_MS = 120_000;
 const LAUNCH_LISTENER_TTL_MS = 20_000;
@@ -40,6 +41,49 @@ export async function createGameLaunchRequest(input: {
       where: { providerId: input.providerId, expiresAt: { lt: now } },
     })
     .catch(() => {});
+}
+
+export async function queueGameLaunchRequest(input: {
+  providerId: string;
+  user: { id: string; npub: string; pubkey: string };
+  roomId: string;
+  gameId: string;
+}): Promise<boolean> {
+  if (!input.gameId) return false;
+
+  const game = await prisma.game.findFirst({
+    where: {
+      id: input.gameId,
+      providerId: input.providerId,
+      status: "published",
+      gameUrl: { not: null },
+    },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      gameUrl: true,
+    },
+  });
+  if (!game?.gameUrl) return false;
+
+  const invite = await mintRoomInvite(
+    { sub: input.user.id, npub: input.user.npub, pubkey: input.user.pubkey },
+    game.id,
+    input.roomId,
+  );
+  if (!invite.ok) return false;
+
+  await createGameLaunchRequest({
+    providerId: input.providerId,
+    npub: input.user.npub,
+    roomId: invite.roomId,
+    inviteToken: invite.token,
+    slug: invite.slug,
+    title: game.title,
+    gameUrl: game.gameUrl,
+  });
+  return true;
 }
 
 export async function recordGameLaunchListener(input: {

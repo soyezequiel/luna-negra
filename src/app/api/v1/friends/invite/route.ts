@@ -2,8 +2,7 @@ import { verifyApiKey } from "@/lib/api-keys";
 import { prisma } from "@/lib/prisma";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
-import { createGameLaunchRequest } from "@/lib/game-launch-requests";
-import { mintRoomInvite } from "@/lib/rooms";
+import { queueGameLaunchRequest } from "@/lib/game-launch-requests";
 
 // Invitar a un amigo a una sala. Luna Negra persiste la invitación y se la muestra
 // al invitado dentro de la tienda (toast in-app, vía GET /api/invites + polling).
@@ -61,54 +60,12 @@ export async function POST(req: Request) {
     select: { id: true, npub: true, pubkey: true },
   });
   const launchQueued = known
-    ? await queueLaunchRequest({
-      providerId,
-      user: known,
-      roomId,
-      gameId: typeof body.gameId === "string" ? body.gameId.trim() : "",
-    })
+    ? await queueGameLaunchRequest({
+        providerId,
+        user: known,
+        roomId,
+        gameId: typeof body.gameId === "string" ? body.gameId.trim() : "",
+      })
     : false;
   return apiOk({ delivered: !!known, launchQueued });
-}
-
-async function queueLaunchRequest(input: {
-  providerId: string;
-  user: { id: string; npub: string; pubkey: string };
-  roomId: string;
-  gameId: string;
-}): Promise<boolean> {
-  if (!input.gameId) return false;
-  const game = await prisma.game.findFirst({
-    where: {
-      id: input.gameId,
-      providerId: input.providerId,
-      status: "published",
-      gameUrl: { not: null },
-    },
-    select: {
-      id: true,
-      slug: true,
-      title: true,
-      gameUrl: true,
-    },
-  });
-  if (!game?.gameUrl) return false;
-
-  const invite = await mintRoomInvite(
-    { sub: input.user.id, npub: input.user.npub, pubkey: input.user.pubkey },
-    game.id,
-    input.roomId,
-  );
-  if (!invite.ok) return false;
-
-  await createGameLaunchRequest({
-    providerId: input.providerId,
-    npub: input.user.npub,
-    roomId: invite.roomId,
-    inviteToken: invite.token,
-    slug: invite.slug,
-    title: game.title,
-    gameUrl: game.gameUrl,
-  });
-  return true;
 }

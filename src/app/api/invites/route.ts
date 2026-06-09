@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { npubOf, pubkeyFromNpub } from "@/lib/nostr-social";
 import { siteUrl } from "@/lib/site-url";
+import { queueGameLaunchRequest } from "@/lib/game-launch-requests";
 
 const INVITE_TTL_MS = 3_600_000; // 1h
 const ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -107,11 +108,20 @@ export async function POST(req: Request) {
 
   const known = await prisma.user.findUnique({
     where: { npub: toNpub },
-    select: { id: true },
+    select: { id: true, npub: true, pubkey: true },
   });
+  const launchQueued = known
+    ? await queueGameLaunchRequest({
+        providerId: game.providerId,
+        user: known,
+        roomId,
+        gameId: game.id,
+      })
+    : false;
   return NextResponse.json({
     ok: true,
     delivered: !!known,
+    launchQueued,
     inviteUrl,
     title: game.title,
   });
