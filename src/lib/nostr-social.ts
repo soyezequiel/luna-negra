@@ -22,6 +22,9 @@ const now = () => Math.floor(Date.now() / 1000);
 // Tope de espera por consulta a relays: si un relay está caído o lento, no
 // bloquea el resto (nostr-tools resuelve con lo recibido al cumplirse el plazo).
 const MAX_WAIT = 4000;
+// Compatibilidad defensiva: versiones viejas o clientes externos pueden publicar
+// presencia sin NIP-40. Sin expiracion explicita, no puede vivir para siempre.
+export const STATUS_FALLBACK_TTL_SECONDS = 120;
 
 export function npubOf(pubkey: string): string {
   return nip19.npubEncode(pubkey);
@@ -129,6 +132,35 @@ export async function fetchProfiles(
 // --- Presencia (NIP-38, kind:30315 d="general") ---
 
 export type Status = { content: string; url?: string };
+type StatusEvent = Pick<Event, "pubkey" | "created_at" | "tags" | "content">;
+
+export function selectFreshStatuses(
+  evs: StatusEvent[],
+  nowSec: number = now(),
+): Record<string, Status> {
+  const latest = new Map<string, StatusEvent>();
+  for (const ev of evs) {
+    const prev = latest.get(ev.pubkey);
+    if (!prev || ev.created_at > prev.created_at) latest.set(ev.pubkey, ev);
+  }
+
+  const map: Record<string, Status> = {};
+  for (const [pubkey, ev] of latest) {
+    if (!ev.content) continue;
+
+    const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
+    if (exp) {
+      const expiresAt = Number(exp);
+      if (!Number.isFinite(expiresAt) || expiresAt <= nowSec) continue;
+    } else if (ev.created_at + STATUS_FALLBACK_TTL_SECONDS <= nowSec) {
+      continue;
+    }
+
+    const url = ev.tags.find((t) => t[0] === "r")?.[1];
+    map[pubkey] = { content: ev.content, url: url || undefined };
+  }
+  return map;
+}
 
 export async function fetchStatuses(
   pubkeys: string[],
@@ -143,28 +175,7 @@ export async function fetchStatuses(
     },
     { maxWait: MAX_WAIT },
   );
-  // kind:30315 es reemplazable: nos quedamos con el evento MÁS NUEVO por autor.
-  // (Distintos relays pueden devolver versiones viejas y nuevas a la vez.)
-  const latest = new Map<string, (typeof evs)[number]>();
-  for (const ev of evs) {
-    const prev = latest.get(ev.pubkey);
-    if (!prev || ev.created_at > prev.created_at) latest.set(ev.pubkey, ev);
-  }
-
-  const nowSec = now();
-  const map: Record<string, Status> = {};
-  for (const [pubkey, ev] of latest) {
-    // Estado limpiado (content vacío): el amigo dejó de jugar. Lo evaluamos acá,
-    // sobre el evento más nuevo, para que el "clear" pise al "Jugando X" viejo.
-    if (!ev.content) continue;
-    // NIP-40: muchos relays no descartan eventos vencidos, así que filtramos por
-    // el tag `expiration` nosotros mismos.
-    const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
-    if (exp && Number(exp) <= nowSec) continue;
-    const url = ev.tags.find((t) => t[0] === "r")?.[1];
-    map[pubkey] = { content: ev.content, url: url || undefined };
-  }
-  return map;
+  return selectFreshStatuses(evs);
 }
 
 export async function publishStatus(content: string): Promise<void> {

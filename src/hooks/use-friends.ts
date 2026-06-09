@@ -35,7 +35,9 @@ const cacheKey = (pubkey: string) => `friends:${pubkey}`;
 function readCache(pubkey: string): Friend[] | null {
   try {
     const raw = localStorage.getItem(cacheKey(pubkey));
-    return raw ? (JSON.parse(raw) as Friend[]) : null;
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as Friend[];
+    return Array.isArray(cached) ? stripVolatileStatuses(cached) : null;
   } catch {
     return null;
   }
@@ -43,10 +45,31 @@ function readCache(pubkey: string): Friend[] | null {
 
 function writeCache(pubkey: string, friends: Friend[]) {
   try {
-    localStorage.setItem(cacheKey(pubkey), JSON.stringify(friends));
+    localStorage.setItem(
+      cacheKey(pubkey),
+      JSON.stringify(stripVolatileStatuses(friends)),
+    );
   } catch {
     /* cuota llena o storage no disponible: ignorar */
   }
+}
+
+export function stripVolatileStatuses(friends: Friend[]): Friend[] {
+  return friends.map((friend) => {
+    const cached = { ...friend };
+    delete cached.status;
+    return cached;
+  });
+}
+
+export function applyFreshStatuses(
+  friends: Friend[],
+  statuses: Partial<Record<string, Status>>,
+): Friend[] {
+  return friends.map((friend) => ({
+    ...friend,
+    status: statuses[friend.pubkey],
+  }));
 }
 
 function sortFriends(list: Friend[]): Friend[] {
@@ -95,7 +118,6 @@ export function useFriends(): { friends: Friend[] | null } {
         profile: prev?.profile,
         isMember: prev?.isMember ?? false,
         games: prev?.games ?? [],
-        status: prev?.status,
       };
     });
     list = sortFriends(list);
@@ -112,9 +134,11 @@ export function useFriends(): { friends: Friend[] | null } {
     const pProfiles = fetchProfiles(contacts).then((profiles) =>
       merge((f) => ({ ...f, profile: profiles[f.pubkey] ?? f.profile })),
     );
-    const pStatuses = fetchStatuses(contacts).then((statuses) =>
-      merge((f) => ({ ...f, status: statuses[f.pubkey] ?? f.status })),
-    );
+    const pStatuses = fetchStatuses(contacts).then((statuses) => {
+      list = sortFriends(applyFreshStatuses(list, statuses));
+      setFriends(list);
+      writeCache(user.pubkey, list);
+    });
     const pKnown = fetch("/api/users/known", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -136,7 +160,13 @@ export function useFriends(): { friends: Friend[] | null } {
   }, [user]);
 
   useEffect(() => {
-    load();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void load();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   return { friends };
