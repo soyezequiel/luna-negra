@@ -19,7 +19,8 @@ const POLL_INTERVAL_MS = 8_000;
 // Expiración (NIP-40) del estado: mayor que el poll para no parpadear entre
 // sondeos, pero corta para que se auto-limpie si la propia tienda muere sin poder
 // publicar el `clearPlayingStatus`.
-const STATUS_TTL_S = 25;
+// Aumentado a 120s para ser robusto ante retrasos de red y discrepancias horarias (clock drift).
+const STATUS_TTL_S = 120;
 // Si el juego NUNCA llega a reportar presencia (no integra la API, o el jugador
 // cerró la pestaña al instante), bajamos el estado optimista tras esta gracia.
 const STARTUP_GRACE_MS = 30_000;

@@ -102,12 +102,14 @@ export function useFriends(): { friends: Friend[] | null } {
 
     // 2) Contactos: apenas llegan, mostramos la lista (nombre/avatar se
     //    completan después). Conservamos datos enriquecidos del caché por pk.
-    const contacts = await fetchContacts(user.pubkey);
-    if (contacts.length === 0) {
+    //    Limitamos a 150 para no saturar los relays con filtros gigantes.
+    const rawContacts = await fetchContacts(user.pubkey);
+    if (rawContacts.length === 0) {
       setFriends([]);
       writeCache(user.pubkey, []);
       return;
     }
+    const contacts = rawContacts.slice(0, 150);
 
     const cachedByPk = new Map((cached ?? []).map((f) => [f.pubkey, f]));
     let list: Friend[] = contacts.map((pk) => {

@@ -24,7 +24,9 @@ const now = () => Math.floor(Date.now() / 1000);
 const MAX_WAIT = 4000;
 // Compatibilidad defensiva: versiones viejas o clientes externos pueden publicar
 // presencia sin NIP-40. Sin expiracion explicita, no puede vivir para siempre.
-export const STATUS_FALLBACK_TTL_SECONDS = 120;
+// Aumentado a 3600s (1 hora) para evitar que los estados personalizados sin
+// expiración explícita (como los publicados a mano) desaparezcan en 2 minutos.
+export const STATUS_FALLBACK_TTL_SECONDS = 3600;
 
 export function npubOf(pubkey: string): string {
   return nip19.npubEncode(pubkey);
