@@ -1,7 +1,7 @@
 import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { signResultEvent } from "@/lib/nostr-server";
-import { getOracleSecret } from "@/lib/oracle-keys";
+import { ensureOracleKey, getOracleSecret } from "@/lib/oracle-keys";
 import { verifyApiKey } from "@/lib/api-keys";
 import { settleBetWithResult, type SettleResult } from "@/lib/escrow-settle";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
@@ -85,7 +85,15 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
   }
 
   // Firmar con el oráculo gestionado del proveedor.
-  const sk = await getOracleSecret(providerId);
+  let sk = await getOracleSecret(providerId);
+  if (!sk) {
+    try {
+      await ensureOracleKey(providerId);
+      sk = await getOracleSecret(providerId);
+    } catch {
+      sk = null;
+    }
+  }
   if (!sk) {
     return apiError(
       "ORACLE_NOT_PROVISIONED",

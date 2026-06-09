@@ -7,8 +7,14 @@ vi.mock("@/lib/api-keys", () => ({
 }));
 
 let oracleSecret: Uint8Array | null = new Uint8Array([1, 2, 3]);
+const ensureOracleCalls: string[] = [];
 vi.mock("@/lib/oracle-keys", () => ({
   getOracleSecret: vi.fn(async () => oracleSecret),
+  ensureOracleKey: vi.fn(async (providerId: string) => {
+    ensureOracleCalls.push(providerId);
+    oracleSecret = new Uint8Array([4, 5, 6]);
+    return "oracle-pub";
+  }),
 }));
 
 vi.mock("@/lib/nostr-server", () => ({
@@ -53,6 +59,7 @@ async function callApiKey(body: unknown) {
 beforeEach(() => {
   apiKeyProvider = "prov1";
   oracleSecret = new Uint8Array([1, 2, 3]);
+  ensureOracleCalls.length = 0;
   settleReturn = { ok: true };
   settleArgs.length = 0;
   betRow = {
@@ -93,11 +100,13 @@ describe("POST /result — camino API key", () => {
     expect(json.error.code).toBe("BAD_WINNERS");
   });
 
-  it("sin oráculo provisionado → 409 ORACLE_NOT_PROVISIONED", async () => {
+  it("provisiona el oráculo si falta y reporta el ganador", async () => {
     oracleSecret = null;
     const { status, json } = await callApiKey({ winners: ["npub1abc"] });
-    expect(status).toBe(409);
-    expect(json.error.code).toBe("ORACLE_NOT_PROVISIONED");
+    expect(status).toBe(200);
+    expect(json).toEqual({ ok: true });
+    expect(ensureOracleCalls).toEqual(["prov1"]);
+    expect(settleArgs).toHaveLength(1);
   });
 
   it("API key inválida → 401", async () => {
