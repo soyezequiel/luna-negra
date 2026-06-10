@@ -110,7 +110,7 @@ export default function ProfilePage() {
         className="cover relative mt-4 h-[172px] overflow-hidden rounded-lg border border-line"
         style={{ "--h": hueFromSlug(user.npub) } as CSSProperties}
       />
-      <div className="-mt-[52px] flex flex-col items-start gap-3 px-2 sm:flex-row sm:items-end">
+      <div className="relative z-10 -mt-[52px] flex flex-col items-start gap-3 px-2 sm:flex-row sm:items-end">
         {profile?.picture ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
