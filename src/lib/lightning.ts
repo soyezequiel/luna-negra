@@ -8,9 +8,18 @@ export function lightningConfigured(): boolean {
   return Boolean(NWC_URL);
 }
 
+// Cliente NWC reutilizado entre llamadas: la conexión al relay (WebSocket +
+// handshake NWC) tarda segundos en abrirse, así que crear uno nuevo por cada
+// consulta hacía que la detección del pago se sintiera muy lenta. Mantenemos
+// la conexión caliente y la compartimos.
+let cachedClient: NWCClient | null = null;
+
 function getClient(): NWCClient {
   if (!NWC_URL) throw new Error("NWC_CONNECTION_STRING no configurado");
-  return new NWCClient({ nostrWalletConnectUrl: NWC_URL });
+  if (!cachedClient) {
+    cachedClient = new NWCClient({ nostrWalletConnectUrl: NWC_URL });
+  }
+  return cachedClient;
 }
 
 export type CreatedInvoice = {
@@ -25,30 +34,22 @@ export async function createInvoice(
   description: string,
 ): Promise<CreatedInvoice> {
   const client = getClient();
-  try {
-    const tx = await client.makeInvoice({
-      amount: amountSats * 1000,
-      description,
-      expiry: 60 * 15,
-    });
-    return {
-      invoice: tx.invoice,
-      paymentHash: tx.payment_hash,
-      expiresAt: tx.expires_at,
-    };
-  } finally {
-    client.close();
-  }
+  const tx = await client.makeInvoice({
+    amount: amountSats * 1000,
+    description,
+    expiry: 60 * 15,
+  });
+  return {
+    invoice: tx.invoice,
+    paymentHash: tx.payment_hash,
+    expiresAt: tx.expires_at,
+  };
 }
 
 export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
   const client = getClient();
-  try {
-    const tx = await client.lookupInvoice({ payment_hash: paymentHash });
-    return tx.state === "settled";
-  } finally {
-    client.close();
-  }
+  const tx = await client.lookupInvoice({ payment_hash: paymentHash });
+  return tx.state === "settled";
 }
 
 /** Paga `amountSats` a una Lightning Address. Devuelve el preimage. */
@@ -61,21 +62,13 @@ export async function payToLightningAddress(
   await la.fetch();
   const invoice = await la.requestInvoice({ satoshi: amountSats, comment });
   const client = getClient();
-  try {
-    const res = await client.payInvoice({ invoice: invoice.paymentRequest });
-    return res.preimage;
-  } finally {
-    client.close();
-  }
+  const res = await client.payInvoice({ invoice: invoice.paymentRequest });
+  return res.preimage;
 }
 
 /** Paga un invoice bolt11 ya provisto (ej. LNURL-withdraw). Devuelve el preimage. */
 export async function payInvoiceRaw(bolt11: string): Promise<string> {
   const client = getClient();
-  try {
-    const res = await client.payInvoice({ invoice: bolt11 });
-    return res.preimage;
-  } finally {
-    client.close();
-  }
+  const res = await client.payInvoice({ invoice: bolt11 });
+  return res.preimage;
 }
