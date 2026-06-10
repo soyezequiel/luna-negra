@@ -36,11 +36,7 @@ export async function GET(
   if (auth && bet.status === "pending_deposits") {
     const mine = bet.participants.find((p) => p.userId === auth.sub);
     if (mine && mine.depositStatus === "pending") {
-      const t0 = Date.now();
       const settled = await checkAndSettleDeposit(mine.id);
-      console.log(
-        `[BET ${id}] check depósito on-demand settled=${settled} en ${Date.now() - t0}ms`,
-      );
       if (settled) {
         bet = (await prisma.bet.findUnique({ where: { id }, include: betInclude }))!;
       }

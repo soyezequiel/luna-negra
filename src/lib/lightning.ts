@@ -17,7 +17,6 @@ let cachedClient: NWCClient | null = null;
 function getClient(): NWCClient {
   if (!NWC_URL) throw new Error("NWC_CONNECTION_STRING no configurado");
   if (!cachedClient) {
-    console.log("[LN] creando NWCClient nuevo (conexión fría)");
     cachedClient = new NWCClient({ nostrWalletConnectUrl: NWC_URL });
   }
   return cachedClient;
@@ -49,11 +48,7 @@ export async function createInvoice(
 
 export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
   const client = getClient();
-  const t0 = Date.now();
   const tx = await client.lookupInvoice({ payment_hash: paymentHash });
-  console.log(
-    `[LN] lookupInvoice ${paymentHash.slice(0, 8)}… state=${tx.state} en ${Date.now() - t0}ms`,
-  );
   return tx.state === "settled";
 }
 
