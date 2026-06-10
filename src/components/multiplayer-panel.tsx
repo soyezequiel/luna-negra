@@ -51,11 +51,11 @@ export function MultiplayerPanel({
 
   if (!user) {
     return (
-      <div className="mt-4 rounded-lg border border-sky-500/30 bg-sky-500/10 p-4">
-        <p className="text-sm text-zinc-300">
+      <div className="mt-4 rounded border border-blue/30 bg-blue/10 p-4">
+        <p className="text-sm text-ink">
           Te invitaron a una sala. Conecta tu Nostr para unirte.
         </p>
-        <Button className="mt-3" onClick={login}>
+        <Button variant="blue" className="mt-3" onClick={login}>
           Conectar con Nostr
         </Button>
       </div>
@@ -63,14 +63,21 @@ export function MultiplayerPanel({
   }
 
   return (
-    <div className="mt-4 rounded-lg border border-sky-500/30 bg-sky-500/10 p-4">
-      <p className="text-sm text-zinc-300">
-        Te invitaron a la sala <code className="text-sky-300">{roomParam}</code>.
+    <div className="mt-4 rounded border border-blue/30 bg-blue/10 p-4">
+      <p className="text-sm text-ink">
+        Te invitaron a la sala <code className="text-blue">{roomParam}</code>.
       </p>
-      <Button className="mt-3" onClick={joinAndPlay} disabled={loading || !canPlay}>
+      <Button
+        variant="play"
+        className="mt-3"
+        onClick={joinAndPlay}
+        disabled={loading || !canPlay}
+      >
         {loading ? "Entrando..." : "Unirse y jugar"}
       </Button>
-      {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
+      {error ? (
+        <p className="mt-2 text-sm text-[var(--lose)]">{error}</p>
+      ) : null}
     </div>
   );
 }

@@ -105,12 +105,14 @@ export default function FriendsPage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Amigos</h1>
-        <p className="mt-2 text-zinc-400">
+        <h1 className="text-2xl font-bold text-white">Amigos</h1>
+        <p className="mt-2 text-muted">
           Conectá tu Nostr para ver a quién seguís.
         </p>
         <div className="mt-4 flex justify-center">
-          <Button onClick={login}>Conectar con Nostr</Button>
+          <Button variant="blue" onClick={login}>
+            Conectar con Nostr
+          </Button>
         </div>
       </div>
     );
@@ -120,9 +122,9 @@ export default function FriendsPage() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold">Amigos</h1>
 
-      <div className="mt-4 flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-4 sm:flex-row">
+      <div className="mt-4 flex flex-col gap-2 rounded-lg border border-line bg-panel p-4 sm:flex-row">
         <input
-          className="flex-1 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50"
+          className="flex-1 rounded-md border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue/30"
           placeholder="¿A qué estás jugando? (tu estado)"
           value={statusText}
           onChange={(e) => setStatusText(e.target.value)}
@@ -132,18 +134,18 @@ export default function FriendsPage() {
         </Button>
       </div>
       {statusMsg ? (
-        <p className="mt-2 text-sm text-sky-400">{statusMsg}</p>
+        <p className="mt-2 text-sm text-blue">{statusMsg}</p>
       ) : null}
 
       {activeRoom ? (
-        <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p className="min-w-0 flex-1 text-sm text-emerald-200">
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-green/30 bg-green/10 p-4">
+          <p className="min-w-0 flex-1 text-sm text-green">
             🎮 Tenés <span className="font-medium">{activeRoom.title}</span>{" "}
             abierto. Invitá a un amigo a tu sala desde la lista.
           </p>
           <button
             onClick={dismissActiveRoom}
-            className="shrink-0 text-xs text-zinc-400 hover:text-zinc-200"
+            className="shrink-0 text-xs text-muted hover:text-ink"
           >
             Cerrar
           </button>
@@ -152,9 +154,9 @@ export default function FriendsPage() {
 
       <div className="mt-6">
         {friends === null ? (
-          <p className="text-sm text-zinc-500">Cargando desde relays…</p>
+          <p className="text-sm text-faint">Cargando desde relays…</p>
         ) : friends.length === 0 ? (
-          <p className="text-zinc-400">
+          <p className="text-muted">
             No seguís a nadie todavía (o tu lista de contactos no está en estos
             relays).
           </p>
@@ -163,7 +165,7 @@ export default function FriendsPage() {
             {friends.map((f) => (
               <li
                 key={f.pubkey}
-                className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3"
               >
                 {f.profile?.picture ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -173,7 +175,7 @@ export default function FriendsPage() {
                     className="h-10 w-10 shrink-0 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="h-10 w-10 shrink-0 rounded-full bg-white/10" />
+                  <div className="h-10 w-10 shrink-0 rounded-full bg-panel-3" />
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -181,20 +183,20 @@ export default function FriendsPage() {
                       {profileName(f.profile, shortId(f.npub))}
                     </span>
                     {f.isMember ? (
-                      <span className="shrink-0 rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] text-sky-300">
+                      <span className="shrink-0 rounded-full bg-blue/20 px-2 py-0.5 text-[10px] text-blue">
                         Luna Negra
                       </span>
                     ) : null}
                   </div>
                   {f.status ? (
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-xs text-emerald-400">
+                      <p className="truncate text-xs text-green">
                         🎮 {f.status.content}
                       </p>
                       {roomInvite(f.status) ? (
                         <button
                           onClick={() => joinRoom(roomInvite(f.status)!)}
-                          className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/30"
+                          className="shrink-0 rounded-full bg-green/20 px-2 py-0.5 text-[10px] font-medium text-green hover:bg-green/30"
                         >
                           Unirse
                         </button>
@@ -207,7 +209,7 @@ export default function FriendsPage() {
                         <Link
                           key={g.slug}
                           href={`/game/${g.slug}`}
-                          className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] text-zinc-300 hover:bg-white/20"
+                          className="rounded bg-panel-3 px-1.5 py-0.5 text-[11px] text-ink hover:bg-white/10"
                         >
                           {g.title}
                         </Link>
@@ -226,7 +228,7 @@ export default function FriendsPage() {
                     disabled={
                       invited.has(f.pubkey) || invitingPk === f.pubkey
                     }
-                    className="shrink-0 rounded-md border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+                    className="shrink-0 rounded-md border border-green/40 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                   >
                     {invited.has(f.pubkey)
                       ? "✓ Invitado"

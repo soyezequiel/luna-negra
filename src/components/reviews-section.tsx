@@ -16,7 +16,7 @@ function Stars({ n }: { n: number }) {
   return (
     <span className="text-amber-400" aria-label={`${n} de 5`}>
       {"★".repeat(n)}
-      <span className="text-zinc-600">{"★".repeat(5 - n)}</span>
+      <span className="text-faint">{"★".repeat(5 - n)}</span>
     </span>
   );
 }
@@ -88,23 +88,23 @@ export function ReviewsSection({
   return (
     <section className="mt-10">
       <div className="mb-3 flex items-center gap-3">
-        <h2 className="text-lg font-semibold">Reseñas</h2>
+        <h2 className="text-[17px] font-semibold text-ink">Reseñas</h2>
         {count > 0 ? (
-          <span className="text-sm text-zinc-400">
+          <span className="text-sm text-muted">
             <Stars n={Math.round(average)} /> {average.toFixed(1)} · {count}
           </span>
         ) : null}
       </div>
 
       {owned ? (
-        <div className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-6 rounded border border-line bg-panel p-4">
           <div className="flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
                 onClick={() => setRating(n)}
                 className={
-                  n <= rating ? "text-xl text-amber-400" : "text-xl text-zinc-600"
+                  n <= rating ? "text-xl text-amber-400" : "text-xl text-faint"
                 }
                 aria-label={`${n} estrellas`}
               >
@@ -113,42 +113,41 @@ export function ReviewsSection({
             ))}
           </div>
           <textarea
-            className="mt-3 w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50"
+            className="mt-3 w-full rounded-sm border border-line bg-black/20 px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
             rows={3}
             placeholder="¿Qué te pareció?"
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
           <div className="mt-3 flex items-center gap-3">
-            <Button onClick={submit}>Publicar reseña</Button>
-            {msg ? <span className="text-sm text-sky-400">{msg}</span> : null}
+            <Button variant="blue" onClick={submit}>
+              Publicar reseña
+            </Button>
+            {msg ? <span className="text-sm text-blue">{msg}</span> : null}
           </div>
         </div>
       ) : (
-        <p className="mb-6 text-sm text-zinc-500">
+        <p className="mb-6 text-sm text-faint">
           Comprá el juego para dejar una reseña.
         </p>
       )}
 
       {reviews === null ? (
-        <p className="text-sm text-zinc-500">Cargando…</p>
+        <p className="text-sm text-faint">Cargando…</p>
       ) : reviews.length === 0 ? (
-        <p className="text-sm text-zinc-500">Todavía no hay reseñas.</p>
+        <p className="text-sm text-faint">Todavía no hay reseñas.</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className="grid gap-3 sm:grid-cols-2">
           {reviews.map((r) => (
-            <li
-              key={r.id}
-              className="rounded-lg border border-white/10 bg-white/5 p-4"
-            >
+            <li key={r.id} className="rounded border border-line bg-panel p-4">
               <div className="flex items-center gap-2">
                 <Stars n={r.rating} />
-                <span className="font-mono text-xs text-zinc-500">
+                <span className="font-mono text-xs text-faint">
                   {r.name ?? r.npub.slice(0, 12) + "…"}
                 </span>
               </div>
               {r.body ? (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">
+                <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
                   {r.body}
                 </p>
               ) : null}

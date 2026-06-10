@@ -94,16 +94,18 @@ export function BetView({ betId }: { betId: string }) {
   if (!user) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Apuesta</h1>
-        <p className="mt-2 text-zinc-400">Conectá tu Nostr para ver la apuesta.</p>
+        <h1 className="text-2xl font-bold text-white">Apuesta</h1>
+        <p className="mt-2 text-muted">Conectá tu Nostr para ver la apuesta.</p>
         <div className="mt-4 flex justify-center">
-          <Button onClick={login}>Conectar con Nostr</Button>
+          <Button variant="blue" onClick={login}>
+            Conectar con Nostr
+          </Button>
         </div>
       </div>
     );
   }
-  if (notFound) return <p className="px-4 py-16 text-center text-zinc-400">Apuesta no encontrada.</p>;
-  if (!bet) return <p className="px-4 py-16 text-center text-zinc-500">Cargando…</p>;
+  if (notFound) return <p className="px-4 py-16 text-center text-muted">Apuesta no encontrada.</p>;
+  if (!bet) return <p className="px-4 py-16 text-center text-faint">Cargando…</p>;
 
   const paidCount = bet.participants.filter((p) => p.paid).length;
   const total = bet.participants.length;
@@ -115,15 +117,15 @@ export function BetView({ betId }: { betId: string }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
       {/* Contrato */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-        <h1 className="text-xl font-bold">Apuesta · {bet.gameTitle}</h1>
-        <dl className="mt-3 space-y-1 text-sm text-zinc-300">
-          <div className="flex justify-between"><dt className="text-zinc-500">Monto por jugador</dt><dd>{bet.stakeSats} sats</dd></div>
-          <div className="flex justify-between"><dt className="text-zinc-500">Gana</dt><dd className="text-right">{bet.victoryCondition || "según el juego"}</dd></div>
-          <div className="flex justify-between"><dt className="text-zinc-500">Comisión</dt><dd>{bet.feePct}% · empate = se divide</dd></div>
-          <div className="flex justify-between"><dt className="text-zinc-500">Resuelve</dt><dd>{bet.providerName}</dd></div>
+      <div className="rounded-lg border border-line bg-panel p-5">
+        <h1 className="text-xl font-bold text-white">Apuesta · {bet.gameTitle}</h1>
+        <dl className="mt-3 space-y-1 text-sm text-ink">
+          <div className="flex justify-between"><dt className="text-faint">Monto por jugador</dt><dd className="font-mono text-btc">{bet.stakeSats} sats</dd></div>
+          <div className="flex justify-between"><dt className="text-faint">Gana</dt><dd className="text-right">{bet.victoryCondition || "según el juego"}</dd></div>
+          <div className="flex justify-between"><dt className="text-faint">Comisión</dt><dd>{bet.feePct}% · empate = se divide</dd></div>
+          <div className="flex justify-between"><dt className="text-faint">Resuelve</dt><dd>{bet.providerName}</dd></div>
         </dl>
-        <div className="mt-2 text-xs text-zinc-500">
+        <div className="mt-2 text-xs text-faint">
           Participantes: {bet.participants.map((p) => p.name ?? shortNpub(p.npub)).join(", ")}
         </div>
         {bet.contractEventId ? (
@@ -131,7 +133,7 @@ export function BetView({ betId }: { betId: string }) {
             href={`https://njump.me/${bet.contractEventId}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs text-sky-400 hover:underline"
+            className="mt-2 inline-block text-xs text-blue hover:underline"
           >
             Ver contrato en Nostr ↗
           </a>
@@ -141,27 +143,27 @@ export function BetView({ betId }: { betId: string }) {
       {/* Estado */}
       <div className="mt-6">
         {!bet.me ? (
-          <p className="text-sm text-zinc-400">No sos participante de esta apuesta.</p>
+          <p className="text-sm text-muted">No sos participante de esta apuesta.</p>
         ) : ["cancelled_incomplete", "refunded_timeout", "cancelled_admin", "voided"].includes(bet.status) ? (
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
+          <p className="rounded border border-btc/30 bg-btc/10 p-4 text-sm text-btc">
             Apuesta cancelada/reembolsada. {bet.me.paid ? "Te devolvimos tu depósito." : ""}
           </p>
         ) : bet.status === "settled" ? (
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center">
+          <div className="rounded-lg border border-line bg-panel p-4 text-center">
             {bet.me.result === "won" ? (
-              <p className="text-lg font-semibold text-emerald-400">🎉 ¡Ganaste!</p>
+              <p className="text-lg font-semibold text-green">🎉 ¡Ganaste!</p>
             ) : bet.me.result === "tie" ? (
-              <p className="text-lg font-semibold text-sky-400">Empate — te tocó parte del pozo</p>
+              <p className="text-lg font-semibold text-blue">Empate — te tocó parte del pozo</p>
             ) : (
-              <p className="text-lg font-semibold text-zinc-400">Perdiste esta vez</p>
+              <p className="text-lg font-semibold text-muted">Perdiste esta vez</p>
             )}
             {bet.me.payoutStatus === "paid" || bet.me.payoutStatus === "claimed" ? (
-              <p className="mt-1 text-sm text-emerald-400">Cobrado ✓</p>
+              <p className="mt-1 text-sm text-green">Cobrado ✓</p>
             ) : bet.me.payoutStatus === "withdraw_pending" && bet.me.withdrawUrl ? (
               <div className="mt-3">
                 {!withdrawQr ? (
                   <Button
-                    variant="outline"
+                    variant="btc"
                     onClick={async () => {
                       const u = bet.me?.withdrawUrl;
                       if (u) setWithdrawQr(await QRCode.toDataURL(u, { margin: 1, width: 220 }));
@@ -173,18 +175,18 @@ export function BetView({ betId }: { betId: string }) {
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={withdrawQr} alt="QR de retiro" className="mx-auto rounded-lg bg-white p-2" />
-                    <p className="mt-2 text-xs text-amber-400">
+                    <p className="mt-2 text-xs text-btc">
                       Escaneá con tu wallet. Tenés 60 min o los sats quedan en el pozo.
                     </p>
                   </>
                 )}
               </div>
             ) : bet.me.payoutStatus === "forfeited" ? (
-              <p className="mt-1 text-sm text-zinc-500">
+              <p className="mt-1 text-sm text-faint">
                 No reclamaste a tiempo; los sats quedaron en el pozo.
               </p>
             ) : bet.me.payoutStatus === "failed" ? (
-              <p className="mt-1 text-sm text-red-400">
+              <p className="mt-1 text-sm text-[var(--lose)]">
                 Hubo un problema con el cobro; se reintentará.
               </p>
             ) : null}
@@ -192,29 +194,29 @@ export function BetView({ betId }: { betId: string }) {
         ) : !bet.me.paid && bet.status === "pending_deposits" ? (
           <div>
             {!accepted ? (
-              <label className="flex items-start gap-2 text-sm text-zinc-300">
+              <label className="flex items-start gap-2 text-sm text-ink">
                 <input type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
                 Entiendo que esto es una apuesta en beta, que los pagos en Lightning son irreversibles y que Luna Negra no se hace responsable.
               </label>
             ) : !invoice ? (
-              <Button onClick={deposit} disabled={busy}>
+              <Button variant="btc" onClick={deposit} disabled={busy}>
                 {busy ? "Generando…" : `Depositar ${bet.stakeSats} sats`}
               </Button>
             ) : (
               <div className="text-center">
-                <p className="text-sm text-zinc-400">Pagá con Lightning · {mmss} restantes</p>
+                <p className="text-sm text-muted">Pagá con Lightning · {mmss} restantes</p>
                 {qr ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={qr} alt="QR" className="mx-auto mt-3 rounded-lg bg-white p-2" />
                 ) : null}
                 <button
                   onClick={() => navigator.clipboard.writeText(invoice)}
-                  className="mt-3 w-full truncate rounded-md border border-white/15 px-3 py-2 font-mono text-xs text-zinc-300 hover:bg-white/5"
+                  className="mt-3 w-full truncate rounded-sm border border-line px-3 py-2 font-mono text-xs text-muted hover:bg-white/5"
                 >
                   {invoice}
                 </button>
                 {devMode ? (
-                  <Button variant="outline" className="mt-3 w-full" onClick={simulate}>
+                  <Button variant="ghost" className="mt-3 w-full" onClick={simulate}>
                     Simular depósito (dev)
                   </Button>
                 ) : null}
@@ -222,15 +224,15 @@ export function BetView({ betId }: { betId: string }) {
             )}
           </div>
         ) : bet.status === "pending_deposits" ? (
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center">
-            <p className="text-sm text-zinc-300">Esperando jugadores…</p>
-            <p className="mt-1 text-2xl font-bold text-sky-400">{paidCount} / {total}</p>
-            <p className="mt-1 text-xs text-zinc-500">{mmss} para completar</p>
+          <div className="rounded-lg border border-line bg-panel p-4 text-center">
+            <p className="text-sm text-ink">Esperando jugadores…</p>
+            <p className="mt-1 text-2xl font-bold text-btc">{paidCount} / {total}</p>
+            <p className="mt-1 text-xs text-faint">{mmss} para completar</p>
           </div>
         ) : (
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center">
-            <p className="text-sm font-medium text-emerald-400">¡Todos depositaron — a jugar!</p>
-            <p className="mt-1 text-xs text-zinc-500">Esperando el resultado del juego…</p>
+          <div className="rounded-lg border border-line bg-panel p-4 text-center">
+            <p className="text-sm font-medium text-green">¡Todos depositaron — a jugar!</p>
+            <p className="mt-1 text-xs text-faint">Esperando el resultado del juego…</p>
           </div>
         )}
       </div>

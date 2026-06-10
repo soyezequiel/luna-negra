@@ -111,36 +111,50 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
 
   if (owned || phase === "paid") {
     return gameUrl ? (
-      <PlayButton gameId={gameId} gameUrl={gameUrl} title={title} slug={slug} />
+      <PlayButton
+        gameId={gameId}
+        gameUrl={gameUrl}
+        title={title}
+        slug={slug}
+        variant="play"
+      />
     ) : (
-      <Button variant="outline" disabled>
+      <Button variant="ghost" disabled>
         En tu biblioteca
       </Button>
     );
   }
 
   if (!user) {
-    return <Button onClick={login}>Conectar para comprar</Button>;
+    return (
+      <Button variant="blue" onClick={login}>
+        Conectar para comprar
+      </Button>
+    );
   }
 
   return (
     <>
-      <Button onClick={startBuy} disabled={phase === "creating"}>
+      <Button
+        variant={priceSats === 0 ? "play" : "btc"}
+        onClick={startBuy}
+        disabled={phase === "creating"}
+      >
         {phase === "creating"
           ? "Generando…"
           : priceSats === 0
-            ? "Obtener gratis"
+            ? "Agregar a la biblioteca"
             : `Comprar · ${priceLabel(priceSats)}`}
       </Button>
       {phase === "error" && error ? (
-        <p className="mt-2 text-sm text-red-400">{error}</p>
+        <p className="mt-2 text-sm text-[var(--lose)]">{error}</p>
       ) : null}
 
       {phase === "pending" && invoice ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-white/10 bg-[#11141a] p-6 text-center">
-            <h3 className="text-lg font-semibold">Pagá con Lightning</h3>
-            <p className="mt-1 text-sm text-zinc-400">
+          <div className="w-full max-w-sm rounded-lg border border-line-2 bg-panel-2 p-6 text-center">
+            <h3 className="text-lg font-semibold text-ink">Pagá con Lightning</h3>
+            <p className="mt-1 text-sm text-btc">
               {priceLabel(priceSats)} · escaneá o copiá el invoice
             </p>
             {qr ? (
@@ -153,15 +167,15 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
             ) : null}
             <button
               onClick={copyInvoice}
-              className="mt-4 w-full truncate rounded-md border border-white/15 px-3 py-2 font-mono text-xs text-zinc-300 hover:bg-white/5"
+              className="mt-4 w-full truncate rounded-sm border border-line px-3 py-2 font-mono text-xs text-muted hover:bg-white/5"
             >
               {copied ? "¡Copiado!" : invoice}
             </button>
             {expired ? (
               <div className="mt-3">
-                <p className="text-sm text-amber-400">Invoice expirado.</p>
+                <p className="text-sm text-btc">Invoice expirado.</p>
                 <Button
-                  variant="outline"
+                  variant="btc"
                   className="mt-2 w-full"
                   onClick={startBuy}
                 >
@@ -169,12 +183,12 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
                 </Button>
               </div>
             ) : (
-              <p className="mt-3 text-sm text-zinc-500">Esperando el pago…</p>
+              <p className="mt-3 text-sm text-faint">Esperando el pago…</p>
             )}
 
             {devMode ? (
               <Button
-                variant="outline"
+                variant="ghost"
                 className="mt-4 w-full"
                 onClick={simulatePay}
               >
@@ -183,7 +197,7 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
             ) : null}
             <button
               onClick={closeModal}
-              className="mt-3 text-xs text-zinc-500 hover:text-zinc-300"
+              className="mt-3 text-xs text-faint hover:text-ink"
             >
               Cancelar
             </button>

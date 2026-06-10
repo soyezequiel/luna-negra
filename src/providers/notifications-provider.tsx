@@ -28,10 +28,31 @@ import {
 } from "@/lib/invite";
 import { joinRoomAndPlay } from "@/lib/room-launch";
 
-type Toast = { id: number; title: string; body?: string; href?: string };
+type ToastKind = "info" | "play" | "join" | "btc" | "warn";
+type Toast = {
+  id: number;
+  title: string;
+  body?: string;
+  href?: string;
+  kind: ToastKind;
+};
 
 type NotificationsContextValue = {
-  notify: (t: { title: string; body?: string; href?: string }) => void;
+  notify: (t: {
+    title: string;
+    body?: string;
+    href?: string;
+    kind?: ToastKind;
+  }) => void;
+};
+
+// Punto de color + halo por tipo de toast (ver design-spec §Toasts).
+const TOAST_DOT: Record<ToastKind, string> = {
+  info: "var(--blue)",
+  join: "var(--blue)",
+  play: "var(--green)",
+  btc: "var(--btc)",
+  warn: "var(--lose)",
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(
@@ -61,9 +82,19 @@ export function NotificationsProvider({
   }, []);
 
   const notify = useCallback(
-    ({ title, body, href }: { title: string; body?: string; href?: string }) => {
+    ({
+      title,
+      body,
+      href,
+      kind = "info",
+    }: {
+      title: string;
+      body?: string;
+      href?: string;
+      kind?: ToastKind;
+    }) => {
       const id = ++idSeq.current;
-      setToasts((prev) => [...prev, { id, title, body, href }]);
+      setToasts((prev) => [...prev, { id, title, body, href, kind }]);
       setTimeout(() => dismiss(id), TOAST_TTL);
     },
     [dismiss],
@@ -180,7 +211,7 @@ export function NotificationsProvider({
           const title = `🎮 ${name} te invitó a jugar`;
           const body = "Tocá para unirte a la sala";
           const href = inviteHref(invite);
-          notify({ title, body, href });
+          notify({ title, body, href, kind: "join" });
           fireDesktop(title, body, href);
           return;
         }
@@ -222,7 +253,7 @@ export function NotificationsProvider({
           const name = fromPubkey ? await nameOf(fromPubkey) : shortId(inv.fromNpub);
           const title = `🎮 ${name} te invitó a una sala`;
           const body = "Tocá para unirte";
-          notify({ title, body, href: inv.inviteUrl });
+          notify({ title, body, href: inv.inviteUrl, kind: "join" });
           fireDesktop(title, body, inv.inviteUrl);
         }
       } catch {
@@ -248,19 +279,19 @@ export function NotificationsProvider({
       {/* Banner de permiso */}
       {showPermissionBanner ? (
         <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4">
-          <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#11141a] px-4 py-3 text-sm shadow-lg">
-            <span className="text-zinc-300">
+          <div className="flex items-center gap-3 rounded-lg border border-line-2 bg-panel-2 px-4 py-3 text-sm shadow-[0_18px_40px_-22px_rgba(0,0,0,.85)]">
+            <span className="text-ink">
               Activá las notificaciones para enterarte de invitaciones y mensajes.
             </span>
             <button
               onClick={requestPermission}
-              className="shrink-0 rounded-md bg-sky-500/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
+              className="btn btn-blue shrink-0 px-3 py-1.5 text-xs"
             >
               Activar
             </button>
             <button
               onClick={() => setShowPermissionBanner(false)}
-              className="shrink-0 rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+              className="shrink-0 rounded-sm px-2 py-1.5 text-xs text-muted hover:text-ink"
             >
               Ahora no
             </button>
@@ -268,20 +299,28 @@ export function NotificationsProvider({
         </div>
       ) : null}
 
-      {/* Pila de toasts */}
+      {/* Pila de toasts (abajo-derecha, entrada deslizante) */}
       <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-xs flex-col gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="pointer-events-auto rounded-lg border border-white/10 bg-[#11141a] p-3 shadow-lg"
+            className="toast-in pointer-events-auto rounded-lg border border-line-2 p-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,.9)]"
+            style={{ background: "linear-gradient(180deg,#1a2433,#121a25)" }}
           >
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-2.5">
+              <span
+                className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                style={{
+                  background: TOAST_DOT[t.kind],
+                  boxShadow: `0 0 10px 1px ${TOAST_DOT[t.kind]}`,
+                }}
+              />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-zinc-100">
+                <p className="truncate text-sm font-semibold text-ink">
                   {t.title}
                 </p>
                 {t.body ? (
-                  <p className="mt-0.5 text-xs text-zinc-400">{t.body}</p>
+                  <p className="mt-0.5 text-xs text-muted">{t.body}</p>
                 ) : null}
                 {t.href ? (
                   <button
@@ -289,7 +328,7 @@ export function NotificationsProvider({
                       openHref(t.href!);
                       dismiss(t.id);
                     }}
-                    className="mt-2 rounded-md bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/30"
+                    className="mt-2 rounded-sm bg-blue/10 px-2.5 py-1 text-xs font-semibold text-blue hover:bg-white/10"
                   >
                     {t.href.startsWith("/game/") || /^https?:\/\//.test(t.href)
                       ? "Unirse a la sala"
@@ -299,7 +338,7 @@ export function NotificationsProvider({
               </div>
               <button
                 onClick={() => dismiss(t.id)}
-                className="shrink-0 text-zinc-500 hover:text-zinc-300"
+                className="shrink-0 text-faint hover:text-ink"
                 aria-label="Cerrar"
               >
                 ✕

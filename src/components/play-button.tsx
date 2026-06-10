@@ -11,6 +11,8 @@ export function PlayButton({
   slug,
   className,
   label = "Jugar",
+  variant = "play",
+  size = "md",
 }: {
   gameId: string;
   gameUrl: string;
@@ -18,6 +20,8 @@ export function PlayButton({
   slug?: string;
   className?: string;
   label?: string;
+  variant?: "play" | "blue" | "btc" | "primary" | "outline" | "ghost";
+  size?: "sm" | "md" | "xl";
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +40,13 @@ export function PlayButton({
   }
 
   return (
-    <Button className={className} onClick={play} disabled={loading}>
+    <Button
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={play}
+      disabled={loading}
+    >
       {loading ? "Abriendo…" : label}
     </Button>
   );

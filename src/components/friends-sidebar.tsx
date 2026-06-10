@@ -32,6 +32,7 @@ import {
   preopenGameWindowIfNeeded,
 } from "@/lib/room-launch";
 import { Button } from "@/components/ui/button";
+import { FriendsChatPanel } from "@/components/friends-chat-panel";
 
 /** Si el estado del amigo apunta a una sala unible, devuelve la invitación. */
 function roomInvite(status?: Status): Invite | null {
@@ -60,6 +61,14 @@ export function FriendsSidebar() {
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Amigo cuyo chat está abierto (panel dinámico; null = vista de lista).
+  const [chatWith, setChatWith] = useState<{
+    pubkey: string;
+    name: string;
+    picture?: string | null;
+    presence?: string | null;
+    online?: boolean;
+  } | null>(null);
   // Invitaciones recibidas (DMs): anclan al amigo arriba con opción de unirse.
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   // Roster indexado por sala para no mostrar datos de una sala anterior.
@@ -264,194 +273,253 @@ export function FriendsSidebar() {
     (i) => !friendPks.has(i.fromPubkey),
   );
 
+  const inviteLabelFor = (pk: string) =>
+    invited.has(pk)
+      ? "✓ Invitado"
+      : invitingPk === pk
+        ? "Enviando…"
+        : "Invitar a jugar";
+
+  const onlineCount = (friends ?? []).filter((f) => f.status).length;
+
   return (
-    <aside className="fixed right-0 top-14 bottom-0 z-40 hidden w-72 flex-col border-l border-white/10 bg-[#0b0d12]/80 backdrop-blur xl:flex">
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <h2 className="text-sm font-semibold tracking-tight">Amigos</h2>
-        <Link href="/friends" className="text-xs text-zinc-400 hover:text-white">
-          Ver todos
-        </Link>
-      </div>
-
-      {canInvite ? (
-        <div className="border-b border-white/10 bg-emerald-500/10 px-4 py-2.5">
-          {roomForGame ? (
-            <>
-              <button
-                onClick={openGame}
-                className="w-full rounded-md bg-emerald-500/90 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
-              >
-                ▶ Abrir juego
-                {inRoom && inRoom.length > 0
-                  ? ` · ${inRoom.length} en la sala`
-                  : ""}
-              </button>
-              <p className="mt-1.5 text-[11px] text-emerald-300/80">
-                {inRoom && inRoom.length > 0
-                  ? "Tus amigos ya entraron. Abrí el juego cuando quieras."
-                  : "Invitaste a tus amigos. Esperando que entren…"}
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-emerald-200">
-              🎮 Invitá amigos a jugar{" "}
-              <span className="font-medium">{currentGame!.title}</span>. Cuando
-              hayan entrado, abrí el juego.
-            </p>
-          )}
-        </div>
-      ) : null}
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {orphanInvites.length > 0 ? (
-          <ul className="mb-2 space-y-1">
-            {orphanInvites.map((inv) => (
-              <li
-                key={inv.fromPubkey}
-                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
-                  <span className="truncate text-sm font-medium">
-                    {shortId(npubOf(inv.fromPubkey))}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[11px] text-emerald-300">
-                  🎮 Te invitó a jugar{" "}
-                  <span className="font-medium">{inv.title}</span>
-                </p>
-                <div className="mt-1 flex gap-1.5">
-                  <button
-                    onClick={() => joinPendingInvite(inv)}
-                    className="flex-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
-                  >
-                    Unirse
-                  </button>
-                  <button
-                    onClick={() => removePendingInvite(inv.fromPubkey)}
-                    className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
-                    aria-label="Descartar invitación"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {loading ? null : !user ? (
-          <div className="px-1 py-2">
-            <p className="text-xs text-zinc-400">
-              Conectá tu Nostr para ver a tus amigos.
-            </p>
-            <Button className="mt-3 w-full" onClick={login}>
-              Conectar con Nostr
-            </Button>
+    <aside className="fixed right-0 top-16 bottom-0 z-40 hidden w-80 flex-col border-l border-line bg-bg-1/85 backdrop-blur xl:flex">
+      {chatWith ? (
+        <FriendsChatPanel
+          friendPubkey={chatWith.pubkey}
+          name={chatWith.name}
+          picture={chatWith.picture}
+          presence={chatWith.presence}
+          online={chatWith.online}
+          canInvite={canInvite}
+          inviteLabel={inviteLabelFor(chatWith.pubkey)}
+          inviteDisabled={
+            invited.has(chatWith.pubkey) || invitingPk === chatWith.pubkey
+          }
+          onInvite={() => inviteToGame(chatWith.pubkey, chatWith.name)}
+          onJoinRoom={joinRoom}
+          onBack={() => setChatWith(null)}
+        />
+      ) : (
+        <>
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-ink">
+              Amigos
+              {onlineCount > 0 ? (
+                <span className="flex items-center gap-1 text-[11px] font-normal text-green">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green" />
+                  {onlineCount}
+                </span>
+              ) : null}
+            </h2>
+            <Link href="/friends" className="text-xs text-muted hover:text-white">
+              Ver todos
+            </Link>
           </div>
-        ) : friends === null ? (
-          <p className="px-1 text-xs text-zinc-500">Cargando desde relays…</p>
-        ) : friends.length === 0 ? (
-          <p className="px-1 text-xs text-zinc-400">
-            No seguís a nadie todavía en Nostr.
-          </p>
-        ) : (
-          <ul className="space-y-1">
-            {sortedFriends!.map((f) => {
-              const name = profileName(f.profile, shortId(f.npub));
-              const invite = roomInvite(f.status);
-              const pending = inviteByPk.get(f.pubkey);
-              return (
-                <li
-                  key={f.pubkey}
-                  className={
-                    pending
-                      ? "rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 py-2"
-                      : "rounded-lg px-2 py-2 hover:bg-white/5"
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    {f.profile?.picture ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={f.profile.picture}
-                        alt=""
-                        className="h-8 w-8 shrink-0 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-medium">
-                          {name}
-                        </span>
-                        {f.isMember ? (
-                          <span className="shrink-0 rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[9px] text-sky-300">
-                            LN
+
+          {canInvite ? (
+            <div className="border-b border-line bg-green/10 px-4 py-2.5">
+              {roomForGame ? (
+                <>
+                  <Button
+                    variant="play"
+                    size="sm"
+                    className="w-full"
+                    onClick={openGame}
+                  >
+                    ▶ Abrir juego
+                    {inRoom && inRoom.length > 0
+                      ? ` · ${inRoom.length} en la sala`
+                      : ""}
+                  </Button>
+                  <p className="mt-1.5 text-[11px] text-green/80">
+                    {inRoom && inRoom.length > 0
+                      ? "Tus amigos ya entraron. Abrí el juego cuando quieras."
+                      : "Invitaste a tus amigos. Esperando que entren…"}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-green">
+                  🎮 Invitá amigos a jugar{" "}
+                  <span className="font-medium">{currentGame!.title}</span>.
+                  Cuando hayan entrado, abrí el juego.
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {orphanInvites.length > 0 ? (
+              <ul className="mb-2 space-y-1">
+                {orphanInvites.map((inv) => (
+                  <li
+                    key={inv.fromPubkey}
+                    className="rounded border border-green/40 bg-green/10 px-2 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-panel-3" />
+                      <span className="truncate text-sm font-medium text-ink">
+                        {shortId(npubOf(inv.fromPubkey))}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-green">
+                      🎮 Te invitó a jugar{" "}
+                      <span className="font-medium">{inv.title}</span>
+                    </p>
+                    <div className="mt-1 flex gap-1.5">
+                      <button
+                        onClick={() => joinPendingInvite(inv)}
+                        className="btn btn-play flex-1 px-2.5 py-1 text-xs"
+                      >
+                        Unirse
+                      </button>
+                      <button
+                        onClick={() => removePendingInvite(inv.fromPubkey)}
+                        className="shrink-0 rounded-sm px-2 py-1 text-xs text-muted hover:text-ink"
+                        aria-label="Descartar invitación"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {loading ? null : !user ? (
+              <div className="px-1 py-2">
+                <p className="text-xs text-muted">
+                  Conectá tu Nostr para ver a tus amigos.
+                </p>
+                <Button variant="blue" className="mt-3 w-full" onClick={login}>
+                  Conectar con Nostr
+                </Button>
+              </div>
+            ) : friends === null ? (
+              <p className="px-1 text-xs text-faint">Cargando desde relays…</p>
+            ) : friends.length === 0 ? (
+              <p className="px-1 text-xs text-muted">
+                No seguís a nadie todavía en Nostr.
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {sortedFriends!.map((f) => {
+                  const name = profileName(f.profile, shortId(f.npub));
+                  const invite = roomInvite(f.status);
+                  const pending = inviteByPk.get(f.pubkey);
+                  const online = Boolean(f.status);
+                  return (
+                    <li
+                      key={f.pubkey}
+                      className={
+                        pending
+                          ? "rounded border border-green/40 bg-green/10 px-2 py-2"
+                          : "rounded px-2 py-2 hover:bg-white/5"
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            setChatWith({
+                              pubkey: f.pubkey,
+                              name,
+                              picture: f.profile?.picture ?? null,
+                              presence: f.status?.content ?? null,
+                              online,
+                            })
+                          }
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          title="Abrir chat"
+                        >
+                          <span className="relative shrink-0">
+                            {f.profile?.picture ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={f.profile.picture}
+                                alt=""
+                                className="h-8 w-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <span className="block h-8 w-8 rounded-full bg-panel-3" />
+                            )}
+                            <span
+                              className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-1"
+                              style={{
+                                background: online
+                                  ? "var(--online)"
+                                  : "var(--faint)",
+                              }}
+                            />
                           </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-sm font-medium text-ink">
+                                {name}
+                              </span>
+                              {f.isMember ? (
+                                <span className="shrink-0 rounded-sm bg-blue/20 px-1.5 py-0.5 text-[9px] text-blue">
+                                  LN
+                                </span>
+                              ) : null}
+                            </span>
+                            {f.status ? (
+                              <span className="block truncate text-[11px] text-green">
+                                🎮 {f.status.content}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="shrink-0 text-faint">›</span>
+                        </button>
+                        {invite ? (
+                          <button
+                            onClick={() => joinRoom(invite)}
+                            className="shrink-0 rounded-sm bg-green/20 px-1.5 py-0.5 text-[9px] font-medium text-green hover:bg-green/30"
+                          >
+                            Unirse
+                          </button>
                         ) : null}
                       </div>
-                      {f.status ? (
-                        <div className="flex items-center gap-1.5">
-                          <p className="truncate text-[11px] text-emerald-400">
-                            🎮 {f.status.content}
+                      {pending ? (
+                        <div className="mt-1.5">
+                          <p className="text-[11px] text-green">
+                            🎮 Te invitó a jugar{" "}
+                            <span className="font-medium">{pending.title}</span>
                           </p>
-                          {invite ? (
+                          <div className="mt-1 flex gap-1.5">
                             <button
-                              onClick={() => joinRoom(invite)}
-                              className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-medium text-emerald-300 hover:bg-emerald-500/30"
+                              onClick={() => joinPendingInvite(pending)}
+                              className="btn btn-play flex-1 px-2.5 py-1 text-xs"
                             >
                               Unirse
                             </button>
-                          ) : null}
+                            <button
+                              onClick={() => removePendingInvite(f.pubkey)}
+                              className="shrink-0 rounded-sm px-2 py-1 text-xs text-muted hover:text-ink"
+                              aria-label="Descartar invitación"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       ) : null}
-                    </div>
-                  </div>
-                  {pending ? (
-                    <div className="mt-1.5">
-                      <p className="text-[11px] text-emerald-300">
-                        🎮 Te invitó a jugar{" "}
-                        <span className="font-medium">{pending.title}</span>
-                      </p>
-                      <div className="mt-1 flex gap-1.5">
+                      {canInvite ? (
                         <button
-                          onClick={() => joinPendingInvite(pending)}
-                          className="flex-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                          onClick={() => inviteToGame(f.pubkey, name)}
+                          disabled={
+                            invited.has(f.pubkey) || invitingPk === f.pubkey
+                          }
+                          className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                         >
-                          Unirse
+                          {inviteLabelFor(f.pubkey)}
                         </button>
-                        <button
-                          onClick={() => removePendingInvite(f.pubkey)}
-                          className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-400 hover:text-zinc-200"
-                          aria-label="Descartar invitación"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {canInvite ? (
-                    <button
-                      onClick={() => inviteToGame(f.pubkey, name)}
-                      disabled={
-                        invited.has(f.pubkey) || invitingPk === f.pubkey
-                      }
-                      className="mt-1.5 w-full rounded-md border border-emerald-500/40 px-2.5 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
-                    >
-                      {invited.has(f.pubkey)
-                        ? "✓ Invitado"
-                        : invitingPk === f.pubkey
-                          ? "Enviando…"
-                          : "Invitar a jugar"}
-                    </button>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </aside>
   );
 }

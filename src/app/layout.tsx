@@ -24,13 +24,13 @@ export default function RootLayout({
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-[#0a0c10] text-zinc-100">
+      <body className="relative flex min-h-full flex-col bg-bg text-ink">
         <SessionProvider>
           <NotificationsProvider>
             <GameContextProvider>
               <Navbar />
-              {/* Reservamos espacio a la derecha para la lista de amigos fija. */}
-              <main className="flex-1 xl:pr-72">{children}</main>
+              {/* Reservamos espacio a la derecha para la barra de amigos/chat fija. */}
+              <main className="relative z-10 flex-1 xl:pr-80">{children}</main>
               <Footer />
               <FriendsSidebar />
             </GameContextProvider>

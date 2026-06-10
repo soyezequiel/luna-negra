@@ -46,6 +46,31 @@ const BET_STATUS: Record<string, string> = {
   refunded_timeout: "Reembolsada (timeout)",
 };
 
+function Kpi({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent: string;
+}) {
+  return (
+    <div
+      className="rounded border border-line bg-panel p-4 pl-5"
+      style={{ borderLeft: `3px solid ${accent}` }}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+        {label}
+      </p>
+      <p className="mt-1 text-[25px] font-bold leading-none text-ink">{value}</p>
+      {sub ? <p className="mt-1.5 text-[11.5px] text-muted">{sub}</p> : null}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, login, loading } = useSession();
   const [games, setGames] = useState<Row[] | null>(null);
@@ -127,9 +152,11 @@ export default function AdminPage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Admin</h1>
+        <h1 className="text-2xl font-bold text-white">Admin</h1>
         <div className="mt-4 flex justify-center">
-          <Button onClick={login}>Conectar con Nostr</Button>
+          <Button variant="blue" onClick={login}>
+            Conectar con Nostr
+          </Button>
         </div>
       </div>
     );
@@ -137,32 +164,45 @@ export default function AdminPage() {
 
   if (forbidden) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center text-zinc-400">
+      <div className="mx-auto max-w-3xl px-4 py-16 text-center text-muted">
         No estás autorizado para ver esta página.
       </div>
     );
   }
 
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-bold">Admin</h1>
+  const pendingPayoutSats = payouts.reduce((n, p) => n + p.share, 0);
+  const activeBets = bets.filter((b) =>
+    ["pending_deposits", "ready", "settling", "refunding"].includes(b.status),
+  );
+  const escrowSats = activeBets.reduce((n, b) => n + b.stakeSats, 0);
 
-      <section className="mt-6">
-        <h2 className="mb-3 font-semibold">Juegos en revisión</h2>
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-8">
+      <h1 className="text-3xl font-bold tracking-tight text-white">Admin</h1>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi label="En revisión" value={String(games?.length ?? 0)} sub="juegos" accent="var(--blue)" />
+        <Kpi label="Payouts a resolver" value={String(payouts.length)} sub={`${pendingPayoutSats.toLocaleString("es-AR")} sats`} accent="var(--btc)" />
+        <Kpi label="Escrow retenido" value={escrowSats.toLocaleString("es-AR")} sub={`${activeBets.length} apuestas activas`} accent="var(--btc)" />
+        <Kpi label="Apuestas" value={String(bets.length)} sub="en total" accent="var(--win)" />
+      </div>
+
+      <section className="mt-8">
+        <h2 className="mb-3 font-semibold text-ink">Juegos en revisión</h2>
         {games === null ? (
-          <p className="text-sm text-zinc-500">Cargando…</p>
+          <p className="text-sm text-faint">Cargando…</p>
         ) : games.length === 0 ? (
-          <p className="text-zinc-400">No hay juegos en revisión.</p>
+          <p className="text-muted">No hay juegos en revisión.</p>
         ) : (
           <ul className="space-y-2">
             {games.map((g) => (
               <li
                 key={g.id}
-                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
               >
                 <div>
                   <p className="text-sm font-medium">{g.title}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-faint">
                     {g.provider.name} ·{" "}
                     {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
                   </p>
@@ -181,8 +221,8 @@ export default function AdminPage() {
 
       {unannounced.length > 0 ? (
         <section className="mt-10">
-          <h2 className="mb-1 font-semibold">Sin anuncio en Nostr</h2>
-          <p className="mb-3 text-xs text-zinc-500">
+          <h2 className="mb-1 font-semibold text-ink">Sin anuncio en Nostr</h2>
+          <p className="mb-3 text-xs text-faint">
             Juegos publicados sin posteo raíz. Anunciá para que comentarios y
             reseñas se cuelguen de un hilo en Nostr.
           </p>
@@ -190,11 +230,11 @@ export default function AdminPage() {
             {unannounced.map((g) => (
               <li
                 key={g.id}
-                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
               >
                 <div>
                   <p className="text-sm font-medium">{g.title}</p>
-                  <p className="text-xs text-zinc-500">{g.provider.name}</p>
+                  <p className="text-xs text-faint">{g.provider.name}</p>
                 </div>
                 <Button onClick={() => announce(g.id)} disabled={busy === g.id}>
                   {busy === g.id ? "Anunciando…" : "Anunciar en Nostr"}
@@ -206,24 +246,24 @@ export default function AdminPage() {
       ) : null}
 
       <section className="mt-10">
-        <h2 className="mb-3 font-semibold">Payouts a resolver</h2>
+        <h2 className="mb-3 font-semibold text-ink">Payouts a resolver</h2>
         {payouts.length === 0 ? (
-          <p className="text-zinc-400">Todos los payouts están al día. 🎉</p>
+          <p className="text-muted">Todos los payouts están al día. 🎉</p>
         ) : (
           <ul className="space-y-2">
             {payouts.map((p) => (
               <li
                 key={p.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-4 py-3"
               >
                 <div>
                   <p className="text-sm font-medium">
                     {p.gameTitle}{" "}
-                    <span className="text-xs text-amber-400">
+                    <span className="text-xs text-btc">
                       ({PAYOUT_LABEL[p.payoutStatus] ?? p.payoutStatus})
                     </span>
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-faint">
                     {p.providerName} · {p.share} sats →{" "}
                     {p.lightningAddress ?? "sin Lightning Address"}
                   </p>
@@ -242,19 +282,19 @@ export default function AdminPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="mb-3 font-semibold">Apuestas</h2>
+        <h2 className="mb-3 font-semibold text-ink">Apuestas</h2>
         {bets.length === 0 ? (
-          <p className="text-zinc-400">No hay apuestas.</p>
+          <p className="text-muted">No hay apuestas.</p>
         ) : (
           <ul className="space-y-2">
             {bets.map((b) => (
               <li
                 key={b.id}
-                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
               >
                 <div>
                   <p className="text-sm font-medium">{b.gameTitle}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-faint">
                     {BET_STATUS[b.status] ?? b.status} · {b.stakeSats} sats ·{" "}
                     {b.paid}/{b.total} pagaron
                   </p>

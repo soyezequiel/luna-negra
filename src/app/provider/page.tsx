@@ -5,8 +5,10 @@ import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES } from "@/lib/categories";
 
+import { satsLabel } from "@/lib/format";
+
 const inputCls =
-  "w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-sky-500/50";
+  "w-full rounded-sm border border-line bg-black/20 px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30";
 
 type Provider = {
   id: string;
@@ -65,6 +67,31 @@ const emptyForm: GameForm = {
   coverUrl: "",
   screenshots: [],
 };
+
+function Kpi({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent: string;
+}) {
+  return (
+    <div
+      className="rounded border border-line bg-panel p-4 pl-5"
+      style={{ borderLeft: `3px solid ${accent}` }}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+        {label}
+      </p>
+      <p className="mt-1 text-[25px] font-bold leading-none text-ink">{value}</p>
+      {sub ? <p className="mt-1.5 text-[11.5px] text-muted">{sub}</p> : null}
+    </div>
+  );
+}
 
 function parseShots(json: string): string[] {
   try {
@@ -255,25 +282,46 @@ export default function ProviderPage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Proveedor</h1>
-        <p className="mt-2 text-zinc-400">Conectá tu Nostr para publicar juegos.</p>
+        <h1 className="text-2xl font-bold text-white">Proveedor</h1>
+        <p className="mt-2 text-muted">Conectá tu Nostr para publicar juegos.</p>
         <div className="mt-4 flex justify-center">
-          <Button onClick={login}>Conectar con Nostr</Button>
+          <Button variant="blue" onClick={login}>
+            Conectar con Nostr
+          </Button>
         </div>
       </div>
     );
   }
 
+  const paidSats = sales
+    .filter((s) => s.payoutStatus === "paid")
+    .reduce((n, s) => n + s.share, 0);
+  const pendingSats = sales
+    .filter((s) => s.payoutStatus === "pending")
+    .reduce((n, s) => n + s.share, 0);
+  const publishedCount = games.filter((g) => g.status === "published").length;
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-bold">Panel de proveedor</h1>
-      {msg ? <p className="mt-2 text-sm text-sky-400">{msg}</p> : null}
+    <div className="mx-auto max-w-3xl px-4 py-8">
+      <h1 className="text-3xl font-bold tracking-tight text-white">
+        Panel de proveedor
+      </h1>
+      {msg ? <p className="mt-2 text-sm text-blue">{msg}</p> : null}
+
+      {provider ? (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Kpi label="Ingresos pagados" value={satsLabel(paidSats)} sub="sats" accent="var(--btc)" />
+          <Kpi label="Pendiente de cobro" value={satsLabel(pendingSats)} sub="sats" accent="var(--btc)" />
+          <Kpi label="Juegos publicados" value={String(publishedCount)} sub={`${games.length} en total`} accent="var(--blue)" />
+          <Kpi label="Ventas" value={String(sales.length)} sub="transacciones" accent="var(--win)" />
+        </div>
+      ) : null}
 
       <form
         onSubmit={saveProvider}
-        className="mt-6 space-y-3 rounded-xl border border-white/10 bg-white/5 p-5"
+        className="mt-6 space-y-3 rounded-lg border border-line bg-panel p-5"
       >
-        <h2 className="font-semibold">
+        <h2 className="font-semibold text-ink">
           {provider ? "Tu perfil" : "Creá tu perfil de proveedor"}
         </h2>
         <input
@@ -295,7 +343,7 @@ export default function ProviderPage() {
         <>
           <form
             onSubmit={submitGame}
-            className="mt-8 space-y-3 rounded-xl border border-white/10 bg-white/5 p-5"
+            className="mt-8 space-y-3 rounded-xl border border-line bg-panel p-5"
           >
             <h2 className="font-semibold">
               {editingId ? "Editar juego" : "Nuevo juego"}
@@ -315,7 +363,7 @@ export default function ProviderPage() {
             />
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-sm text-zinc-400">Precio (sats)</label>
+                <label className="block text-sm text-muted">Precio (sats)</label>
                 <input
                   className={`${inputCls} mt-1`}
                   type="number"
@@ -328,7 +376,7 @@ export default function ProviderPage() {
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-sm text-zinc-400">Categoría</label>
+                <label className="block text-sm text-muted">Categoría</label>
                 <select
                   className={`${inputCls} mt-1`}
                   value={form.category}
@@ -354,7 +402,7 @@ export default function ProviderPage() {
 
             {/* Portada */}
             <div>
-              <label className="block text-sm text-zinc-400">Portada</label>
+              <label className="block text-sm text-muted">Portada</label>
               <div className="mt-1 flex items-center gap-3">
                 {form.coverUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -373,7 +421,7 @@ export default function ProviderPage() {
                   }
                 />
               </div>
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5">
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
                 {uploading ? "Subiendo…" : "📷 Subir portada"}
                 <input
                   type="file"
@@ -392,7 +440,7 @@ export default function ProviderPage() {
 
             {/* Capturas */}
             <div>
-              <label className="block text-sm text-zinc-400">Capturas</label>
+              <label className="block text-sm text-muted">Capturas</label>
               {form.screenshots.length > 0 ? (
                 <div className="mt-1 flex flex-wrap gap-2">
                   {form.screenshots.map((src, i) => (
@@ -421,7 +469,7 @@ export default function ProviderPage() {
                   ))}
                 </div>
               ) : null}
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5">
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
                 {uploading ? "Subiendo…" : "➕ Agregar captura"}
                 <input
                   type="file"
@@ -442,7 +490,7 @@ export default function ProviderPage() {
               </label>
             </div>
 
-            {msg ? <p className="text-xs text-amber-400">{msg}</p> : null}
+            {msg ? <p className="text-xs text-btc">{msg}</p> : null}
             <div className="flex gap-3">
               <Button type="submit">
                 {editingId ? "Guardar cambios" : "Crear borrador"}
@@ -458,23 +506,23 @@ export default function ProviderPage() {
           <section className="mt-8">
             <h2 className="mb-3 font-semibold">Tus juegos</h2>
             {games.length === 0 ? (
-              <p className="text-sm text-zinc-500">Todavía no creaste juegos.</p>
+              <p className="text-sm text-faint">Todavía no creaste juegos.</p>
             ) : (
               <ul className="space-y-2">
                 {games.map((g) => (
                   <li
                     key={g.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-4 py-3"
                   >
                     <div>
                       <p className="text-sm font-medium">{g.title}</p>
-                      <p className="text-xs text-zinc-500">
+                      <p className="text-xs text-faint">
                         {STATUS_LABEL[g.status] ?? g.status} ·{" "}
                         {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
                       </p>
-                      <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
+                      <p className="mt-1 flex items-center gap-1 text-xs text-faint">
                         <span>ID:</span>
-                        <code className="break-all font-mono text-zinc-400">
+                        <code className="break-all font-mono text-muted">
                           {g.id}
                         </code>
                         <button
@@ -483,7 +531,7 @@ export default function ProviderPage() {
                             navigator.clipboard.writeText(g.id);
                             setMsg("ID del juego copiado.");
                           }}
-                          className="text-sky-400 hover:underline"
+                          className="text-blue hover:underline"
                         >
                           Copiar
                         </button>
@@ -521,24 +569,24 @@ export default function ProviderPage() {
           <section className="mt-8">
             <h2 className="mb-3 font-semibold">Ventas</h2>
             {sales.length === 0 ? (
-              <p className="text-sm text-zinc-500">Todavía no hay ventas.</p>
+              <p className="text-sm text-faint">Todavía no hay ventas.</p>
             ) : (
               <ul className="space-y-2">
                 {sales.map((s) => (
                   <li
                     key={s.id}
-                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm"
+                    className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-2 text-sm"
                   >
                     <span>{s.gameTitle}</span>
-                    <span className="text-zinc-400">
+                    <span className="text-muted">
                       {s.share} sats ·{" "}
                       <span
                         className={
                           s.payoutStatus === "paid"
-                            ? "text-emerald-400"
+                            ? "text-green"
                             : s.payoutStatus === "failed"
-                              ? "text-red-400"
-                              : "text-amber-400"
+                              ? "text-[var(--lose)]"
+                              : "text-btc"
                         }
                       >
                         {PAYOUT_LABEL[s.payoutStatus] ?? s.payoutStatus}
@@ -552,20 +600,20 @@ export default function ProviderPage() {
 
           <section className="mt-8">
             <h2 className="mb-1 font-semibold">Claves de API</h2>
-            <p className="mb-3 text-xs text-zinc-500">
+            <p className="mb-3 text-xs text-faint">
               Para que tu game server cree apuestas (Bearer). Ver{" "}
-              <a href="/developers" className="text-sky-400 hover:underline">
+              <a href="/developers" className="text-blue hover:underline">
                 /developers
               </a>
               .
             </p>
 
             {createdKey ? (
-              <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-                <p className="text-sm text-emerald-300">
+              <div className="mb-3 rounded-lg border border-green/30 bg-green/10 p-4">
+                <p className="text-sm text-green">
                   Copiá tu clave ahora — no se vuelve a mostrar:
                 </p>
-                <code className="mt-2 block break-all rounded bg-black/40 px-3 py-2 font-mono text-xs text-zinc-200">
+                <code className="mt-2 block break-all rounded bg-black/40 px-3 py-2 font-mono text-xs text-ink">
                   {createdKey}
                 </code>
                 <button
@@ -573,13 +621,13 @@ export default function ProviderPage() {
                     navigator.clipboard.writeText(createdKey);
                     setMsg("Clave copiada.");
                   }}
-                  className="mt-2 text-xs text-sky-400 hover:underline"
+                  className="mt-2 text-xs text-blue hover:underline"
                 >
                   Copiar
                 </button>
                 <button
                   onClick={() => setCreatedKey(null)}
-                  className="ml-4 text-xs text-zinc-500 hover:text-zinc-300"
+                  className="ml-4 text-xs text-faint hover:text-ink"
                 >
                   Listo
                 </button>
@@ -603,12 +651,12 @@ export default function ProviderPage() {
                 {apiKeys.map((k) => (
                   <li
                     key={k.id}
-                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm"
+                    className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-2 text-sm"
                   >
                     <div>
                       <span className="font-medium">{k.name}</span>{" "}
-                      <code className="text-xs text-zinc-500">{k.prefix}…</code>
-                      <span className="ml-2 text-xs text-zinc-600">
+                      <code className="text-xs text-faint">{k.prefix}…</code>
+                      <span className="ml-2 text-xs text-faint">
                         {k.lastUsedAt ? "usada" : "sin usar"}
                       </span>
                     </div>
@@ -623,7 +671,7 @@ export default function ProviderPage() {
 
           <section className="mt-8">
             <h2 className="mb-1 font-semibold">Webhooks</h2>
-            <p className="mb-3 text-xs text-zinc-500">
+            <p className="mb-3 text-xs text-faint">
               Luna Negra notifica a esta URL los eventos{" "}
               <code>purchase.completed</code>, <code>bet.settled</code> y{" "}
               <code>payout.sent</code> (firmados con HMAC).
@@ -640,17 +688,17 @@ export default function ProviderPage() {
               </Button>
             </div>
             {webhookSecret ? (
-              <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3">
-                <p className="text-xs text-zinc-400">
+              <div className="mt-3 rounded-lg border border-line bg-panel p-3">
+                <p className="text-xs text-muted">
                   Secreto de firma (verificá la cabecera{" "}
                   <code>X-LunaNegra-Signature</code>):
                 </p>
-                <code className="mt-1 block break-all font-mono text-xs text-zinc-200">
+                <code className="mt-1 block break-all font-mono text-xs text-ink">
                   {webhookSecret}
                 </code>
                 <button
                   onClick={() => saveWebhook(true)}
-                  className="mt-2 text-xs text-sky-400 hover:underline"
+                  className="mt-2 text-xs text-blue hover:underline"
                 >
                   Regenerar secreto
                 </button>

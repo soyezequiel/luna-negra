@@ -17,12 +17,15 @@ export async function GET() {
   return NextResponse.json({
     bets: parts.map((p) => ({
       id: p.bet.id,
+      gameId: p.bet.gameId,
+      gameSlug: p.bet.game.slug,
       gameTitle: p.bet.game.title,
       status: p.bet.status,
       stakeSats: Number(msatToSats(p.bet.stakeMsat)),
       depositStatus: p.depositStatus,
       result: p.result,
       payoutStatus: p.payoutStatus,
+      createdAt: p.bet.createdAt,
     })),
   });
 }
