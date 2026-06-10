@@ -26,9 +26,15 @@ export async function GET(
 
   let paid = false;
   if (lightningConfigured() && purchase.paymentHash) {
+    const t0 = Date.now();
     try {
       paid = await isInvoicePaid(purchase.paymentHash);
-    } catch {
+      console.log(`[STATUS] purchase ${id} paid=${paid} en ${Date.now() - t0}ms`);
+    } catch (e) {
+      console.log(
+        `[STATUS] purchase ${id} ERROR en ${Date.now() - t0}ms:`,
+        e instanceof Error ? e.message : e,
+      );
       return NextResponse.json({ status: "pending" });
     }
   }
