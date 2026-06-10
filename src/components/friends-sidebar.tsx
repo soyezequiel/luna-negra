@@ -58,7 +58,9 @@ export function FriendsSidebar() {
   const { currentGame } = useGameContext();
   const { friends } = useFriends();
 
-  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
+  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
+    getActiveRoom(),
+  );
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
   // Amigo cuyo chat está abierto (panel dinámico; null = vista de lista).
@@ -70,7 +72,9 @@ export function FriendsSidebar() {
     online?: boolean;
   } | null>(null);
   // Invitaciones recibidas (DMs): anclan al amigo arriba con opción de unirse.
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>(() =>
+    getPendingInvites(),
+  );
   // Roster indexado por sala para no mostrar datos de una sala anterior.
   const [roster, setRoster] = useState<{
     roomId: string;
@@ -78,12 +82,10 @@ export function FriendsSidebar() {
   } | null>(null);
 
   useEffect(() => {
-    setActiveRoomState(getActiveRoom());
     return onActiveRoomChange(() => setActiveRoomState(getActiveRoom()));
   }, []);
 
   useEffect(() => {
-    setPendingInvites(getPendingInvites());
     return onPendingInvitesChange(() => setPendingInvites(getPendingInvites()));
   }, []);
 

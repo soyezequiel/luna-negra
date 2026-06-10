@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import {
   fetchDmEvents,
@@ -26,6 +26,7 @@ export function useDmThread(counterpart: string | null) {
   const { user } = useSession();
   const [messages, setMessages] = useState<DmMessage[] | null>(null);
   const [sending, setSending] = useState(false);
+  const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
     if (!user || !counterpart) {
@@ -48,8 +49,10 @@ export function useDmThread(counterpart: string | null) {
   }, [user, counterpart]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [load, startLoadTransition]);
 
   // Suscripción en vivo: al llegar un DM del contacto activo, recargamos el hilo.
   useEffect(() => {

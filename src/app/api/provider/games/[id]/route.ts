@@ -32,6 +32,8 @@ export async function PATCH(
     data.gameUrl = body.gameUrl.trim() || null;
   if (typeof body.coverUrl === "string")
     data.coverUrl = body.coverUrl.trim() || null;
+  if (typeof body.horizontalCoverUrl === "string")
+    data.horizontalCoverUrl = body.horizontalCoverUrl.trim() || null;
   if (Array.isArray(body.screenshots))
     data.screenshots = JSON.stringify(
       body.screenshots.filter((s: unknown) => typeof s === "string"),

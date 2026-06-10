@@ -144,24 +144,25 @@ model ApiKey {
 }
 
 model Game {
-  id           String   @id @default(cuid())
-  providerId   String
-  provider     Provider @relation(fields: [providerId], references: [id])
-  slug         String   @unique
-  title        String
-  description  String   @default("")
-  category     String? // slug de categoría curada (ver src/lib/categories.ts)
-  priceSats    Int      @default(0) // 0 = gratis
-  coverUrl     String?
-  screenshots  String   @default("[]") // JSON array de URLs (portable SQLite/Postgres)
-  gameUrl      String? // subdominio donde el proveedor hostea el juego
-  status       String   @default("draft") // draft | in_review | published
-  revenueShare Int      @default(70) // % para el proveedor
+  id                 String   @id @default(cuid())
+  providerId         String
+  provider           Provider @relation(fields: [providerId], references: [id])
+  slug               String   @unique
+  title              String
+  description        String   @default("")
+  category           String? // slug de categoría curada (ver src/lib/categories.ts)
+  priceSats          Int      @default(0) // 0 = gratis
+  coverUrl           String?
+  horizontalCoverUrl String?
+  screenshots        String   @default("[]") // JSON array de URLs (portable SQLite/Postgres)
+  gameUrl            String? // subdominio donde el proveedor hostea el juego
+  status             String   @default("draft") // draft | in_review | published
+  revenueShare       Int      @default(70) // % para el proveedor
   // Posteo raíz en Nostr (kind:1) que Luna Negra publica al aprobar el juego.
   // Comentarios y reseñas se cuelgan de aquí como respuestas (NIP-10).
-  nostrEventId String? // id del evento anuncio
-  nostrPubkey  String? // pubkey de Luna Negra que firmó el anuncio (tag p de las respuestas)
-  createdAt    DateTime @default(now())
+  nostrEventId       String? // id del evento anuncio
+  nostrPubkey        String? // pubkey de Luna Negra que firmó el anuncio (tag p de las respuestas)
+  createdAt          DateTime @default(now())
 
   purchases Purchase[]
   reviews   Review[]

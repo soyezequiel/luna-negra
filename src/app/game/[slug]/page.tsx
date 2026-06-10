@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -13,8 +12,10 @@ import { RegisterGame } from "@/providers/game-context";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
 import { GameCard } from "@/components/game-card";
+import { GameMediaGallery } from "@/components/game-media-gallery";
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
+import { gameGalleryMedia } from "@/lib/game-media";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,8 @@ export default async function GamePage({
   const mode: "store" | "library" =
     canPlay && sp.view !== "store" ? "library" : "store";
 
-  const screenshots: string[] = JSON.parse(game.screenshots || "[]");
   const hue = hueFromSlug(game.slug);
+  const media = gameGalleryMedia(game);
   // Anuncio raíz en Nostr (si existe) al que se cuelgan comentarios y reseñas.
   const root =
     game.nostrEventId && game.nostrPubkey
@@ -104,37 +105,7 @@ export default async function GamePage({
       <div className="mt-6 grid gap-6 lg:[grid-template-columns:minmax(0,1fr)_330px]">
         {/* Columna izquierda: media + descripción */}
         <div className="min-w-0">
-          <div
-            className="cover relative aspect-[16/9] overflow-hidden rounded-lg border border-line"
-            style={{ "--h": hue } as CSSProperties}
-          >
-            {game.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={game.coverUrl}
-                alt={game.title}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xl font-semibold text-white/90">
-                {game.title}
-              </div>
-            )}
-          </div>
-
-          {screenshots.length > 0 ? (
-            <div className="mt-3 grid grid-cols-5 gap-2">
-              {screenshots.slice(0, 5).map((src) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={src}
-                  src={src}
-                  alt=""
-                  className="aspect-video w-full rounded-sm border border-line object-cover"
-                />
-              ))}
-            </div>
-          ) : null}
+          <GameMediaGallery title={game.title} hue={hue} media={media} />
 
           <section className="mt-8">
             <h2 className="mb-3 text-[17px] font-semibold text-ink">

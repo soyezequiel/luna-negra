@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ export function ActivitySection({
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
     const ns = await fetchGameActivity(slug, root?.id);
@@ -41,8 +42,10 @@ export function ActivitySection({
   }, [slug, root?.id]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [load, startLoadTransition]);
 
   async function post() {
     if (!text.trim()) return;

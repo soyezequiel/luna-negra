@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,9 @@ export default function MessagesPage() {
   const [text, setText] = useState("");
   const [newNpub, setNewNpub] = useState("");
   const [sending, setSending] = useState(false);
+  const [, startLoadTransition] = useTransition();
+  const [, startSelectionTransition] = useTransition();
+  const [, startThreadTransition] = useTransition();
 
   // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
   // dentro del click si todavía no existe.
@@ -54,17 +57,23 @@ export default function MessagesPage() {
   }, [user]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [load, startLoadTransition]);
 
   // Abrir conversación desde ?to=npub
   useEffect(() => {
     const to = new URLSearchParams(window.location.search).get("to");
     if (to) {
       const pk = pubkeyFromNpub(to);
-      if (pk) setSelected(pk);
+      if (pk) {
+        startSelectionTransition(() => {
+          setSelected(pk);
+        });
+      }
     }
-  }, []);
+  }, [startSelectionTransition]);
 
   const conversations = useMemo(() => {
     if (!user) return [];
@@ -82,7 +91,9 @@ export default function MessagesPage() {
   // Descifrar el hilo seleccionado
   useEffect(() => {
     if (!user || !selected) {
-      setThread([]);
+      startThreadTransition(() => {
+        setThread([]);
+      });
       return;
     }
     const evs = events
@@ -99,12 +110,16 @@ export default function MessagesPage() {
           created_at: e.created_at,
         });
       }
-      if (!cancelled) setThread(out);
+      if (!cancelled) {
+        startThreadTransition(() => {
+          setThread(out);
+        });
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [events, selected, user]);
+  }, [events, selected, user, startThreadTransition]);
 
   // Solo la última invitación recibida en este chat es válida; las anteriores
   // quedan invalidadas. El hilo está ordenado ascendente, así que la última que

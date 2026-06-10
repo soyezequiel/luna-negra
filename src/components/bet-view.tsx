@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
@@ -42,8 +42,9 @@ export function BetView({ betId }: { betId: string }) {
   const [devMode, setDevMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [withdrawQr, setWithdrawQr] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/escrow/bets/${betId}`);
@@ -52,8 +53,10 @@ export function BetView({ betId }: { betId: string }) {
   }, [betId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [load, startLoadTransition]);
 
   // Ticker 1s (countdown) + polling 3s mientras está activa.
   useEffect(() => {

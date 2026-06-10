@@ -37,12 +37,13 @@ export default function FriendsPage() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   // Sala que el host tiene abierta (si la hay): permite invitar amigos a ella.
-  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
+  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
+    getActiveRoom(),
+  );
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setActiveRoomState(getActiveRoom());
     // Reaccionar al cierre de la pestaña del juego (o al dismiss): el watcher
     // limpia la sala activa y emite el evento → re-leemos para ocultar el banner.
     return onActiveRoomChange(() => setActiveRoomState(getActiveRoom()));

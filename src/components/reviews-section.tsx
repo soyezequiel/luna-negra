@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { publishGameReview, type GameRoot } from "@/lib/nostr-social";
 
@@ -40,6 +40,7 @@ export function ReviewsSection({
   const [rating, setRating] = useState(5);
   const [text, setText] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
     const d = await fetch(`/api/games/${gameId}/reviews`)
@@ -53,8 +54,10 @@ export function ReviewsSection({
   }, [gameId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [load, startLoadTransition]);
 
   async function submit() {
     setMsg(null);

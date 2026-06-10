@@ -69,10 +69,10 @@ export default async function StorePage({
           className="cover relative mb-8 overflow-hidden rounded-lg border border-line shadow-[0_18px_40px_-22px_rgba(0,0,0,.85)]"
           style={{ "--h": hueFromSlug(hero.slug) } as CSSProperties}
         >
-          {hero.coverUrl ? (
+          {hero.horizontalCoverUrl || hero.coverUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={hero.coverUrl}
+              src={hero.horizontalCoverUrl ?? hero.coverUrl ?? ""}
               alt=""
               className="absolute inset-0 h-full w-full object-cover"
             />

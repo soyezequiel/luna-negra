@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES } from "@/lib/categories";
@@ -26,6 +32,7 @@ type Game = {
   priceSats: number;
   gameUrl: string | null;
   coverUrl: string | null;
+  horizontalCoverUrl: string | null;
   screenshots: string;
   status: string;
 };
@@ -42,6 +49,7 @@ type GameForm = {
   priceSats: string;
   gameUrl: string;
   coverUrl: string;
+  horizontalCoverUrl: string;
   screenshots: string[];
 };
 
@@ -65,6 +73,7 @@ const emptyForm: GameForm = {
   priceSats: "0",
   gameUrl: "",
   coverUrl: "",
+  horizontalCoverUrl: "",
   screenshots: [],
 };
 
@@ -128,6 +137,7 @@ export default function ProviderPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<GameForm>({ ...emptyForm });
   const [uploading, setUploading] = useState(false);
+  const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
     const [d, s, k] = await Promise.all([
@@ -189,8 +199,11 @@ export default function ProviderPage() {
   }
 
   useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+    if (!user) return;
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [user, load, startLoadTransition]);
 
   async function uploadFile(file: File): Promise<string | null> {
     setUploading(true);
@@ -234,6 +247,7 @@ export default function ProviderPage() {
       priceSats: String(g.priceSats),
       gameUrl: g.gameUrl ?? "",
       coverUrl: g.coverUrl ?? "",
+      horizontalCoverUrl: g.horizontalCoverUrl ?? "",
       screenshots: parseShots(g.screenshots),
     });
     setMsg(null);
@@ -400,9 +414,11 @@ export default function ProviderPage() {
               onChange={(e) => setForm({ ...form, gameUrl: e.target.value })}
             />
 
-            {/* Portada */}
+            {/* Portada vertical */}
             <div>
-              <label className="block text-sm text-muted">Portada</label>
+              <label className="block text-sm text-muted">
+                Portada vertical
+              </label>
               <div className="mt-1 flex items-center gap-3">
                 {form.coverUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -432,6 +448,52 @@ export default function ProviderPage() {
                     if (!f) return;
                     const url = await uploadFile(f);
                     if (url) setForm((prev) => ({ ...prev, coverUrl: url }));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            {/* Portada horizontal */}
+            <div>
+              <label className="block text-sm text-muted">
+                Portada horizontal
+              </label>
+              <div className="mt-1 space-y-2">
+                {form.horizontalCoverUrl ? (
+                  <div className="relative aspect-video w-full max-w-sm overflow-hidden rounded border border-line">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={form.horizontalCoverUrl}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  </div>
+                ) : null}
+                <input
+                  className={inputCls}
+                  placeholder="Pega una URL de portada horizontal..."
+                  value={form.horizontalCoverUrl}
+                  onChange={(e) =>
+                    setForm({ ...form, horizontalCoverUrl: e.target.value })
+                  }
+                />
+              </div>
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
+                {uploading ? "Subiendo..." : "Subir portada horizontal"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const url = await uploadFile(f);
+                    if (url)
+                      setForm((prev) => ({
+                        ...prev,
+                        horizontalCoverUrl: url,
+                      }));
                     e.target.value = "";
                   }}
                 />

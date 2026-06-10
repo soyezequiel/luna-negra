@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { satsLabel } from "@/lib/format";
@@ -26,19 +26,28 @@ export function GameBets({
 }) {
   const { user } = useSession();
   const [bets, setBets] = useState<MineBet[] | null>(null);
+  const [, startLoadTransition] = useTransition();
 
   useEffect(() => {
     if (!user) {
-      setBets([]);
+      startLoadTransition(() => {
+        setBets([]);
+      });
       return;
     }
     fetch("/api/escrow/bets/mine")
       .then((r) => r.json())
       .then((d: { bets?: MineBet[] }) =>
-        setBets((d.bets ?? []).filter((b) => b.gameId === gameId)),
+        startLoadTransition(() => {
+          setBets((d.bets ?? []).filter((b) => b.gameId === gameId));
+        }),
       )
-      .catch(() => setBets([]));
-  }, [user, gameId]);
+      .catch(() =>
+        startLoadTransition(() => {
+          setBets([]);
+        }),
+      );
+  }, [user, gameId, startLoadTransition]);
 
   return (
     <section>

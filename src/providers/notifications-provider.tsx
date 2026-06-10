@@ -7,6 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
@@ -72,6 +73,7 @@ export function NotificationsProvider({
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showPermissionBanner, setShowPermissionBanner] = useState(false);
+  const [, startPermissionTransition] = useTransition();
 
   const seen = useRef<Set<string>>(new Set());
   const profileCache = useRef<Map<string, Profile | undefined>>(new Map());
@@ -142,13 +144,17 @@ export function NotificationsProvider({
   // Banner para pedir permiso de notificaciones (requiere gesto del usuario).
   useEffect(() => {
     if (!user) {
-      setShowPermissionBanner(false);
+      startPermissionTransition(() => {
+        setShowPermissionBanner(false);
+      });
       return;
     }
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      setShowPermissionBanner(true);
+      startPermissionTransition(() => {
+        setShowPermissionBanner(true);
+      });
     }
-  }, [user]);
+  }, [user, startPermissionTransition]);
 
   const requestPermission = useCallback(async () => {
     setShowPermissionBanner(false);
@@ -224,7 +230,6 @@ export function NotificationsProvider({
     }
 
     return () => sub.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, notify, fireDesktop, nameOf]);
 
   // Polling del buzón de invitaciones a sala que envían los proveedores de juegos
@@ -269,7 +274,6 @@ export function NotificationsProvider({
       stopped = true;
       clearInterval(id);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, notify, fireDesktop, nameOf]);
 
   return (

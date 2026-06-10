@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
@@ -285,11 +285,14 @@ function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
+  const [, startSyncTransition] = useTransition();
 
   // Sincroniza con el valor de la sesión cuando carga.
   useEffect(() => {
-    setValue(user?.lud16 ?? "");
-  }, [user?.lud16]);
+    startSyncTransition(() => {
+      setValue(user?.lud16 ?? "");
+    });
+  }, [user?.lud16, startSyncTransition]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();

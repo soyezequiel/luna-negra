@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 
@@ -79,6 +79,7 @@ export default function AdminPage() {
   const [bets, setBets] = useState<BetRow[]>([]);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
     const r = await fetch("/api/admin/games");
@@ -102,8 +103,11 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+    if (!user) return;
+    startLoadTransition(() => {
+      void load();
+    });
+  }, [user, load, startLoadTransition]);
 
   async function approve(id: string) {
     await fetch(`/api/admin/games/${id}/approve`, { method: "POST" });

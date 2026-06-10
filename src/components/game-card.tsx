@@ -18,7 +18,7 @@ export function GameCard({ game }: { game: GameCardData }) {
   return (
     <Link href={`/game/${game.slug}`} className="group block">
       <div
-        className="cover relative aspect-[16/10] overflow-hidden rounded border border-line transition-all duration-150 group-hover:-translate-y-[3px] group-hover:ring-1 group-hover:ring-blue/40 group-hover:shadow-[0_0_26px_-6px_var(--blue-glow)]"
+        className="cover relative aspect-[3/4] overflow-hidden rounded border border-line transition-all duration-150 group-hover:-translate-y-[3px] group-hover:ring-1 group-hover:ring-blue/40 group-hover:shadow-[0_0_26px_-6px_var(--blue-glow)]"
         style={{ "--h": hue } as CSSProperties}
       >
         {game.coverUrl ? (
