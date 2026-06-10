@@ -11,6 +11,99 @@ import {
 } from "@/lib/webhooks";
 
 /**
+ * Marca un depósito como pagado y registra el asiento en el ledger.
+ * Idempotente vía idempotencyKey en el ledger. Asume que el invoice ya se
+ * verificó como pagado.
+ */
+async function settleDeposit(
+  betId: string,
+  stakeMsat: bigint,
+  p: { id: string; userId: string; npub: string; depositPaymentHash: string },
+  now: Date,
+): Promise<void> {
+  await prisma.betParticipant.update({
+    where: { id: p.id },
+    data: { depositStatus: "paid", paidAt: now },
+  });
+  await recordDeposit({
+    betId,
+    userId: p.userId,
+    amountMsat: stakeMsat,
+    idempotencyKey: `deposit:${betId}:${p.userId}`,
+    paymentHash: p.depositPaymentHash,
+  });
+  await emitDepositReceived(betId, p.npub);
+}
+
+/**
+ * Si la apuesta tiene todos los depósitos pagos, la promueve a `ready`.
+ * Claim optimista para evitar dobles transiciones. Devuelve true si promovió.
+ */
+async function promoteIfAllPaid(betId: string, now: Date): Promise<boolean> {
+  const bet = await prisma.bet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet || bet.status !== "pending_deposits") return false;
+  if (
+    bet.participants.length === 0 ||
+    !bet.participants.every((p) => p.depositStatus === "paid")
+  ) {
+    return false;
+  }
+  const claimed = await prisma.bet.updateMany({
+    where: { id: betId, status: "pending_deposits" },
+    data: {
+      status: "ready",
+      readyAt: now,
+      resolveDeadline: new Date(now.getTime() + RESOLVE_WINDOW_MS),
+    },
+  });
+  if (claimed.count === 1) {
+    await emitBetFunded(betId);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Verificación on-demand del depósito de UN participante: consulta el invoice y,
+ * si está pagado, lo settlea y promueve la apuesta. Lo llama el endpoint de
+ * estado en cada poll del jugador para detectar el pago en segundos en vez de
+ * esperar el tick de ~1 min. Devuelve true si recién marcó el depósito.
+ */
+export async function checkAndSettleDeposit(
+  participantId: string,
+): Promise<boolean> {
+  if (!lightningConfigured()) return false;
+  const p = await prisma.betParticipant.findUnique({
+    where: { id: participantId },
+    include: { bet: true },
+  });
+  if (
+    !p ||
+    p.bet.status !== "pending_deposits" ||
+    p.depositStatus !== "pending" ||
+    !p.depositPaymentHash ||
+    p.depositPaymentHash.startsWith("dev-")
+  ) {
+    return false;
+  }
+  const paid = await isInvoicePaid(p.depositPaymentHash).catch(() => false);
+  if (!paid) return false;
+
+  const now = new Date();
+  await settleDeposit(
+    p.betId,
+    p.bet.stakeMsat,
+    { id: p.id, userId: p.userId, npub: p.npub, depositPaymentHash: p.depositPaymentHash },
+    now,
+  );
+  await promoteIfAllPaid(p.betId, now);
+  return true;
+}
+
+/**
  * Procesa el ciclo de vida de las apuestas (lo dispara QStash cada ~1 min).
  * Idempotente: usa claim optimista de estado + idempotencyKey en el ledger.
  */
@@ -41,18 +134,12 @@ export async function runTick(): Promise<{
         ) {
           const paid = await isInvoicePaid(p.depositPaymentHash).catch(() => false);
           if (paid) {
-            await prisma.betParticipant.update({
-              where: { id: p.id },
-              data: { depositStatus: "paid", paidAt: now },
-            });
-            await recordDeposit({
-              betId: bet.id,
-              userId: p.userId,
-              amountMsat: bet.stakeMsat,
-              idempotencyKey: `deposit:${bet.id}:${p.userId}`,
-              paymentHash: p.depositPaymentHash,
-            });
-            await emitDepositReceived(bet.id, p.npub);
+            await settleDeposit(
+              bet.id,
+              bet.stakeMsat,
+              { id: p.id, userId: p.userId, npub: p.npub, depositPaymentHash: p.depositPaymentHash },
+              now,
+            );
             deposits++;
           }
         }
@@ -63,26 +150,10 @@ export async function runTick(): Promise<{
   // B) pending_deposits con todos pagos → ready (claim optimista).
   const maybeReady = await prisma.bet.findMany({
     where: { status: "pending_deposits" },
-    include: { participants: true },
+    select: { id: true },
   });
-  for (const bet of maybeReady) {
-    if (
-      bet.participants.length > 0 &&
-      bet.participants.every((p) => p.depositStatus === "paid")
-    ) {
-      const claimed = await prisma.bet.updateMany({
-        where: { id: bet.id, status: "pending_deposits" },
-        data: {
-          status: "ready",
-          readyAt: now,
-          resolveDeadline: new Date(Date.now() + RESOLVE_WINDOW_MS),
-        },
-      });
-      if (claimed.count === 1) {
-        await emitBetFunded(bet.id);
-        ready++;
-      }
-    }
+  for (const { id } of maybeReady) {
+    if (await promoteIfAllPaid(id, now)) ready++;
   }
 
   // C) Timeout de depósito (10 min, incompleto) → reembolso a los que pagaron.

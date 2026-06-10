@@ -4,6 +4,13 @@ import { getPlayerAuth } from "@/lib/escrow-auth";
 import { signWithdrawToken } from "@/lib/auth";
 import { encodeLnurl } from "@/lib/lnurl";
 import { msatToSats } from "@/lib/money";
+import { checkAndSettleDeposit } from "@/lib/escrow-tick";
+
+const betInclude = {
+  game: true,
+  provider: true,
+  participants: { include: { user: true } },
+} as const;
 
 export async function GET(
   req: Request,
@@ -12,15 +19,32 @@ export async function GET(
   const { id } = await params;
   const auth = await getPlayerAuth(req);
 
-  const bet = await prisma.bet.findUnique({
+  let bet = await prisma.bet.findUnique({
     where: { id },
-    include: { game: true, provider: true, participants: { include: { user: true } } },
+    include: betInclude,
   });
   if (!bet) {
     return NextResponse.json(
       { error: "Apuesta no encontrada", code: "BET_NOT_FOUND" },
       { status: 404 },
     );
+  }
+
+  // Detección on-demand: si el que consulta tiene su depósito pendiente,
+  // verificamos el invoice ya mismo (no esperamos al tick de ~1 min). Esto hace
+  // que el pago del QR se detecte dentro del ciclo de polling de 3 s del front.
+  if (auth && bet.status === "pending_deposits") {
+    const mine = bet.participants.find((p) => p.userId === auth.sub);
+    if (mine && mine.depositStatus === "pending") {
+      const t0 = Date.now();
+      const settled = await checkAndSettleDeposit(mine.id);
+      console.log(
+        `[BET ${id}] check depósito on-demand settled=${settled} en ${Date.now() - t0}ms`,
+      );
+      if (settled) {
+        bet = (await prisma.bet.findUnique({ where: { id }, include: betInclude }))!;
+      }
+    }
   }
 
   const participants = bet.participants.map((p) => ({

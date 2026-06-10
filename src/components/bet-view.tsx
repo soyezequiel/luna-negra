@@ -46,9 +46,17 @@ export function BetView({ betId }: { betId: string }) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
+    const t0 = Date.now();
     const r = await fetch(`/api/escrow/bets/${betId}`);
     if (r.status === 404) return setNotFound(true);
-    if (r.ok) setBet(await r.json());
+    if (r.ok) {
+      const data: BetData = await r.json();
+      const paid = data.participants.filter((p) => p.paid).length;
+      console.log(
+        `[apuesta] poll status=${data.status} pagaron=${paid}/${data.participants.length} yo_pagué=${data.me?.paid ?? "-"} en ${Date.now() - t0}ms`,
+      );
+      setBet(data);
+    }
   }, [betId]);
 
   useEffect(() => {
