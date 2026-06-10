@@ -1,0 +1,123 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  startPlayingPresence: vi.fn(),
+  watchGameWindow: vi.fn(),
+}));
+
+vi.mock("@/lib/playing-presence", () => ({
+  startPlayingPresence: mocks.startPlayingPresence,
+}));
+
+vi.mock("@/lib/invite", () => ({
+  inviteHref: ({ slug, roomId }: { slug: string; roomId: string }) =>
+    `/game/${slug}?room=${encodeURIComponent(roomId)}`,
+  watchGameWindow: mocks.watchGameWindow,
+}));
+
+type FakeWindow = {
+  closed: boolean;
+  close: ReturnType<typeof vi.fn>;
+  focus: ReturnType<typeof vi.fn>;
+  location: { href: string; origin?: string };
+  postMessage: ReturnType<typeof vi.fn>;
+};
+
+function createFakeGameWindow(): FakeWindow {
+  return {
+    closed: false,
+    close: vi.fn(function (this: FakeWindow) {
+      this.closed = true;
+    }),
+    focus: vi.fn(),
+    location: { href: "" },
+    postMessage: vi.fn(),
+  };
+}
+
+function okResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+beforeEach(() => {
+  vi.resetModules();
+  vi.unstubAllGlobals();
+  mocks.startPlayingPresence.mockReset();
+  mocks.watchGameWindow.mockReset();
+});
+
+describe("joinRoomAndPlay", () => {
+  it("reserves a game window before joining and navigates it when the game is closed", async () => {
+    const events: string[] = [];
+    const gameWin = createFakeGameWindow();
+    const open = vi.fn(() => {
+      events.push("open");
+      return gameWin;
+    });
+    const fetch = vi.fn(async () => {
+      events.push("fetch");
+      return okResponse({
+        token: "invite-token",
+        roomId: "ROOM1",
+        host: false,
+        slug: "tetris",
+        title: "TETRA",
+        gameUrl: "https://tetris.example/play",
+        openGame: false,
+      });
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      open,
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const { joinRoomAndPlay } = await import("@/lib/room-launch");
+
+    await joinRoomAndPlay({ slug: "tetris", roomId: "ROOM1" });
+
+    expect(events).toEqual(["open", "fetch"]);
+    expect(open).toHaveBeenCalledWith("", "luna-negra-game-tetris");
+    expect(gameWin.close).not.toHaveBeenCalled();
+    expect(gameWin.location.href).toBe(
+      "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example&inviteToken=invite-token&room=ROOM1",
+    );
+    expect(mocks.startPlayingPresence).toHaveBeenCalledWith({
+      title: "TETRA",
+      link: "https://luna.example/game/tetris?room=ROOM1",
+    });
+  });
+
+  it("closes the reserved window when an already-open game should consume the request", async () => {
+    const gameWin = createFakeGameWindow();
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      open: vi.fn(() => gameWin),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        okResponse({
+          token: "invite-token",
+          roomId: "ROOM1",
+          host: false,
+          slug: "tetris",
+          title: "TETRA",
+          gameUrl: "https://tetris.example/play",
+          openGame: true,
+        }),
+      ),
+    );
+
+    const { joinRoomAndPlay } = await import("@/lib/room-launch");
+
+    await joinRoomAndPlay({ slug: "tetris", roomId: "ROOM1" });
+
+    expect(gameWin.close).toHaveBeenCalledTimes(1);
+    expect(gameWin.location.href).toBe("");
+    expect(mocks.startPlayingPresence).not.toHaveBeenCalled();
+  });
+});

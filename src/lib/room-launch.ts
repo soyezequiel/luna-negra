@@ -156,6 +156,7 @@ export async function joinRoomAndPlay({
   win?: Window | null;
   onError?: (message: string | null) => void;
 }): Promise<void> {
+  const pendingWin = win ?? preopenGameWindowIfNeeded(slug);
   try {
     const r = await fetch("/api/rooms/join", {
       method: "POST",
@@ -164,13 +165,13 @@ export async function joinRoomAndPlay({
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
-      win?.close();
+      pendingWin?.close();
       onError?.(joinRoomErrorDetail(d.error));
       return;
     }
     const existing = getOpenGameWindow(d.slug ?? slug);
     if (d.openGame === true && !existing) {
-      win?.close();
+      pendingWin?.close();
       return;
     }
     launchGameRoom({
@@ -179,10 +180,10 @@ export async function joinRoomAndPlay({
       title: d.title,
       token: d.token,
       roomId: d.roomId,
-      win,
+      win: pendingWin,
     });
   } catch (e) {
-    win?.close();
+    pendingWin?.close();
     onError?.(joinRoomErrorDetail(e instanceof Error ? e.message : null));
   }
 }
