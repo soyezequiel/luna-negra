@@ -9,6 +9,16 @@ import {
 } from "@/lib/nostr-social";
 import type { Friend } from "@/hooks/use-friends";
 
+/** Match local de un follow: nombre, npub o NIP-05 (case-insensitive). */
+function matchesFriend(f: Friend, query: string): boolean {
+  const needle = query.toLowerCase();
+  return (
+    f.npub.toLowerCase().includes(needle) ||
+    profileName(f.profile, f.npub).toLowerCase().includes(needle) ||
+    (f.profile?.nip05?.toLowerCase().includes(needle) ?? false)
+  );
+}
+
 export type FriendSearchResults = {
   local: Friend[];
   global: GlobalResult[];
@@ -45,15 +55,10 @@ export function FriendSearch({
       return;
     }
 
-    const needle = q.toLowerCase();
-    const local = (friends ?? []).filter(
-      (f) =>
-        f.npub.toLowerCase().includes(needle) ||
-        profileName(f.profile, f.npub).toLowerCase().includes(needle),
-    );
+    const local = (friends ?? []).filter((f) => matchesFriend(f, q));
 
-    // Hay match local o la query es muy corta: no buscamos en todo Nostr.
-    if (local.length > 0 || q.length < 3) {
+    // Query muy corta: solo filtro local, sin pegarle a los relays.
+    if (q.length < 3) {
       startTransition(() => {
         onResults({ local, global: [] });
         setSearching(false);
@@ -61,19 +66,35 @@ export function FriendSearch({
       return;
     }
 
+    // Siempre buscamos también en todo Nostr: así aparece aunque no lo sigas, y
+    // también si lo seguís pero su perfil (kind:0) todavía no se había cargado
+    // —en ese caso el filtro local fallaba por nombre—. Los follows que
+    // aparezcan en la búsqueda global se promueven a "Tus amigos".
     startTransition(() => {
       onResults({ local, global: [] });
       setSearching(true);
     });
     const t = setTimeout(async () => {
       try {
-        const global = await searchProfiles(q, 10);
+        const found = await searchProfiles(q, 10);
         if (lastQuery.current !== q) return; // respuesta obsoleta
-        const followPks = new Set((friends ?? []).map((f) => f.pubkey));
-        onResults({
-          local,
-          global: global.filter((g) => !followPks.has(g.pubkey)),
-        });
+        const followByPk = new Map((friends ?? []).map((f) => [f.pubkey, f]));
+        const localPks = new Set(local.map((f) => f.pubkey));
+        const extraLocal: Friend[] = [];
+        const global: GlobalResult[] = [];
+        for (const r of found) {
+          const follow = followByPk.get(r.pubkey);
+          if (follow) {
+            // Lo seguís: si no estaba ya en el filtro local (perfil sin cargar),
+            // lo sumamos con el perfil que trajo la búsqueda.
+            if (!localPks.has(r.pubkey)) {
+              extraLocal.push({ ...follow, profile: follow.profile ?? r.profile });
+            }
+          } else {
+            global.push(r);
+          }
+        }
+        onResults({ local: [...local, ...extraLocal], global });
       } catch {
         if (lastQuery.current === q) onResults({ local, global: [] });
       } finally {

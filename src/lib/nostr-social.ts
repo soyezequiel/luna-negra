@@ -11,6 +11,7 @@ export type Profile = {
   picture?: string;
   about?: string;
   lud16?: string;
+  nip05?: string;
 };
 
 let _pool: SimplePool | null = null;
