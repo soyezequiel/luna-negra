@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useFriends, type Friend } from "@/hooks/use-friends";
-import { profileName, shortId } from "@/lib/nostr-social";
+import {
+  FriendSearch,
+  globalResultName,
+  type FriendSearchResults,
+} from "@/components/friend-search";
+import { profileName, shortId, type GlobalResult } from "@/lib/nostr-social";
 import { useSession } from "@/providers/session-provider";
 
 type InviteState = "sending" | "sent";
+
+/** Datos mínimos para invitar: tanto un follow como un resultado global. */
+type InviteTarget = { npub: string; name: string; picture: string | null };
 
 export function InviteFriendPopup({
   gameId,
@@ -20,31 +28,37 @@ export function InviteFriendPopup({
   const [statusByNpub, setStatusByNpub] = useState<Record<string, InviteState>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Resultados del buscador (null = sin query → lista normal).
+  const [search, setSearch] = useState<FriendSearchResults | null>(null);
+  const onResults = useCallback(
+    (r: FriendSearchResults | null) => setSearch(r),
+    [],
+  );
 
   const validContext = Boolean(gameId && roomId);
 
-  async function invite(friend: Friend) {
-    if (!validContext || statusByNpub[friend.npub]) return;
-    setStatusByNpub((prev) => ({ ...prev, [friend.npub]: "sending" }));
+  async function invite(target: InviteTarget) {
+    if (!validContext || statusByNpub[target.npub]) return;
+    setStatusByNpub((prev) => ({ ...prev, [target.npub]: "sending" }));
     setMessage(null);
     setError(null);
     try {
       const response = await fetch("/api/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId, roomId, toNpub: friend.npub }),
+        body: JSON.stringify({ gameId, roomId, toNpub: target.npub }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         title?: string;
       };
       if (!response.ok) throw new Error(payload.error ?? "No se pudo invitar");
-      setStatusByNpub((prev) => ({ ...prev, [friend.npub]: "sent" }));
-      setMessage(`Invitacion enviada a ${friendName(friend)}.`);
+      setStatusByNpub((prev) => ({ ...prev, [target.npub]: "sent" }));
+      setMessage(`Invitacion enviada a ${target.name}.`);
     } catch (reason) {
       setStatusByNpub((prev) => {
         const next = { ...prev };
-        delete next[friend.npub];
+        delete next[target.npub];
         return next;
       });
       setError(reason instanceof Error ? reason.message : "No se pudo invitar");
@@ -76,11 +90,22 @@ export function InviteFriendPopup({
         <>
           {message ? <Notice tone="ok">{message}</Notice> : null}
           {error ? <Notice tone="error">{error}</Notice> : null}
-          <FriendList
-            friends={friends}
-            statusByNpub={statusByNpub}
-            onInvite={(friend) => void invite(friend)}
-          />
+          <div className="mt-4">
+            <FriendSearch friends={friends} onResults={onResults} />
+          </div>
+          {search ? (
+            <SearchResults
+              results={search}
+              statusByNpub={statusByNpub}
+              onInvite={(target) => void invite(target)}
+            />
+          ) : (
+            <FriendList
+              friends={friends}
+              statusByNpub={statusByNpub}
+              onInvite={(target) => void invite(target)}
+            />
+          )}
         </>
       )}
 
@@ -100,7 +125,7 @@ function FriendList({
 }: {
   friends: Friend[] | null;
   statusByNpub: Record<string, InviteState>;
-  onInvite: (friend: Friend) => void;
+  onInvite: (target: InviteTarget) => void;
 }) {
   if (friends === null) {
     return <p className="mt-6 text-sm text-zinc-500">Cargando amigos...</p>;
@@ -110,39 +135,120 @@ function FriendList({
   }
   return (
     <ul className="mt-6 space-y-2">
-      {friends.map((friend) => {
-        const state = statusByNpub[friend.npub];
-        return (
-          <li
-            key={friend.pubkey}
-            className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
-          >
-            {friend.profile?.picture ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={friend.profile.picture}
-                alt=""
-                className="h-10 w-10 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="h-10 w-10 shrink-0 rounded-full bg-white/10" />
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{friendName(friend)}</p>
-              <p className="truncate text-xs text-zinc-500">{friend.npub}</p>
-            </div>
-            <Button
-              className="shrink-0"
-              variant={state === "sent" ? "outline" : "primary"}
-              disabled={Boolean(state)}
-              onClick={() => onInvite(friend)}
-            >
-              {state === "sent" ? "Invitado" : state === "sending" ? "Enviando" : "Invitar"}
-            </Button>
-          </li>
-        );
-      })}
+      {friends.map((friend) => (
+        <InviteRow
+          key={friend.pubkey}
+          npub={friend.npub}
+          name={friendName(friend)}
+          picture={friend.profile?.picture ?? null}
+          state={statusByNpub[friend.npub]}
+          onInvite={onInvite}
+        />
+      ))}
     </ul>
+  );
+}
+
+/** Resultados del buscador: coincidencias en tus follows + búsqueda en Nostr. */
+function SearchResults({
+  results,
+  statusByNpub,
+  onInvite,
+}: {
+  results: FriendSearchResults;
+  statusByNpub: Record<string, InviteState>;
+  onInvite: (target: InviteTarget) => void;
+}) {
+  const empty = results.local.length === 0 && results.global.length === 0;
+  if (empty) {
+    return (
+      <p className="mt-6 text-sm text-zinc-400">
+        Sin coincidencias. Probá con el nombre completo o el npub.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-6 space-y-5">
+      {results.local.length > 0 ? (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Tus amigos
+          </p>
+          <ul className="space-y-2">
+            {results.local.map((friend) => (
+              <InviteRow
+                key={friend.pubkey}
+                npub={friend.npub}
+                name={friendName(friend)}
+                picture={friend.profile?.picture ?? null}
+                state={statusByNpub[friend.npub]}
+                onInvite={onInvite}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {results.global.length > 0 ? (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            En Nostr
+          </p>
+          <ul className="space-y-2">
+            {results.global.map((g: GlobalResult) => (
+              <InviteRow
+                key={g.pubkey}
+                npub={g.npub}
+                name={globalResultName(g)}
+                picture={g.profile?.picture ?? null}
+                state={statusByNpub[g.npub]}
+                onInvite={onInvite}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function InviteRow({
+  npub,
+  name,
+  picture,
+  state,
+  onInvite,
+}: {
+  npub: string;
+  name: string;
+  picture: string | null;
+  state: InviteState | undefined;
+  onInvite: (target: InviteTarget) => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+      {picture ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={picture}
+          alt=""
+          className="h-10 w-10 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <div className="h-10 w-10 shrink-0 rounded-full bg-white/10" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="truncate text-xs text-zinc-500">{npub}</p>
+      </div>
+      <Button
+        className="shrink-0"
+        variant={state === "sent" ? "outline" : "primary"}
+        disabled={Boolean(state)}
+        onClick={() => onInvite({ npub, name, picture })}
+      >
+        {state === "sent" ? "Invitado" : state === "sending" ? "Enviando" : "Invitar"}
+      </Button>
+    </li>
   );
 }
 
