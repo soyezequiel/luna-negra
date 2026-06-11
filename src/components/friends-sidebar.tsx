@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { useGameContext } from "@/providers/game-context";
 import { useFriends } from "@/hooks/use-friends";
+import {
+  FriendSearch,
+  globalResultName,
+  type FriendSearchResults,
+} from "@/components/friend-search";
 import {
   profileName,
   shortId,
@@ -30,6 +35,8 @@ import {
   launchGameRoom,
   joinRoomAndPlay,
   preopenGameWindowIfNeeded,
+  POPUP_BLOCKED_BODY,
+  POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
 import { Button } from "@/components/ui/button";
 import { FriendsChatPanel } from "@/components/friends-chat-panel";
@@ -56,7 +63,7 @@ export function FriendsSidebar() {
   const { user, login, loading } = useSession();
   const { notify } = useNotify();
   const { currentGame } = useGameContext();
-  const { friends } = useFriends();
+  const { friends, refresh, refreshing } = useFriends();
 
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
     getActiveRoom(),
@@ -80,6 +87,12 @@ export function FriendsSidebar() {
     roomId: string;
     members: RosterMember[];
   } | null>(null);
+  // Resultados del buscador (null = sin query → lista normal).
+  const [search, setSearch] = useState<FriendSearchResults | null>(null);
+  const onResults = useCallback(
+    (r: FriendSearchResults | null) => setSearch(r),
+    [],
+  );
 
   useEffect(() => {
     return onActiveRoomChange(() => setActiveRoomState(getActiveRoom()));
@@ -221,7 +234,7 @@ export function FriendsSidebar() {
       if (!token) throw new Error("No se pudo obtener el acceso a la sala");
       const gameUrl = room.gameUrl ?? currentGame?.gameUrl;
       if (!gameUrl) throw new Error("No se encontró el juego de esta sala");
-      launchGameRoom({
+      const result = launchGameRoom({
         gameUrl,
         slug: room.slug,
         title: room.title,
@@ -229,6 +242,15 @@ export function FriendsSidebar() {
         roomId: room.roomId,
         win,
       });
+      if (!result.ok) {
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: result.dest,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        });
+      }
     } catch (e) {
       win?.close();
       notify({
@@ -245,6 +267,14 @@ export function FriendsSidebar() {
       slug: invite.slug,
       roomId: invite.roomId,
       onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
+      onBlocked: (dest) =>
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: dest,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        }),
     });
   }
 
@@ -259,14 +289,16 @@ export function FriendsSidebar() {
   // Invitaciones recibidas indexadas por emisor, para anclar a ese amigo arriba.
   const inviteByPk = new Map(pendingInvites.map((i) => [i.fromPubkey, i]));
 
-  // Amigos con invitación pendiente primero (orden estable conserva el resto).
-  const sortedFriends = friends
-    ? [...friends].sort(
+  // Con buscador activo mostramos sus coincidencias locales; si no, la lista
+  // completa con las invitaciones pendientes ancladas arriba.
+  const baseList = search ? search.local : friends;
+  const sortedFriends = baseList
+    ? [...baseList].sort(
         (a, b) =>
           (inviteByPk.has(a.pubkey) ? 0 : 1) -
           (inviteByPk.has(b.pubkey) ? 0 : 1),
       )
-    : friends;
+    : baseList;
 
   // Invitaciones de alguien que no seguís: no entran en la lista, las anclamos
   // arriba para que no se pierdan.
@@ -314,10 +346,35 @@ export function FriendsSidebar() {
                 </span>
               ) : null}
             </h2>
-            <Link href="/friends" className="text-xs text-muted hover:text-white">
-              Ver todos
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void refresh()}
+                disabled={refreshing}
+                title="Actualizar lista (trae tus follows nuevos)"
+                className="text-xs text-muted hover:text-white disabled:opacity-50"
+              >
+                <span
+                  className={
+                    refreshing ? "inline-block animate-spin" : undefined
+                  }
+                >
+                  ↻
+                </span>
+              </button>
+              <Link
+                href="/friends"
+                className="text-xs text-muted hover:text-white"
+              >
+                Ver todos
+              </Link>
+            </div>
           </div>
+
+          {user ? (
+            <div className="border-b border-line px-3 py-2">
+              <FriendSearch friends={friends} onResults={onResults} compact />
+            </div>
+          ) : null}
 
           {canInvite ? (
             <div className="border-b border-line bg-green/10 px-4 py-2.5">
@@ -519,6 +576,69 @@ export function FriendsSidebar() {
                 })}
               </ul>
             )}
+
+            {/* Resultados de búsqueda global (cuando no está en tus follows). */}
+            {search && search.local.length === 0 && search.global.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-faint">
+                Sin coincidencias. Probá con el nombre completo o el npub.
+              </p>
+            ) : null}
+            {search && search.global.length > 0 ? (
+              <div className="mt-2">
+                <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
+                  En Nostr
+                </p>
+                <ul className="space-y-1">
+                  {search.global.map((g) => {
+                    const name = globalResultName(g);
+                    return (
+                      <li
+                        key={g.pubkey}
+                        className="rounded px-2 py-2 hover:bg-white/5"
+                      >
+                        <div className="flex items-center gap-2">
+                          {g.profile?.picture ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={g.profile.picture}
+                              alt=""
+                              className="h-8 w-8 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="block h-8 w-8 shrink-0 rounded-full bg-panel-3" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-ink">
+                              {name}
+                            </span>
+                            <span className="block truncate font-mono text-[10px] text-faint">
+                              {g.npub}
+                            </span>
+                          </span>
+                          <Link
+                            href={`/messages?to=${g.npub}`}
+                            className="shrink-0 rounded-sm border border-line px-2 py-1 text-[10px] text-muted hover:text-ink"
+                          >
+                            Mensaje
+                          </Link>
+                        </div>
+                        {canInvite ? (
+                          <button
+                            onClick={() => inviteToGame(g.pubkey, name)}
+                            disabled={
+                              invited.has(g.pubkey) || invitingPk === g.pubkey
+                            }
+                            className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
+                          >
+                            {inviteLabelFor(g.pubkey)}
+                          </button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
           </div>
         </>
       )}

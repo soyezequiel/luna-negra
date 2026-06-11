@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       pubkey: u.pubkey,
       npub: u.npub,
       displayName: u.displayName,
+      lastPlayedAt: u.lastPlayedAt?.getTime() ?? null,
       games: u.purchases.map((p) => ({
         slug: p.game.slug,
         title: p.game.title,

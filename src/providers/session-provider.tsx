@@ -8,7 +8,15 @@ import {
   useState,
 } from "react";
 import { fetchProfile, profileName } from "@/lib/nostr";
-import { warmUpPermissions } from "@/lib/nostr-social";
+import { getNostrPermsMode, warmUpPermissions } from "@/lib/nostr-social";
+import { notifyOpenGameWindowsLogout } from "@/lib/room-launch";
+import {
+  clearActiveSigner,
+  restoreSigner,
+  setActiveSigner,
+  type LunaSigner,
+  type StoredSigner,
+} from "@/lib/signer";
 
 export type SessionUser = {
   id: string;
@@ -24,7 +32,12 @@ type SessionContextValue = {
   user: SessionUser | null;
   loading: boolean;
   error: string | null;
+  /** Abre el modal de login (todos los métodos: extensión, QR, bunker, clave). */
   login: () => Promise<void>;
+  /** Flujo challenge → firma kind:27235 → verify, con el signer elegido. */
+  loginWithSigner: (signer: LunaSigner, stored: StoredSigner) => Promise<void>;
+  loginModalOpen: boolean;
+  closeLoginModal: () => void;
   logout: () => Promise<void>;
   updateUser: (patch: Partial<SessionUser>) => void;
 };
@@ -35,6 +48,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -42,27 +56,37 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       .then((d) => setUser(d.user))
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Restaurar el signer persistido (la cookie restaura la sesión, pero firmar
+    // comentarios/DMs/presencia necesita el signer en memoria).
+    void restoreSigner();
   }, []);
 
-  // Pide todos los permisos NIP-07 de una sola vez al establecer la sesión (login
-  // o restauración por cookie), para no ir pidiéndolos por cada acción. Una vez
-  // por sesión de navegador; si ya están "recordados", no muestra ningún prompt.
+  // Solo si el usuario eligió "autorizar todo al iniciar sesión" (modo "all"):
+  // pide todos los permisos NIP-07 de una vez al establecer la sesión. En el
+  // modo default ("lazy") cada función pide su permiso recién al usarse, y el
+  // usuario decide en el prompt de la extensión si lo recuerda o no.
   useEffect(() => {
     if (!user) return;
     if (typeof window === "undefined" || !window.nostr) return;
+    if (getNostrPermsMode() !== "all") return;
     if (sessionStorage.getItem("ln_nostr_warmed")) return;
     sessionStorage.setItem("ln_nostr_warmed", "1");
     void warmUpPermissions(user.pubkey);
   }, [user]);
 
+  // `login` ahora abre el modal con todos los métodos; los botones existentes
+  // ("Conectar con Nostr" en navbar/sidebar/páginas) siguen llamándolo igual.
   const login = useCallback(async () => {
     setError(null);
-    if (!window.nostr) {
-      setError("No se encontró una extensión Nostr. Instalá nos2x o Alby.");
-      return;
-    }
-    try {
-      const pubkey = await window.nostr.getPublicKey();
+    setLoginModalOpen(true);
+  }, []);
+
+  const closeLoginModal = useCallback(() => setLoginModalOpen(false), []);
+
+  const loginWithSigner = useCallback(
+    async (signer: LunaSigner, stored: StoredSigner) => {
+      setError(null);
+      const pubkey = await signer.getPublicKey();
 
       const ch = await fetch("/api/auth/challenge", {
         method: "POST",
@@ -71,7 +95,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }).then((r) => r.json());
       if (!ch.token) throw new Error(ch.error ?? "No se pudo iniciar el login");
 
-      const signed = await window.nostr.signEvent({
+      const signed = await signer.signEvent({
         kind: 27235,
         created_at: Math.floor(Date.now() / 1000),
         tags: [["challenge", ch.nonce]],
@@ -85,7 +109,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Verificación fallida");
+      setActiveSigner(signer, stored);
       setUser(data.user);
+      setLoginModalOpen(false);
 
       // Cachear el perfil Nostr (kind:0) en segundo plano.
       void (async () => {
@@ -104,13 +130,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           /* sin perfil, no pasa nada */
         }
       })();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error de login");
-    }
-  }, []);
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    notifyOpenGameWindowsLogout();
+    clearActiveSigner();
     setUser(null);
   }, []);
 
@@ -122,7 +149,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionContext.Provider
-      value={{ user, loading, error, login, logout, updateUser }}
+      value={{
+        user,
+        loading,
+        error,
+        login,
+        loginWithSigner,
+        loginModalOpen,
+        closeLoginModal,
+        logout,
+        updateUser,
+      }}
     >
       {children}
     </SessionContext.Provider>

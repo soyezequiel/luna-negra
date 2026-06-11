@@ -13,3 +13,7 @@ export const RELAYS = [
   "wss://nos.lol",
   "wss://relay.primal.net",
 ];
+
+// Relays con soporte NIP-50 (búsqueda full-text de perfiles kind:0). nostr.band
+// indexa nombres/about y es el que mejor responde a búsquedas de usuarios.
+export const SEARCH_RELAYS = ["wss://relay.nostr.band"];

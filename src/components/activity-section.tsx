@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,9 @@ export function ActivitySection({
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
+  // Guard síncrono: setPosting no alcanza contra un doble click más rápido
+  // que el re-render, y cada envío extra publica otro evento en Nostr.
+  const postingRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [, startLoadTransition] = useTransition();
 
@@ -48,7 +51,8 @@ export function ActivitySection({
   }, [load, startLoadTransition]);
 
   async function post() {
-    if (!text.trim()) return;
+    if (!text.trim() || postingRef.current) return;
+    postingRef.current = true;
     setPosting(true);
     setErr(null);
     try {
@@ -59,6 +63,7 @@ export function ActivitySection({
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al publicar");
     } finally {
+      postingRef.current = false;
       setPosting(false);
     }
   }

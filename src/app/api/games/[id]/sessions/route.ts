@@ -33,6 +33,11 @@ export async function POST(
     );
   }
 
+  // Marca "jugó alguna vez / última vez" (ordena la lista de amigos).
+  await prisma.user
+    .update({ where: { id: session.sub }, data: { lastPlayedAt: new Date() } })
+    .catch(() => {});
+
   const token = await signEntitlement({
     npub: session.npub,
     pubkey: session.pubkey,

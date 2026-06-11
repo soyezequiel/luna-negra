@@ -5,7 +5,11 @@ import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import { parseInvite, type Invite } from "@/lib/invite";
-import { joinRoomAndPlay } from "@/lib/room-launch";
+import {
+  joinRoomAndPlay,
+  POPUP_BLOCKED_BODY,
+  POPUP_BLOCKED_TITLE,
+} from "@/lib/room-launch";
 import {
   fetchDmEvents,
   dmCounterpart,
@@ -43,6 +47,14 @@ export default function MessagesPage() {
       slug: invite.slug,
       roomId: invite.roomId,
       onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
+      onBlocked: (dest) =>
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: dest,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        }),
     });
   }
 

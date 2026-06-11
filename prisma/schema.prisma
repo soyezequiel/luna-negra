@@ -21,6 +21,9 @@ model User {
   lud16       String? // Lightning Address para cobrar payouts (override del kind:0)
   createdAt   DateTime @default(now())
   lastSeen    DateTime @default(now())
+  // Última vez que lanzó/jugó un juego (ordena la lista de amigos: los que
+  // jugaron alguna vez van arriba). Null = nunca jugó.
+  lastPlayedAt DateTime?
 
   providers         Provider[]
   purchases         Purchase[]

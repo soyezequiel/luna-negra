@@ -1,6 +1,8 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import type { SubCloser } from "nostr-tools/abstract-pool";
-import { APP_NAME, RELAYS, gameTag } from "./constants";
+import { APP_NAME, RELAYS, SEARCH_RELAYS, gameTag } from "./constants";
+import { nip05 } from "nostr-tools";
+import { getActiveSigner, restoreSigner, type LunaSigner } from "./signer";
 
 export type Profile = {
   name?: string;
@@ -49,14 +51,29 @@ export function profileName(p: Profile | undefined, fallback: string): string {
   return p?.displayName || p?.display_name || p?.name || fallback;
 }
 
+/** Signer activo (restaurándolo si la app recién monta); lanza si no hay. */
+async function requireSigner(): Promise<LunaSigner> {
+  const signer = getActiveSigner() ?? (await restoreSigner());
+  if (!signer) throw new Error("Conectá tu Nostr para continuar");
+  return signer;
+}
+
 async function sign(unsigned: {
   kind: number;
   created_at: number;
   tags: string[][];
   content: string;
 }): Promise<Event> {
-  if (!window.nostr) throw new Error("Necesitás una extensión Nostr (nos2x/Alby)");
-  return (await window.nostr.signEvent(unsigned)) as unknown as Event;
+  const signer = await requireSigner();
+  try {
+    return await signer.signEvent(unsigned);
+  } catch {
+    throw new Error(
+      signer.method === "nip07"
+        ? "Permiso denegado en tu extensión Nostr"
+        : "Tu firmante Nostr rechazó la firma",
+    );
+  }
 }
 
 async function publish(ev: Event): Promise<void> {
@@ -66,6 +83,36 @@ async function publish(ev: Event): Promise<void> {
 // Kinds que Luna Negra firma con la extensión: 1 (notas), 4 (DM),
 // 27235 (login NIP-98), 30315 (presencia NIP-38).
 const SIGN_KINDS = [1, 4, 27235, 30315];
+
+// --- Modo de permisos NIP-07 ---
+//
+// "lazy" (default): cada función pide su permiso a la extensión recién cuando
+// se usa (comentar pide kind:1, el chat pide nip04, etc.), y el usuario decide
+// en cada prompt de nos2x/Alby si lo recuerda para siempre o no.
+// "all": al iniciar sesión se "calientan" todos los permisos de una vez
+// (comportamiento anterior), pensado para quien prefiere aprobar todo junto.
+
+export type NostrPermsMode = "lazy" | "all";
+
+const PERMS_MODE_KEY = "ln_nostr_perms";
+
+export function getNostrPermsMode(): NostrPermsMode {
+  if (typeof window === "undefined") return "lazy";
+  try {
+    return localStorage.getItem(PERMS_MODE_KEY) === "all" ? "all" : "lazy";
+  } catch {
+    return "lazy";
+  }
+}
+
+export function setNostrPermsMode(mode: NostrPermsMode): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PERMS_MODE_KEY, mode);
+  } catch {
+    /* localStorage bloqueado: el modo queda en el default */
+  }
+}
 
 /**
  * "Calienta" los permisos NIP-07 al inicio de la sesión: dispara una vez cada
@@ -78,6 +125,10 @@ const SIGN_KINDS = [1, 4, 27235, 30315];
 export async function warmUpPermissions(pubkey: string): Promise<void> {
   const nostr = window.nostr;
   if (!nostr) return;
+  // Solo aplica al login por extensión: con clave local no hay prompts y con
+  // NIP-46 los permisos los gestiona el bunker remoto.
+  const method = getActiveSigner()?.method;
+  if (method && method !== "nip07") return;
 
   // nip04: lo más repetitivo (chat + notificaciones descifran constantemente).
   if (nostr.nip04) {
@@ -102,13 +153,46 @@ export async function warmUpPermissions(pubkey: string): Promise<void> {
 // --- Amigos (NIP-02) y perfiles (kind:0) ---
 
 export async function fetchContacts(pubkey: string): Promise<string[]> {
-  const ev = await pool().get(
+  // Se consulta a TODOS los relays y se toma el kind:3 más nuevo: `pool.get`
+  // devuelve el primero en responder, que puede ser una contact list vieja de
+  // un relay desactualizado (por eso un follow recién hecho tardaba en aparecer).
+  const evs = await pool().querySync(
     RELAYS,
     { kinds: [3], authors: [pubkey] },
     { maxWait: MAX_WAIT },
   );
-  if (!ev) return [];
-  return ev.tags.filter((t) => t[0] === "p" && t[1]).map((t) => t[1]);
+  return contactsFromLatest(evs);
+}
+
+/** Tags `p` del evento kind:3 más nuevo del lote. Exportado para testear. */
+export function contactsFromLatest(
+  evs: Pick<Event, "created_at" | "tags">[],
+): string[] {
+  let latest: Pick<Event, "created_at" | "tags"> | null = null;
+  for (const ev of evs) {
+    if (!latest || ev.created_at > latest.created_at) latest = ev;
+  }
+  if (!latest) return [];
+  return latest.tags.filter((t) => t[0] === "p" && t[1]).map((t) => t[1]);
+}
+
+/**
+ * Acota la lista de contactos sin perder los follows recientes: los clientes
+ * Nostr appendean los nuevos al final del kind:3, así que se conserva la COLA
+ * (un `slice(0, max)` tiraba justo a los últimos seguidos). Deduplica
+ * conservando la última aparición y mantiene el orden relativo.
+ */
+export function clampContacts(contacts: string[], max = 150): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = contacts.length - 1; i >= 0 && out.length < max; i--) {
+    const pk = contacts[i];
+    if (!seen.has(pk)) {
+      seen.add(pk);
+      out.push(pk);
+    }
+  }
+  return out.reverse();
 }
 
 export async function fetchProfiles(
@@ -129,6 +213,74 @@ export async function fetchProfiles(
     }
   }
   return map;
+}
+
+// --- Búsqueda global de usuarios (cuando no aparece en tus follows) ---
+
+export type GlobalResult = {
+  pubkey: string;
+  npub: string;
+  profile?: Profile;
+};
+
+/**
+ * Busca usuarios en TODO Nostr cuando no están en tus follows. Resuelve, en
+ * este orden: un npub pegado, un identificador NIP-05 (`usuario@dominio`), o
+ * texto libre vía NIP-50 (full-text de kind:0 en relays de búsqueda).
+ */
+export async function searchProfiles(
+  query: string,
+  limit = 10,
+): Promise<GlobalResult[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  // 1) npub pegado directo.
+  const direct = pubkeyFromNpub(q);
+  if (direct) {
+    const profiles = await fetchProfiles([direct]);
+    return [{ pubkey: direct, npub: npubOf(direct), profile: profiles[direct] }];
+  }
+
+  // 2) NIP-05 (usuario@dominio).
+  if (q.includes("@")) {
+    try {
+      const resolved = await nip05.queryProfile(q);
+      if (resolved?.pubkey) {
+        const profiles = await fetchProfiles([resolved.pubkey]);
+        return [
+          {
+            pubkey: resolved.pubkey,
+            npub: npubOf(resolved.pubkey),
+            profile: profiles[resolved.pubkey],
+          },
+        ];
+      }
+    } catch {
+      /* NIP-05 no resoluble: cae a búsqueda por texto */
+    }
+  }
+
+  // 3) Texto libre (NIP-50).
+  const evs = await pool().querySync(
+    SEARCH_RELAYS,
+    { kinds: [0], search: q, limit },
+    { maxWait: MAX_WAIT },
+  );
+  const byPubkey = new Map<string, (typeof evs)[number]>();
+  for (const ev of evs) {
+    const prev = byPubkey.get(ev.pubkey);
+    if (!prev || ev.created_at > prev.created_at) byPubkey.set(ev.pubkey, ev);
+  }
+  return [...byPubkey.values()].slice(0, limit).map((ev) => {
+    let profile: Profile | undefined;
+    try {
+      profile = JSON.parse(ev.content) as Profile;
+    } catch {
+      /* perfil ilegible */
+    }
+    return { pubkey: ev.pubkey, npub: npubOf(ev.pubkey), profile };
+  });
 }
 
 // --- Presencia (NIP-38, kind:30315 d="general") ---
@@ -382,9 +534,9 @@ export function dmCounterpart(ev: Event, myPubkey: string): string {
 }
 
 export async function decryptDm(ev: Event, myPubkey: string): Promise<string> {
-  if (!window.nostr?.nip04) return "[tu extensión no soporta NIP-04]";
   try {
-    return await window.nostr.nip04.decrypt(dmCounterpart(ev, myPubkey), ev.content);
+    const signer = await requireSigner();
+    return await signer.nip04Decrypt(dmCounterpart(ev, myPubkey), ev.content);
   } catch {
     return "[no se pudo descifrar]";
   }
@@ -411,8 +563,17 @@ export async function sendDm(
   recipientPubkey: string,
   text: string,
 ): Promise<void> {
-  if (!window.nostr?.nip04) throw new Error("Tu extensión no soporta NIP-04");
-  const ciphertext = await window.nostr.nip04.encrypt(recipientPubkey, text);
+  const signer = await requireSigner();
+  let ciphertext: string;
+  try {
+    ciphertext = await signer.nip04Encrypt(recipientPubkey, text);
+  } catch {
+    throw new Error(
+      signer.method === "nip07"
+        ? "Permiso denegado en tu extensión Nostr"
+        : "Tu firmante Nostr rechazó el cifrado del mensaje",
+    );
+  }
   await publish(
     await sign({
       kind: 4,

@@ -1,0 +1,185 @@
+/**
+ * Abstracción de firma Nostr de Luna Negra. Antes todo pasaba por `window.nostr`
+ * (NIP-07); ahora la app habla con un `LunaSigner` activo que puede ser:
+ *  - "nip07": extensión del navegador (nos2x, Alby) — como siempre.
+ *  - "nip46": firmante remoto Nostr Connect (Amber, nsec.app) vía bunker.
+ *  - "local": clave en este navegador (generada o nsec importado), como figus.
+ *
+ * Módulo client-only: no toca `window`/`localStorage` a nivel de módulo porque
+ * `nostr-social.ts` (que lo importa) también se carga en el server.
+ */
+
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getPublicKey,
+  nip04,
+  nip19,
+  type Event,
+} from "nostr-tools";
+
+export type SignerMethod = "nip07" | "nip46" | "local";
+
+export type UnsignedEvent = {
+  kind: number;
+  created_at: number;
+  tags: string[][];
+  content: string;
+};
+
+export interface LunaSigner {
+  readonly method: SignerMethod;
+  getPublicKey(): Promise<string>;
+  signEvent(e: UnsignedEvent): Promise<Event>;
+  nip04Encrypt(peerPubkey: string, plaintext: string): Promise<string>;
+  nip04Decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
+  /** Libera recursos (pool del bunker NIP-46). */
+  close?(): Promise<void>;
+}
+
+// --- Persistencia de la sesión de signer (localStorage, JSON discriminado) ---
+
+const SIGNER_KEY = "ln_signer";
+
+export type StoredSigner =
+  | { method: "nip07" }
+  | { method: "local"; nsec: string }
+  | {
+      method: "nip46";
+      clientNsec: string;
+      bunker: { relays: string[]; pubkey: string; secret: string | null };
+    };
+
+function readStoredSigner(): StoredSigner | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SIGNER_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredSigner;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSigner(stored: StoredSigner | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (stored) localStorage.setItem(SIGNER_KEY, JSON.stringify(stored));
+    else localStorage.removeItem(SIGNER_KEY);
+  } catch {
+    /* storage bloqueado: la sesión de signer no persiste */
+  }
+}
+
+// --- Signer activo (singleton en memoria) ---
+
+let active: LunaSigner | null = null;
+
+export function getActiveSigner(): LunaSigner | null {
+  return active;
+}
+
+export function setActiveSigner(signer: LunaSigner, stored: StoredSigner): void {
+  active = signer;
+  writeStoredSigner(stored);
+}
+
+export function clearActiveSigner(): void {
+  const prev = active;
+  active = null;
+  writeStoredSigner(null);
+  void prev?.close?.();
+}
+
+/**
+ * Restaura el signer guardado al montar la app (la cookie de sesión vive 30
+ * días; sin esto, comentar/chatear tras volver fallaría hasta re-loguear).
+ * Para NIP-46 difiere la conexión real al primer uso (import dinámico).
+ */
+export async function restoreSigner(): Promise<LunaSigner | null> {
+  if (active) return active;
+  const stored = readStoredSigner();
+  if (!stored) {
+    // Compat: sesiones previas a la abstracción eran siempre NIP-07.
+    if (typeof window !== "undefined" && window.nostr) {
+      active = createNip07Signer();
+      return active;
+    }
+    return null;
+  }
+  try {
+    if (stored.method === "nip07") {
+      if (typeof window === "undefined" || !window.nostr) return null;
+      active = createNip07Signer();
+    } else if (stored.method === "local") {
+      active = importNsec(stored.nsec);
+    } else {
+      const { restoreBunkerSigner } = await import("./signer-nip46");
+      active = await restoreBunkerSigner(stored.clientNsec, stored.bunker);
+    }
+    return active;
+  } catch {
+    return null;
+  }
+}
+
+// --- NIP-07 (extensión) ---
+
+export function createNip07Signer(): LunaSigner {
+  const nostr = () => {
+    if (typeof window === "undefined" || !window.nostr) {
+      throw new Error("Necesitás una extensión Nostr (nos2x/Alby)");
+    }
+    return window.nostr;
+  };
+  return {
+    method: "nip07",
+    getPublicKey: () => nostr().getPublicKey(),
+    signEvent: async (e) =>
+      (await nostr().signEvent(e)) as unknown as Event,
+    nip04Encrypt: (peer, plaintext) => {
+      const n = nostr();
+      if (!n.nip04) throw new Error("Tu extensión no soporta NIP-04");
+      return n.nip04.encrypt(peer, plaintext);
+    },
+    nip04Decrypt: (peer, ciphertext) => {
+      const n = nostr();
+      if (!n.nip04) throw new Error("Tu extensión no soporta NIP-04");
+      return n.nip04.decrypt(peer, ciphertext);
+    },
+  };
+}
+
+// --- Clave local (generada o nsec importado; guardada plana como figus) ---
+
+export function createLocalSigner(secretKey: Uint8Array): LunaSigner {
+  const pubkey = getPublicKey(secretKey);
+  return {
+    method: "local",
+    getPublicKey: async () => pubkey,
+    signEvent: async (e) => finalizeEvent(e, secretKey),
+    nip04Encrypt: async (peer, plaintext) =>
+      nip04.encrypt(secretKey, peer, plaintext),
+    nip04Decrypt: async (peer, ciphertext) =>
+      nip04.decrypt(secretKey, peer, ciphertext),
+  };
+}
+
+export function generateLocalSigner(): { signer: LunaSigner; nsec: string } {
+  const sk = generateSecretKey();
+  return { signer: createLocalSigner(sk), nsec: nip19.nsecEncode(sk) };
+}
+
+/** Valida y decodifica un nsec; lanza con mensaje claro si no lo es. */
+export function importNsec(nsec: string): LunaSigner {
+  let decoded: ReturnType<typeof nip19.decode>;
+  try {
+    decoded = nip19.decode(nsec.trim());
+  } catch {
+    throw new Error("Eso no parece un nsec válido");
+  }
+  if (decoded.type !== "nsec") {
+    throw new Error("Eso no es una clave privada (nsec)");
+  }
+  return createLocalSigner(decoded.data);
+}

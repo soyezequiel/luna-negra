@@ -11,8 +11,25 @@ import { inviteHref, watchGameWindow } from "@/lib/invite";
 
 const gameWindows = new Map<string, Window>();
 const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
+const gameWindowOrigins = new Map<string, string>();
 const ENTER_ROOM_MESSAGE_TYPE = "luna-negra:enter-room";
+const LOGOUT_MESSAGE_TYPE = "luna-negra:logout";
 const JOIN_ROOM_ERROR = "No se pudo unir a la sala";
+
+/**
+ * Resultado de abrir el juego. `popup-blocked` significa que el navegador
+ * (p. ej. Brave con Shields) rechazó el `window.open`: el caller debe avisarle
+ * al usuario y ofrecerle reintentar con `dest` (la URL final del juego) dentro
+ * de un nuevo gesto de click.
+ */
+export type LaunchResult =
+  | { ok: true }
+  | { ok: false; reason: "popup-blocked"; dest: string };
+
+// Copy compartido para el aviso de popup bloqueado (toast en los callers).
+export const POPUP_BLOCKED_TITLE = "Tu navegador bloqueó la ventana del juego";
+export const POPUP_BLOCKED_BODY =
+  "Permití pop-ups para Luna Negra (en Brave: ícono 🛡️ Shields → Pop-ups) o tocá «Abrir juego».";
 
 export function getOpenGameWindow(slug: string): Window | null {
   const win = gameWindows.get(slug);
@@ -32,9 +49,14 @@ export function preopenGameWindowIfNeeded(slug: string): Window | null {
     : window.open("", gameWindowTarget(slug));
 }
 
-export function registerGameWindow(slug: string, win: Window | null): void {
+export function registerGameWindow(
+  slug: string,
+  win: Window | null,
+  gameUrl?: string,
+): void {
   if (!win) return;
   gameWindows.set(slug, win);
+  if (gameUrl) gameWindowOrigins.set(slug, new URL(gameUrl, window.location.origin).origin);
   try {
     win.opener = null;
   } catch {
@@ -59,26 +81,50 @@ export function registerGameWindow(slug: string, win: Window | null): void {
   gameWindowWatchers.set(slug, watcher);
 }
 
+export function notifyOpenGameWindowsLogout(): void {
+  for (const [slug, win] of gameWindows) {
+    try {
+      if (win.closed) {
+        unregisterGameWindow(slug, win);
+        continue;
+      }
+      win.postMessage(
+        { type: LOGOUT_MESSAGE_TYPE },
+        gameWindowOrigins.get(slug) ?? "*",
+      );
+    } catch {
+      unregisterGameWindow(slug, win);
+    }
+  }
+}
+
 export function launchStandaloneGame({
   gameUrl,
   slug,
   title,
   token,
+  win,
 }: {
   gameUrl: string;
   slug?: string;
   title?: string;
   token?: string;
-}): void {
+  /** Pestaña abierta sincrónicamente dentro del gesto del click (evita el bloqueo
+   * de popups); si no se pasa, se abre una nueva acá. */
+  win?: Window | null;
+}): LaunchResult {
   const url = new URL(gameUrl, window.location.origin);
   url.searchParams.set("lnOrigin", window.location.origin);
   if (token) url.searchParams.set("lnToken", token);
   const dest = url.toString();
   const existing = slug ? getOpenGameWindow(slug) : null;
+  if (existing && win && existing !== win) win.close();
+  const opened = existing ?? win ?? null;
   const gameWin =
-    existing ?? window.open(dest, slug ? gameWindowTarget(slug) : "_blank");
-  if (existing) navigateGameWindow(existing, dest);
-  if (slug) registerGameWindow(slug, gameWin);
+    opened ?? window.open(dest, slug ? gameWindowTarget(slug) : "_blank");
+  if (!gameWin) return { ok: false, reason: "popup-blocked", dest };
+  if (opened) navigateGameWindow(opened, dest);
+  if (slug) registerGameWindow(slug, gameWin, gameUrl);
 
   if (title) {
     const link = slug
@@ -86,6 +132,7 @@ export function launchStandaloneGame({
       : undefined;
     startPlayingPresence({ title, link });
   }
+  return { ok: true };
 }
 
 export function launchGameRoom({
@@ -104,7 +151,7 @@ export function launchGameRoom({
   /** Pestaña abierta sincrónicamente dentro del gesto del click (evita el bloqueo
    * de popups); si no se pasa, se abre una nueva acá. */
   win?: Window | null;
-}): void {
+}): LaunchResult {
   const url = new URL(gameUrl, window.location.origin);
   url.searchParams.set("lnOrigin", window.location.origin);
   url.searchParams.set("inviteToken", token);
@@ -114,17 +161,18 @@ export function launchGameRoom({
   const existing = getOpenGameWindow(slug);
   if (existing && win && existing !== win) win.close();
   const gameWin = existing ?? win ?? window.open(dest, gameWindowTarget(slug));
-  if (gameWin) {
-    const navigated = navigateGameWindow(gameWin, dest);
-    if (!navigated) {
-      postEnterRoomMessage(gameWin, {
-        gameUrl,
-        inviteToken: token,
-        roomId,
-      });
-    }
+  // Popup bloqueado (Brave Shields, etc.): no hay ventana → avisar al caller en
+  // vez de fallar en silencio. No se arranca presencia ni watcher.
+  if (!gameWin) return { ok: false, reason: "popup-blocked", dest };
+  const navigated = navigateGameWindow(gameWin, dest);
+  if (!navigated) {
+    postEnterRoomMessage(gameWin, {
+      gameUrl,
+      inviteToken: token,
+      roomId,
+    });
   }
-  registerGameWindow(slug, gameWin);
+  registerGameWindow(slug, gameWin, gameUrl);
 
   // Presencia NIP-38 con el link de la sala → los amigos pueden unirse vía Nostr.
   // La tienda la deriva de la presencia que el juego reporta a la API; al cerrar
@@ -137,6 +185,7 @@ export function launchGameRoom({
 
   // Al cerrar la pestaña del juego: limpiar la sala activa (banner local).
   watchGameWindow(gameWin);
+  return { ok: true };
 }
 
 /**
@@ -150,11 +199,15 @@ export async function joinRoomAndPlay({
   roomId,
   win,
   onError,
+  onBlocked,
 }: {
   slug: string;
   roomId: string;
   win?: Window | null;
   onError?: (message: string | null) => void;
+  /** El navegador bloqueó la ventana del juego: avisar al usuario y ofrecerle
+   * abrir `dest` (URL final) en un nuevo gesto de click. */
+  onBlocked?: (dest: string) => void;
 }): Promise<void> {
   const pendingWin = win ?? preopenGameWindowIfNeeded(slug);
   try {
@@ -174,7 +227,7 @@ export async function joinRoomAndPlay({
       pendingWin?.close();
       return;
     }
-    launchGameRoom({
+    const result = launchGameRoom({
       gameUrl: d.gameUrl,
       slug: d.slug,
       title: d.title,
@@ -182,6 +235,10 @@ export async function joinRoomAndPlay({
       roomId: d.roomId,
       win: pendingWin,
     });
+    if (!result.ok) {
+      if (onBlocked) onBlocked(result.dest);
+      else onError?.(POPUP_BLOCKED_BODY);
+    }
   } catch (e) {
     pendingWin?.close();
     onError?.(joinRoomErrorDetail(e instanceof Error ? e.message : null));
@@ -233,6 +290,7 @@ function postEnterRoomMessage(
 
 function unregisterGameWindow(slug: string, win: Window): void {
   if (gameWindows.get(slug) === win) gameWindows.delete(slug);
+  if (!gameWindows.has(slug)) gameWindowOrigins.delete(slug);
   const watcher = gameWindowWatchers.get(slug);
   if (watcher) clearInterval(watcher);
   gameWindowWatchers.delete(slug);

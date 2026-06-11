@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import {
+  clampContacts,
   fetchContacts,
   fetchProfiles,
   npubOf,
   profileName,
 } from "@/lib/nostr-social";
+import { compareFriends } from "@/lib/friend-sort";
 
 // Capa social que consume el game server (spec luna-negra-social-spec.md):
 // amigos (NIP-02), presencia por proveedor y su enriquecimiento de perfil.
@@ -27,6 +29,12 @@ export type FriendEntry = {
   presence: Presence;
   roomId: string | null;
   lastSeenMs: number | null;
+  /** Tiene cuenta en Luna Negra. */
+  isMember: boolean;
+  /** Última vez que jugó en Luna Negra (epoch ms) o null si nunca. */
+  lastPlayedAt: number | null;
+  /** false = resultado de búsqueda global (no está en tus follows). */
+  isFollow?: boolean;
 };
 
 /** Registra/renueva la presencia de un jugador en el juego del proveedor. */
@@ -42,6 +50,20 @@ export async function recordPresence(
     create: { providerId, npub, status, roomId, expiresAt },
     update: { status, roomId, expiresAt },
   });
+  // Respaldo de "jugó alguna vez" (cubre relanzamientos que no pasan por la
+  // tienda). Throttled a 10 min para no escribir en cada heartbeat de ~10s.
+  await prisma.user
+    .updateMany({
+      where: {
+        npub,
+        OR: [
+          { lastPlayedAt: null },
+          { lastPlayedAt: { lt: new Date(Date.now() - 10 * 60_000) } },
+        ],
+      },
+      data: { lastPlayedAt: new Date() },
+    })
+    .catch(() => {});
   // Limpieza oportunista de presencias vencidas (mismo patrón TTL que rooms.ts).
   await prisma.gamePresence
     .deleteMany({ where: { providerId, expiresAt: { lt: new Date() } } })
@@ -104,14 +126,19 @@ export async function listFriends(
   providerId: string,
   withPresence: boolean,
 ): Promise<FriendEntry[]> {
-  const contacts = (await fetchContacts(pubkey)).slice(0, MAX_FRIENDS);
+  const contacts = clampContacts(await fetchContacts(pubkey), MAX_FRIENDS);
   if (contacts.length === 0) return [];
 
   // Nombre/avatar: primero la caché local (kind:0), luego un solo query batched a
   // relays para los que falten (acotado por MAX_WAIT en nostr-social).
   const cached = await prisma.user.findMany({
     where: { pubkey: { in: contacts } },
-    select: { pubkey: true, displayName: true, avatarUrl: true },
+    select: {
+      pubkey: true,
+      displayName: true,
+      avatarUrl: true,
+      lastPlayedAt: true,
+    },
   });
   const byPubkey = new Map(cached.map((u) => [u.pubkey, u]));
   const missing = contacts.filter((pk) => {
@@ -136,9 +163,39 @@ export async function listFriends(
       presence: pres?.status ?? "offline",
       roomId: pres?.roomId ?? null,
       lastSeenMs: pres?.lastSeenMs ?? null,
+      isMember: byPubkey.has(pk),
+      lastPlayedAt: u?.lastPlayedAt?.getTime() ?? null,
     };
   });
 
-  friends.sort((a, b) => RANK[a.presence] - RANK[b.presence]);
+  sortFriendEntries(friends);
   return friends;
+}
+
+/**
+ * Orden de la lista que reciben los juegos: jugando ahora → jugó alguna vez →
+ * miembro → resto. "Jugando ahora" combina la presencia en este juego
+ * (in-game/online) con el orden compartido por tiers.
+ */
+export function sortFriendEntries(friends: FriendEntry[]): void {
+  friends.sort((a, b) => {
+    // La presencia en ESTE juego es la señal más fuerte de "jugando ahora".
+    if (RANK[a.presence] !== RANK[b.presence]) {
+      return RANK[a.presence] - RANK[b.presence];
+    }
+    return compareFriends(
+      {
+        name: a.displayName ?? a.npub,
+        playingNow: a.presence !== "offline",
+        lastPlayedAt: a.lastPlayedAt,
+        isMember: a.isMember,
+      },
+      {
+        name: b.displayName ?? b.npub,
+        playingNow: b.presence !== "offline",
+        lastPlayedAt: b.lastPlayedAt,
+        isMember: b.isMember,
+      },
+    );
+  });
 }

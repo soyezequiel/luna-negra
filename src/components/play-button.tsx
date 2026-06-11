@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { launchStandaloneGame } from "@/lib/room-launch";
+import { useNotify } from "@/providers/notifications-provider";
+import {
+  launchStandaloneGame,
+  preopenGameWindowIfNeeded,
+  POPUP_BLOCKED_BODY,
+  POPUP_BLOCKED_TITLE,
+} from "@/lib/room-launch";
 
 export function PlayButton({
   gameId,
@@ -24,8 +30,15 @@ export function PlayButton({
   size?: "sm" | "md" | "xl";
 }) {
   const [loading, setLoading] = useState(false);
+  const { notify } = useNotify();
 
   async function play() {
+    if (loading) return;
+    // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
+    // y otros bloqueadores de popups rechazan el window.open.
+    const win = slug
+      ? preopenGameWindowIfNeeded(slug)
+      : window.open("", "_blank");
     setLoading(true);
     try {
       const r = await fetch(`/api/games/${gameId}/sessions`, {
@@ -33,7 +46,24 @@ export function PlayButton({
       })
         .then((res) => res.json())
         .catch(() => null);
-      launchStandaloneGame({ gameUrl, slug, title, token: r?.token });
+      const result = launchStandaloneGame({
+        gameUrl,
+        slug,
+        title,
+        token: r?.token,
+        win,
+      });
+      if (!result.ok) {
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: result.dest,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        });
+      }
+    } catch {
+      win?.close();
     } finally {
       setLoading(false);
     }

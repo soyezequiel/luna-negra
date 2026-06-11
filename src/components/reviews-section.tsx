@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { publishGameReview, type GameRoot } from "@/lib/nostr-social";
 
@@ -40,6 +40,10 @@ export function ReviewsSection({
   const [rating, setRating] = useState(5);
   const [text, setText] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  // Guard síncrono: setSending no alcanza contra un doble click más rápido
+  // que el re-render, y cada envío extra publica otro evento en Nostr.
+  const sendingRef = useRef(false);
   const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
@@ -60,32 +64,40 @@ export function ReviewsSection({
   }, [load, startLoadTransition]);
 
   async function submit() {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
     setMsg(null);
-    const r = await fetch(`/api/games/${gameId}/reviews`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating, body: text }),
-    });
-    const d = await r.json();
-    if (!r.ok) return setMsg(d.error ?? "Error");
+    try {
+      const r = await fetch(`/api/games/${gameId}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, body: text }),
+      });
+      const d = await r.json();
+      if (!r.ok) return setMsg(d.error ?? "Error");
 
-    // Además del registro en la DB, publicamos la reseña como respuesta al
-    // anuncio del juego en Nostr (firmada por el usuario). Best-effort: si falla
-    // o no hay anuncio, la reseña igual queda guardada.
-    if (root) {
-      try {
-        const gameUrl = `${window.location.origin}/game/${slug}`;
-        await publishGameReview(root, rating, text, title, gameUrl);
-      } catch {
-        setMsg("Reseña guardada (no se pudo publicar en Nostr).");
-        setText("");
-        return load();
+      // Además del registro en la DB, publicamos la reseña como respuesta al
+      // anuncio del juego en Nostr (firmada por el usuario). Best-effort: si falla
+      // o no hay anuncio, la reseña igual queda guardada.
+      if (root) {
+        try {
+          const gameUrl = `${window.location.origin}/game/${slug}`;
+          await publishGameReview(root, rating, text, title, gameUrl);
+        } catch {
+          setMsg("Reseña guardada (no se pudo publicar en Nostr).");
+          setText("");
+          return void load();
+        }
       }
-    }
 
-    setText("");
-    setMsg("¡Gracias por tu reseña!");
-    load();
+      setText("");
+      setMsg("¡Gracias por tu reseña!");
+      void load();
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
   }
 
   return (
@@ -123,8 +135,8 @@ export function ReviewsSection({
             onChange={(e) => setText(e.target.value)}
           />
           <div className="mt-3 flex items-center gap-3">
-            <Button variant="blue" onClick={submit}>
-              Publicar reseña
+            <Button variant="blue" onClick={submit} disabled={sending}>
+              {sending ? "Publicando…" : "Publicar reseña"}
             </Button>
             {msg ? <span className="text-sm text-blue">{msg}</span> : null}
           </div>

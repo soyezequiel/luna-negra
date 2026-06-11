@@ -8,6 +8,7 @@ import { fetchProfile, profileName, type NostrProfile } from "@/lib/nostr";
 import { Button } from "@/components/ui/button";
 import { satsLabel, hueFromSlug } from "@/lib/format";
 import { ACTIVE_BET_STATUSES } from "@/lib/bet-ui";
+import { NostrPermsSection } from "@/components/nostr-perms-section";
 
 type LibGame = { id: string; slug: string; title: string; coverUrl: string | null };
 type MineBet = {
@@ -272,6 +273,8 @@ export default function ProfilePage() {
           </section>
 
           <Lud16Form nostrLud16={profile?.lud16 ?? null} />
+
+          <NostrPermsSection />
         </div>
       </div>
     </div>

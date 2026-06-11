@@ -7,6 +7,7 @@ import { GameContextProvider } from "@/providers/game-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { FriendsSidebar } from "@/components/friends-sidebar";
+import { LoginModal } from "@/components/login-modal";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -33,6 +34,7 @@ export default function RootLayout({
               <main className="relative z-10 flex-1 xl:pr-80">{children}</main>
               <Footer />
               <FriendsSidebar />
+              <LoginModal />
             </GameContextProvider>
           </NotificationsProvider>
         </SessionProvider>

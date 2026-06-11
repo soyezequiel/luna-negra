@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { launchStandaloneGame } from "@/lib/room-launch";
+import { useNotify } from "@/providers/notifications-provider";
+import {
+  launchStandaloneGame,
+  preopenGameWindowIfNeeded,
+  POPUP_BLOCKED_BODY,
+  POPUP_BLOCKED_TITLE,
+} from "@/lib/room-launch";
 
 /**
  * "Crear apuesta 1v1" — única entrada a apuestas en toda la app (vive solo en la
@@ -26,15 +32,37 @@ export function CreateBetButton({
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { notify } = useNotify();
 
   async function launch() {
+    if (loading) return;
+    // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
+    // y otros bloqueadores de popups rechazan el window.open.
+    const win = preopenGameWindowIfNeeded(slug);
     setLoading(true);
     try {
       const r = await fetch(`/api/games/${gameId}/sessions`, { method: "POST" })
         .then((res) => res.json())
         .catch(() => null);
-      launchStandaloneGame({ gameUrl, slug, title, token: r?.token });
+      const result = launchStandaloneGame({
+        gameUrl,
+        slug,
+        title,
+        token: r?.token,
+        win,
+      });
+      if (!result.ok) {
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: result.dest,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        });
+      }
       setOpen(false);
+    } catch {
+      win?.close();
     } finally {
       setLoading(false);
     }

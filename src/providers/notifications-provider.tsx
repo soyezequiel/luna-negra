@@ -27,7 +27,11 @@ import {
   inviteHref,
   addPendingInvite,
 } from "@/lib/invite";
-import { joinRoomAndPlay } from "@/lib/room-launch";
+import {
+  joinRoomAndPlay,
+  POPUP_BLOCKED_BODY,
+  POPUP_BLOCKED_TITLE,
+} from "@/lib/room-launch";
 
 type ToastKind = "info" | "play" | "join" | "btc" | "warn";
 type Toast = {
@@ -36,6 +40,7 @@ type Toast = {
   body?: string;
   href?: string;
   kind: ToastKind;
+  actionLabel?: string;
 };
 
 type NotificationsContextValue = {
@@ -44,6 +49,7 @@ type NotificationsContextValue = {
     body?: string;
     href?: string;
     kind?: ToastKind;
+    actionLabel?: string;
   }) => void;
 };
 
@@ -89,14 +95,16 @@ export function NotificationsProvider({
       body,
       href,
       kind = "info",
+      actionLabel,
     }: {
       title: string;
       body?: string;
       href?: string;
       kind?: ToastKind;
+      actionLabel?: string;
     }) => {
       const id = ++idSeq.current;
-      setToasts((prev) => [...prev, { id, title, body, href, kind }]);
+      setToasts((prev) => [...prev, { id, title, body, href, kind, actionLabel }]);
       setTimeout(() => dismiss(id), TOAST_TTL);
     },
     [dismiss],
@@ -104,6 +112,8 @@ export function NotificationsProvider({
 
   // Abre el destino de una notificación. Si es una invitación a sala, reutiliza
   // la pestaña del juego abierta por Luna Negra; si no existe, abre una nueva.
+  // Si el navegador bloquea la ventana (Brave Shields), se avisa con un toast
+  // cuyo click —un gesto nuevo— reintenta, con fallback a la misma pestaña.
   const openHref = useCallback(
     (href: string) => {
       const invite = parseInvite(href);
@@ -112,9 +122,19 @@ export function NotificationsProvider({
           slug: invite.slug,
           roomId: invite.roomId,
           onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
+          onBlocked: (dest) =>
+            notify({
+              title: POPUP_BLOCKED_TITLE,
+              body: POPUP_BLOCKED_BODY,
+              href: dest,
+              kind: "warn",
+              actionLabel: "Abrir juego",
+            }),
         });
       } else if (/^https?:\/\//.test(href)) {
-        window.open(href, "_blank", "noopener");
+        const w = window.open(href, "_blank", "noopener");
+        // Popup bloqueado: navegar en la misma pestaña antes que fallar mudo.
+        if (!w) window.location.assign(href);
       } else {
         router.push(href);
       }
@@ -334,9 +354,11 @@ export function NotificationsProvider({
                     }}
                     className="mt-2 rounded-sm bg-blue/10 px-2.5 py-1 text-xs font-semibold text-blue hover:bg-white/10"
                   >
-                    {t.href.startsWith("/game/") || /^https?:\/\//.test(t.href)
-                      ? "Unirse a la sala"
-                      : "Ver mensaje"}
+                    {t.actionLabel ??
+                      (t.href.startsWith("/game/") ||
+                      /^https?:\/\//.test(t.href)
+                        ? "Unirse a la sala"
+                        : "Ver mensaje")}
                   </button>
                 ) : null}
               </div>

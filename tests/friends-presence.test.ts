@@ -15,6 +15,7 @@ function friend(pubkey: string): Friend {
     npub: `npub-${pubkey}`,
     isMember: true,
     games: [],
+    lastPlayedAt: null,
     status: { content: "Jugando Tetris (Beta) en Luna Negra" },
   };
 }
