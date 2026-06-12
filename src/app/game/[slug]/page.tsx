@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
 import { PlayButton } from "@/components/play-button";
-import { CreateBetButton } from "@/components/create-bet-button";
 import { GameBets } from "@/components/game-bets";
 import { MultiplayerPanel } from "@/components/multiplayer-panel";
 import { RegisterGame } from "@/providers/game-context";
@@ -147,14 +146,6 @@ export default async function GamePage({
                     variant="play"
                     size="xl"
                     className="w-full"
-                  />
-                ) : null}
-                {game.gameUrl ? (
-                  <CreateBetButton
-                    gameId={game.id}
-                    gameUrl={game.gameUrl}
-                    title={game.title}
-                    slug={game.slug}
                   />
                 ) : null}
                 <Link
