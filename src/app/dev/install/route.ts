@@ -7,7 +7,8 @@
 //   ps:  iwr -useb <ORIGIN>/dev/install?ps | iex
 
 const SKILL_NAME = "integrar-luna-negra";
-const SKILL_PATH = "/skill/" + SKILL_NAME + "/SKILL.md";
+// /dev/skill devuelve el SKILL.md ya interpolado con la base URL real.
+const SKILL_PATH = "/dev/skill";
 
 function originFrom(req: Request): string {
   const h = req.headers;
@@ -25,10 +26,8 @@ function shScript(origin: string): string {
     "set -e",
     'DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/' + SKILL_NAME + '"',
     'SKILL_URL="' + skillUrl + '"',
-    'BASE="' + origin + '"',
     'mkdir -p "$DEST"',
-    'if command -v curl >/dev/null 2>&1; then DL="curl -fsSL"; else DL="wget -qO-"; fi',
-    '$DL "$SKILL_URL" | sed "s#__LUNA_NEGRA_BASE__#$BASE#g" > "$DEST/SKILL.md"',
+    'if command -v curl >/dev/null 2>&1; then curl -fsSL "$SKILL_URL" -o "$DEST/SKILL.md"; else wget -qO "$DEST/SKILL.md" "$SKILL_URL"; fi',
     'echo "OK  Skill instalada en: $DEST/SKILL.md"',
     'echo "    Reinicia tu agente y pedile: \\"integra mi juego con Luna Negra\\"."',
     "",
@@ -41,13 +40,10 @@ function psScript(origin: string): string {
     "# Instala la skill 'integrar-luna-negra' de Luna Negra en Claude Code (Windows).",
     "$ErrorActionPreference = 'Stop'",
     "$skillUrl = '" + skillUrl + "'",
-    "$base = '" + origin + "'",
     "$root = if ($env:CLAUDE_SKILLS_DIR) { $env:CLAUDE_SKILLS_DIR } else { Join-Path $HOME '.claude\\skills' }",
     "$dest = Join-Path $root '" + SKILL_NAME + "'",
     "New-Item -ItemType Directory -Force -Path $dest | Out-Null",
-    "$md = (Invoke-WebRequest -UseBasicParsing -Uri $skillUrl).Content",
-    "$md = $md -replace '__LUNA_NEGRA_BASE__', $base",
-    "Set-Content -Path (Join-Path $dest 'SKILL.md') -Value $md -Encoding utf8",
+    "Invoke-WebRequest -UseBasicParsing -Uri $skillUrl -OutFile (Join-Path $dest 'SKILL.md')",
     "Write-Host \"OK  Skill instalada en: $dest\\SKILL.md\"",
     "Write-Host '    Reinicia tu agente y pedile: \"integra mi juego con Luna Negra\".'",
     "",

@@ -12,6 +12,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // El route /dev/skill lee este archivo en runtime para servirlo interpolado:
+  // hay que incluirlo en el bundle de la función serverless (no solo en el CDN).
+  outputFileTracingIncludes: {
+    "/dev/skill": ["./public/skill/**/*"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

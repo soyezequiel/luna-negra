@@ -581,6 +581,62 @@ const HTML = `<!doctype html>
         text-align: center;
       }
 
+      .cmd { position: relative; }
+      .cmd pre { padding-right: 92px; }
+      .copy-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line-2);
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--ink);
+        padding: 6px 10px;
+        font: 800 0.74rem/1 ui-sans-serif, system-ui, sans-serif;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+      .copy-btn:hover { background: rgba(255, 255, 255, 0.12); color: var(--white); }
+      .copy-btn.done { border-color: rgba(161, 205, 68, 0.5); background: var(--green-soft); color: #d8f7a2; }
+      .install-cta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin-top: 18px;
+        border: 1px solid rgba(247, 147, 26, 0.3);
+        border-radius: 8px;
+        background: var(--btc-soft);
+        padding: 16px;
+      }
+      .install-cta strong { color: var(--white); }
+      .install-cta span { color: var(--muted); font-size: 0.9rem; }
+      .install-cta .button { margin-left: auto; }
+      .install-hero {
+        margin-top: 18px;
+        border: 1px solid rgba(102, 192, 244, 0.4);
+        border-radius: 9px;
+        background:
+          linear-gradient(180deg, rgba(102, 192, 244, 0.12), transparent 40%),
+          rgba(18, 26, 36, 0.9);
+        padding: 18px;
+      }
+      .install-hero .step-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--blue-hi);
+        font-size: 0.74rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .install-hero h3 { margin: 8px 0 4px; color: var(--white); }
+      .install-hero .cmd pre { font-size: 0.95rem; }
+      .install-hero .hint { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+
       @media (max-width: 980px) {
         .hero,
         .content,
@@ -1068,45 +1124,56 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
               </div>
               <div class="explain">
                 <strong>Como se instala</strong>
-                <span>Descarga <code>SKILL.md</code> a la carpeta de skills de tu agente. El script reemplaza la URL del deploy por la de esta instancia, asi los ejemplos quedan listos.</span>
+                <span>Un solo comando descarga e instala el <code>SKILL.md</code> (con la URL de este deploy ya puesta) en la carpeta de skills de tu agente. No hace falta posicionarte en ninguna carpeta.</span>
               </div>
             </div>
 
-            <h3>Claude Code &mdash; instalacion en un comando</h3>
-            <p>Pega esto en tu terminal (instala en <code>~/.claude/skills/integrar-luna-negra</code>):</p>
-            <div class="two-col">
-              <div>
-                <p style="margin:0 0 6px;color:var(--muted);font-size:.82rem;font-weight:800;text-transform:uppercase;">Windows (PowerShell)</p>
+            <div class="install-hero">
+              <span class="step-label">Claude Code &middot; Windows</span>
+              <h3>Pega esto en PowerShell y enter</h3>
+              <div class="cmd">
+                <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
                 <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
               </div>
-              <div>
-                <p style="margin:0 0 6px;color:var(--muted);font-size:.82rem;font-weight:800;text-transform:uppercase;">macOS / Linux (bash)</p>
-                <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
-              </div>
+              <p class="hint">
+                Un solo comando, desde cualquier carpeta. Se instala solo en
+                <code>%USERPROFILE%\.claude\skills\integrar-luna-negra</code>.
+                Despues reinicia Claude Code y pedile:
+                <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
+              </p>
             </div>
-            <p>
-              Despues reinicia Claude Code y pedile:
-              <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>. La skill se
-              activa sola por su descripcion.
-            </p>
+
+            <h3>macOS / Linux (bash) &mdash; el mismo comando para tu terminal</h3>
+            <div class="cmd">
+              <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
+              <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
+            </div>
+
+            <div class="install-cta">
+              <div>
+                <strong>&iquest;No queres ejecutar un comando? Descarga el archivo</strong><br />
+                <span>Baja el <code>SKILL.md</code> ya configurado y guardalo a mano en la carpeta de skills de tu agente.</span>
+              </div>
+              <a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a>
+            </div>
 
             <h3>Codex, Antigravity, OpenCode, OpenClaw, Hermes y otros</h3>
             <p>
               La skill es un Markdown autocontenido, asi que sirve como archivo de
-              contexto para cualquier agente. Tenes dos caminos:
+              contexto para cualquier agente:
             </p>
             <div class="card-grid">
               <div class="mini-card info">
-                <strong>Como archivo de reglas</strong>
-                <span>Descarga <a href="/skill/integrar-luna-negra/SKILL.md">SKILL.md</a> y guardalo donde tu agente lee contexto: <code>AGENTS.md</code> en la raiz del repo (Codex, OpenCode), o la carpeta de reglas/skills de tu herramienta.</span>
+                <strong>Descargar (recomendado)</strong>
+                <span>Usa el boton <a href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a> y guardalo como <code>AGENTS.md</code> en la raiz del repo (Codex, OpenCode) o en la carpeta de reglas/skills de tu herramienta.</span>
               </div>
               <div class="mini-card ok">
                 <strong>Por URL</strong>
-                <span>Pasale la URL directo al agente: <code>__LUNA_NEGRA_BASE__/skill/integrar-luna-negra/SKILL.md</code>. Dile que la lea y siga la guia para integrar tu juego.</span>
-              </div>
-              <div class="mini-card money">
-                <strong>Manual</strong>
-                <span>Tambien podes abrir el <a href="/skill/integrar-luna-negra/SKILL.md">SKILL.md</a> y reemplazar <code>__LUNA_NEGRA_BASE__</code> por la URL de este deploy a mano.</span>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
+                  <pre><code>__LUNA_NEGRA_BASE__/skill/integrar-luna-negra/SKILL.md</code></pre>
+                </div>
+                <span>Pasale esa URL al agente y pedile que la lea y siga la guia.</span>
               </div>
             </div>
 
@@ -1157,6 +1224,37 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
       Esta guia resume el camino recomendado. El contrato completo vive en
       <a href="/developers">/developers</a> y <a href="/openapi.json">/openapi.json</a>.
     </footer>
+
+    <script>
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".copy-btn");
+        if (!btn) return;
+        var code = btn.parentElement.querySelector("pre code, code");
+        if (!code) return;
+        var text = code.textContent.trim();
+        var done = function () {
+          var prev = btn.textContent;
+          btn.textContent = "Copiado";
+          btn.classList.add("done");
+          setTimeout(function () {
+            btn.textContent = prev;
+            btn.classList.remove("done");
+          }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {});
+        } else {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); done(); } catch (err) {}
+          document.body.removeChild(ta);
+        }
+      });
+    </script>
   </body>
 </html>`;
 
