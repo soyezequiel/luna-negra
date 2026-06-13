@@ -4,41 +4,22 @@ import { prisma } from "@/lib/prisma";
 import { npubOf, pubkeyFromNpub } from "@/lib/nostr-social";
 import { siteUrl } from "@/lib/site-url";
 import { queueGameLaunchRequest } from "@/lib/game-launch-requests";
+import { consumePendingInvites } from "@/lib/game-invites";
 
 const INVITE_TTL_MS = 3_600_000; // 1h
 const ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // Buzón de invitaciones a sala del usuario logueado (first-party, cookie de sesión).
-// Lo consulta por polling el NotificationsProvider para mostrar el toast "X te
-// invitó". Devolver una invitación la marca como vista (toast una sola vez).
+// Respaldo del stream SSE (GET /api/invites/stream): el NotificationsProvider lo
+// usa solo si el navegador no soporta EventSource. Devolver una invitación la
+// marca como vista (toast una sola vez).
 export async function GET() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const pending = await prisma.gameInvite.findMany({
-    where: { toNpub: session.npub, seenAt: null, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: "asc" },
-    take: 20,
-    select: {
-      id: true,
-      fromNpub: true,
-      roomId: true,
-      inviteUrl: true,
-      createdAt: true,
-    },
-  });
-
-  if (pending.length) {
-    await prisma.gameInvite
-      .updateMany({
-        where: { id: { in: pending.map((i) => i.id) } },
-        data: { seenAt: new Date() },
-      })
-      .catch(() => {});
-  }
-
+  const pending = await consumePendingInvites(session.npub);
   return NextResponse.json({ invites: pending });
 }
 

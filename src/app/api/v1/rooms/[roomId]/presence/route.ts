@@ -22,6 +22,7 @@ export async function POST(
     clientId: body.clientId,
     score: body.score,
     leave: body.leave,
+    peek: body.peek,
   });
   if (!result.ok) {
     return apiError(result.code, result.message, result.status);

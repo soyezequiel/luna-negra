@@ -43,6 +43,14 @@ type Toast = {
   actionLabel?: string;
 };
 
+// Invitación a sala del buzón first-party (GET /api/invites[/stream]).
+type GameInvite = {
+  id: string;
+  fromNpub: string;
+  roomId: string;
+  inviteUrl: string;
+};
+
 type NotificationsContextValue = {
   notify: (t: {
     title: string;
@@ -252,49 +260,63 @@ export function NotificationsProvider({
     return () => sub.close();
   }, [user, notify, fireDesktop, nameOf]);
 
-  // Polling del buzón de invitaciones a sala que envían los proveedores de juegos
-  // (POST /api/v1/invites → persistidas; acá las mostramos como toast). La
-  // `inviteUrl` es del deploy externo del juego, así que se abre en pestaña nueva.
+  // Muestra como toast una invitación a sala recibida del buzón first-party
+  // (POST /api/invites / /api/v1/invites → persistidas). La `inviteUrl` puede
+  // ser del deploy externo del juego, así que se abre en pestaña nueva.
+  const handleGameInvite = useCallback(
+    async (inv: GameInvite) => {
+      if (!inv.id || seen.current.has(inv.id)) return; // dedup (cuid ≠ id de DM)
+      seen.current.add(inv.id);
+      const fromPubkey = pubkeyFromNpub(inv.fromNpub);
+      const name = fromPubkey ? await nameOf(fromPubkey) : shortId(inv.fromNpub);
+      const title = `🎮 ${name} te invitó a una sala`;
+      const body = "Tocá para unirte";
+      notify({ title, body, href: inv.inviteUrl, kind: "join" });
+      fireDesktop(title, body, inv.inviteUrl);
+    },
+    [notify, fireDesktop, nameOf],
+  );
+
+  // Recepción de invitaciones a sala en tiempo real vía SSE (una sola conexión,
+  // ~1-2s de latencia; EventSource reconecta solo). Si el navegador no soporta
+  // EventSource, caemos a un polling lento de respaldo contra GET /api/invites.
   useEffect(() => {
     if (!user) return;
-    let stopped = false;
 
-    type GameInvite = {
-      id: string;
-      fromNpub: string;
-      roomId: string;
-      inviteUrl: string;
-    };
-
-    async function poll() {
-      try {
-        const r = await fetch("/api/invites");
-        if (!r.ok) return;
-        const d = (await r.json()) as { invites?: GameInvite[] };
-        for (const inv of d.invites ?? []) {
-          if (seen.current.has(inv.id)) continue; // dedup (cuid ≠ id de evento DM)
-          seen.current.add(inv.id);
-          const fromPubkey = pubkeyFromNpub(inv.fromNpub);
-          const name = fromPubkey ? await nameOf(fromPubkey) : shortId(inv.fromNpub);
-          const title = `🎮 ${name} te invitó a una sala`;
-          const body = "Tocá para unirte";
-          notify({ title, body, href: inv.inviteUrl, kind: "join" });
-          fireDesktop(title, body, inv.inviteUrl);
+    if (typeof EventSource === "undefined") {
+      let stopped = false;
+      const poll = async () => {
+        try {
+          const r = await fetch("/api/invites");
+          if (!r.ok) return;
+          const d = (await r.json()) as { invites?: GameInvite[] };
+          for (const inv of d.invites ?? []) await handleGameInvite(inv);
+        } catch {
+          /* best-effort: sin red, reintenta en el próximo tick */
         }
-      } catch {
-        /* best-effort: sin red, reintenta en el próximo tick */
-      }
+      };
+      void poll();
+      const id = setInterval(() => {
+        if (!stopped) void poll();
+      }, 15_000);
+      return () => {
+        stopped = true;
+        clearInterval(id);
+      };
     }
 
-    void poll();
-    const id = setInterval(() => {
-      if (!stopped) void poll();
-    }, 15_000);
-    return () => {
-      stopped = true;
-      clearInterval(id);
+    const es = new EventSource("/api/invites/stream");
+    es.onmessage = (e) => {
+      try {
+        void handleGameInvite(JSON.parse(e.data) as GameInvite);
+      } catch {
+        /* heartbeat / línea no-JSON: ignorar */
+      }
     };
-  }, [user, notify, fireDesktop, nameOf]);
+    // No cerramos en onerror: EventSource reintenta solo (p. ej. cuando la
+    // función serverless llega a su límite de duración y corta el stream).
+    return () => es.close();
+  }, [user, handleGameInvite]);
 
   return (
     <NotificationsContext.Provider value={{ notify }}>

@@ -648,8 +648,9 @@ const HTML = `<!doctype html>
           <a href="#multijugador">Multijugador</a>
           <a href="#webhooks">Webhooks</a>
           <a href="#sdk">SDK</a>
+          <a href="#skill">Skill IA</a>
         </nav>
-        <a class="top-action" href="/developers">Probar API</a>
+        <a class="top-action" href="#skill">Instalar skill</a>
       </div>
     </header>
 
@@ -665,6 +666,7 @@ const HTML = `<!doctype html>
           </p>
           <div class="hero-actions">
             <a class="button primary" href="/provider">Crear juego</a>
+            <a class="button" href="#skill">Instalar skill para tu IA</a>
             <a class="button" href="/developers">Abrir referencia interactiva</a>
             <a class="button" href="/openapi.json">Ver OpenAPI</a>
           </div>
@@ -708,10 +710,10 @@ const HTML = `<!doctype html>
           <span>Para integraciones: schemas, rutas y respuestas en formato machine-readable.</span>
           <em>Ver /openapi.json &rarr;</em>
         </a>
-        <a class="quick-card" href="/.well-known/jwks.json">
-          <strong>JWKS publico</strong>
-          <span>Para seguridad: claves publicas para validar tokens sin llamar a Luna Negra.</span>
-          <em>Ver JWKS &rarr;</em>
+        <a class="quick-card" href="#skill">
+          <strong>Skill para tu IA</strong>
+          <span>Para vibe coders: instala el conocimiento de Luna Negra en Claude Code, Codex u otro agente y deja que integre tu juego.</span>
+          <em>Instalar skill &rarr;</em>
         </a>
       </div>
 
@@ -748,6 +750,7 @@ const HTML = `<!doctype html>
             <a href="#leaderboards">Marcadores</a>
             <a href="#webhooks">Webhooks</a>
             <a href="#sdk">SDK TypeScript</a>
+            <a href="#skill">Skill para tu IA</a>
             <a href="#endpoints">Endpoints rapidos</a>
           </nav>
         </aside>
@@ -1048,8 +1051,75 @@ const info = await luna.getBet(bet.betId);
 await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
           </section>
 
+          <section id="skill">
+            <h2>9. Skill para tu agente de IA <span class="badge ok">nuevo</span></h2>
+            <p class="section-lead">
+              Instala una skill con <strong>todo el conocimiento para integrar tu
+              juego con Luna Negra</strong> directo en tu agente. No tenes que leer
+              esta pagina entera: instalas la skill y le pedis a tu IA "integra mi
+              juego con Luna Negra". Es modular &mdash; podes aplicar solo login, o
+              sumar pagos, salas, apuestas o webhooks segun necesites.
+            </p>
+
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>Que hace</strong>
+                <span>Le da a tu agente el mapa completo: login SSO, verificar compra, presencia, salas, invitaciones, marcadores, apuestas/escrow, webhooks y el SDK, con los endpoints y las reglas de seguridad.</span>
+              </div>
+              <div class="explain">
+                <strong>Como se instala</strong>
+                <span>Descarga <code>SKILL.md</code> a la carpeta de skills de tu agente. El script reemplaza la URL del deploy por la de esta instancia, asi los ejemplos quedan listos.</span>
+              </div>
+            </div>
+
+            <h3>Claude Code &mdash; instalacion en un comando</h3>
+            <p>Pega esto en tu terminal (instala en <code>~/.claude/skills/integrar-luna-negra</code>):</p>
+            <div class="two-col">
+              <div>
+                <p style="margin:0 0 6px;color:var(--muted);font-size:.82rem;font-weight:800;text-transform:uppercase;">Windows (PowerShell)</p>
+                <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
+              </div>
+              <div>
+                <p style="margin:0 0 6px;color:var(--muted);font-size:.82rem;font-weight:800;text-transform:uppercase;">macOS / Linux (bash)</p>
+                <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
+              </div>
+            </div>
+            <p>
+              Despues reinicia Claude Code y pedile:
+              <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>. La skill se
+              activa sola por su descripcion.
+            </p>
+
+            <h3>Codex, Antigravity, OpenCode, OpenClaw, Hermes y otros</h3>
+            <p>
+              La skill es un Markdown autocontenido, asi que sirve como archivo de
+              contexto para cualquier agente. Tenes dos caminos:
+            </p>
+            <div class="card-grid">
+              <div class="mini-card info">
+                <strong>Como archivo de reglas</strong>
+                <span>Descarga <a href="/skill/integrar-luna-negra/SKILL.md">SKILL.md</a> y guardalo donde tu agente lee contexto: <code>AGENTS.md</code> en la raiz del repo (Codex, OpenCode), o la carpeta de reglas/skills de tu herramienta.</span>
+              </div>
+              <div class="mini-card ok">
+                <strong>Por URL</strong>
+                <span>Pasale la URL directo al agente: <code>__LUNA_NEGRA_BASE__/skill/integrar-luna-negra/SKILL.md</code>. Dile que la lea y siga la guia para integrar tu juego.</span>
+              </div>
+              <div class="mini-card money">
+                <strong>Manual</strong>
+                <span>Tambien podes abrir el <a href="/skill/integrar-luna-negra/SKILL.md">SKILL.md</a> y reemplazar <code>__LUNA_NEGRA_BASE__</code> por la URL de este deploy a mano.</span>
+              </div>
+            </div>
+
+            <p class="note">
+              <strong>La skill no aplica todo de golpe.</strong> Es un menu: el
+              minimo util es el login SSO; presencia, salas, apuestas, marcadores y
+              webhooks se suman solo si los pedis. Tu agente te pregunta que queres
+              antes de tocar codigo.
+            </p>
+          </section>
+
           <section id="endpoints">
-            <h2>9. Referencia rapida de endpoints</h2>
+            <h2>10. Referencia rapida de endpoints</h2>
             <p class="section-lead">
               Para campos completos, codigos de error y schemas, usa
               <a href="/developers">/developers</a> o <a href="/openapi.json">/openapi.json</a>.
@@ -1090,8 +1160,16 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
   </body>
 </html>`;
 
-export function GET() {
-  return new Response(HTML, {
+export function GET(req: Request) {
+  // Las líneas de instalación necesitan la URL real del deploy: la derivamos de
+  // las cabeceras y reemplazamos el placeholder antes de servir.
+  const h = req.headers;
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const host =
+    h.get("x-forwarded-host") ?? h.get("host") ?? "luna-negra.example";
+  const origin = proto + "://" + host;
+  const html = HTML.replaceAll("__LUNA_NEGRA_BASE__", origin);
+  return new Response(html, {
     headers: { "content-type": "text/html; charset=utf-8" },
   });
 }

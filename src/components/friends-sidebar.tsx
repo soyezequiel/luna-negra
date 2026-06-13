@@ -119,7 +119,9 @@ export function FriendsSidebar() {
       : null;
 
   // Sondeo de presencia: mostramos cuántos amigos ya entraron a la sala. Usamos
-  // `leave: true` con un clientId de "espía" para leer el roster sin contarnos.
+  // `peek: true` para leer el roster sin contarnos NI tocar el estado de la sala.
+  // (Mandar `leave: true` con el token de host dispararía el cierre automático y
+  // echaría a los invitados antes de que el host abra el juego.)
   const peekRoomId = roomForGame?.hostToken ? roomForGame.roomId : null;
   const peekToken = roomForGame?.hostToken;
   useEffect(() => {
@@ -133,7 +135,7 @@ export function FriendsSidebar() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${peekToken}`,
           },
-          body: JSON.stringify({ clientId: `peek-${peekRoomId}`, leave: true }),
+          body: JSON.stringify({ peek: true }),
         });
         const d = await r.json().catch(() => ({}));
         if (!cancelled && r.ok) {
