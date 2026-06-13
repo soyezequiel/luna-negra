@@ -47,7 +47,7 @@ volvé a correr `npx prisma migrate deploy` contra prod.
 ## 6. Juegos y dominios
 - El juego demo es same-origin (`/demo-game/index.html`).
 - Los proveedores hostean su juego donde quieran (subdominio propio) y ponen esa
-  URL en `gameUrl`. Luna Negra lo abre con `?lnToken=<jwt>` (ver `DEVELOPERS.md`).
+  URL en `gameUrl`. Luna Negra lo abre con `?lnToken=<jwt>` (ver `docs/api-publica.md`).
 
 ## Producción a escala (Fase B)
 

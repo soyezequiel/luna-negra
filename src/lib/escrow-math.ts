@@ -32,7 +32,7 @@ export function computeEconomics(p: {
 /**
  * Reparte el neto en partes iguales entre `winnerCount` ganadores.
  * El resto indivisible (`dust`, < winnerCount msat) lo retiene la casa con la
- * comisión (decisión de política; ver DEVELOPERS.md).
+ * comisión (decisión de política; ver docs/api-publica.md).
  */
 export function splitWinnings(
   netMsat: bigint,

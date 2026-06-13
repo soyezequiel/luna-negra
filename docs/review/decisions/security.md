@@ -1,7 +1,7 @@
 # Decisiones de Seguridad — Luna Negra: Apuestas / Escrow
 
 Fecha: 2026-06-03
-Base: architecture.md, design.md, data-model.md, api-contracts.md
+Base: architecture.md, design.md, data-model.md
 Foco: **custodia de fondos de terceros** → prioridad = plata.
 
 ## Modelo de amenazas STRIDE

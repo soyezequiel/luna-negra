@@ -37,7 +37,7 @@ Pendiente Semana 1: crear el wallet **Alby Hub** real y poner `NWC_CONNECTION_ST
 - [x] Hardening: rate-limit en pagos/auth, headers de seguridad, `JWT_SECRET` obligatorio en prod.
 - [x] Build deploy-ready (`prisma generate && next build`) + guía [`DEPLOY.md`](./DEPLOY.md) (Postgres + Vercel).
 - [x] Pulido: footer, página 404, navbar scrollable en mobile, **expiración de invoice** en el modal de compra.
-- [x] Docs de integración para proveedores: [`DEVELOPERS.md`](./DEVELOPERS.md).
+- [x] Docs de integración para proveedores: [`docs/api-publica.md`](./docs/api-publica.md).
 
 **MVP completo.** Para publicar, seguí [`DEPLOY.md`](./DEPLOY.md).
 
