@@ -86,6 +86,12 @@ export type BetParticipantView = {
   result: "pending" | "won" | "lost" | "tie";
   payoutStatus: string;
   payoutSats: number | null;
+  /** Invoice Lightning fijo (BOLT11) por el stake. `null` si el depósito cerró/pagó. */
+  bolt11: string | null;
+  /** LNURL-pay (bech32) equivalente al invoice. `null` si cerró/pagó. */
+  lnurl: string | null;
+  /** Deep-link a la pantalla de pago de Luna Negra. `null` si cerró/pagó. */
+  payUrl: string | null;
 };
 
 export type BetDetail = BetEconomics & {
@@ -97,36 +103,16 @@ export type BetDetail = BetEconomics & {
   resolveDeadline: string | null;
   /** Pozo depositado hasta ahora, en sats. */
   potSats: number;
+  /** Participantes que ya depositaron. */
+  depositsReceived: number;
+  /** Total de participantes. */
+  depositsTotal: number;
+  /** Participantes con su depósito y, si sigue abierto, los handles de pago. */
   participants: BetParticipantView[];
   roomId: string | null;
   metadata: Record<string, unknown> | null;
   contractEventId: string | null;
   resultEventId: string | null;
-};
-
-/** Handle de pago de un participante (cómo deposita su stake en escrow). */
-export type DepositHandle = {
-  npub: string;
-  depositStatus: "pending" | "paid" | "refunded" | "failed";
-  /** Invoice Lightning fijo (BOLT11) por el stake. `null` si el depósito cerró. */
-  bolt11: string | null;
-  /** LNURL-pay (bech32) equivalente al invoice. `null` si cerró. */
-  lnurl: string | null;
-  /** Deep-link a la pantalla de pago de Luna Negra. `null` si cerró. */
-  payUrl: string | null;
-};
-
-export type BetDeposits = {
-  betId: string;
-  status: BetStatus;
-  stakeSats: number;
-  potSats: number;
-  potTargetSats: number;
-  depositsReceived: number;
-  depositsTotal: number;
-  /** Plazo para completar los depósitos; si vence, se reembolsa y se cancela. */
-  depositDeadline: string | null;
-  deposits: DepositHandle[];
 };
 
 /** Plantilla de evento Nostr SIN firmar (la firma el proveedor con su clave). */
@@ -188,10 +174,8 @@ export type LunaNegraClient = {
   getPlayerProfile(npub: string): Promise<PlayerProfile | null>;
   /** Crea una apuesta (requiere `apiKey`). */
   createBet(input: CreateBetInput): Promise<Bet>;
-  /** Estado + economía de una apuesta (requiere `apiKey`). */
+  /** Estado + economía + handles de pago por participante, en una llamada (requiere `apiKey`). */
   getBet(betId: string): Promise<BetDetail>;
-  /** Handles de pago por participante: bolt11 / lnurl / deep-link (requiere `apiKey`). */
-  getBetDeposits(betId: string): Promise<BetDeposits>;
   /** Cancela una apuesta no resuelta y reembolsa depósitos (requiere `apiKey`). */
   cancelBet(betId: string): Promise<{ ok: boolean; status: string }>;
   /**
@@ -202,7 +186,7 @@ export type LunaNegraClient = {
   reportWinners(
     betId: string,
     winnerNpubs: string[],
-  ): Promise<{ ok: boolean; voided?: boolean }>;
+  ): Promise<{ ok: boolean; voided?: boolean; alreadyResolved?: boolean; status?: string }>;
   /** Publica una nota en el feed de Actividad del juego (API key; Luna Negra firma). */
   postActivity(
     slug: string,
@@ -313,17 +297,6 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       return d as BetDetail;
     },
 
-    async getBetDeposits(betId) {
-      if (!opts.apiKey) throw new Error("getBetDeposits requiere `apiKey`");
-      const r = await fetch(
-        base + "/api/v1/bets/" + encodeURIComponent(betId) + "/deposits",
-        { headers: { authorization: "Bearer " + opts.apiKey } },
-      );
-      const d = await r.json();
-      if (!r.ok) throw new Error(d?.error?.message ?? "No se pudieron leer los depósitos");
-      return d as BetDeposits;
-    },
-
     async cancelBet(betId) {
       if (!opts.apiKey) throw new Error("cancelBet requiere `apiKey`");
       const r = await fetch(
@@ -350,7 +323,7 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       );
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message ?? "No se pudo reportar el resultado");
-      return d as { ok: boolean; voided?: boolean };
+      return d as { ok: boolean; voided?: boolean; alreadyResolved?: boolean; status?: string };
     },
 
     async postActivity(slug, content) {

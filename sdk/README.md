@@ -52,21 +52,20 @@ const bet = await luna.createBet({
 });
 // bet.netPayoutSats, bet.feeSats, bet.potTargetSats…
 
-// 2) Repartir los handles de pago a cada jugador
-const { deposits } = await luna.getBetDeposits(bet.betId);
-// deposits[i] = { npub, depositStatus, bolt11, lnurl, payUrl }
+// 2) Consultar estado + handles de pago en una sola llamada
+const info = await luna.getBet(bet.betId);
+// info.status, info.potSats, info.depositsReceived/Total
+// info.participants[i] = { npub, depositStatus, payoutSats, bolt11, lnurl, payUrl }
+// (los handles van null cuando el depósito ya cerró/pagó)
 
-// 3) Consultar estado cuando quieras
-const info = await luna.getBet(bet.betId);   // info.status, info.potSats, …
-
-// 4a) Resolver con la API key (recomendado, sin tocar Nostr)
+// 3a) Resolver con la API key (recomendado, sin tocar Nostr)
 //     [] = empate/anulación → reembolso total
 await luna.reportWinners(bet.betId, [npubGanador]);
 // Avanzado (self-sign): firmá vos con tu clave de oráculo
 // const evt = luna.buildResultEvent(bet.betId, [npubGanador]);
 // await luna.reportResult(bet.betId, finalizeEvent(evt, miOraculo));
 
-// 4b) …o cancelar antes de resolver (reembolsa depósitos)
+// 3b) …o cancelar antes de resolver (reembolsa depósitos)
 await luna.cancelBet(bet.betId);
 ```
 

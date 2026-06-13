@@ -156,12 +156,16 @@
       },
       "BetParticipantView": {
         "type": "object",
+        "description": "Participante con su depósito y, mientras el depósito siga abierto y no haya pagado, los handles de pago (bolt11/lnurl/payUrl); si no, van null.",
         "properties": {
           "npub": { "type": "string" },
           "depositStatus": { "type": "string", "enum": ["pending", "paid", "refunded", "failed"] },
           "result": { "type": "string", "enum": ["pending", "won", "lost", "tie"] },
           "payoutStatus": { "type": "string" },
-          "payoutSats": { "type": ["integer", "null"] }
+          "payoutSats": { "type": ["integer", "null"] },
+          "bolt11": { "type": ["string", "null"], "description": "Invoice Lightning fijo (BOLT11) por el stake" },
+          "lnurl": { "type": ["string", "null"], "description": "LNURL-pay (bech32) equivalente" },
+          "payUrl": { "type": ["string", "null"], "description": "Deep-link a la pantalla de pago de Luna Negra" }
         }
       },
       "BetDetail": {
@@ -180,6 +184,8 @@
               "depositDeadline": { "type": ["string", "null"], "format": "date-time" },
               "resolveDeadline": { "type": ["string", "null"], "format": "date-time" },
               "potSats": { "type": "integer", "description": "Pozo depositado hasta ahora" },
+              "depositsReceived": { "type": "integer", "description": "Participantes que ya depositaron" },
+              "depositsTotal": { "type": "integer", "description": "Total de participantes" },
               "participants": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/BetParticipantView" }
@@ -192,39 +198,59 @@
           }
         ]
       },
-      "DepositHandle": {
+      "Session": {
         "type": "object",
-        "description": "Cómo paga su stake un participante. Los handles son null si el depósito ya cerró (pagado, vencido o estado no abierto).",
+        "description": "Identidad del jugador canjeada desde el lnToken (entitlement).",
         "properties": {
           "npub": { "type": "string" },
-          "depositStatus": { "type": "string", "enum": ["pending", "paid", "refunded", "failed"] },
-          "bolt11": { "type": ["string", "null"], "description": "Invoice Lightning fijo (BOLT11) por el stake" },
-          "lnurl": { "type": ["string", "null"], "description": "LNURL-pay (bech32) equivalente" },
-          "payUrl": { "type": ["string", "null"], "description": "Deep-link a la pantalla de pago de Luna Negra" }
+          "pubkey": { "type": "string" },
+          "displayName": { "type": ["string", "null"] },
+          "avatarUrl": { "type": ["string", "null"] },
+          "gameId": { "type": "string" }
         }
       },
-      "BetDeposits": {
+      "Friend": {
         "type": "object",
         "properties": {
-          "betId": { "type": "string" },
-          "status": {
-            "type": "string",
-            "enum": ["pending_deposits", "funded", "settled", "cancelled", "expired", "refunded"]
-          },
-          "stakeSats": { "type": "integer" },
-          "potSats": { "type": "integer", "description": "Depositado hasta ahora" },
-          "potTargetSats": { "type": "integer" },
-          "depositsReceived": { "type": "integer" },
-          "depositsTotal": { "type": "integer" },
-          "depositDeadline": {
-            "type": ["string", "null"],
-            "format": "date-time",
-            "description": "Plazo para completar los depósitos; si vence sin completarse el pozo, se reembolsa y se cancela (bet.expired)."
-          },
-          "deposits": {
+          "npub": { "type": "string" },
+          "displayName": { "type": ["string", "null"] },
+          "avatarUrl": { "type": ["string", "null"] },
+          "presence": { "type": "string", "enum": ["in-game", "online", "offline"] },
+          "roomId": { "type": ["string", "null"] },
+          "state": { "type": ["object", "null"], "description": "Bolsa libre que el amigo reportó en su presencia" },
+          "lastSeenMs": { "type": ["integer", "null"] },
+          "isMember": { "type": "boolean", "description": "Tiene/posee el juego" },
+          "lastPlayedAt": { "type": ["string", "null"], "format": "date-time" },
+          "isFollow": { "type": "boolean", "description": "Es un follow NIP-02 (false = match de búsqueda global)" }
+        }
+      },
+      "RoomStateMember": {
+        "type": "object",
+        "properties": {
+          "npub": { "type": "string" },
+          "name": { "type": ["string", "null"] },
+          "avatar": { "type": ["string", "null"] },
+          "state": { "type": "object", "description": "Bolsa libre del jugador (la escribe él mismo con `self`)" }
+        }
+      },
+      "RoomState": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "object", "description": "Bolsa compartida de la sala (las claves las define el juego)" },
+          "version": { "type": "integer", "description": "Se incrementa en cada escritura compartida (CAS opcional / ETag)" },
+          "members": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/DepositHandle" }
+            "items": { "$ref": "#/components/schemas/RoomStateMember" }
           }
+        }
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "properties": {
+          "npub": { "type": "string" },
+          "displayName": { "type": ["string", "null"] },
+          "score": { "type": "integer" },
+          "rank": { "type": "integer" }
         }
       },
       "WebhookEvent": {
@@ -402,6 +428,329 @@
         }
       }
     },
+    "/api/v1/session": {
+      "get": {
+        "summary": "Canjear el lnToken por la identidad (login SSO)",
+        "description": "El juego se abre desde Luna Negra con `?lnToken=<entitlement>`. Este endpoint canjea ese token por la identidad del jugador. Auth: Bearer entitlement.",
+        "tags": ["Tokens"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Identidad del jugador",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } }
+          },
+          "400": {
+            "description": "Falta el token (MISSING_TOKEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "Token inválido o expirado (INVALID_TOKEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/presence": {
+      "post": {
+        "summary": "Heartbeat de presencia del juego",
+        "description": "Renueva la presencia del jugador en este juego (TTL ~30s). Auth: API key del proveedor.",
+        "tags": ["Multijugador"],
+        "security": [{ "apiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["npub", "status"],
+                "properties": {
+                  "npub": { "type": "string" },
+                  "status": { "type": "string", "enum": ["in-game", "online"], "description": "Clave reservada: la usa Luna Negra para \"Jugando X\"" },
+                  "roomId": { "type": ["string", "null"] },
+                  "state": { "type": "object", "description": "Bolsa libre (objeto plano ≤2KB): el juego guarda lo que quiera (puntaje, vidas, equipo…). Cada latido la reemplaza." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Presencia registrada",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" } } } } }
+          },
+          "400": {
+            "description": "INVALID_NPUB / INVALID_STATUS / STATE_TOO_LARGE",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/friends": {
+      "get": {
+        "summary": "Amigos con su presencia en este juego",
+        "description": "Contactos NIP-02 del jugador con su presencia en este juego. Auth: API key. Con `q`, si no hay match en follows busca en todo Nostr (los externos llevan isFollow:false).",
+        "tags": ["Multijugador"],
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          { "name": "npub", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "presence", "in": "query", "required": false, "schema": { "type": "string", "enum": ["true"] } },
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de amigos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "friends": { "type": "array", "items": { "$ref": "#/components/schemas/Friend" } },
+                    "query": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_NPUB",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/invites": {
+      "post": {
+        "summary": "Invitar a un amigo a una sala",
+        "description": "Luna Negra notifica al invitado (toast in-app / deep-link) y, si lo conoce, encola un launch para cuando abra el juego. Auth: API key.",
+        "tags": ["Multijugador"],
+        "security": [{ "apiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fromNpub", "toNpub", "roomId", "inviteUrl"],
+                "properties": {
+                  "fromNpub": { "type": "string" },
+                  "toNpub": { "type": "string" },
+                  "roomId": { "type": "string" },
+                  "inviteUrl": { "type": "string" },
+                  "gameId": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Invitación creada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "delivered": { "type": "boolean" },
+                    "launchQueued": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_NPUB / MISSING_ROOM / INVALID_INVITE_URL",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      },
+      "get": {
+        "summary": "Orden de entrada a sala pendiente (polling)",
+        "description": "Devuelve el launch pendiente para un jugador con el juego abierto. Auth: API key.",
+        "tags": ["Multijugador"],
+        "security": [{ "apiKeyAuth": [] }],
+        "parameters": [
+          { "name": "npub", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Launch pendiente o null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "request": { "type": ["object", "null"] } }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_NPUB",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/state": {
+      "get": {
+        "summary": "Leer el estado compartido de la sala",
+        "description": "Tablero común + estado por jugador, para juegos sin backend propio. Auth: Bearer invite. Trae ETag: pollear con If-None-Match devuelve 304 si no cambió. Cache-Control: no-store.",
+        "tags": ["Multijugador"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "roomId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado de la sala",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomState" } } }
+          },
+          "304": { "description": "Sin cambios (ETag coincide)" },
+          "401": {
+            "description": "Token inválido para esta sala (INVALID_TOKEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      },
+      "post": {
+        "summary": "Escribir el estado de la sala",
+        "description": "Mezcla la bolsa compartida (last-write-wins por clave) y/o reemplaza la bolsa del propio jugador. Cada POST renueva la sala y registra al jugador en members (heartbeat). Auth: Bearer invite.",
+        "tags": ["Multijugador"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "roomId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "set": { "type": "object", "description": "Mezcla en la bolsa compartida (objeto plano ≤8KB), last-write-wins por clave" },
+                  "self": { "type": "object", "description": "Reemplaza la bolsa del propio jugador (objeto plano ≤2KB)" },
+                  "version": { "type": "integer", "description": "Concurrencia optimista opcional para `set`" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado fresco de la sala",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomState" } } }
+          },
+          "400": {
+            "description": "INVALID_SET / INVALID_SELF / STATE_TOO_LARGE",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "Token inválido para esta sala (INVALID_TOKEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "409": {
+            "description": "La versión no coincide (VERSION_CONFLICT)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/leaderboards/{name}": {
+      "get": {
+        "summary": "Leer un marcador",
+        "description": "Rankings por juego. ⚠️ Los puntajes los manda el cliente y son FALSIFICABLES: sirven para mostrar (como Steam), NO para resolver apuestas. Auth: Bearer entitlement.",
+        "tags": ["Marcador"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "window", "in": "query", "required": false, "schema": { "type": "string", "enum": ["all", "week"], "default": "all" } },
+          { "name": "view", "in": "query", "required": false, "schema": { "type": "string", "enum": ["top", "around"], "default": "top" } },
+          { "name": "npub", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Requerido para view=around" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entradas del marcador (vacío si no existe)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": { "type": "array", "items": { "$ref": "#/components/schemas/LeaderboardEntry" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token inválido o expirado (INVALID_TOKEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/leaderboards/{name}/scores": {
+      "post": {
+        "summary": "Subir un puntaje (se queda el mejor)",
+        "description": "Sube el puntaje del jugador al marcador `name` del juego. Si no supera su récord, no cambia nada (improved:false). ⚠️ Falsificable: solo para mostrar rankings. Auth: Bearer entitlement.",
+        "tags": ["Marcador"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["score"],
+                "properties": { "score": { "type": "integer", "description": "Entero entre 0 y 1e9" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Récord vigente del jugador y su puesto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "score": { "type": "integer" },
+                    "rank": { "type": "integer" },
+                    "improved": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_NAME / INVALID_SCORE",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "Token inválido o expirado (INVALID_TOKEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
     "/api/v1/bets": {
       "post": {
         "summary": "Crear una apuesta (escrow)",
@@ -463,37 +812,6 @@
             "description": "Estado de la apuesta",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/BetDetail" } }
-            }
-          },
-          "401": {
-            "description": "API key inválida",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
-          },
-          "403": {
-            "description": "La apuesta no es de tu proveedor (NOT_BET_OWNER)",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
-          },
-          "404": {
-            "description": "Apuesta no encontrada",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
-          }
-        }
-      }
-    },
-    "/api/v1/bets/{id}/deposits": {
-      "get": {
-        "summary": "Handles de pago por participante",
-        "description": "Para cada participante devuelve cómo deposita su stake en escrow: bolt11 (invoice fijo), lnurl (LNURL-pay) y payUrl (deep-link a la pantalla de pago de Luna Negra). El plazo es `depositDeadline`. Autenticación con API key del proveedor dueño.",
-        "tags": ["Apuestas"],
-        "security": [{ "apiKeyAuth": [] }],
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": {
-            "description": "Vista de depósitos con handles de pago",
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/BetDeposits" } }
             }
           },
           "401": {
@@ -601,14 +919,16 @@
         },
         "responses": {
           "200": {
-            "description": "Resuelta y pagada",
+            "description": "Resuelta y pagada. Idempotente: re-reportar una apuesta ya terminal devuelve 200 con alreadyResolved:true (no es error).",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "ok": { "type": "boolean" },
-                    "voided": { "type": "boolean", "description": "true si fue empate/anulación (reembolso)" }
+                    "voided": { "type": "boolean", "description": "true si fue empate/anulación (reembolso)" },
+                    "alreadyResolved": { "type": "boolean", "description": "true si la apuesta ya estaba resuelta (reporte duplicado)" },
+                    "status": { "type": "string", "description": "Estado final de la apuesta" }
                   }
                 }
               }

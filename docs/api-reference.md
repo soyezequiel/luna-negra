@@ -367,6 +367,28 @@ Invita a un amigo a una sala (Luna Negra muestra el toast in-app). Auth: API key
 Orden de entrada a sala pendiente para un juego abierto (polling). Auth: API key. Query: `npub`.
 - **200:** `{ "request": { … } | null }` · **400** `INVALID_NPUB` · **401** `INVALID_API_KEY`
 
+#### `GET·POST /api/v1/rooms/{roomId}/state`
+Estado compartido de la sala para juegos **sin backend propio** (tablero común + estado por jugador, estilo `SetLobbyData`/`SetLobbyMemberData` de Steam). Auth: **Bearer invite**. TTL ~60 s: cada POST renueva la sala y registra al jugador en `members` (heartbeat). La plataforma no interpreta las claves.
+- **POST body:** `{ "set"?, "self"?, "version"? }` — `set` (objeto ≤8KB) mezcla en la bolsa compartida (last-write-wins por clave); `version` opcional = CAS; `self` (≤2KB) reemplaza la bolsa del jugador.
+- **GET:** `{ "data", "version", "members": [{ "npub", "name", "avatar", "state" }] }`. Trae `ETag` (polling con `If-None-Match` → `304`); `Cache-Control: no-store`.
+- **400** `INVALID_SET`/`INVALID_SELF`/`STATE_TOO_LARGE` · **401** `INVALID_TOKEN` · **409** `VERSION_CONFLICT`
+- Implementación: `src/lib/room-state.ts` + `src/app/api/v1/rooms/[roomId]/state/route.ts`. Modelos `RoomState`/`RoomMemberState`.
+
+### Marcador (Bearer entitlement)
+
+Rankings por juego. ⚠️ **Anti-trampa:** el puntaje lo manda el cliente y es **falsificable** → sirve para **mostrar** rankings (como Steam), **NO** para resolver apuestas (eso viene del game server por `/result`, firmado por el oráculo).
+
+#### `POST /api/v1/leaderboards/{name}/scores`
+Sube el puntaje del jugador (`name` lo elige el juego). Política **"se queda el mejor"**. Auth: Bearer entitlement (npub/juego del token).
+- **Body:** `{ "score" }` (entero 0…1e9)
+- **200:** `{ "score", "rank", "improved" }` · **400** `INVALID_NAME`/`INVALID_SCORE` · **401** `INVALID_TOKEN`
+
+#### `GET /api/v1/leaderboards/{name}`
+Lee el marcador. Auth: Bearer entitlement. Query: `window=all|week`, `view=top|around`, `npub` (requerido para `around`).
+- **200:** `{ "entries": [{ "npub", "displayName", "score", "rank" }] }` (vacío si no existe). `Cache-Control: no-store`.
+- **401** `INVALID_TOKEN`
+- Implementación: `src/lib/leaderboard.ts` + `src/app/api/v1/leaderboards/[name]/{route,scores}`. Modelos `Leaderboard`/`Score`.
+
 ### Apuestas / escrow (API key)
 
 Auth: API key del proveedor dueño. Montos en **sats**. Detalle de economía/estados en [`api-publica.md`](api-publica.md) §3.
