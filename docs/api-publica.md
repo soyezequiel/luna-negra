@@ -191,7 +191,7 @@ Luna Negra hace **POST JSON** (con reintentos) a tu URL. Cabeceras `X-LunaNegra-
 |---|---|---|
 | `purchase.completed` | un jugador compró tu juego | `purchaseId, gameId, slug, npub, amountSats` |
 | `deposit.received` | un participante depositó | `betId, npub, amountSats, potSats, potTargetSats, depositsReceived, depositsTotal` |
-| `bet.funded` *(alias `bet.ready`)* | el pozo se completó | `betId, potSats, participants` |
+| `bet.funded` | el pozo se completó | `betId, potSats, participants` |
 | `bet.settled` | apuesta resuelta y pagada | `betId, winners, payouts:[{npub,amountSats}], feeSats` |
 | `bet.cancelled` | el proveedor canceló | `betId, reason:"provider_cancel"` |
 | `bet.expired` | venció el plazo de depósito | `betId, reason:"deposit_timeout"` |

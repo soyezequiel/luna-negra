@@ -825,7 +825,7 @@
     },
     "bet.funded": {
       "post": {
-        "summary": "El pozo se completó (alias: bet.ready)",
+        "summary": "El pozo se completó",
         "description": "Todos depositaron; la apuesta está en juego. data: { betId, gameId, potSats, participants, roomId, metadata }",
         "tags": ["Webhooks"],
         "requestBody": {

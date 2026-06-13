@@ -219,7 +219,7 @@ Store de puntajes con nombre, genérico y por proveedor/juego.
 - [ ] Fase 2: `/api/v1/invites` creado; `friends/invite` + `launch-requests` borrados.
 - [ ] Fase 3: presencia con `state`; `friends` expone `state`.
 - [ ] Fase 4: detalle con handles; `/deposits` borrado; `/result` idempotente; sin caché; tests de escrow verdes.
-- [ ] Fase 5: webhooks con nombres finales; payload con `roomId`/`metadata`.
+- [x] Fase 5: webhooks con nombres finales (sin alias `bet.ready`); payload con `roomId`/`metadata`. Handler de Tetris simplificado (refresh directo); `depositEventIsPaid` + actualización optimista borrados.
 - [ ] Fase 6: Tetris actualizado; capa defensiva borrada; build verde.
 - [ ] Fase 7: `GET/POST /api/v1/rooms/{roomId}/state` (key/value genérico, auth jugador).
 - [ ] Fase 8: `GET/POST /api/v1/leaderboards/{name}` + modelo y migración; nota anti-trampa en docs.

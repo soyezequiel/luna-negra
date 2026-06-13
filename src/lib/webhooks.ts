@@ -194,7 +194,7 @@ export async function emitDepositReceived(betId: string, npub: string): Promise<
   });
 }
 
-/** El pozo se completó (todos depositaron). Alias documentado: "bet.ready". */
+/** El pozo se completó (todos depositaron). */
 export async function emitBetFunded(betId: string): Promise<void> {
   const bet = await prisma.bet.findUnique({
     where: { id: betId },
