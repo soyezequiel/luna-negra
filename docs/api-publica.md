@@ -131,14 +131,12 @@ Crea una apuesta (pozo winner-takes-all). Soporta `Idempotency-Key` (reintento s
 - **400** `STAKE_OUT_OF_RANGE` · **401** API key inválida · **403** el juego no es de tu proveedor
 
 ### `GET /api/v1/bets/{id}`
-Estado + economía de la apuesta.
-- **200:** `{ "betId", "gameId", "status", "victoryCondition", "depositDeadline", "resolveDeadline", "potSats", "participants": [{ "npub", "depositStatus", "result", "payoutStatus", "payoutSats" }], "stakeSats", "potTargetSats", "feePct", "feeSats", "netPayoutSats", "roomId", "metadata", "contractEventId", "resultEventId" }`
+Estado + economía + **handles de pago**, todo en una sola llamada. Cada participante
+trae cómo deposita su stake: `bolt11` (invoice fijo), `lnurl` (LNURL-pay) y `payUrl`
+(deep-link); van `null` cuando el depósito ya cerró. Respuesta `Cache-Control: no-store`
+(siempre fresca, sin caché).
+- **200:** `{ "betId", "gameId", "status", "victoryCondition", "depositDeadline", "resolveDeadline", "potSats", "potTargetSats", "depositsReceived", "depositsTotal", "participants": [{ "npub", "depositStatus", "result", "payoutStatus", "payoutSats", "bolt11", "lnurl", "payUrl" }], "stakeSats", "feePct", "feeSats", "netPayoutSats", "roomId", "metadata", "contractEventId", "resultEventId" }`
 - `status`: `pending_deposits | funded | settled | cancelled | expired | refunded`
-- **401** · **403** `NOT_BET_OWNER` · **404** no encontrada
-
-### `GET /api/v1/bets/{id}/deposits`
-Handles de pago por participante. Cada uno: `bolt11` (invoice fijo), `lnurl` (LNURL-pay), `payUrl` (deep-link). `null` cuando el depósito ya cerró.
-- **200:** `{ "betId", "status", "stakeSats", "potSats", "potTargetSats", "depositsReceived", "depositsTotal", "depositDeadline", "deposits": [{ "npub", "depositStatus", "bolt11", "lnurl", "payUrl" }] }`
 - **401** · **403** `NOT_BET_OWNER` · **404** no encontrada
 
 ### `POST /api/v1/bets/{id}/cancel`
@@ -152,7 +150,12 @@ Reporta el resultado. Dos caminos:
 2. **Evento firmado (avanzado):** `{ "event": <Nostr firmado por tu oráculo> }` (tags `bet`, `winner`).
 
 - **200:** `{ "ok": true, "voided"? }`
-- **401** firma/API key inválida · **403** `FORBIDDEN`/`WRONG_SIGNER` · **409** estado inválido / `CONTRACT_MISMATCH` / `ORACLE_NOT_PROVISIONED`
+- **401** firma/API key inválida · **403** `FORBIDDEN`/`WRONG_SIGNER` · **409** `NOT_READY` / `CONTRACT_MISMATCH` / `ORACLE_NOT_PROVISIONED`
+
+> **Idempotente:** si la apuesta ya está en un estado terminal (ya resuelta,
+> anulada, cancelada o reembolsada), re-reportar devuelve **`200 { "ok": true,
+> "alreadyResolved": true, "status": "<estado final>" }`** sin volver a pagar — no
+> hace falta interpretar errores para saber que ya estaba liquidada.
 
 Reparto: un ganador se lleva `netPayoutSats`; varios → partes iguales (resto indivisible
 lo retiene la casa con la comisión); sin ganadores → reembolso total sin comisión.
@@ -214,7 +217,7 @@ const luna = createClient({ baseUrl: "https://<LUNA_NEGRA>", apiKey: "ln_sk_…"
 | `verifyRoom(token)` | validación offline del invite (JWKS) |
 | `getPlayerProfile(npub)` | `GET /api/v1/players/{npub}/profile` |
 | `createBet(opts)` | `POST /api/v1/bets` |
-| `getBet(id)` / `getBetDeposits(id)` | `GET /api/v1/bets/{id}` · `/deposits` |
+| `getBet(id)` | `GET /api/v1/bets/{id}` (incluye los handles de pago) |
 | `cancelBet(id)` | `POST /api/v1/bets/{id}/cancel` |
 | `reportWinners(id, npubs)` | `POST /api/v1/bets/{id}/result` (camino API key) |
 | `buildResultEvent(id, npubs)` / `reportResult(id, signed)` | self-sign del resultado |
@@ -240,7 +243,6 @@ const luna = createClient({ baseUrl: "https://<LUNA_NEGRA>", apiKey: "ln_sk_…"
 | GET | `/api/v1/invites` | API key |
 | POST | `/api/v1/bets` | API key |
 | GET | `/api/v1/bets/{id}` | API key |
-| GET | `/api/v1/bets/{id}/deposits` | API key |
 | POST | `/api/v1/bets/{id}/cancel` | API key |
 | POST | `/api/v1/bets/{id}/result` | API key · o evento firmado |
 | POST | `/api/v1/games/{slug}/activity` | API key |

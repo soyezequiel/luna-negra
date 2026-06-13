@@ -141,25 +141,26 @@ describe("settleBetWithResult", () => {
     expect(refunded).toEqual([{ betId: "bet1", reason: "void" }]);
   });
 
-  it("ya resuelta → ALREADY_RESOLVED (idempotente, no paga)", async () => {
+  it("ya resuelta → idempotente: éxito no-op, no paga", async () => {
     const { settleBetWithResult } = await import("@/lib/escrow-settle");
     const r = await settleBetWithResult({
       bet: makeBet({ status: "settled" }),
       winnerNpubs: [np1],
       resultEvent: fakeEvent,
     });
-    expect(r).toMatchObject({ ok: false, code: "ALREADY_RESOLVED", status: 409 });
+    expect(r).toMatchObject({ ok: true, alreadyResolved: true, finalStatus: "settled" });
     expect(payCalls).toHaveLength(0);
   });
 
-  it("reembolsada/cancelada → TOO_LATE", async () => {
+  it("reembolsada/cancelada → idempotente: éxito no-op, no paga", async () => {
     const { settleBetWithResult } = await import("@/lib/escrow-settle");
     const r = await settleBetWithResult({
       bet: makeBet({ status: "refunded_timeout" }),
       winnerNpubs: [np1],
       resultEvent: fakeEvent,
     });
-    expect(r).toMatchObject({ ok: false, code: "TOO_LATE", status: 410 });
+    expect(r).toMatchObject({ ok: true, alreadyResolved: true, finalStatus: "refunded" });
+    expect(payCalls).toHaveLength(0);
   });
 
   it("perdió la carrera del claim → NOT_READY", async () => {

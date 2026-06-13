@@ -116,10 +116,10 @@ describe("POST /result — camino API key", () => {
     expect(json.error.code).toBe("INVALID_API_KEY");
   });
 
-  it("doble reporte: settle devuelve ALREADY_RESOLVED → 409 (idempotente)", async () => {
-    settleReturn = { ok: false, code: "ALREADY_RESOLVED", message: "Ya resuelta", status: 409 };
+  it("doble reporte: settle ya terminal → 200 idempotente (alreadyResolved)", async () => {
+    settleReturn = { ok: true, alreadyResolved: true, finalStatus: "settled" };
     const { status, json } = await callApiKey({ winners: ["npub1abc"] });
-    expect(status).toBe(409);
-    expect(json.error.code).toBe("ALREADY_RESOLVED");
+    expect(status).toBe(200);
+    expect(json).toEqual({ ok: true, alreadyResolved: true, status: "settled" });
   });
 });

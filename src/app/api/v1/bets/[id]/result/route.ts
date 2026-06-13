@@ -24,7 +24,14 @@ export function OPTIONS() {
 }
 
 function toResponse(r: SettleResult) {
-  if (r.ok) return apiOk({ ok: true, ...(r.voided ? { voided: true } : {}) });
+  if (r.ok) {
+    return apiOk({
+      ok: true,
+      ...(r.voided ? { voided: true } : {}),
+      ...(r.alreadyResolved ? { alreadyResolved: true } : {}),
+      ...(r.finalStatus ? { status: r.finalStatus } : {}),
+    });
+  }
   return apiError(r.code, r.message, r.status);
 }
 

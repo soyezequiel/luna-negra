@@ -4,7 +4,8 @@ import type { Bet, BetParticipant, Provider, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordOutflow } from "@/lib/ledger";
 import { computeContractHash } from "@/lib/escrow";
-import { computeEconomics, splitWinnings } from "@/lib/escrow-math";
+import { computeEconomics, splitWinnings, publicBetStatus } from "@/lib/escrow-math";
+import { isTerminal } from "@/lib/bet-state";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
 import { emitBetSettled, emitBetRefunded } from "@/lib/webhooks";
@@ -15,7 +16,7 @@ export type BetWithRelations = Bet & {
 };
 
 export type SettleResult =
-  | { ok: true; voided?: boolean }
+  | { ok: true; voided?: boolean; alreadyResolved?: boolean; finalStatus?: string }
   | { ok: false; code: string; message: string; status: number };
 
 /**
@@ -39,19 +40,16 @@ export async function settleBetWithResult(args: {
   const { bet, winnerNpubs, resultEvent } = args;
   const betId = bet.id;
 
-  if (bet.status === "settled") {
-    return { ok: false, code: "ALREADY_RESOLVED", message: "Ya resuelta", status: 409 };
-  }
-  if (
-    ["cancelled_incomplete", "cancelled_admin", "refunded_timeout"].includes(
-      bet.status,
-    )
-  ) {
+  // Idempotencia: si la apuesta ya está en un estado terminal, no se re-liquida.
+  // La plata ya quedó conciliada (pagada o reembolsada), así que un reporte
+  // repetido es un no-op exitoso. El caller lee `status` para saber cómo terminó,
+  // en vez de tener que adivinarlo a partir de un código de error.
+  if (isTerminal(bet.status)) {
     return {
-      ok: false,
-      code: "TOO_LATE",
-      message: "La apuesta ya fue reembolsada/cancelada",
-      status: 410,
+      ok: true,
+      alreadyResolved: true,
+      voided: bet.status === "voided",
+      finalStatus: publicBetStatus(bet.status),
     };
   }
 

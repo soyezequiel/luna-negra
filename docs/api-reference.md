@@ -378,13 +378,8 @@ Crea una apuesta (pozo winner-takes-all); publica el contrato firmado en Nostr. 
 - **400** `STAKE_OUT_OF_RANGE` · **401** API key inválida · **403** el juego no es de tu proveedor
 
 #### `GET /api/v1/bets/{id}`
-Estado + economía de la apuesta.
-- **200:** `BetDetail` (`status`, `participants[].depositStatus`, `potSats`, `feeSats`, `netPayoutSats`, `metadata`, …)
-- **401** · **403** `NOT_BET_OWNER` · **404** no encontrada
-
-#### `GET /api/v1/bets/{id}/deposits`
-Handles de pago por participante (`bolt11`, `lnurl`, `payUrl`); `null` cuando el depósito ya cerró.
-- **200:** `{ "betId", "status", "stakeSats", "potSats", "potTargetSats", "depositsReceived", "depositsTotal", "depositDeadline", "deposits": [{ "npub", "depositStatus", "bolt11", "lnurl", "payUrl" }] }`
+Estado + economía + **handles de pago** en una sola llamada. `Cache-Control: no-store`.
+- **200:** `BetDetail` (`status`, `depositsReceived`, `depositsTotal`, `potSats`, `feeSats`, `netPayoutSats`, `metadata`, `participants[]` con `depositStatus`, `result`, `payoutStatus`, `payoutSats`, `bolt11`, `lnurl`, `payUrl`, …). Los handles van `null` cuando el depósito ya cerró.
 - **401** · **403** `NOT_BET_OWNER` · **404** no encontrada
 
 #### `POST /api/v1/bets/{id}/cancel`
@@ -397,9 +392,10 @@ Reporta el resultado. Dos caminos:
 1. **API key (recomendado):** body `{ "winners": ["npub", …] }` (vacío = empate/anulación → reembolso). Luna Negra firma con el oráculo gestionado.
 2. **Evento firmado (avanzado):** body `{ "event": <Nostr firmado por el oráculo> }` (tags `bet`, `winner`).
 
-Verifica el contrato (`CONTRACT_MISMATCH`) antes de pagar.
-- **200:** `{ "ok": true, "voided"? }`
-- **401** firma/API key inválida · **403** `FORBIDDEN`/`WRONG_SIGNER` · **409** estado inválido / `CONTRACT_MISMATCH` / `ORACLE_NOT_PROVISIONED`
+Verifica el contrato (`CONTRACT_MISMATCH`) antes de pagar. **Idempotente:** si la
+apuesta ya está en estado terminal, devuelve `200 { ok:true, alreadyResolved:true, status }` sin re-pagar.
+- **200:** `{ "ok": true, "voided"?, "alreadyResolved"?, "status"? }`
+- **401** firma/API key inválida · **403** `FORBIDDEN`/`WRONG_SIGNER` · **409** `NOT_READY` / `CONTRACT_MISMATCH` / `ORACLE_NOT_PROVISIONED`
 
 #### `POST /api/v1/games/{slug}/activity`
 Publica una nota (kind:1, tag `lunanegra:game:<slug>`) en la pestaña Actividad. Auth: API key (firma el oráculo).
@@ -463,7 +459,7 @@ const luna = createClient({ baseUrl: "https://<LUNA_NEGRA>", apiKey: "ln_sk_…"
 | `verifyRoom(token)` | validación offline del invite (JWKS) |
 | `getPlayerProfile(npub)` | `GET /api/v1/players/{npub}/profile` |
 | `createBet(opts)` | `POST /api/v1/bets` |
-| `getBet(id)` / `getBetDeposits(id)` | `GET /api/v1/bets/{id}` · `/deposits` |
+| `getBet(id)` | `GET /api/v1/bets/{id}` (incluye los handles de pago) |
 | `cancelBet(id)` | `POST /api/v1/bets/{id}/cancel` |
 | `reportWinners(id, npubs)` | `POST /api/v1/bets/{id}/result` (camino API key) |
 | `buildResultEvent(id, npubs)` / `reportResult(id, signed)` | self-sign del resultado |
