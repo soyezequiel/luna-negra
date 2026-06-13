@@ -7,6 +7,7 @@ import {
   useTransition,
   type FormEvent,
 } from "react";
+import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES } from "@/lib/categories";
@@ -298,10 +299,13 @@ export default function ProviderPage() {
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Proveedor</h1>
         <p className="mt-2 text-muted">Conectá tu Nostr para publicar juegos.</p>
-        <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
           <Button variant="blue" onClick={login}>
             Conectar con Nostr
           </Button>
+          <Link href="/dev" className="btn btn-ghost">
+            Ver guia para publicar
+          </Link>
         </div>
       </div>
     );
@@ -317,9 +321,19 @@ export default function ProviderPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight text-white">
-        Panel de proveedor
-      </h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            Panel de proveedor
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            Gestiona tus juegos, cobros, API keys y webhooks.
+          </p>
+        </div>
+        <Link href="/dev" className="btn btn-ghost shrink-0 self-start">
+          Abrir guia /dev
+        </Link>
+      </div>
       {msg ? <p className="mt-2 text-sm text-blue">{msg}</p> : null}
 
       {provider ? (

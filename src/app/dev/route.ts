@@ -9,9 +9,9 @@ const HTML = `<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Guia publica para integrar juegos con Luna Negra: SSO Nostr, salas, presencia, apuestas Lightning, webhooks y SDK."
+      content="Guia para entender e integrar juegos con Luna Negra: login Nostr, pagos Lightning, salas, presencia, apuestas, webhooks y SDK."
     />
-    <title>Luna Negra &middot; Guia para developers</title>
+    <title>Luna Negra &middot; Guia para equipos y developers</title>
     <style>
       :root {
         --bg: #080b11;
@@ -351,6 +351,42 @@ const HTML = `<!doctype html>
       .quick-card strong { color: var(--white); font-size: 1rem; }
       .quick-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.35; }
       .quick-card em { color: var(--blue-hi); font-style: normal; font-weight: 800; }
+      .audience-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin: 0 0 34px;
+      }
+      .audience-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.78);
+        padding: 18px;
+      }
+      .audience-card strong {
+        display: block;
+        color: var(--white);
+        font-size: 1.05rem;
+      }
+      .audience-card p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+      .audience-card ul {
+        display: grid;
+        gap: 8px;
+        margin: 14px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .audience-card li {
+        border-left: 3px solid var(--blue);
+        color: #bdcad7;
+        padding-left: 10px;
+        font-size: 0.9rem;
+        line-height: 1.38;
+      }
 
       .content {
         display: grid;
@@ -435,6 +471,30 @@ const HTML = `<!doctype html>
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 12px;
         margin-top: 18px;
+      }
+      .explain-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .explain {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.16);
+        padding: 14px;
+      }
+      .explain strong {
+        display: block;
+        color: var(--white);
+        font-size: 0.95rem;
+      }
+      .explain span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.42;
       }
       .mini-card {
         border: 1px solid var(--line);
@@ -556,7 +616,9 @@ const HTML = `<!doctype html>
         .hero { padding-top: 34px; }
         .signal-row,
         .quick-grid,
+        .audience-grid,
         .card-grid,
+        .explain-grid,
         .timeline { grid-template-columns: 1fr; }
         section { padding: 18px; }
         table { table-layout: fixed; }
@@ -579,6 +641,7 @@ const HTML = `<!doctype html>
         </a>
         <nav class="top-links" aria-label="Navegacion principal">
           <a href="#inicio">Inicio</a>
+          <a href="#conceptos">Conceptos</a>
           <a href="#credenciales">Credenciales</a>
           <a href="#sso">SSO</a>
           <a href="#apuestas">Apuestas</a>
@@ -593,12 +656,12 @@ const HTML = `<!doctype html>
     <main id="inicio" class="shell">
       <div class="hero">
         <div>
-          <span class="eyebrow">Guia publica para game servers</span>
-          <h1>Integra tu juego con Nostr, Lightning y salas listas.</h1>
+          <span class="eyebrow">Guia para equipos y developers</span>
+          <h1>Publica tu juego y conecta login, pagos y multijugador.</h1>
           <p class="lead">
-            Luna Negra te da identidad de jugadores, permisos de compra, presencia,
-            apuestas en sats, marcadores, invitaciones y webhooks. Esta es la guia
-            de implementacion; el contrato vivo esta en OpenAPI.
+            Esta pagina explica que resuelve Luna Negra en lenguaje simple y tambien
+            deja el detalle tecnico para implementarlo. Si no programas, usala para
+            entender el flujo. Si programas, usala como mapa antes de abrir OpenAPI.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="/provider">Crear juego</a>
@@ -606,9 +669,9 @@ const HTML = `<!doctype html>
             <a class="button" href="/openapi.json">Ver OpenAPI</a>
           </div>
           <div class="signal-row" aria-label="Capacidades principales">
-            <div class="signal"><strong>SSO Nostr</strong><span>El jugador llega con <code>lnToken</code>; vos recibis <code>npub</code>, nombre y avatar.</span></div>
-            <div class="signal"><strong>Escrow Lightning</strong><span>Pozo en sats, depositos por jugador, resolucion firmada y pagos.</span></div>
-            <div class="signal"><strong>Multijugador liviano</strong><span>Invites, presencia, amigos y estado compartido por sala via polling.</span></div>
+            <div class="signal"><strong>Login sin cuentas nuevas</strong><span>El jugador entra con su identidad Nostr y tu juego recibe quien es.</span></div>
+            <div class="signal"><strong>Pagos y apuestas</strong><span>Luna Negra cobra, custodia pozos en sats y liquida pagos.</span></div>
+            <div class="signal"><strong>Social y salas</strong><span>Invites, presencia, amigos y estado compartido para partidas simples.</span></div>
           </div>
         </div>
 
@@ -620,15 +683,15 @@ const HTML = `<!doctype html>
           <div class="flow">
             <div class="flow-step">
               <b>01</b>
-              <div><strong>Publica el juego</strong><span>Desde <a href="/provider">/provider</a> creas el juego y una API key <code>ln_sk_...</code> para tu servidor.</span></div>
+              <div><strong>Publica el juego</strong><span>Desde <a href="/provider">/provider</a> cargas datos, precio, imagenes y la URL donde vive tu juego.</span></div>
             </div>
             <div class="flow-step">
               <b>02</b>
-              <div><strong>Canjea el entitlement</strong><span>Luna Negra abre tu juego con <code>?lnToken=jwt</code>; validalo y usalo como login SSO.</span></div>
+              <div><strong>Reconoce al jugador</strong><span>Luna Negra abre tu juego con un pase temporal. Tu juego lo cambia por la identidad del jugador.</span></div>
             </div>
             <div class="flow-step">
               <b>03</b>
-              <div><strong>Activa features</strong><span>Agrega presencia, salas, apuestas, leaderboards y webhooks segun tu gameplay.</span></div>
+              <div><strong>Activa funciones</strong><span>Agrega presencia, salas, apuestas, marcadores y webhooks segun lo que necesite tu juego.</span></div>
             </div>
           </div>
         </aside>
@@ -637,25 +700,47 @@ const HTML = `<!doctype html>
       <div class="quick-grid">
         <a class="quick-card" href="/developers">
           <strong>Referencia interactiva</strong>
-          <span>Ejecuta cada endpoint contra tu entorno desde el navegador.</span>
+          <span>Para developers: prueba endpoints contra tu entorno desde el navegador.</span>
           <em>Abrir /developers &rarr;</em>
         </a>
         <a class="quick-card" href="/openapi.json">
           <strong>Contrato OpenAPI</strong>
-          <span>Fuente de verdad machine-readable para clientes y tests.</span>
+          <span>Para integraciones: schemas, rutas y respuestas en formato machine-readable.</span>
           <em>Ver /openapi.json &rarr;</em>
         </a>
         <a class="quick-card" href="/.well-known/jwks.json">
           <strong>JWKS publico</strong>
-          <span>Claves ES256 para validar tokens offline desde tu backend.</span>
+          <span>Para seguridad: claves publicas para validar tokens sin llamar a Luna Negra.</span>
           <em>Ver JWKS &rarr;</em>
         </a>
+      </div>
+
+      <div class="audience-grid" aria-label="Como leer esta guia">
+        <div class="audience-card">
+          <strong>Si no programas</strong>
+          <p>Lee los bloques "en simple" para entender que parte de la experiencia cubre Luna Negra.</p>
+          <ul>
+            <li>Quien es el jugador y si puede jugar.</li>
+            <li>Como se cobran compras, apuestas y premios en sats.</li>
+            <li>Que necesita tu equipo tecnico para conectar el juego.</li>
+          </ul>
+        </div>
+        <div class="audience-card">
+          <strong>Si programas</strong>
+          <p>Despues de cada explicacion hay endpoints, tokens y ejemplos minimos para implementar.</p>
+          <ul>
+            <li>Usa <code>/developers</code> para probar endpoints campo por campo.</li>
+            <li>Guarda la API key solo en tu servidor.</li>
+            <li>Valida tokens con JWKS o con los endpoints de verify.</li>
+          </ul>
+        </div>
       </div>
 
       <div class="content">
         <aside class="toc" aria-label="Indice de secciones">
           <strong>Indice</strong>
           <nav>
+            <a href="#conceptos">Conceptos en simple</a>
             <a href="#credenciales">Credenciales</a>
             <a href="#sso">Identidad y SSO</a>
             <a href="#apuestas">Apuestas / escrow</a>
@@ -668,12 +753,48 @@ const HTML = `<!doctype html>
         </aside>
 
         <article class="article">
+          <section id="conceptos">
+            <h2>1. Conceptos en simple</h2>
+            <p class="section-lead">
+              Luna Negra funciona como una capa de tienda, identidad, pagos y social
+              alrededor de tu juego. Tu juego sigue siendo tuyo; la plataforma resuelve
+              las partes comunes para que no las tengas que construir desde cero.
+            </p>
+
+            <div class="endpoint-table">
+              <table>
+                <thead>
+                  <tr><th>Concepto</th><th>En simple</th><th>Para developers</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Proveedor</td><td>Tu estudio o equipo dentro de Luna Negra.</td><td>El owner que crea juegos, API keys, webhooks y recibe payouts.</td></tr>
+                  <tr><td>Juego</td><td>La experiencia que publica tu equipo.</td><td>Entidad con <code>gameId</code>, precio, URL, assets y estado de publicacion.</td></tr>
+                  <tr><td>Jugador</td><td>La persona que compra o entra a jugar.</td><td>Identidad Nostr estable: <code>npub</code> y <code>pubkey</code>.</td></tr>
+                  <tr><td>Pase temporal</td><td>La prueba de que el jugador puede abrir el juego.</td><td>JWT <code>lnToken</code> con scope de entitlement.</td></tr>
+                  <tr><td>API key</td><td>La llave privada de tu servidor para hablar con Luna Negra.</td><td><code>ln_sk_...</code>; nunca debe ir al navegador.</td></tr>
+                  <tr><td>Webhook</td><td>Un aviso automatico cuando pasa algo importante.</td><td>POST firmado con HMAC a la URL de tu backend.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section id="credenciales">
-            <h2>1. Credenciales y reglas base</h2>
+            <h2>2. Credenciales y reglas base</h2>
             <p class="section-lead">
               Hay tres credenciales principales. La API key vive solo en tu servidor;
               los JWT de jugador son cortos y se validan con JWKS o endpoints de verify.
             </p>
+
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>En simple</strong>
+                <span>Cada credencial responde una pregunta: quien es el jugador, si puede entrar, o si tu servidor tiene permiso para operar.</span>
+              </div>
+              <div class="explain">
+                <strong>Detalle tecnico</strong>
+                <span>Todas viajan como <code>Authorization: Bearer ...</code>. La API key es secreta; los JWT se pueden validar con JWKS.</span>
+              </div>
+            </div>
 
             <div class="card-grid">
               <div class="mini-card money">
@@ -707,11 +828,21 @@ const HTML = `<!doctype html>
           </section>
 
           <section id="sso">
-            <h2>2. Identidad y login SSO</h2>
+            <h2>3. Identidad y login SSO</h2>
             <p class="section-lead">
               Tu juego se abre con <code>?lnToken=&lt;jwt&gt;</code>. Canjealo al cargar,
               guarda la identidad del jugador y descarta el token cuando ya no lo necesites.
             </p>
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>En simple</strong>
+                <span>El jugador no crea otra cuenta. Luna Negra le entrega a tu juego un pase temporal que confirma quien es y que puede jugar.</span>
+              </div>
+              <div class="explain">
+                <strong>Detalle tecnico</strong>
+                <span>El pase llega como <code>lnToken</code>. Tu app llama a <code>/api/v1/session</code> y obtiene <code>npub</code>, <code>pubkey</code> y perfil.</span>
+              </div>
+            </div>
             <div class="two-col">
               <pre><code>const r = await fetch("https://&lt;LUNA_NEGRA&gt;/api/v1/session", {
   headers: { authorization: "Bearer " + lnToken },
@@ -736,12 +867,23 @@ const {
           </section>
 
           <section id="apuestas">
-            <h2>3. Apuestas y escrow <span class="badge money">API key</span></h2>
+            <h2>4. Apuestas y escrow <span class="badge money">API key</span></h2>
             <p class="section-lead">
               Tu game server crea el pozo; Luna Negra custodia los depositos y paga a
               los ganadores. El contrato se publica firmado en Nostr y se verifica antes
               de liquidar.
             </p>
+
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>En simple</strong>
+                <span>Los jugadores depositan sats antes de competir. Luna Negra guarda el pozo y paga cuando tu servidor informa el resultado.</span>
+              </div>
+              <div class="explain">
+                <strong>Detalle tecnico</strong>
+                <span>Tu backend usa la API key para crear la apuesta, consultar depositos y reportar ganadores. El cliente nunca decide premios.</span>
+              </div>
+            </div>
 
             <div class="timeline">
               <div class="timeline-item"><b>01</b><strong>Crear pozo</strong><span><code>POST /api/v1/bets</code> con participantes, stake y metadata.</span></div>
@@ -776,11 +918,21 @@ POST /api/v1/bets/{id}/cancel</code></pre>
           </section>
 
           <section id="multijugador">
-            <h2>4. Multijugador, presencia y social</h2>
+            <h2>5. Multijugador, presencia y social</h2>
             <p class="section-lead">
               Si tu juego no tiene backend completo, Luna Negra puede cubrir invites,
               presencia, roster y un estado compartido simple por sala.
             </p>
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>En simple</strong>
+                <span>La plataforma ayuda a saber quien esta online, invitar amigos y sostener una sala simple sin armar infraestructura propia.</span>
+              </div>
+              <div class="explain">
+                <strong>Detalle tecnico</strong>
+                <span>Los invites usan tokens de sala. La presencia y el estado compartido se actualizan por polling y tienen TTL corto.</span>
+              </div>
+            </div>
             <div class="endpoint-table">
               <table>
                 <thead>
@@ -810,12 +962,22 @@ GET /api/v1/rooms/{roomId}/state
           </section>
 
           <section id="leaderboards">
-            <h2>5. Marcadores <span class="badge">Bearer entitlement</span></h2>
+            <h2>6. Marcadores <span class="badge">Bearer entitlement</span></h2>
             <p class="section-lead">
               Rankings por juego. El <code>name</code> lo define tu juego:
               <code>semanal</code>, <code>clasico</code>, <code>speedrun</code>. La politica
               actual conserva el mejor puntaje.
             </p>
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>En simple</strong>
+                <span>Sirven para mostrar rankings y competencia social. No son una fuente segura para repartir dinero.</span>
+              </div>
+              <div class="explain">
+                <strong>Detalle tecnico</strong>
+                <span>El cliente reporta scores con el entitlement. Para apuestas, el resultado siempre debe venir del game server.</span>
+              </div>
+            </div>
             <div class="two-col">
               <pre><code>POST /api/v1/leaderboards/{name}/scores
 { "score": 1234 }
@@ -832,12 +994,22 @@ GET /api/v1/leaderboards/{name}?window=all&amp;view=top
           </section>
 
           <section id="webhooks">
-            <h2>6. Webhooks <span class="badge money">API key</span></h2>
+            <h2>7. Webhooks <span class="badge money">API key</span></h2>
             <p class="section-lead">
               Registra una URL y Luna Negra envia eventos firmados con
               <code>X-LunaNegra-Signature</code>. La firma es HMAC-SHA256 del cuerpo crudo
               usando tu secreto <code>whsec_...</code>.
             </p>
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>En simple</strong>
+                <span>Tu servidor recibe avisos automaticos cuando hay compras, depositos, apuestas resueltas o pagos enviados.</span>
+              </div>
+              <div class="explain">
+                <strong>Detalle tecnico</strong>
+                <span>Verifica la firma HMAC antes de confiar en el evento. Usa el cuerpo crudo y el secreto <code>whsec_...</code>.</span>
+              </div>
+            </div>
             <div class="endpoint-table">
               <table>
                 <thead>
@@ -856,7 +1028,7 @@ GET /api/v1/leaderboards/{name}?window=all&amp;view=top
           </section>
 
           <section id="sdk">
-            <h2>7. SDK de TypeScript</h2>
+            <h2>8. SDK de TypeScript</h2>
             <p class="section-lead">
               El SDK envuelve el contrato publico para game servers: validacion offline,
               apuestas, webhooks, perfiles y actividad.
@@ -877,7 +1049,7 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
           </section>
 
           <section id="endpoints">
-            <h2>8. Referencia rapida de endpoints</h2>
+            <h2>9. Referencia rapida de endpoints</h2>
             <p class="section-lead">
               Para campos completos, codigos de error y schemas, usa
               <a href="/developers">/developers</a> o <a href="/openapi.json">/openapi.json</a>.
