@@ -349,12 +349,12 @@ Heartbeat + roster de la sala (~2 s). Auth: Bearer invite.
 
 #### `POST /api/v1/presence`
 Heartbeat de presencia del juego (~10 s, TTL ~30 s). Auth: API key.
-- **Body:** `{ "npub", "status": "in-game"|"online", "roomId"? }`
+- **Body:** `{ "npub", "status": "in-game"|"online", "roomId"?, "state"? }` (`status` reservado; `state` = bolsa libre ≤2KB, last-write-wins)
 - **200:** `{ "ok": true }` · **400** `INVALID_NPUB`/`INVALID_STATUS` · **401** `INVALID_API_KEY`
 
 #### `GET /api/v1/friends`
 Amigos (contactos NIP-02) con su presencia en este juego. Auth: API key. Query: `npub`, `presence=true`, `q=<texto>` (con `q`, si no hay match en follows busca en todo Nostr; los externos llevan `isFollow:false`).
-- **200:** `{ "friends": [{ "npub", "displayName", "avatarUrl", "presence", "roomId", "lastSeenMs", "isMember", "lastPlayedAt", "isFollow" }], "query"? }`
+- **200:** `{ "friends": [{ "npub", "displayName", "avatarUrl", "presence", "roomId", "state", "lastSeenMs", "isMember", "lastPlayedAt", "isFollow" }], "query"? }`
 - **400** `INVALID_NPUB` · **401** `INVALID_API_KEY`
 
 #### `POST /api/v1/invites`

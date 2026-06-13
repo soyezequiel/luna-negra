@@ -56,6 +56,7 @@ export async function GET(req: Request) {
         avatarUrl: r.profile?.picture ?? null,
         presence: "offline",
         roomId: null,
+        state: null,
         lastSeenMs: null,
         isMember: false,
         lastPlayedAt: null,

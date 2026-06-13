@@ -67,8 +67,9 @@ model GamePresence {
   providerId String
   provider   Provider @relation(fields: [providerId], references: [id])
   npub       String
-  status     String // "in-game" | "online"
+  status     String // "in-game" | "online" (clave reservada de presentación)
   roomId     String?
+  stateJson  String? // bolsa libre del juego (JSON serializado): puntaje, vidas, equipo…
   expiresAt  DateTime // now + 30s
   updatedAt  DateTime @updatedAt
 
@@ -77,7 +78,7 @@ model GamePresence {
   @@index([expiresAt])
 }
 
-// Buzón de invitaciones a sala que el proveedor envía vía POST /api/v1/friends/invite;
+// Buzón de invitaciones a sala que el proveedor envía vía POST /api/v1/invites;
 // Luna Negra se las muestra al invitado (toast in-app). TTL ~1h, como las
 // invitaciones por DM existentes.
 model GameInvite {

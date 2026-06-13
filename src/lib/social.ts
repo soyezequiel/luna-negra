@@ -28,6 +28,8 @@ export type FriendEntry = {
   avatarUrl: string | null;
   presence: Presence;
   roomId: string | null;
+  /** Bolsa libre que reporta el juego (puntaje, vidas, equipo…), o null. */
+  state?: Record<string, unknown> | null;
   lastSeenMs: number | null;
   /** Tiene cuenta en Luna Negra. */
   isMember: boolean;
@@ -37,18 +39,35 @@ export type FriendEntry = {
   isFollow?: boolean;
 };
 
+/** Bolsa de estado libre desde su forma serializada (objeto plano, o null). */
+function parseState(json: string | null): Record<string, unknown> | null {
+  if (!json) return null;
+  try {
+    const v = JSON.parse(json);
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Registra/renueva la presencia de un jugador en el juego del proveedor. */
 export async function recordPresence(
   providerId: string,
   npub: string,
   status: "in-game" | "online",
   roomId: string | null,
+  state?: Record<string, unknown> | null,
 ): Promise<void> {
   const expiresAt = new Date(Date.now() + PRESENCE_TTL_MS);
+  // Cada latido es autoritativo: el `state` reemplaza al anterior (last-write-wins);
+  // si el juego no lo manda, se limpia.
+  const stateJson = state && typeof state === "object" ? JSON.stringify(state) : null;
   await prisma.gamePresence.upsert({
     where: { providerId_npub: { providerId, npub } },
-    create: { providerId, npub, status, roomId, expiresAt },
-    update: { status, roomId, expiresAt },
+    create: { providerId, npub, status, roomId, stateJson, expiresAt },
+    update: { status, roomId, stateJson, expiresAt },
   });
   // Respaldo de "jugó alguna vez" (cubre relanzamientos que no pasan por la
   // tienda). Throttled a 10 min para no escribir en cada heartbeat de ~10s.
@@ -74,11 +93,11 @@ export async function recordPresence(
 async function getPresence(
   providerId: string,
   npubs: string[],
-): Promise<Map<string, { status: Presence; roomId: string | null; lastSeenMs: number }>> {
+): Promise<Map<string, { status: Presence; roomId: string | null; state: Record<string, unknown> | null; lastSeenMs: number }>> {
   if (npubs.length === 0) return new Map();
   const rows = await prisma.gamePresence.findMany({
     where: { providerId, npub: { in: npubs }, expiresAt: { gt: new Date() } },
-    select: { npub: true, status: true, roomId: true, updatedAt: true },
+    select: { npub: true, status: true, roomId: true, stateJson: true, updatedAt: true },
   });
   return new Map(
     rows.map((r) => [
@@ -86,6 +105,7 @@ async function getPresence(
       {
         status: r.status === "in-game" ? "in-game" : "online",
         roomId: r.roomId,
+        state: parseState(r.stateJson),
         lastSeenMs: r.updatedAt.getTime(),
       },
     ]),
@@ -162,6 +182,7 @@ export async function listFriends(
       avatarUrl: u?.avatarUrl ?? p?.picture ?? null,
       presence: pres?.status ?? "offline",
       roomId: pres?.roomId ?? null,
+      state: pres?.state ?? null,
       lastSeenMs: pres?.lastSeenMs ?? null,
       isMember: byPubkey.has(pk),
       lastPlayedAt: u?.lastPlayedAt?.getTime() ?? null,

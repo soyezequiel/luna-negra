@@ -92,13 +92,15 @@ Heartbeat + roster de la sala (~2 s). Auth: Bearer invite.
 
 ### `POST /api/v1/presence`
 Heartbeat de presencia del juego (~10 s, TTL ~30 s). Auth: API key.
-- **Body:** `{ "npub", "status": "in-game"|"online", "roomId"? }`
-- **200:** `{ "ok": true }` · **400** `INVALID_NPUB`/`INVALID_STATUS` · **401** `INVALID_API_KEY`
+- **Body:** `{ "npub", "status": "in-game"|"online", "roomId"?, "state"? }`
+  - `status` es la clave **reservada** (la usa Luna Negra para "Jugando X"). `state` es una **bolsa libre** (objeto plano ≤2KB): el juego guarda lo que quiera (puntaje, vidas, equipo…). Cada latido reemplaza el `state` anterior.
+- **200:** `{ "ok": true }` · **400** `INVALID_NPUB`/`INVALID_STATUS`/`STATE_TOO_LARGE` · **401** `INVALID_API_KEY`
 
 ### `GET /api/v1/friends`
 Amigos (contactos NIP-02) con su presencia en este juego. Auth: API key.
 Query: `npub`, `presence=true`, `q=<texto>` (con `q`, si no hay match en follows busca en todo Nostr; los externos llevan `isFollow:false`).
-- **200:** `{ "friends": [{ "npub", "displayName", "avatarUrl", "presence", "roomId", "lastSeenMs", "isMember", "lastPlayedAt", "isFollow" }], "query"? }`
+- **200:** `{ "friends": [{ "npub", "displayName", "avatarUrl", "presence", "roomId", "state", "lastSeenMs", "isMember", "lastPlayedAt", "isFollow" }], "query"? }`
+  - `state` = la bolsa libre que ese amigo reportó en su presencia (o `null`).
 - **400** `INVALID_NPUB` · **401** `INVALID_API_KEY`
 
 ### `POST /api/v1/invites`
