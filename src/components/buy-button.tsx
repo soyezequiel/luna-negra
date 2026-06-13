@@ -7,7 +7,7 @@ import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { PlayButton } from "@/components/play-button";
 import { priceLabel } from "@/lib/format";
-import { isWebLNAvailable, payWithExtension, WebLNError } from "@/lib/webln";
+import { payWithExtension, WebLNError } from "@/lib/webln";
 
 type Props = {
   gameId: string;
@@ -32,14 +32,9 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
   const [devMode, setDevMode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expired, setExpired] = useState(false);
-  const [hasWebln, setHasWebln] = useState(false);
   const [weblnPaying, setWeblnPaying] = useState(false);
   const [weblnError, setWeblnError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    setHasWebln(isWebLNAvailable());
-  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -189,16 +184,14 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
                 className="mx-auto mt-4 rounded-lg bg-white p-2"
               />
             ) : null}
-            {hasWebln ? (
-              <Button
-                variant="btc"
-                className="mt-4 w-full"
-                onClick={payWithExtensionClick}
-                disabled={weblnPaying}
-              >
-                {weblnPaying ? "Pagando…" : "⚡ Pagar con extensión (Alby)"}
-              </Button>
-            ) : null}
+            <Button
+              variant="btc"
+              className="mt-4 w-full"
+              onClick={payWithExtensionClick}
+              disabled={weblnPaying}
+            >
+              {weblnPaying ? "Pagando…" : "⚡ Pagar con extensión (Alby)"}
+            </Button>
             {weblnError ? (
               <p className="mt-2 text-sm text-[var(--lose)]">{weblnError}</p>
             ) : null}
