@@ -1,223 +1,920 @@
-// Guía para desarrolladores de Luna Negra, en español (rioplatense). Página
-// autocontenida (HTML + CSS inline, sin dependencias del bundle). Complementa a
-// `/developers` (referencia interactiva sobre /openapi.json) y a /openapi.json
-// (el contrato). El contenido refleja el contrato público de `docs/api-publica.md`.
+// Guia autocontenida para desarrolladores. No participa del layout de la app:
+// sirve HTML estatico con CSS inline para que funcione como documento publico
+// aun sin cargar el bundle principal.
 
 const HTML = `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Luna Negra · Guía para desarrolladores</title>
+    <meta
+      name="description"
+      content="Guia publica para integrar juegos con Luna Negra: SSO Nostr, salas, presencia, apuestas Lightning, webhooks y SDK."
+    />
+    <title>Luna Negra &middot; Guia para developers</title>
     <style>
       :root {
-        --bg: #0c0b10; --panel: #15131d; --border: #2a2740;
-        --ink: #ece9f5; --muted: #a39fb8; --accent: #b794f6; --accent2: #7f5af0;
-        --code-bg: #1c1930; --ok: #6ee7b7; --warn: #fbbf24;
+        --bg: #080b11;
+        --bg-2: #0e141c;
+        --panel: #121a24;
+        --panel-2: #182331;
+        --panel-3: #213044;
+        --line: rgba(255, 255, 255, 0.08);
+        --line-2: rgba(255, 255, 255, 0.15);
+        --ink: #d8e3ed;
+        --white: #ffffff;
+        --muted: #8ea0b2;
+        --faint: #617183;
+        --blue: #66c0f4;
+        --blue-hi: #a7dbff;
+        --blue-soft: rgba(102, 192, 244, 0.12);
+        --btc: #f7931a;
+        --btc-hi: #ffb54a;
+        --btc-soft: rgba(247, 147, 26, 0.13);
+        --green: #a1cd44;
+        --green-soft: rgba(161, 205, 68, 0.12);
+        --danger: #e06a5b;
+        --code: #080d14;
       }
+
       * { box-sizing: border-box; }
-      body {
-        margin: 0; background: var(--bg); color: var(--ink);
-        font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      html {
+        overflow-x: hidden;
+        scroll-behavior: smooth;
       }
-      .wrap { max-width: 880px; margin: 0 auto; padding: 48px 24px 96px; }
-      a { color: var(--accent); text-decoration: none; }
-      a:hover { text-decoration: underline; }
-      h1 { font-size: 2rem; margin: 0 0 8px; }
-      h2 { font-size: 1.4rem; margin: 48px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-      h3 { font-size: 1.1rem; margin: 28px 0 8px; color: var(--accent); }
-      p, li { color: var(--ink); }
-      .lead { color: var(--muted); font-size: 1.05rem; }
-      code { background: var(--code-bg); padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace; font-size: .9em; }
-      pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
-      pre code { background: none; padding: 0; }
-      table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .92rem; }
-      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-      th { color: var(--muted); font-weight: 600; }
-      td code { white-space: nowrap; }
-      .pill { display: inline-block; background: var(--accent2); color: #fff; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
-      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0; }
-      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
-      .card h3 { margin-top: 0; }
-      .note { background: var(--panel); border-left: 3px solid var(--accent); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
-      .warn { border-left-color: var(--warn); }
-      .muted { color: var(--muted); }
-      footer { margin-top: 64px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--border); padding-top: 24px; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow-x: hidden;
+        background:
+          linear-gradient(125deg, rgba(28, 86, 128, 0.24) 0%, rgba(18, 42, 68, 0.08) 28%, transparent 54%),
+          linear-gradient(180deg, #080b11 0%, #0e141c 42%, #080b11 100%);
+        color: var(--ink);
+        font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(180deg, black 0%, rgba(0, 0, 0, 0.72) 44%, transparent 100%);
+      }
+      a { color: var(--blue-hi); text-decoration: none; }
+      a:hover { color: var(--white); text-decoration: underline; text-underline-offset: 3px; }
+      code {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.24);
+        color: #f4f8fb;
+        padding: 0.12rem 0.32rem;
+        font: 0.9em/1.5 ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      }
+      pre {
+        margin: 0;
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 34%),
+          var(--code);
+        padding: 18px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+      pre code {
+        display: block;
+        border: 0;
+        background: transparent;
+        color: #d9e8f5;
+        padding: 0;
+        white-space: pre;
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      td:first-child, th:first-child { padding-left: 0; }
+      td:last-child, th:last-child { padding-right: 0; }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-bottom: 1px solid #05080c;
+        background: rgba(8, 11, 17, 0.86);
+        backdrop-filter: blur(14px);
+      }
+      .topbar-inner {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        width: min(1180px, calc(100% - 32px));
+        height: 64px;
+        margin: 0 auto;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--white);
+        font-weight: 800;
+        letter-spacing: 0;
+        white-space: nowrap;
+      }
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(102, 192, 244, 0.42);
+        border-radius: 6px;
+        background: linear-gradient(135deg, #132132, #0b111a);
+        color: var(--blue);
+        font: 800 13px/1 ui-monospace, "Cascadia Code", monospace;
+      }
+      .top-links {
+        display: flex;
+        min-width: 0;
+        flex: 1;
+        gap: 6px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        white-space: nowrap;
+      }
+      .top-links::-webkit-scrollbar { display: none; }
+      .top-links a {
+        border-radius: 4px;
+        color: #b8c6d4;
+        padding: 7px 10px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-decoration: none;
+        text-transform: uppercase;
+      }
+      .top-links a:hover { background: rgba(255, 255, 255, 0.08); color: var(--white); }
+      .top-action {
+        flex: 0 0 auto;
+        border-radius: 4px;
+        background: linear-gradient(95deg, #3aa3e0 0%, #1c63ab 100%);
+        color: #eef9ff;
+        padding: 9px 13px;
+        font-size: 0.86rem;
+        font-weight: 800;
+        text-decoration: none;
+        box-shadow: 0 12px 22px -18px rgba(102, 192, 244, 0.7);
+      }
+      .top-action:hover { text-decoration: none; color: var(--white); }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+        gap: 28px;
+        align-items: start;
+        padding: 56px 0 34px;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--blue-hi);
+        font-size: 0.75rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--green);
+        box-shadow: 0 0 0 4px var(--green-soft);
+      }
+      h1 {
+        margin: 14px 0 16px;
+        max-width: 780px;
+        color: var(--white);
+        font-size: clamp(2.25rem, 6vw, 5.7rem);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+      .lead {
+        max-width: 760px;
+        margin: 0;
+        color: #b7c8d8;
+        font-size: clamp(1rem, 1.5vw, 1.22rem);
+      }
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        border: 1px solid var(--line-2);
+        border-radius: 4px;
+        padding: 10px 14px;
+        color: var(--ink);
+        font-size: 0.9rem;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      .button:hover { text-decoration: none; color: var(--white); background: rgba(255, 255, 255, 0.07); }
+      .button.primary {
+        border-color: transparent;
+        background: linear-gradient(95deg, #fba52e 0%, #e07f12 100%);
+        color: #231304;
+      }
+      .button.primary:hover { color: #120902; background: linear-gradient(95deg, #ffb54a 0%, #f18a18 100%); }
+      .signal-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 28px;
+      }
+      .signal {
+        min-height: 88px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(18, 26, 36, 0.78);
+        padding: 14px;
+      }
+      .signal strong {
+        display: block;
+        color: var(--white);
+        font-size: 1.05rem;
+        line-height: 1.1;
+      }
+      .signal span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.86rem;
+        line-height: 1.35;
+      }
+      .flow-panel {
+        border: 1px solid var(--line-2);
+        border-radius: 8px;
+        background:
+          linear-gradient(180deg, rgba(102, 192, 244, 0.1), transparent 38%),
+          rgba(18, 26, 36, 0.9);
+        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
+        padding: 18px;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 14px;
+      }
+      .panel-head strong { color: var(--white); font-size: 1rem; }
+      .status {
+        border: 1px solid rgba(161, 205, 68, 0.36);
+        border-radius: 999px;
+        background: var(--green-soft);
+        color: #d8f7a2;
+        padding: 4px 9px;
+        font-size: 0.72rem;
+        font-weight: 800;
+      }
+      .flow {
+        display: grid;
+        gap: 10px;
+        margin: 16px 0 0;
+      }
+      .flow-step {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.16);
+        padding: 12px;
+      }
+      .flow-step b {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 5px;
+        background: var(--blue-soft);
+        color: var(--blue-hi);
+        font: 800 0.82rem/1 ui-monospace, "Cascadia Code", monospace;
+      }
+      .flow-step strong { display: block; color: var(--white); line-height: 1.2; }
+      .flow-step span { display: block; margin-top: 4px; color: var(--muted); font-size: 0.88rem; line-height: 1.4; }
+      .quick-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 0 0 34px;
+      }
+      .quick-card {
+        display: flex;
+        min-height: 118px;
+        flex-direction: column;
+        justify-content: space-between;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.78);
+        padding: 16px;
+        text-decoration: none;
+      }
+      .quick-card:hover {
+        border-color: rgba(102, 192, 244, 0.38);
+        background: rgba(24, 35, 49, 0.92);
+        text-decoration: none;
+      }
+      .quick-card strong { color: var(--white); font-size: 1rem; }
+      .quick-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.35; }
+      .quick-card em { color: var(--blue-hi); font-style: normal; font-weight: 800; }
+
+      .content {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
+        padding-bottom: 80px;
+      }
+      .content,
+      .article,
+      section,
+      .toc {
+        min-width: 0;
+      }
+      .toc {
+        position: sticky;
+        top: 88px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.72);
+        padding: 12px;
+      }
+      .toc strong {
+        display: block;
+        color: var(--white);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        margin: 4px 8px 8px;
+      }
+      .toc a {
+        display: block;
+        border-radius: 4px;
+        color: var(--muted);
+        min-width: 0;
+        overflow-wrap: anywhere;
+        padding: 7px 8px;
+        font-size: 0.88rem;
+        text-decoration: none;
+      }
+      .toc a:hover { background: rgba(255, 255, 255, 0.06); color: var(--white); }
+      .article {
+        display: grid;
+        gap: 16px;
+      }
+      section {
+        scroll-margin-top: 88px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.74);
+        padding: clamp(20px, 4vw, 30px);
+      }
+      section h2 {
+        margin: 0;
+        color: var(--white);
+        font-size: clamp(1.45rem, 3vw, 2rem);
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+      section h3 {
+        margin: 22px 0 8px;
+        color: var(--blue-hi);
+        font-size: 1.03rem;
+      }
+      section p {
+        margin: 12px 0 0;
+        color: #bdcad7;
+      }
+      .section-lead {
+        max-width: 850px;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+        gap: 16px;
+        align-items: start;
+        margin-top: 18px;
+      }
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .mini-card {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.16);
+        padding: 14px;
+      }
+      .mini-card.money { border-color: rgba(247, 147, 26, 0.32); background: var(--btc-soft); }
+      .mini-card.ok { border-color: rgba(161, 205, 68, 0.28); background: var(--green-soft); }
+      .mini-card.info { border-color: rgba(102, 192, 244, 0.32); background: var(--blue-soft); }
+      .mini-card strong { display: block; color: var(--white); line-height: 1.2; }
+      .mini-card span { display: block; margin-top: 7px; color: var(--muted); font-size: 0.9rem; line-height: 1.42; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        background: var(--blue-soft);
+        color: var(--blue-hi);
+        padding: 3px 8px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        vertical-align: middle;
+      }
+      .badge.money { background: var(--btc-soft); color: var(--btc-hi); }
+      .badge.ok { background: var(--green-soft); color: #d8f7a2; }
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .timeline-item {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: rgba(0, 0, 0, 0.16);
+        padding: 14px;
+      }
+      .timeline-item b {
+        display: inline-grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 5px;
+        background: var(--btc-soft);
+        color: var(--btc-hi);
+        font: 800 0.75rem/1 ui-monospace, "Cascadia Code", monospace;
+      }
+      .timeline-item strong { display: block; margin-top: 10px; color: var(--white); }
+      .timeline-item span { display: block; margin-top: 6px; color: var(--muted); font-size: 0.9rem; line-height: 1.42; }
+      .note {
+        border: 1px solid rgba(247, 147, 26, 0.26);
+        border-left: 4px solid var(--btc);
+        border-radius: 7px;
+        background: rgba(247, 147, 26, 0.09);
+        color: #f6d9ad;
+        padding: 13px 14px;
+      }
+      .note strong { color: #ffe0b4; }
+      .note.danger {
+        border-color: rgba(224, 106, 91, 0.3);
+        border-left-color: var(--danger);
+        background: rgba(224, 106, 91, 0.1);
+        color: #f1b8b1;
+      }
+      .endpoint-table { margin-top: 18px; overflow-x: auto; }
+      .method {
+        display: inline-flex;
+        min-width: 48px;
+        justify-content: center;
+        border-radius: 4px;
+        background: var(--blue-soft);
+        color: var(--blue-hi);
+        padding: 2px 6px;
+        font: 800 0.72rem/1.5 ui-monospace, "Cascadia Code", monospace;
+      }
+      .method.post { background: var(--green-soft); color: #d8f7a2; }
+      .method.money { background: var(--btc-soft); color: var(--btc-hi); }
+      .footer {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        padding: 24px 0 48px;
+        text-align: center;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .content,
+        .two-col { grid-template-columns: 1fr; }
+        .toc { position: static; order: -1; }
+        .toc nav {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 4px;
+        }
+        .flow-panel { max-width: none; }
+      }
+      @media (max-width: 720px) {
+        .topbar-inner { width: min(100% - 24px, 1180px); gap: 10px; }
+        .brand span:last-child { display: none; }
+        .top-links {
+          justify-content: flex-end;
+          overflow: hidden;
+        }
+        .top-links a {
+          display: none;
+          padding: 7px 8px;
+          font-size: 0.7rem;
+        }
+        .top-links a:nth-child(1),
+        .top-links a:nth-child(2) { display: block; }
+        .top-action {
+          display: inline-flex;
+          padding: 8px 9px;
+          font-size: 0.72rem;
+        }
+        .shell { width: min(100% - 24px, 1180px); }
+        .hero { padding-top: 34px; }
+        .signal-row,
+        .quick-grid,
+        .card-grid,
+        .timeline { grid-template-columns: 1fr; }
+        section { padding: 18px; }
+        table { table-layout: fixed; }
+        td,
+        th,
+        td code {
+          overflow-wrap: anywhere;
+        }
+        th, td { padding: 10px 8px; }
+        .toc nav { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <h1>Luna Negra · Guía para desarrolladores 🌑</h1>
-      <p class="lead">
-        Todo lo que necesitás para integrar tu juego con Luna Negra: identidad de los
-        jugadores, multijugador, apuestas en Lightning (sats), presencia, marcador y avisos.
-        Acá va la guía en prosa; si querés probar los endpoints en vivo tenés la
-        <a href="/developers">referencia interactiva</a> y el contrato crudo en
-        <a href="/openapi.json"><code>/openapi.json</code></a>.
-      </p>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/" aria-label="Volver a Luna Negra">
+          <span class="brand-mark">LN</span>
+          <span>Luna Negra</span>
+        </a>
+        <nav class="top-links" aria-label="Navegacion principal">
+          <a href="#inicio">Inicio</a>
+          <a href="#credenciales">Credenciales</a>
+          <a href="#sso">SSO</a>
+          <a href="#apuestas">Apuestas</a>
+          <a href="#multijugador">Multijugador</a>
+          <a href="#webhooks">Webhooks</a>
+          <a href="#sdk">SDK</a>
+        </nav>
+        <a class="top-action" href="/developers">Probar API</a>
+      </div>
+    </header>
 
-      <div class="cards">
-        <div class="card"><h3>Referencia interactiva</h3><p class="muted">Probá cada endpoint desde el navegador.</p><a href="/developers">Abrir /developers →</a></div>
-        <div class="card"><h3>Contrato OpenAPI</h3><p class="muted">La fuente de verdad, machine-readable.</p><a href="/openapi.json">Ver /openapi.json →</a></div>
-        <div class="card"><h3>Claves públicas</h3><p class="muted">Para validar tokens offline (ES256).</p><a href="/.well-known/jwks.json">Ver JWKS →</a></div>
+    <main id="inicio" class="shell">
+      <div class="hero">
+        <div>
+          <span class="eyebrow">Guia publica para game servers</span>
+          <h1>Integra tu juego con Nostr, Lightning y salas listas.</h1>
+          <p class="lead">
+            Luna Negra te da identidad de jugadores, permisos de compra, presencia,
+            apuestas en sats, marcadores, invitaciones y webhooks. Esta es la guia
+            de implementacion; el contrato vivo esta en OpenAPI.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="/provider">Crear juego</a>
+            <a class="button" href="/developers">Abrir referencia interactiva</a>
+            <a class="button" href="/openapi.json">Ver OpenAPI</a>
+          </div>
+          <div class="signal-row" aria-label="Capacidades principales">
+            <div class="signal"><strong>SSO Nostr</strong><span>El jugador llega con <code>lnToken</code>; vos recibis <code>npub</code>, nombre y avatar.</span></div>
+            <div class="signal"><strong>Escrow Lightning</strong><span>Pozo en sats, depositos por jugador, resolucion firmada y pagos.</span></div>
+            <div class="signal"><strong>Multijugador liviano</strong><span>Invites, presencia, amigos y estado compartido por sala via polling.</span></div>
+          </div>
+        </div>
+
+        <aside class="flow-panel" aria-label="Flujo recomendado de integracion">
+          <div class="panel-head">
+            <strong>Camino de integracion</strong>
+            <span class="status">API v1 estable</span>
+          </div>
+          <div class="flow">
+            <div class="flow-step">
+              <b>01</b>
+              <div><strong>Publica el juego</strong><span>Desde <a href="/provider">/provider</a> creas el juego y una API key <code>ln_sk_...</code> para tu servidor.</span></div>
+            </div>
+            <div class="flow-step">
+              <b>02</b>
+              <div><strong>Canjea el entitlement</strong><span>Luna Negra abre tu juego con <code>?lnToken=jwt</code>; validalo y usalo como login SSO.</span></div>
+            </div>
+            <div class="flow-step">
+              <b>03</b>
+              <div><strong>Activa features</strong><span>Agrega presencia, salas, apuestas, leaderboards y webhooks segun tu gameplay.</span></div>
+            </div>
+          </div>
+        </aside>
       </div>
 
-      <h2>1. Cómo funciona, en dos minutos</h2>
-      <p>
-        Tu juego es un <strong>proveedor</strong> (provider) en Luna Negra. Desde el panel
-        <a href="/provider">/provider</a> creás tu juego y obtenés una <strong>API key</strong>
-        (<code>ln_sk_…</code>) que vive <em>solo en tu servidor</em> — nunca la mandes al navegador.
-      </p>
-      <p>
-        Luna Negra abre tu juego con un token en la URL (<code>?lnToken=&lt;jwt&gt;</code>): ese
-        es el <strong>entitlement</strong>, la prueba de que el jugador puede jugar. Tu juego lo
-        canjea por la identidad del jugador y listo: no hace falta que el jugador se registre de nuevo.
-      </p>
+      <div class="quick-grid">
+        <a class="quick-card" href="/developers">
+          <strong>Referencia interactiva</strong>
+          <span>Ejecuta cada endpoint contra tu entorno desde el navegador.</span>
+          <em>Abrir /developers &rarr;</em>
+        </a>
+        <a class="quick-card" href="/openapi.json">
+          <strong>Contrato OpenAPI</strong>
+          <span>Fuente de verdad machine-readable para clientes y tests.</span>
+          <em>Ver /openapi.json &rarr;</em>
+        </a>
+        <a class="quick-card" href="/.well-known/jwks.json">
+          <strong>JWKS publico</strong>
+          <span>Claves ES256 para validar tokens offline desde tu backend.</span>
+          <em>Ver JWKS &rarr;</em>
+        </a>
+      </div>
 
-      <h3>Los tres tipos de credencial</h3>
-      <table>
-        <tr><th>Credencial</th><th>Quién la usa</th><th>Para qué</th></tr>
-        <tr><td><span class="pill">API key</span> <code>ln_sk_…</code></td><td>Tu <strong>servidor</strong></td><td>Crear apuestas, presencia global, amigos, invitaciones, webhooks, actividad.</td></tr>
-        <tr><td><span class="pill">entitlement</span> (lnToken)</td><td>El <strong>jugador</strong> (cliente)</td><td>Login SSO (<code>/session</code>) y marcador. Es corto (~5 min): canjealo al cargar.</td></tr>
-        <tr><td><span class="pill">invite</span> (token de sala)</td><td>El <strong>jugador</strong> (cliente)</td><td>Entrar a una sala multijugador: presencia y estado de sala.</td></tr>
-      </table>
-      <p class="muted">
-        Los tokens son JWT firmados con <strong>ES256</strong>: podés validarlos <strong>offline</strong>
-        con la clave pública de <a href="/.well-known/jwks.json"><code>/.well-known/jwks.json</code></a>
-        (recomendado) o contra los endpoints <code>/verify</code>.
-      </p>
+      <div class="content">
+        <aside class="toc" aria-label="Indice de secciones">
+          <strong>Indice</strong>
+          <nav>
+            <a href="#credenciales">Credenciales</a>
+            <a href="#sso">Identidad y SSO</a>
+            <a href="#apuestas">Apuestas / escrow</a>
+            <a href="#multijugador">Multijugador</a>
+            <a href="#leaderboards">Marcadores</a>
+            <a href="#webhooks">Webhooks</a>
+            <a href="#sdk">SDK TypeScript</a>
+            <a href="#endpoints">Endpoints rapidos</a>
+          </nav>
+        </aside>
 
-      <h2>2. Convenciones</h2>
-      <ul>
-        <li><strong>Auth:</strong> siempre <code>Authorization: Bearer &lt;token&gt;</code> (sea API key o JWT).</li>
-        <li><strong>Plata:</strong> todo en <strong>sats</strong> de cara afuera (internamente msat).</li>
-        <li><strong>Errores:</strong> forma estándar <code>{ "error": { "code", "message" } }</code> con el status HTTP que corresponda. El <code>code</code> es estable; el <code>message</code> es legible.</li>
-        <li><strong>Éxito:</strong> el cuerpo es el objeto crudo (sin envelope <code>{ data }</code>).</li>
-        <li><strong>Caché:</strong> los GET de apuesta y de estado vienen con <code>Cache-Control: no-store</code> — siempre frescos, no necesitás cache-busting.</li>
-        <li><strong>Idempotencia:</strong> <code>POST /bets</code> acepta <code>Idempotency-Key</code>; <code>/result</code> es idempotente (re-reportar devuelve 200, no error).</li>
-        <li><strong>CORS</strong> abierto: podés llamar desde el cliente del juego donde corresponda.</li>
-      </ul>
+        <article class="article">
+          <section id="credenciales">
+            <h2>1. Credenciales y reglas base</h2>
+            <p class="section-lead">
+              Hay tres credenciales principales. La API key vive solo en tu servidor;
+              los JWT de jugador son cortos y se validan con JWKS o endpoints de verify.
+            </p>
 
-      <h2>3. Identidad y login SSO</h2>
-      <p>Tu juego se abre con <code>?lnToken=&lt;entitlement&gt;</code>. Canjealo una vez:</p>
-      <pre><code>// En tu server (o cliente), con el lnToken que vino en la URL:
-const r = await fetch("https://luna-negra/api/v1/session", {
+            <div class="card-grid">
+              <div class="mini-card money">
+                <strong><span class="badge money">API key</span> <code>ln_sk_...</code></strong>
+                <span>Server-to-server: crear apuestas, presencia global, amigos, invitaciones, webhooks y actividad.</span>
+              </div>
+              <div class="mini-card info">
+                <strong><span class="badge">entitlement</span> <code>lnToken</code></strong>
+                <span>Login SSO y marcador. Viene en la URL al abrir el juego y expira rapido.</span>
+              </div>
+              <div class="mini-card ok">
+                <strong><span class="badge ok">invite</span> token de sala</strong>
+                <span>Permite entrar a una sala, reportar presencia y leer/escribir estado compartido.</span>
+              </div>
+            </div>
+
+            <div class="endpoint-table">
+              <table>
+                <thead>
+                  <tr><th>Aspecto</th><th>Convencion publica</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Auth</td><td>Siempre <code>Authorization: Bearer &lt;token-o-api-key&gt;</code>.</td></tr>
+                  <tr><td>Dinero</td><td>Todo lo publico esta expresado en <strong>sats</strong>.</td></tr>
+                  <tr><td>Errores</td><td><code>{ "error": { "code", "message" } }</code> con status HTTP correcto.</td></tr>
+                  <tr><td>Exito</td><td>El cuerpo es el objeto crudo, sin envelope <code>{ data }</code>.</td></tr>
+                  <tr><td>CORS</td><td>Abierto para los endpoints publicos donde corresponde llamar desde el juego.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="sso">
+            <h2>2. Identidad y login SSO</h2>
+            <p class="section-lead">
+              Tu juego se abre con <code>?lnToken=&lt;jwt&gt;</code>. Canjealo al cargar,
+              guarda la identidad del jugador y descarta el token cuando ya no lo necesites.
+            </p>
+            <div class="two-col">
+              <pre><code>const r = await fetch("https://&lt;LUNA_NEGRA&gt;/api/v1/session", {
   headers: { authorization: "Bearer " + lnToken },
 });
-const { npub, pubkey, displayName, avatarUrl, gameId } = await r.json();
-// Guardá la IDENTIDAD (npub), no el token: el entitlement expira a ~5 min.</code></pre>
-      <p class="muted">
-        El <code>npub</code> es la identidad <strong>estable</strong> del jugador: usalo como su id,
-        nunca generes un UUID local. Para refrescar nombre/avatar sin token:
-        <code>GET /api/v1/players/{npub}/profile</code>.
-      </p>
 
-      <h2>4. Apuestas / escrow <span class="pill">API key</span></h2>
-      <p>
-        Tu game server crea la apuesta; Luna Negra <strong>custodia el pozo</strong> y le paga a los
-        ganadores (menos un fee configurable). El contrato se publica <strong>firmado en Nostr</strong> y
-        se verifica antes de pagar (<code>CONTRACT_MISMATCH</code>).
-      </p>
-      <pre><code>// 1) Crear el pozo (winner-takes-all)
+const {
+  npub,
+  pubkey,
+  displayName,
+  avatarUrl,
+  gameId,
+} = await r.json();</code></pre>
+              <div class="mini-card info">
+                <strong>Usa <code>npub</code> como player id</strong>
+                <span>Es la identidad estable del jugador. No generes UUIDs locales si despues queres presencia, amigos, invites, apuestas o rankings consistentes.</span>
+              </div>
+            </div>
+            <p>
+              Para refrescar presentacion sin token, consulta
+              <code>GET /api/v1/players/{npub}/profile</code>.
+            </p>
+          </section>
+
+          <section id="apuestas">
+            <h2>3. Apuestas y escrow <span class="badge money">API key</span></h2>
+            <p class="section-lead">
+              Tu game server crea el pozo; Luna Negra custodia los depositos y paga a
+              los ganadores. El contrato se publica firmado en Nostr y se verifica antes
+              de liquidar.
+            </p>
+
+            <div class="timeline">
+              <div class="timeline-item"><b>01</b><strong>Crear pozo</strong><span><code>POST /api/v1/bets</code> con participantes, stake y metadata.</span></div>
+              <div class="timeline-item"><b>02</b><strong>Recibir depositos</strong><span><code>GET /api/v1/bets/{id}</code> trae estado y handles de pago.</span></div>
+              <div class="timeline-item"><b>03</b><strong>Resolver</strong><span><code>POST /api/v1/bets/{id}/result</code> reporta ganadores o empate.</span></div>
+            </div>
+
+            <h3>Flujo minimo</h3>
+            <pre><code>// 1) Crear apuesta winner-takes-all
 POST /api/v1/bets
-{ "gameId", "participants": ["npub1","npub2"], "stakeSats": 10,
-  "victoryCondition"?, "roomId"?, "metadata"? }
+{
+  "gameId": "game_...",
+  "participants": ["npub1...", "npub1..."],
+  "stakeSats": 10,
+  "roomId": "room-42",
+  "metadata": { "matchId": "m-1007" }
+}
 
-// 2) Estado + handles de pago en UNA llamada (polling)
+// 2) Consultar estado y pagos
 GET /api/v1/bets/{id}
-// → { status, depositsReceived, depositsTotal, potSats, participants:[
-//      { npub, depositStatus, payoutSats, bolt11, lnurl, payUrl } ], ... }
-//   Los handles van null cuando el depósito ya cerró/pagó.
+// status: pending_deposits | funded | settled | cancelled | expired | refunded
 
-// 3a) Resolver: reportás los ganadores; Luna Negra firma con tu oráculo gestionado.
-POST /api/v1/bets/{id}/result   { "winners": ["npubGanador"] }   // [] = empate → reembolso
-// 3b) …o cancelar antes de resolver (reembolsa depósitos)
+// 3) Resolver o cancelar
+POST /api/v1/bets/{id}/result  { "winners": ["npub1ganador..."] }
 POST /api/v1/bets/{id}/cancel</code></pre>
-      <div class="note">
-        <strong>Estados de apuesta:</strong> <code>pending_deposits → funded → settled</code>
-        (o <code>cancelled</code> / <code>expired</code> / <code>refunded</code>).
-        <strong>Depósito:</strong> <code>pending | paid | refunded | failed</code>.
-        Un único vocabulario en toda la API.
-      </div>
 
-      <h2>5. Multijugador, presencia y social</h2>
-      <table>
-        <tr><th>Endpoint</th><th>Auth</th><th>Qué hace</th></tr>
-        <tr><td><code>GET /api/v1/rooms/verify</code></td><td>Bearer invite</td><td>Valida el token de un jugador que entra a una sala.</td></tr>
-        <tr><td><code>POST /api/v1/rooms/{roomId}/presence</code></td><td>Bearer invite</td><td>Heartbeat + roster de la sala (~2 s).</td></tr>
-        <tr><td><code>POST /api/v1/presence</code></td><td>API key</td><td>Presencia global del jugador en tu juego (TTL ~30 s). Bolsa libre <code>state</code>.</td></tr>
-        <tr><td><code>GET /api/v1/friends</code></td><td>API key</td><td>Amigos (NIP-02) con su presencia y <code>state</code>.</td></tr>
-        <tr><td><code>POST·GET /api/v1/invites</code></td><td>API key</td><td>Invitar a un amigo a una sala / consultar el launch pendiente.</td></tr>
-      </table>
+            <p class="note">
+              <strong>Idempotencia:</strong> <code>POST /bets</code> acepta
+              <code>Idempotency-Key</code> y <code>/result</code> responde OK si la apuesta
+              ya estaba en estado terminal. Eso simplifica reintentos desde tu backend.
+            </p>
+          </section>
 
-      <h3>Estado compartido de sala <span class="pill">Bearer invite</span></h3>
-      <p>
-        ¿Tu juego <strong>no tiene backend propio</strong>? Luna Negra te hostea el "tablero común"
-        (bolsa key/value, estilo <code>SetLobbyData</code> de Steam) más el estado por jugador.
-        La plataforma no interpreta las claves: el significado lo ponés vos.
-      </p>
-      <pre><code>// Escribir (mezcla por clave, last-write-wins; cada POST es heartbeat)
-POST /api/v1/rooms/{roomId}/state
-{ "set": { "turno": "x", "tablero": [...] },   // bolsa compartida (≤8KB)
-  "self": { "listo": true },                   // tu bolsa de jugador (≤2KB)
-  "version": 3 }                               // opcional: concurrencia optimista (CAS)
+          <section id="multijugador">
+            <h2>4. Multijugador, presencia y social</h2>
+            <p class="section-lead">
+              Si tu juego no tiene backend completo, Luna Negra puede cubrir invites,
+              presencia, roster y un estado compartido simple por sala.
+            </p>
+            <div class="endpoint-table">
+              <table>
+                <thead>
+                  <tr><th>Endpoint</th><th>Auth</th><th>Uso</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><span class="method">GET</span> <code>/api/v1/rooms/verify</code></td><td>Bearer invite</td><td>Valida el token de un jugador que entra a una sala.</td></tr>
+                  <tr><td><span class="method post">POST</span> <code>/api/v1/rooms/{roomId}/presence</code></td><td>Bearer invite</td><td>Heartbeat y roster de sala.</td></tr>
+                  <tr><td><span class="method post">POST</span> <code>/api/v1/rooms/{roomId}/state</code></td><td>Bearer invite</td><td>Escribe estado compartido y estado propio del jugador.</td></tr>
+                  <tr><td><span class="method">GET</span> <code>/api/v1/rooms/{roomId}/state</code></td><td>Bearer invite</td><td>Lee estado, version, members y soporta <code>ETag</code>.</td></tr>
+                  <tr><td><span class="method post">POST</span> <code>/api/v1/presence</code></td><td>API key</td><td>Presencia global del jugador en tu juego.</td></tr>
+                  <tr><td><span class="method">GET</span> <code>/api/v1/friends</code></td><td>API key</td><td>Amigos NIP-02 con presencia y busqueda.</td></tr>
+                  <tr><td><span class="method post">POST</span> <code>/api/v1/invites</code></td><td>API key</td><td>Invita a un amigo a una sala o deja launch pendiente.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3>Estado compartido de sala</h3>
+            <pre><code>POST /api/v1/rooms/{roomId}/state
+{
+  "set": { "turno": "x", "tablero": ["x", null, "o"] },
+  "self": { "listo": true },
+  "version": 3
+}
 
-// Leer (polling barato con ETag → 304 si no cambió)
 GET /api/v1/rooms/{roomId}/state
-// → { data, version, members: [{ npub, name, avatar, state }] }</code></pre>
+// -&gt; { data, version, members: [{ npub, name, avatar, state }] }</code></pre>
+          </section>
 
-      <h2>6. Marcador <span class="pill">Bearer entitlement</span></h2>
-      <p>Rankings por juego. El <code>name</code> lo elegís vos (<code>semanal</code>, <code>clasico</code>, …). Política "se queda el mejor".</p>
-      <pre><code>POST /api/v1/leaderboards/{name}/scores   { "score": 1234 }
-// → { score, rank, improved }   (improved:false si no superó su récord)
+          <section id="leaderboards">
+            <h2>5. Marcadores <span class="badge">Bearer entitlement</span></h2>
+            <p class="section-lead">
+              Rankings por juego. El <code>name</code> lo define tu juego:
+              <code>semanal</code>, <code>clasico</code>, <code>speedrun</code>. La politica
+              actual conserva el mejor puntaje.
+            </p>
+            <div class="two-col">
+              <pre><code>POST /api/v1/leaderboards/{name}/scores
+{ "score": 1234 }
+// -&gt; { score, rank, improved }
 
-GET /api/v1/leaderboards/{name}?window=all|week&view=top|around&npub=
-// → { entries: [{ npub, displayName, score, rank }] }</code></pre>
-      <div class="note warn">
-        ⚠️ <strong>Anti-trampa.</strong> El puntaje lo manda el cliente y es <strong>falsificable</strong>.
-        El marcador sirve para <strong>mostrar</strong> rankings (como Steam), <strong>NO</strong> para
-        resolver apuestas: el resultado de una apuesta siempre viene de tu game server por
-        <code>/bets/{id}/result</code> (firmado por el oráculo). No lo uses como fuente de verdad de plata.
-      </div>
+GET /api/v1/leaderboards/{name}?window=all&amp;view=top
+// -&gt; { entries: [{ npub, displayName, score, rank }] }</code></pre>
+              <p class="note danger">
+                <strong>Anti-trampa:</strong> el puntaje lo manda el cliente y puede falsificarse.
+                No lo uses para resolver apuestas. El resultado con dinero siempre debe venir
+                de tu game server por <code>/bets/{id}/result</code>.
+              </p>
+            </div>
+          </section>
 
-      <h2>7. Webhooks <span class="pill">API key</span></h2>
-      <p>
-        Registrás tu URL con <code>POST /api/v1/provider/webhook</code> y Luna Negra te avisa los
-        eventos con un <strong>POST JSON</strong> firmado (cabecera <code>X-LunaNegra-Signature</code>,
-        HMAC-SHA256 del cuerpo crudo con tu secreto <code>whsec_…</code>). Cuerpo:
-        <code>{ id, type, created, data }</code>.
-      </p>
-      <table>
-        <tr><th>Evento</th><th>Cuándo</th></tr>
-        <tr><td><code>purchase.completed</code></td><td>un jugador compró tu juego</td></tr>
-        <tr><td><code>deposit.received</code></td><td>un participante depositó su stake</td></tr>
-        <tr><td><code>bet.funded</code></td><td>el pozo se completó</td></tr>
-        <tr><td><code>bet.settled</code></td><td>apuesta resuelta y pagada</td></tr>
-        <tr><td><code>bet.cancelled</code> · <code>bet.expired</code> · <code>bet.refunded</code></td><td>cancelación / vencimiento / reembolso</td></tr>
-        <tr><td><code>payout.sent</code></td><td>te enviamos tu parte de una compra</td></tr>
-      </table>
-      <p class="muted">Todos los eventos de apuesta incluyen <code>roomId</code> y <code>metadata</code> para que correlaciones con tu sala sin guardar una tabla aparte.</p>
+          <section id="webhooks">
+            <h2>6. Webhooks <span class="badge money">API key</span></h2>
+            <p class="section-lead">
+              Registra una URL y Luna Negra envia eventos firmados con
+              <code>X-LunaNegra-Signature</code>. La firma es HMAC-SHA256 del cuerpo crudo
+              usando tu secreto <code>whsec_...</code>.
+            </p>
+            <div class="endpoint-table">
+              <table>
+                <thead>
+                  <tr><th>Evento</th><th>Cuando ocurre</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>purchase.completed</code></td><td>Un jugador compro tu juego.</td></tr>
+                  <tr><td><code>deposit.received</code></td><td>Un participante deposito su stake.</td></tr>
+                  <tr><td><code>bet.funded</code></td><td>El pozo completo todos los depositos.</td></tr>
+                  <tr><td><code>bet.settled</code></td><td>Apuesta resuelta y pagada.</td></tr>
+                  <tr><td><code>bet.cancelled</code>, <code>bet.expired</code>, <code>bet.refunded</code></td><td>Cancelacion, vencimiento o reembolso.</td></tr>
+                  <tr><td><code>payout.sent</code></td><td>Se envio tu parte de una compra.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-      <h2>8. SDK de TypeScript</h2>
-      <p>Un wrapper para game servers: valida tokens offline y envuelve los endpoints de API key.</p>
-      <pre><code>npm i jose   // peer dependency
+          <section id="sdk">
+            <h2>7. SDK de TypeScript</h2>
+            <p class="section-lead">
+              El SDK envuelve el contrato publico para game servers: validacion offline,
+              apuestas, webhooks, perfiles y actividad.
+            </p>
+            <pre><code>npm i jose
 
-import { createClient, verifyWebhook } from "@luna-negra/sdk";
-const luna = createClient({ baseUrl: "https://luna-negra", apiKey: process.env.LUNA_NEGRA_API_KEY });
+import { createClient, verifyWebhook } from "@lunanegra/sdk";
 
-const ent = await luna.verifyAccess(lnToken);     // valida el entitlement (offline)
+const luna = createClient({
+  baseUrl: "https://&lt;LUNA_NEGRA&gt;",
+  apiKey: process.env.LUNA_NEGRA_API_KEY,
+});
+
+const entitlement = await luna.verifyAccess(lnToken);
 const bet = await luna.createBet({ gameId, participants, stakeSats: 10 });
-const info = await luna.getBet(bet.betId);          // estado + handles de pago
-await luna.reportWinners(bet.betId, [npubGanador]); // resolver (idempotente)</code></pre>
+const info = await luna.getBet(bet.betId);
+await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
+          </section>
 
-      <footer>
-        <p>
-          Esto es la guía en prosa. Para el detalle campo por campo y probar en vivo:
-          <a href="/developers">referencia interactiva</a> · <a href="/openapi.json">/openapi.json</a>.
-          ¿Dudas? Escribinos desde el panel <a href="/provider">/provider</a>.
-        </p>
-      </footer>
-    </div>
+          <section id="endpoints">
+            <h2>8. Referencia rapida de endpoints</h2>
+            <p class="section-lead">
+              Para campos completos, codigos de error y schemas, usa
+              <a href="/developers">/developers</a> o <a href="/openapi.json">/openapi.json</a>.
+            </p>
+            <div class="endpoint-table">
+              <table>
+                <thead>
+                  <tr><th>Metodo</th><th>Endpoint</th><th>Auth</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><span class="method">GET</span></td><td><code>/.well-known/jwks.json</code></td><td>Publico</td></tr>
+                  <tr><td><span class="method">GET</span></td><td><code>/api/v1/session</code></td><td>Bearer entitlement</td></tr>
+                  <tr><td><span class="method">GET</span></td><td><code>/api/v1/entitlements/verify</code></td><td>Bearer entitlement</td></tr>
+                  <tr><td><span class="method">GET</span></td><td><code>/api/v1/rooms/verify</code></td><td>Bearer invite</td></tr>
+                  <tr><td><span class="method post">POST</span></td><td><code>/api/v1/rooms/{roomId}/presence</code></td><td>Bearer invite</td></tr>
+                  <tr><td><span class="method">GET</span> <span class="method post">POST</span></td><td><code>/api/v1/rooms/{roomId}/state</code></td><td>Bearer invite</td></tr>
+                  <tr><td><span class="method post">POST</span></td><td><code>/api/v1/presence</code></td><td>API key</td></tr>
+                  <tr><td><span class="method">GET</span></td><td><code>/api/v1/friends</code></td><td>API key</td></tr>
+                  <tr><td><span class="method post">POST</span></td><td><code>/api/v1/invites</code></td><td>API key</td></tr>
+                  <tr><td><span class="method">GET</span> <span class="method post">POST</span></td><td><code>/api/v1/leaderboards/{name}</code> / <code>/scores</code></td><td>Bearer entitlement</td></tr>
+                  <tr><td><span class="method money">POST</span></td><td><code>/api/v1/bets</code></td><td>API key</td></tr>
+                  <tr><td><span class="method">GET</span></td><td><code>/api/v1/bets/{id}</code></td><td>API key</td></tr>
+                  <tr><td><span class="method money">POST</span></td><td><code>/api/v1/bets/{id}/result</code></td><td>API key o evento firmado</td></tr>
+                  <tr><td><span class="method post">POST</span></td><td><code>/api/v1/games/{slug}/activity</code></td><td>API key</td></tr>
+                  <tr><td><span class="method">GET</span> <span class="method post">POST</span></td><td><code>/api/v1/provider/webhook</code></td><td>API key</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="footer shell">
+      Esta guia resume el camino recomendado. El contrato completo vive en
+      <a href="/developers">/developers</a> y <a href="/openapi.json">/openapi.json</a>.
+    </footer>
   </body>
 </html>`;
 
