@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyApiKey } from "@/lib/api-keys";
 import { computeEconomics, publicBetStatus } from "@/lib/escrow-math";
 import { ensureDepositInvoice } from "@/lib/escrow-deposit";
+import { checkAndSettleDeposit } from "@/lib/escrow-tick";
 import { encodeLnurl } from "@/lib/lnurl";
 import { msatToSats } from "@/lib/money";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
@@ -19,6 +20,28 @@ function baseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
+// Anti-rebote del lookup de invoice por participante: el consumidor de la API
+// (un juego) puede pollear este GET cada <1 s y con varios clientes a la vez, y
+// cada checkAndSettleDeposit hace un lookup_invoice por NWC sobre el relay. Sin
+// esto martillaríamos el wallet. 1,5 s mantiene la detección casi inmediata sin
+// disparar una consulta al relay por cada request. (Caché por instancia; bajo
+// ráfaga degrada a más consultas, nunca a un resultado incorrecto.)
+const ONDEMAND_CHECK_MIN_MS = 1500;
+const lastDepositCheckAt = new Map<string, number>();
+
+async function checkPendingDepositsThrottled(
+  participantIds: string[],
+): Promise<boolean> {
+  const now = Date.now();
+  let settledAny = false;
+  for (const id of participantIds) {
+    if (now - (lastDepositCheckAt.get(id) ?? 0) < ONDEMAND_CHECK_MIN_MS) continue;
+    lastDepositCheckAt.set(id, now);
+    if (await checkAndSettleDeposit(id)) settledAny = true;
+  }
+  return settledAny;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -33,13 +56,30 @@ export async function GET(
   }
 
   const { id } = await params;
-  const bet = await prisma.bet.findUnique({
+  let bet = await prisma.bet.findUnique({
     where: { id },
     include: { participants: true },
   });
   if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
   if (bet.providerId !== providerId) {
     return apiError("NOT_BET_OWNER", "La apuesta no es de tu proveedor", 403);
+  }
+
+  // Detección on-demand para consumidores de la API de proveedor (p. ej. un juego
+  // que postea el estado de la apuesta a sus jugadores): verificamos los invoices
+  // pendientes ya mismo en vez de esperar al tick de ~1 min. Sin esto, el pago del
+  // QR solo se detecta cuando alguien abre la web propia de Luna. Esto settlea el
+  // depósito y dispara los webhooks (deposit.received / bet.funded) al instante.
+  if (bet.status === "pending_deposits") {
+    const pending = bet.participants
+      .filter((p) => p.depositStatus === "pending")
+      .map((p) => p.id);
+    if (await checkPendingDepositsThrottled(pending)) {
+      bet = (await prisma.bet.findUnique({
+        where: { id },
+        include: { participants: true },
+      }))!;
+    }
   }
 
   const sats = (msat: bigint) => Number(msatToSats(msat));
