@@ -7,6 +7,7 @@ import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { PlayButton } from "@/components/play-button";
 import { priceLabel } from "@/lib/format";
+import { isWebLNAvailable, payWithExtension, WebLNError } from "@/lib/webln";
 
 type Props = {
   gameId: string;
@@ -31,7 +32,14 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
   const [devMode, setDevMode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [hasWebln, setHasWebln] = useState(false);
+  const [weblnPaying, setWeblnPaying] = useState(false);
+  const [weblnError, setWeblnError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setHasWebln(isWebLNAvailable());
+  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -50,7 +58,23 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
     setPurchaseId(null);
     setError(null);
     setExpired(false);
+    setWeblnError(null);
+    setWeblnPaying(false);
   }, [stopPolling]);
+
+  const payWithExtensionClick = useCallback(async () => {
+    if (!invoice) return;
+    setWeblnError(null);
+    setWeblnPaying(true);
+    try {
+      await payWithExtension(invoice);
+      // El éxito lo confirma el polling de estado (status → paid).
+    } catch (e) {
+      setWeblnError(e instanceof WebLNError ? e.message : "No se pudo pagar con la extensión.");
+    } finally {
+      setWeblnPaying(false);
+    }
+  }, [invoice]);
 
   const startBuy = useCallback(async () => {
     setError(null);
@@ -164,6 +188,19 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
                 alt="QR del invoice"
                 className="mx-auto mt-4 rounded-lg bg-white p-2"
               />
+            ) : null}
+            {hasWebln ? (
+              <Button
+                variant="btc"
+                className="mt-4 w-full"
+                onClick={payWithExtensionClick}
+                disabled={weblnPaying}
+              >
+                {weblnPaying ? "Pagando…" : "⚡ Pagar con extensión (Alby)"}
+              </Button>
+            ) : null}
+            {weblnError ? (
+              <p className="mt-2 text-sm text-[var(--lose)]">{weblnError}</p>
             ) : null}
             <button
               onClick={copyInvoice}

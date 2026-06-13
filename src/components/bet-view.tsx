@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { isWebLNAvailable, payWithExtension, WebLNError } from "@/lib/webln";
 
 type Participant = { npub: string; name: string | null; paid: boolean; refunded: boolean };
 type BetData = {
@@ -43,8 +44,15 @@ export function BetView({ betId }: { betId: string }) {
   const [busy, setBusy] = useState(false);
   const [withdrawQr, setWithdrawQr] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [hasWebln, setHasWebln] = useState(false);
+  const [weblnPaying, setWeblnPaying] = useState(false);
+  const [weblnError, setWeblnError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [, startLoadTransition] = useTransition();
+
+  useEffect(() => {
+    setHasWebln(isWebLNAvailable());
+  }, []);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/escrow/bets/${betId}`);
@@ -91,6 +99,20 @@ export function BetView({ betId }: { betId: string }) {
     setInvoice(null);
     setQr(null);
     load();
+  }
+
+  async function payExtension() {
+    if (!invoice) return;
+    setWeblnError(null);
+    setWeblnPaying(true);
+    try {
+      await payWithExtension(invoice);
+      // El polling de 3s detecta el depósito y actualiza el estado.
+    } catch (e) {
+      setWeblnError(e instanceof WebLNError ? e.message : "No se pudo pagar con la extensión.");
+    } finally {
+      setWeblnPaying(false);
+    }
   }
 
   if (loading) return null;
@@ -211,6 +233,19 @@ export function BetView({ betId }: { betId: string }) {
                 {qr ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={qr} alt="QR" className="mx-auto mt-3 rounded-lg bg-white p-2" />
+                ) : null}
+                {hasWebln ? (
+                  <Button
+                    variant="btc"
+                    className="mt-3 w-full"
+                    onClick={payExtension}
+                    disabled={weblnPaying}
+                  >
+                    {weblnPaying ? "Pagando…" : "⚡ Pagar con extensión (Alby)"}
+                  </Button>
+                ) : null}
+                {weblnError ? (
+                  <p className="mt-2 text-sm text-[var(--lose)]">{weblnError}</p>
                 ) : null}
                 <button
                   onClick={() => navigator.clipboard.writeText(invoice)}
