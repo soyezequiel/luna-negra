@@ -57,6 +57,8 @@ con código estable, sin cachés sorpresa.
 | **Apuesta** | `POST /api/v1/bets`, `GET /api/v1/bets/{id}`, `/cancel`, `/result` | **Limpiar** (vocabulario único, handles dentro del detalle, sin caché, idempotente) |
 | **Avisos** | `GET/POST /api/v1/provider/webhook` + eventos | **Estabilizar** (nombres finales, payload uniforme) |
 | **Actividad** | `POST /api/v1/games/{slug}/activity` | **Mantener** |
+| **Sala (estado)** | `GET/POST /api/v1/rooms/{roomId}/state` | **Construir** — bolsa key/value compartida, para juegos sin backend |
+| **Marcador** | `GET/POST /api/v1/leaderboards/{name}` | **Construir** — store de puntajes con nombre |
 
 ---
 
@@ -140,22 +142,49 @@ En `F:\proyectos\tetris`, reescribir contra el contrato limpio y **borrar la cap
   alinear a los endpoints/paths nuevos.
 - Actualizar `docs/luna-negra-social-spec.md` del repo de Tetris.
 
-### Fase 7 — Docs / SDK como fuente de verdad
+### Fase 7 — Sala con estado compartido (primitiva nueva, para el próximo juego)
+Para juegos **sin backend propio** (un cliente estático, como el demo): Luna Negra
+hostea el "tablero común". Se construye **genérica** (bolsa key/value, estilo
+`SetLobbyData` de Steam), no a medida de un juego.
+
+- **Auth = jugador** (Bearer invite/entitlement), **no** API key: el cliente del juego
+  escribe sin servidor propio. Reusa el patrón que ya tiene `/api/v1/rooms/{roomId}/presence`.
+- **Datos compartidos de la sala:** `POST /api/v1/rooms/{roomId}/state` con
+  `{ set: { clave: valor, … } }` (last-write-wins por clave; `version` opcional para
+  concurrencia optimista). `GET /api/v1/rooms/{roomId}/state` → `{ data, version, members }`,
+  con `members[]` trayendo el `state` por jugador (de Fase 3). Polling con `version`/ETag
+  para que el GET sea barato.
+- **Significado lo decide el juego:** la plataforma no interpreta las claves (tablero,
+  pregunta actual, config, turno…).
+- **No reemplaza** lo de Tetris: Tetris sigue con su backend; esta primitiva es para el
+  juego que no tiene uno.
+- Archivos nuevos: `src/app/api/v1/rooms/[roomId]/state/route.ts` + store en `src/lib/`
+  (TTL corto, como la presencia). Validar tamaño máximo de la bolsa.
+
+### Fase 8 — Marcador / leaderboard (primitiva nueva)
+Store de puntajes con nombre, genérico y por proveedor/juego.
+
+- **Subir:** `POST /api/v1/leaderboards/{name}/scores` con `{ score }`, auth = jugador
+  (Bearer entitlement). Política "se queda el mejor". `{name}` lo elige el juego
+  (`semanal`, `clasico`, …).
+- **Leer:** `GET /api/v1/leaderboards/{name}?window=all|week&view=top|around&npub=`
+  → `{ entries: [{ npub, displayName, score, rank }] }`.
+- **Anti-trampa (importante):** un puntaje enviado por el **cliente es falsificable**.
+  Sirve para **mostrar** rankings (igual que Steam), **NO** para resolver apuestas — el
+  resultado de una apuesta sigue viniendo del game server por `/result`. Dejar esto
+  escrito en los docs.
+- Archivos nuevos: `src/app/api/v1/leaderboards/[name]/route.ts` (+ `/scores`), modelo
+  `Leaderboard`/`Score` en `prisma/schema.prisma` + migración.
+
+> **Cuidado (especulativo):** ningún juego de hoy las usa. Antes de construirlas,
+> bocetar el "próximo juego" concreto (p. ej. un por-turnos) y validar que la bolsa
+> key/value y el leaderboard le alcanzan. Mantenerlas **genéricas**: si terminan con
+> campos a medida de un juego, dejaron de ser primitivas.
+
+### Fase 9 — Docs / SDK como fuente de verdad
 - Actualizar [`api-publica.md`](api-publica.md), [`public/openapi.json`](../public/openapi.json)
   y [`sdk/index.ts`](../sdk/index.ts) al contrato final (incluido `/invites`, presencia con
-  `state`, detalle con handles).
-
----
-
-## Diferidos a propósito (no construir ahora)
-
-| No se construye | Por qué |
-|---|---|
-| **Sala con estado compartido** en Luna Negra | Tetris hostea su propia sala/estado; ningún juego lo pide |
-| **Marcador / leaderboard** en Luna Negra | Tetris hostea el suyo (`api/leaderboard.ts`) |
-
-Si más adelante aparece un juego **sin** backend propio, se suman como primitivas
-genéricas (bolsa key/value), no como features a medida.
+  `state`, detalle con handles, **sala-estado** y **marcador**).
 
 ## Riesgos y cuidados
 
@@ -169,12 +198,19 @@ genéricas (bolsa key/value), no como features a medida.
 
 ## Orden sugerido (ROI para dev solo)
 
+**Bloque A — camino crítico (lo que necesita el juego real, Tetris):**
 1. **Fase 0** (definiciones) — barato, desbloquea todo.
 2. **Fase 4 + 5** (apuestas + webhooks) — máximo borrado de código defensivo en Tetris.
 3. **Fase 2** (unificar invitaciones) — reduce superficie visible.
-4. **Fase 3** (presencia `state`) — chico, a futuro.
+4. **Fase 3** (presencia `state`) — chico, y prepara la sala-estado.
 5. **Fase 6** (Tetris) — en lockstep con cada fase de arriba.
-6. **Fase 7** (docs/SDK) — al cierre.
+
+**Bloque B — primitivas para el próximo juego (después del bloque A, no bloquea el deadline):**
+6. **Fase 7** (sala con estado compartido).
+7. **Fase 8** (marcador).
+
+**Cierre:**
+8. **Fase 9** (docs/SDK) — refleja todo lo anterior.
 
 ## Checklist
 
@@ -185,4 +221,6 @@ genéricas (bolsa key/value), no como features a medida.
 - [ ] Fase 4: detalle con handles; `/deposits` borrado; `/result` idempotente; sin caché; tests de escrow verdes.
 - [ ] Fase 5: webhooks con nombres finales; payload con `roomId`/`metadata`.
 - [ ] Fase 6: Tetris actualizado; capa defensiva borrada; build verde.
-- [ ] Fase 7: `api-publica.md`, `openapi.json`, `sdk/index.ts` al día.
+- [ ] Fase 7: `GET/POST /api/v1/rooms/{roomId}/state` (key/value genérico, auth jugador).
+- [ ] Fase 8: `GET/POST /api/v1/leaderboards/{name}` + modelo y migración; nota anti-trampa en docs.
+- [ ] Fase 9: `api-publica.md`, `openapi.json`, `sdk/index.ts` al día (incluye sala-estado y marcador).

@@ -2,11 +2,20 @@ import { verifyApiKey } from "@/lib/api-keys";
 import { prisma } from "@/lib/prisma";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
-import { queueGameLaunchRequest } from "@/lib/game-launch-requests";
+import {
+  queueGameLaunchRequest,
+  consumeGameLaunchRequest,
+  recordGameLaunchListener,
+} from "@/lib/game-launch-requests";
 
-// Invitar a un amigo a una sala. Luna Negra persiste la invitación y se la muestra
-// al invitado dentro de la tienda (toast in-app, vía GET /api/invites + polling).
+// Invitaciones a sala (recurso unificado). Reemplaza a /friends/invite + /launch-requests.
 // Auth: Authorization: Bearer <API_KEY> (ln_sk_…).
+//
+//   POST       → crear una invitación: { fromNpub, toNpub, roomId, inviteUrl, gameId? }.
+//                Luna Negra notifica al invitado (toast in-app) y, si está jugando,
+//                le encola la orden de entrada a la sala. → { delivered, launchQueued }.
+//   GET ?npub= → el juego abierto consume la orden de entrada pendiente del jugador
+//                (también registra que está escuchando). → { request }.
 export function OPTIONS() {
   return corsPreflight();
 }
@@ -14,11 +23,28 @@ export function OPTIONS() {
 const HTTP_URL_RE = /^https?:\/\//;
 const INVITE_TTL_MS = 3_600_000; // 1h
 
+const BAD_KEY = () =>
+  apiError("INVALID_API_KEY", "API key inválida (Authorization: Bearer ln_sk_…)", 401);
+
+export async function GET(req: Request) {
+  const providerId = await verifyApiKey(req);
+  if (!providerId) return BAD_KEY();
+
+  const url = new URL(req.url);
+  const pubkey = pubkeyFromNpub(url.searchParams.get("npub") ?? "");
+  if (!pubkey) {
+    return apiError("INVALID_NPUB", "Falta o es inválido `npub`", 400);
+  }
+
+  const npub = npubOf(pubkey);
+  await recordGameLaunchListener({ providerId, npub });
+  const request = await consumeGameLaunchRequest({ providerId, npub });
+  return apiOk({ request });
+}
+
 export async function POST(req: Request) {
   const providerId = await verifyApiKey(req);
-  if (!providerId) {
-    return apiError("INVALID_API_KEY", "API key inválida (Authorization: Bearer ln_sk_…)", 401);
-  }
+  if (!providerId) return BAD_KEY();
 
   const body = (await req.json().catch(() => ({}))) as {
     fromNpub?: unknown;

@@ -357,14 +357,14 @@ Amigos (contactos NIP-02) con su presencia en este juego. Auth: API key. Query: 
 - **200:** `{ "friends": [{ "npub", "displayName", "avatarUrl", "presence", "roomId", "lastSeenMs", "isMember", "lastPlayedAt", "isFollow" }], "query"? }`
 - **400** `INVALID_NPUB` · **401** `INVALID_API_KEY`
 
-#### `POST /api/v1/friends/invite`
-Invita a un amigo a una sala (Luna Negra muestra el toast in-app). Auth: API key.
+#### `POST /api/v1/invites`
+Invita a un amigo a una sala (Luna Negra muestra el toast in-app). Auth: API key. Reemplaza a `friends/invite` + `launch-requests`.
 - **Body:** `{ "fromNpub", "toNpub", "roomId", "inviteUrl", "gameId"? }`
 - **200:** `{ "delivered", "launchQueued" }`
 - **400** `INVALID_NPUB`/`MISSING_ROOM`/`INVALID_INVITE_URL` · **401** `INVALID_API_KEY`
 
-#### `GET /api/v1/launch-requests`
-Órdenes de entrada a sala pendientes para un juego abierto (polling). Auth: API key. Query: `npub`.
+#### `GET /api/v1/invites`
+Orden de entrada a sala pendiente para un juego abierto (polling). Auth: API key. Query: `npub`.
 - **200:** `{ "request": { … } | null }` · **400** `INVALID_NPUB` · **401** `INVALID_API_KEY`
 
 ### Apuestas / escrow (API key)

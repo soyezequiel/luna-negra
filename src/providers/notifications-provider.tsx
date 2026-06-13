@@ -253,7 +253,7 @@ export function NotificationsProvider({
   }, [user, notify, fireDesktop, nameOf]);
 
   // Polling del buzón de invitaciones a sala que envían los proveedores de juegos
-  // (POST /api/v1/friends/invite → persistidas; acá las mostramos como toast). La
+  // (POST /api/v1/invites → persistidas; acá las mostramos como toast). La
   // `inviteUrl` es del deploy externo del juego, así que se abre en pestaña nueva.
   useEffect(() => {
     if (!user) return;

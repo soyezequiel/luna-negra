@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   gameInviteCreate: vi.fn(),
   userFindUnique: vi.fn(),
   queueGameLaunchRequest: vi.fn(),
+  recordGameLaunchListener: vi.fn(),
+  consumeGameLaunchRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/api-keys", () => ({
@@ -31,17 +33,27 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/game-launch-requests", () => ({
   queueGameLaunchRequest: mocks.queueGameLaunchRequest,
+  recordGameLaunchListener: mocks.recordGameLaunchListener,
+  consumeGameLaunchRequest: mocks.consumeGameLaunchRequest,
 }));
 
 async function postInvite(body: unknown) {
-  const { POST } = await import("@/app/api/v1/friends/invite/route");
-  const res = await POST(new Request("http://local/api/v1/friends/invite", {
+  const { POST } = await import("@/app/api/v1/invites/route");
+  const res = await POST(new Request("http://local/api/v1/invites", {
     method: "POST",
     headers: {
       authorization: "Bearer ln_sk_test",
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
+  }));
+  return { status: res.status, json: await res.json() };
+}
+
+async function getPendingLaunch(npub: string) {
+  const { GET } = await import("@/app/api/v1/invites/route");
+  const res = await GET(new Request(`http://local/api/v1/invites?npub=${encodeURIComponent(npub)}`, {
+    headers: { authorization: "Bearer ln_sk_test" },
   }));
   return { status: res.status, json: await res.json() };
 }
@@ -55,9 +67,11 @@ beforeEach(() => {
     pubkey: "guest",
   });
   mocks.queueGameLaunchRequest.mockReset().mockResolvedValue(true);
+  mocks.recordGameLaunchListener.mockReset().mockResolvedValue(undefined);
+  mocks.consumeGameLaunchRequest.mockReset().mockResolvedValue(null);
 });
 
-describe("POST /api/v1/friends/invite", () => {
+describe("POST /api/v1/invites", () => {
   it("queues a launch request for a known invited user when gameId is provided", async () => {
     const { status, json } = await postInvite({
       fromNpub: "npub-host",
@@ -100,5 +114,30 @@ describe("POST /api/v1/friends/invite", () => {
     expect(json).toEqual({ delivered: false, launchQueued: false });
     expect(mocks.gameInviteCreate).toHaveBeenCalledTimes(1);
     expect(mocks.queueGameLaunchRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/invites", () => {
+  it("records the listener and consumes the pending launch request", async () => {
+    mocks.consumeGameLaunchRequest.mockResolvedValue({ id: "launch1", roomId: "ROOM1" });
+
+    const { status, json } = await getPendingLaunch("npub-guest");
+
+    expect(status).toBe(200);
+    expect(json).toEqual({ request: { id: "launch1", roomId: "ROOM1" } });
+    expect(mocks.recordGameLaunchListener).toHaveBeenCalledWith({
+      providerId: "prov1",
+      npub: "npub-guest",
+    });
+    expect(mocks.consumeGameLaunchRequest).toHaveBeenCalledWith({
+      providerId: "prov1",
+      npub: "npub-guest",
+    });
+  });
+
+  it("rejects an invalid npub", async () => {
+    const { status, json } = await getPendingLaunch("not-an-npub");
+    expect(status).toBe(400);
+    expect(json.error.code).toBe("INVALID_NPUB");
   });
 });
