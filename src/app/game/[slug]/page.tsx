@@ -41,12 +41,16 @@ export default async function GamePage({
     });
     owned = p?.status === "paid";
   }
-  const canPlay = owned || game.priceSats === 0;
+  // Solo se considera "en biblioteca" / jugable si el usuario realmente posee el
+  // juego (entitlement pagado). Los juegos gratis NO son de tu propiedad hasta
+  // que los agregás con "Agregar a la biblioteca" (entitlement inmediato), así
+  // evitamos mostrar "✓ En tu biblioteca" a quien todavía no lo tiene.
+  const canPlay = owned;
 
   // Modo de la ficha: biblioteca si el jugador es dueño (salvo que fuerce tienda
   // con ?view=store); si no, tienda. (Ver IMPLEMENTATION_PROMPT §3.2.)
   const mode: "store" | "library" =
-    canPlay && sp.view !== "store" ? "library" : "store";
+    owned && sp.view !== "store" ? "library" : "store";
 
   const hue = hueFromSlug(game.slug);
   const media = gameGalleryMedia(game);
