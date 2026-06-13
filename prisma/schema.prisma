@@ -240,6 +240,38 @@ model RoomPresence {
   @@index([roomId])
 }
 
+// Estado compartido de una sala, para juegos SIN backend propio (Luna Negra
+// hostea el "tablero común", estilo SetLobbyData de Steam). Bolsa key/value
+// libre; la plataforma no interpreta su contenido. TTL corto: si nadie escribe
+// por un rato, la sala se considera abandonada y se purga.
+model RoomState {
+  id        String   @id @default(cuid())
+  roomId    String   @unique
+  dataJson  String   @default("{}") // bolsa compartida (JSON serializado, last-write-wins por clave)
+  version   Int      @default(0) // se incrementa en cada escritura compartida (CAS opcional / ETag)
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // now + TTL; se renueva en cada escritura
+
+  @@index([expiresAt])
+}
+
+// Estado por jugador dentro de una sala (estilo SetLobbyMemberData de Steam): lo
+// escribe el propio jugador con su invite token. Alimenta `members[]` del estado
+// de la sala. TTL corto = roster vivo (cada POST actúa de heartbeat).
+model RoomMemberState {
+  id        String   @id @default(cuid())
+  roomId    String
+  npub      String
+  stateJson String   @default("{}") // bolsa libre del jugador (JSON serializado)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // now + TTL; se renueva en cada POST del jugador
+
+  @@unique([roomId, npub])
+  @@index([roomId])
+  @@index([expiresAt])
+}
+
 model Review {
   id        String   @id @default(cuid())
   userId    String
