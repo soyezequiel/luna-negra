@@ -220,7 +220,7 @@ Store de puntajes con nombre, genérico y por proveedor/juego.
 - [ ] Fase 3: presencia con `state`; `friends` expone `state`.
 - [ ] Fase 4: detalle con handles; `/deposits` borrado; `/result` idempotente; sin caché; tests de escrow verdes.
 - [x] Fase 5: webhooks con nombres finales (sin alias `bet.ready`); payload con `roomId`/`metadata`. Handler de Tetris simplificado (refresh directo); `depositEventIsPaid` + actualización optimista borrados.
-- [ ] Fase 6: Tetris actualizado; capa defensiva borrada; build verde.
+- [x] Fase 6: Tetris actualizado; capa defensiva borrada (normalizeBetStatus/Deposit, errorLooksResolved, isResolvedFromLuna, mergeDepositStatus, fetchDetailAndDeposits, unwrapEnvelope, _cb/no-cache, modo mock completo + store de presencia); tsc limpio + 166 tests verdes.
 - [ ] Fase 7: `GET/POST /api/v1/rooms/{roomId}/state` (key/value genérico, auth jugador).
 - [ ] Fase 8: `GET/POST /api/v1/leaderboards/{name}` + modelo y migración; nota anti-trampa en docs.
 - [ ] Fase 9: `api-publica.md`, `openapi.json`, `sdk/index.ts` al día (incluye sala-estado y marcador).
