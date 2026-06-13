@@ -90,6 +90,14 @@ Heartbeat + roster de la sala (~2 s). Auth: Bearer invite.
 - **200:** `{ "members": [{ "clientId", "npub", "host", "score", "name", "avatar" }] }`
 - **401** token inválido para la sala
 
+### `POST /api/v1/rooms/{roomId}/state` · `GET …/state`
+Estado compartido de la sala para juegos **sin backend propio** (Luna Negra hostea el "tablero común", estilo `SetLobbyData` de Steam). Auth: **Bearer invite** (la identidad sale del token). La plataforma **no interpreta** las claves: su significado lo decide el juego. TTL ~60 s: cada POST renueva la sala y registra al jugador en `members` (actúa de heartbeat).
+- **POST body:** `{ "set"?, "self"?, "version"? }`
+  - `set` (objeto ≤8KB): mezcla en la bolsa **compartida**, *last-write-wins por clave*. `version` (opcional) = concurrencia optimista: si no coincide con la versión actual → `409 VERSION_CONFLICT`.
+  - `self` (objeto ≤2KB): reemplaza la bolsa **del propio jugador** (su slice en `members`).
+- **GET:** `{ "data", "version", "members": [{ "npub", "name", "avatar", "state" }] }`. Trae `ETag`; el cliente puede pollear con `If-None-Match` y recibir `304` si no cambió. `Cache-Control: no-store`.
+- **400** `INVALID_SET`/`INVALID_SELF`/`STATE_TOO_LARGE` · **401** `INVALID_TOKEN` · **409** `VERSION_CONFLICT`
+
 ### `POST /api/v1/presence`
 Heartbeat de presencia del juego (~10 s, TTL ~30 s). Auth: API key.
 - **Body:** `{ "npub", "status": "in-game"|"online", "roomId"?, "state"? }`
@@ -112,6 +120,15 @@ Invita a un amigo a una sala (Luna Negra muestra el toast in-app al invitado). A
 ### `GET /api/v1/invites`
 Orden de entrada a sala pendiente para un juego abierto (polling). Auth: API key. Query: `npub`.
 - **200:** `{ "request": { … } | null }` · **400** `INVALID_NPUB` · **401** `INVALID_API_KEY`
+
+### `POST /api/v1/leaderboards/{name}/scores` · `GET /api/v1/leaderboards/{name}`
+Marcador con nombre, por juego (`name` lo elige el juego: `semanal`, `clasico`, …). Auth: **Bearer entitlement** (lnToken). El `npub` y el juego salen del token.
+- **POST body:** `{ "score" }` (entero 0…1e9). Política **"se queda el mejor"**.
+  - **200:** `{ "score", "rank", "improved" }` (`improved:false` si no superó su récord) · **400** `INVALID_NAME`/`INVALID_SCORE`
+- **GET query:** `window=all|week` · `view=top|around` · `npub` (requerido para `around`).
+  - **200:** `{ "entries": [{ "npub", "displayName", "score", "rank" }] }` (vacío si el marcador no existe). `Cache-Control: no-store`.
+
+> ⚠️ **Anti-trampa.** El puntaje lo manda el **cliente** y es **falsificable**. El marcador sirve para **mostrar** rankings (igual que Steam), **NO** para resolver apuestas: el resultado de una apuesta siempre viene del **game server** por `POST /api/v1/bets/{id}/result` (firmado por el oráculo del proveedor). No uses el marcador como fuente de verdad de dinero.
 
 ---
 
@@ -237,10 +254,13 @@ const luna = createClient({ baseUrl: "https://<LUNA_NEGRA>", apiKey: "ln_sk_…"
 | GET | `/api/v1/rooms/verify` | Bearer invite |
 | GET | `/api/v1/players/{npub}/profile` | — |
 | POST | `/api/v1/rooms/{roomId}/presence` | Bearer invite |
+| GET·POST | `/api/v1/rooms/{roomId}/state` | Bearer invite |
 | POST | `/api/v1/presence` | API key |
 | GET | `/api/v1/friends` | API key |
 | POST | `/api/v1/invites` | API key |
 | GET | `/api/v1/invites` | API key |
+| POST | `/api/v1/leaderboards/{name}/scores` | Bearer entitlement |
+| GET | `/api/v1/leaderboards/{name}` | Bearer entitlement |
 | POST | `/api/v1/bets` | API key |
 | GET | `/api/v1/bets/{id}` | API key |
 | POST | `/api/v1/bets/{id}/cancel` | API key |

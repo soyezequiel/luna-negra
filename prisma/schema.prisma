@@ -272,6 +272,36 @@ model RoomMemberState {
   @@index([expiresAt])
 }
 
+// Marcador con nombre, genérico y por juego (el `name` lo elige el juego:
+// "semanal", "clasico", …). OJO: un puntaje lo manda el CLIENTE y es
+// FALSIFICABLE → sirve para MOSTRAR rankings (como Steam), NO para resolver
+// apuestas (eso sigue viniendo del game server por /result).
+model Leaderboard {
+  id        String   @id @default(cuid())
+  gameId    String
+  name      String // lo elige el juego: "semanal", "clasico", …
+  createdAt DateTime @default(now())
+  scores    Score[]
+
+  @@unique([gameId, name])
+  @@index([gameId])
+}
+
+// Mejor puntaje por jugador en un marcador ("se queda el mejor": una fila por
+// jugador). `updatedAt` marca cuándo fijó ese récord (filtro de la ventana week).
+model Score {
+  id            String      @id @default(cuid())
+  leaderboardId String
+  leaderboard   Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
+  npub          String
+  score         Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([leaderboardId, npub])
+  @@index([leaderboardId, score])
+}
+
 model Review {
   id        String   @id @default(cuid())
   userId    String
