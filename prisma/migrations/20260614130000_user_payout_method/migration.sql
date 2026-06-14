@@ -1,0 +1,11 @@
+-- AlterTable: destino de cobros de premios/payouts. "address" = cascada lud16
+-- (Luna Negra → kind:0); "nwc" = el wallet NWC del usuario (vive sólo en su
+-- navegador), así que el server fuerza withdraw_pending y el cliente reclama por
+-- LNURL-withdraw.
+--
+-- Reconciliación: se usa IF NOT EXISTS porque en el entorno de dev la columna ya
+-- se agregó con `prisma db push` (aditivo, sin migración registrada). En Neon
+-- prod, donde la columna todavía no existe, esta sentencia la crea y backfillea
+-- las filas existentes con 'address'. En ambos casos `prisma migrate deploy`
+-- aplica sin reset ni pérdida de datos.
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "payoutMethod" TEXT NOT NULL DEFAULT 'address';
