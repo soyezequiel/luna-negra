@@ -1,0 +1,103 @@
+/* ============================================================
+   LUNA NEGRA — Design tokens (rediseño "Eclipse")
+   Pegá este bloque al inicio de tu globals.css y reemplazá los
+   valores hardcodeados por las variables var(--ln-*).
+   Concepto: disco negro + corona luminosa. Social-first, premium.
+   ============================================================ */
+
+:root {
+  /* ---------- Superficies (violeta-negro) ---------- */
+  --ln-bg:            #08070c;  /* fondo base de la app            */
+  --ln-bg-deep:       #050409;  /* inputs, fondos hundidos         */
+  --ln-panel:         #110f18;  /* paneles, navbar                 */
+  --ln-card:          #181522;  /* tarjetas (rgba 24,21,34)        */
+  --ln-logo-disc:     #0a0810;  /* disco del logo eclipse          */
+
+  /* ---------- Texto ---------- */
+  --ln-text:          #e9e6f2;  /* texto principal                 */
+  --ln-text-soft:     #cfc8de;  /* texto secundario                */
+  --ln-text-muted:    #9a93ad;  /* descripciones, metadatos        */
+  --ln-text-faint:    #5f5872;  /* labels, placeholders, hints     */
+
+  /* ---------- Marca ---------- */
+  /* Luna — periwinkle: acción primaria, navegación, identidad     */
+  --ln-luna:          #9d8cff;
+  --ln-luna-bright:   #c2b5ff;
+  --ln-luna-deep:     #7d6cf0;
+  /* Corona — oro: dinero (sats / Lightning / comprar / apostar)   */
+  --ln-corona:        #ffb648;
+  --ln-corona-bright: #ffcd7a;
+  /* Aurora — menta: jugar, online, social, éxito                  */
+  --ln-aurora:        #4fe6a8;
+  --ln-aurora-bright: #84f3c6;
+  /* Semánticos */
+  --ln-danger:        #e8907a;  /* expirado / perdido / cancelar   */
+
+  /* ---------- Texto sobre fondos de marca (para contraste) ---------- */
+  --ln-on-luna:       #1a1430;
+  --ln-on-corona:     #231304;
+  --ln-on-aurora:     #062414;
+
+  /* ---------- Bordes y líneas ---------- */
+  --ln-border:        rgba(255, 255, 255, .06);
+  --ln-border-strong: rgba(255, 255, 255, .10);
+  --ln-border-hair:   rgba(255, 255, 255, .05);
+
+  /* ---------- Tipografía ---------- */
+  --ln-font-display:  "Bricolage Grotesque", sans-serif; /* títulos       */
+  --ln-font-ui:       "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ln-font-mono:     "Geist Mono", ui-monospace, monospace; /* sats/labels */
+
+  /* ---------- Radios ---------- */
+  --ln-r-sm:    9px;
+  --ln-r-md:    13px;
+  --ln-r-lg:    18px;
+  --ln-r-xl:    22px;
+  --ln-r-pill:  999px;
+
+  /* ---------- Gradientes de marca ---------- */
+  --ln-grad-luna:   linear-gradient(120deg, #c2b5ff, #9d8cff);
+  --ln-grad-corona: linear-gradient(120deg, #ffcd7a, #ffb648);
+  --ln-grad-aurora: linear-gradient(120deg, #84f3c6, #4fe6a8);
+
+  /* ---------- Glows (sombras de color para hover/acento) ---------- */
+  --ln-glow-luna:   0 14px 36px -12px rgba(157, 140, 255, .70);
+  --ln-glow-corona: 0 14px 30px -14px rgba(255, 182, 72, .80);
+  --ln-glow-aurora: 0 12px 26px -14px rgba(79, 230, 168, .80);
+
+  /* ---------- Sombras de elevación ---------- */
+  --ln-shadow-card:  0 22px 48px -22px rgba(157, 140, 255, .55);
+  --ln-shadow-modal: 0 40px 100px -30px rgba(0, 0, 0, .95);
+
+  /* ---------- Fondo eclipse (pegar en el body o un wrapper fijo) ---------- */
+  --ln-eclipse-bg:
+    radial-gradient(1100px 760px at 82% -12%, rgba(157, 140, 255, .16), transparent 58%),
+    radial-gradient(820px 620px at 88% 4%, rgba(255, 182, 72, .10), transparent 60%),
+    radial-gradient(900px 900px at 8% 108%, rgba(79, 230, 168, .06), transparent 60%),
+    #08070c;
+}
+
+/* ------------------------------------------------------------
+   Ejemplo de uso (referencia rápida)
+   ------------------------------------------------------------
+   body                  { background: var(--ln-eclipse-bg); color: var(--ln-text);
+                           font-family: var(--ln-font-ui); }
+   h1, h2                { font-family: var(--ln-font-display); }
+   .precio, .sats        { font-family: var(--ln-font-mono); color: var(--ln-corona-bright); }
+
+   .btn-primary          { background: var(--ln-grad-luna);   color: var(--ln-on-luna);
+                           border-radius: var(--ln-r-pill);   box-shadow: var(--ln-glow-luna); }
+   .btn-pagar            { background: var(--ln-grad-corona); color: var(--ln-on-corona);
+                           box-shadow: var(--ln-glow-corona); }   ⚡ comprar / depositar
+   .btn-jugar            { background: var(--ln-grad-aurora); color: var(--ln-on-aurora);
+                           box-shadow: var(--ln-glow-aurora); }   ▶ jugar / sala
+
+   .card                 { background: var(--ln-card); border: 1px solid var(--ln-border);
+                           border-radius: var(--ln-r-lg); }
+
+   Presencia / estados:
+     online / in-game    -> var(--ln-aurora)
+     pozo financiado     -> var(--ln-aurora)
+     esperando depósitos -> var(--ln-corona)
+     expirado / perdido  -> var(--ln-danger)
+   ------------------------------------------------------------ */

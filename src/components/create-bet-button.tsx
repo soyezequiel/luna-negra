@@ -70,23 +70,25 @@ export function CreateBetButton({
 
   return (
     <>
-      <Button variant="btc" className="w-full" onClick={() => setOpen(true)}>
-        Crear apuesta 1v1
+      <Button variant="corona" className="w-full" onClick={() => setOpen(true)}>
+        ◆ Crear apuesta 1v1
       </Button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-line-2 bg-panel-2 p-6">
-            <h3 className="text-lg font-semibold text-ink">Apuesta 1v1</h3>
-            <p className="mt-2 text-sm text-muted">
+        <div className="fixed inset-0 z-[92] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-ln-xl border border-ln-corona/40 bg-ln-card p-6 shadow-ln-modal">
+            <h3 className="font-display text-lg font-bold text-white">
+              Apuesta 1v1
+            </h3>
+            <p className="mt-2 text-sm text-ln-muted">
               Las apuestas con sats se crean dentro de {title}: entrá, desafiá a un
               amigo y se genera el contrato de escrow automáticamente. El pozo
               queda retenido hasta que el juego reporte el resultado.
             </p>
-            <p className="mt-3 text-xs text-faint">
+            <p className="mt-3 text-xs text-ln-faint">
               Vas a ver el progreso en{" "}
-              <span className="text-btc">Apuestas</span> y en{" "}
-              <span className="text-blue">Tus apuestas en {title}</span>.
+              <span className="text-ln-corona">Apuestas</span> y en{" "}
+              <span className="text-ln-luna">Tus apuestas en {title}</span>.
             </p>
             <div className="mt-5 flex flex-col gap-2">
               <Button variant="play" onClick={launch} disabled={loading}>

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
+import { useNotify } from "@/providers/notifications-provider";
+import { useFriends } from "@/hooks/use-friends";
 import { fetchProfile, profileName, type NostrProfile } from "@/lib/nostr";
 import { Button } from "@/components/ui/button";
 import { satsLabel, hueFromSlug } from "@/lib/format";
@@ -32,20 +34,22 @@ function Kpi({
 }) {
   return (
     <div
-      className="rounded border border-line bg-panel p-4 pl-5"
+      className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 pl-5"
       style={{ borderLeft: `3px solid ${accent}` }}
     >
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-        {label}
+      <p className="ln-label">{label}</p>
+      <p className="mt-1 font-display text-[27px] font-extrabold leading-none text-ln-text">
+        {value}
       </p>
-      <p className="mt-1 text-[25px] font-bold leading-none text-ink">{value}</p>
-      {sub ? <p className="mt-1.5 text-[11.5px] text-muted">{sub}</p> : null}
+      {sub ? <p className="mt-1.5 text-[11.5px] text-ln-muted">{sub}</p> : null}
     </div>
   );
 }
 
 export default function ProfilePage() {
   const { user, login, loading } = useSession();
+  const { notify } = useNotify();
+  const { friends } = useFriends();
   const [profile, setProfile] = useState<NostrProfile | null>(null);
   const [games, setGames] = useState<LibGame[]>([]);
   const [bets, setBets] = useState<MineBet[]>([]);
@@ -88,11 +92,13 @@ export default function ProfilePage() {
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold text-white">Perfil</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para ver tu perfil.</p>
+      <div className="mx-auto max-w-3xl px-[22px] py-16 text-center">
+        <h1 className="font-display text-3xl font-extrabold text-white">
+          Perfil
+        </h1>
+        <p className="mt-2 text-ln-muted">Conectá tu Nostr para ver tu perfil.</p>
         <div className="mt-4 flex justify-center">
-          <Button variant="blue" onClick={login}>
+          <Button variant="luna" onClick={login}>
             Conectar con Nostr
           </Button>
         </div>
@@ -101,104 +107,166 @@ export default function ProfilePage() {
   }
 
   const name = profileName(profile) ?? "Anónimo";
-  const vitrina = games.slice(0, 3);
-  const recentSettled = bets.filter((b) => b.status === "settled").slice(0, 5);
+  const recentSettled = bets.filter((b) => b.status === "settled").slice(0, 6);
+  const friendCount = friends?.length ?? 0;
+
+  async function share() {
+    const url = `https://njump.me/${user!.npub}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      notify({ title: "Link de perfil copiado" });
+    } catch {
+      window.open(url, "_blank");
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pb-12">
-      {/* Banner (degradado por npub) + avatar */}
-      <div
-        className="cover relative mt-4 h-[172px] overflow-hidden rounded-lg border border-line"
-        style={{ "--h": hueFromSlug(user.npub) } as CSSProperties}
-      />
-      <div className="relative z-10 -mt-[52px] flex flex-col items-start gap-3 px-2 sm:flex-row sm:items-end">
-        {profile?.picture ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={profile.picture}
-            alt=""
-            className="rounded-[14px] border-4 border-bg object-cover"
-            style={{ height: 104, width: 104 }}
-          />
-        ) : (
-          <div
-            className="rounded-[14px] border-4 border-bg bg-panel-3"
-            style={{ height: 104, width: 104 }}
-          />
-        )}
-        <div className="min-w-0 pb-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold text-white">{name}</h1>
-            {/* TODO dato real: el nivel no tiene fuente todavía. */}
-            <span className="rounded-sm bg-blue/15 px-2 py-0.5 text-xs font-semibold text-blue ring-1 ring-inset ring-blue/30">
-              Nivel 1
+    <div className="mx-auto max-w-[1240px] px-[22px] py-8 pb-12">
+      {/* Cabecera */}
+      <section
+        className="relative overflow-hidden rounded-ln-xl border border-ln-border p-6 ln:p-8"
+        style={{
+          background:
+            "radial-gradient(900px 360px at 12% -40%, rgba(157,140,255,.22), transparent 60%), radial-gradient(700px 320px at 92% -20%, rgba(255,182,72,.14), transparent 62%), rgba(24,21,34,.6)",
+        }}
+      >
+        <div className="flex flex-col items-start gap-5 ln:flex-row ln:items-center">
+          {profile?.picture ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={profile.picture}
+              alt=""
+              className="h-24 w-24 shrink-0 rounded-full border-2 border-ln-luna object-cover shadow-ln-luna"
+            />
+          ) : (
+            <span
+              className="av-gen flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 border-ln-luna font-display text-3xl font-bold text-white shadow-ln-luna"
+              style={{ "--h": hueFromSlug(user.npub) } as CSSProperties}
+            >
+              {name.slice(0, 2).toUpperCase()}
             </span>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
+              {name}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-ln-border bg-ln-bg-deep/60 px-2.5 py-1 font-mono text-[11px] text-ln-muted">
+                ⬡ {user.npub.slice(0, 18)}…
+              </span>
+              {user.lud16 ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 text-[11px] font-medium text-ln-corona">
+                  ⚡ {user.lud16}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-aurora/15 px-2.5 py-1 text-[11px] font-medium text-ln-aurora">
+                {stats.won} victorias
+              </span>
+            </div>
+            {profile?.about ? (
+              <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm text-ln-soft">
+                {profile.about}
+              </p>
+            ) : null}
           </div>
-          <p className="break-all font-mono text-xs text-faint">{user.npub}</p>
+
+          <div className="flex shrink-0 gap-2">
+            <button onClick={share} className="btn btn-ghost px-4 py-2 text-sm">
+              Compartir
+            </button>
+            <a
+              href={`https://njump.me/${user.npub}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-luna px-4 py-2 text-sm"
+            >
+              Ver en Nostr ↗
+            </a>
+          </div>
         </div>
-        <a
-          href={`https://njump.me/${user.npub}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-ghost ml-auto px-3 py-1.5 text-xs"
-        >
-          Ver en njump.me ↗
-        </a>
-      </div>
+      </section>
 
-      {profile?.about ? (
-        <p className="mt-4 whitespace-pre-wrap text-sm text-muted">
-          {profile.about}
-        </p>
-      ) : null}
-
-      {/* KPIs (datos reales: escrow, apuestas, biblioteca) */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Stats (datos reales) */}
+      <div className="mt-6 grid grid-cols-2 gap-3 ln:grid-cols-4">
+        <Kpi
+          label="Victorias"
+          value={`${stats.won} / ${stats.settledTotal}`}
+          sub={`${stats.winRate}% efectividad`}
+          accent="var(--ln-aurora)"
+        />
         <Kpi
           label="En escrow"
           value={satsLabel(stats.escrowSats)}
           sub="sats en juego"
-          accent="var(--btc)"
+          accent="var(--ln-corona)"
         />
         <Kpi
-          label="Ganadas"
-          value={`${stats.won} / ${stats.settledTotal}`}
-          sub={`${stats.winRate}% win rate`}
-          accent="var(--win)"
-        />
-        <Kpi
-          label="Neto"
-          value={`${stats.netSats >= 0 ? "+" : ""}${satsLabel(stats.netSats)}`}
-          sub="sats (aprox. 1v1)"
-          accent="var(--win)"
-        />
-        <Kpi
-          label="Biblioteca"
+          label="Juegos"
           value={String(games.length)}
-          sub="juegos"
-          accent="var(--blue)"
+          sub="en tu biblioteca"
+          accent="var(--ln-luna)"
+        />
+        <Kpi
+          label="Amigos"
+          value={String(friendCount)}
+          sub="en Nostr"
+          accent="var(--ln-aurora)"
         />
       </div>
 
-      <div className="mt-8 grid gap-6 lg:[grid-template-columns:minmax(0,1fr)_320px]">
-        {/* Izquierda: vitrina + actividad */}
+      <div className="mt-8 grid gap-6 ln:[grid-template-columns:minmax(0,1fr)_340px]">
+        {/* Izquierda: actividad reciente */}
         <div className="min-w-0 space-y-8">
           <section>
-            <h2 className="mb-3 text-[15px] font-semibold text-ink">Vitrina</h2>
-            {vitrina.length === 0 ? (
-              <p className="text-sm text-faint">
+            <h2 className="mb-3 text-[17px] font-semibold text-ln-text">
+              Actividad reciente
+            </h2>
+            {recentSettled.length === 0 ? (
+              <p className="text-sm text-ln-faint">Sin actividad todavía.</p>
+            ) : (
+              <ul className="space-y-2">
+                {recentSettled.map((b) => (
+                  <li
+                    key={b.id}
+                    className="flex items-center justify-between rounded-ln-md border border-ln-border bg-ln-card/60 px-4 py-2.5 text-sm"
+                  >
+                    <span className="text-ln-text">
+                      {b.result === "won" ? (
+                        <span className="font-medium text-ln-aurora">Ganaste</span>
+                      ) : b.result === "lost" ? (
+                        <span className="text-ln-muted">Perdiste</span>
+                      ) : (
+                        <span className="text-ln-luna">Empate</span>
+                      )}{" "}
+                      en {b.gameTitle}
+                    </span>
+                    <span className="font-mono text-xs text-ln-corona-bright">
+                      {satsLabel(b.stakeSats)} sats
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Tu biblioteca */}
+            <h2 className="mb-3 mt-8 text-[17px] font-semibold text-ln-text">
+              Tu biblioteca
+            </h2>
+            {games.length === 0 ? (
+              <p className="text-sm text-ln-faint">
                 Tu biblioteca está vacía.{" "}
-                <Link href="/" className="text-blue hover:underline">
+                <Link href="/" className="text-ln-luna hover:underline">
                   Ir a la tienda
                 </Link>
                 .
               </p>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
-                {vitrina.map((g) => (
+              <div className="grid grid-cols-2 gap-3 ln:grid-cols-4">
+                {games.slice(0, 8).map((g) => (
                   <Link key={g.id} href={`/game/${g.slug}`} className="group">
                     <div
-                      className="cover relative aspect-[16/10] overflow-hidden rounded border border-line transition-all group-hover:ring-1 group-hover:ring-blue/40"
+                      className="cover relative aspect-[3/4] overflow-hidden rounded-ln-md border border-ln-border transition-[transform,border-color] group-hover:-translate-y-[3px] group-hover:border-ln-luna/40"
                       style={{ "--h": hueFromSlug(g.slug) } as CSSProperties}
                     >
                       {g.coverUrl ? (
@@ -214,66 +282,19 @@ export default function ProfilePage() {
                         </div>
                       )}
                     </div>
-                    <p className="mt-1.5 truncate text-xs text-ink">{g.title}</p>
+                    <p className="mt-1.5 truncate text-xs text-ln-text">
+                      {g.title}
+                    </p>
                   </Link>
                 ))}
               </div>
             )}
           </section>
-
-          <section>
-            <h2 className="mb-3 text-[15px] font-semibold text-ink">
-              Actividad reciente
-            </h2>
-            {recentSettled.length === 0 ? (
-              <p className="text-sm text-faint">Sin actividad todavía.</p>
-            ) : (
-              <ul className="space-y-2">
-                {recentSettled.map((b) => (
-                  <li
-                    key={b.id}
-                    className="flex items-center justify-between rounded border border-line bg-panel px-4 py-2.5 text-sm"
-                  >
-                    <span className="text-ink">
-                      {b.result === "won" ? (
-                        <span className="text-green">Ganó</span>
-                      ) : b.result === "lost" ? (
-                        <span className="text-muted">Perdió</span>
-                      ) : (
-                        <span className="text-blue">Empató</span>
-                      )}{" "}
-                      en {b.gameTitle}
-                    </span>
-                    <span className="font-mono text-xs text-btc">
-                      {satsLabel(b.stakeSats)} sats
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
         </div>
 
-        {/* Derecha: insignias + Lightning Address */}
+        {/* Derecha: Lightning Address + permisos Nostr */}
         <div className="space-y-6">
-          <section>
-            <h2 className="mb-3 text-[15px] font-semibold text-ink">Insignias</h2>
-            {/* Decorativas (sin fuente real todavía). */}
-            <div className="grid grid-cols-3 gap-2">
-              {["🎮", "⚡", "🏆"].map((b, i) => (
-                <div
-                  key={i}
-                  className="flex aspect-square items-center justify-center rounded border border-line bg-panel text-2xl"
-                  title="Insignia"
-                >
-                  {b}
-                </div>
-              ))}
-            </div>
-          </section>
-
           <Lud16Form nostrLud16={profile?.lud16 ?? null} />
-
           <NostrPermsSection />
         </div>
       </div>
@@ -321,17 +342,17 @@ function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
   }
 
   return (
-    <section className="rounded-lg border border-line bg-panel p-5">
-      <h2 className="text-[15px] font-semibold text-ink">
+    <section className="rounded-ln-lg border border-ln-corona/30 bg-ln-card/60 p-5">
+      <h2 className="text-[15px] font-semibold text-ln-text">
         Lightning Address (cobros)
       </h2>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 text-sm text-ln-muted">
         Dirección donde recibís tus pagos y premios. Si la dejás vacía, usamos la
         de tu perfil Nostr
         {nostrLud16 ? (
           <>
             {" "}
-            (<span className="font-mono text-ink">{nostrLud16}</span>)
+            (<span className="font-mono text-ln-text">{nostrLud16}</span>)
           </>
         ) : null}
         ; si tampoco hay, vas a cobrar escaneando un QR.
@@ -348,18 +369,18 @@ function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
             setValue(e.target.value);
             setStatus("idle");
           }}
-          className="w-full rounded-sm border border-line bg-black/20 px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-btc/40"
+          className="w-full rounded-ln-md border border-ln-border bg-ln-bg-deep px-3 py-2 text-sm text-ln-text placeholder:text-ln-faint focus:outline-none focus:ring-2 focus:ring-ln-corona/40"
         />
-        <Button variant="btc" type="submit" disabled={status === "saving"}>
+        <Button variant="corona" type="submit" disabled={status === "saving"}>
           {status === "saving" ? "Guardando…" : "Guardar"}
         </Button>
       </form>
 
       {status === "saved" ? (
-        <p className="mt-2 text-sm text-green">Guardado ✓</p>
+        <p className="mt-2 text-sm text-ln-aurora">Guardado ✓</p>
       ) : null}
       {status === "error" ? (
-        <p className="mt-2 text-sm text-[var(--lose)]">{error}</p>
+        <p className="mt-2 text-sm text-ln-danger">{error}</p>
       ) : null}
     </section>
   );

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { LightningInvoiceModal } from "@/components/lightning-invoice-modal";
 import { payWithExtension, withdrawWithExtension, WebLNError } from "@/lib/webln";
 
 type Participant = { npub: string; name: string | null; paid: boolean; refunded: boolean };
@@ -39,7 +40,6 @@ export function BetView({ betId }: { betId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
-  const [qr, setQr] = useState<string | null>(null);
   const [devMode, setDevMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [withdrawQr, setWithdrawQr] = useState<string | null>(null);
@@ -85,7 +85,6 @@ export function BetView({ betId }: { betId: string }) {
       if (!r.ok) return alert(d.error ?? "Error");
       setInvoice(d.invoice);
       setDevMode(Boolean(d.devMode));
-      setQr(await QRCode.toDataURL(d.invoice, { margin: 1, width: 220 }));
     } finally {
       setBusy(false);
     }
@@ -94,7 +93,6 @@ export function BetView({ betId }: { betId: string }) {
   async function simulate() {
     await fetch(`/api/escrow/bets/${betId}/dev-deposit`, { method: "POST" });
     setInvoice(null);
-    setQr(null);
     load();
   }
 
@@ -147,6 +145,8 @@ export function BetView({ betId }: { betId: string }) {
 
   const paidCount = bet.participants.filter((p) => p.paid).length;
   const total = bet.participants.length;
+  const rival = bet.participants.find((p) => p.npub !== user.npub);
+  const rivalName = rival ? (rival.name ?? shortNpub(rival.npub)) : null;
   const secsLeft = bet.depositDeadline
     ? Math.max(0, Math.floor((new Date(bet.depositDeadline).getTime() - now) / 1000))
     : 0;
@@ -248,40 +248,37 @@ export function BetView({ betId }: { betId: string }) {
                 <input type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
                 Entiendo que esto es una apuesta en beta, que los pagos en Lightning son irreversibles y que Luna Negra no se hace responsable.
               </label>
-            ) : !invoice ? (
-              <Button variant="btc" onClick={deposit} disabled={busy}>
-                {busy ? "Generando…" : `Depositar ${bet.stakeSats} sats`}
-              </Button>
             ) : (
-              <div className="text-center">
-                <p className="text-sm text-muted">Pagá con Lightning · {mmss} restantes</p>
-                {qr ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qr} alt="QR" className="mx-auto mt-3 rounded-lg bg-white p-2" />
-                ) : null}
+              <>
                 <Button
-                  variant="btc"
-                  className="mt-3 w-full"
-                  onClick={payExtension}
-                  disabled={weblnPaying}
+                  variant="corona"
+                  className="w-full"
+                  onClick={deposit}
+                  disabled={busy || Boolean(invoice)}
                 >
-                  {weblnPaying ? "Pagando…" : "⚡ Pagar con extensión (Alby)"}
+                  {busy
+                    ? "Generando…"
+                    : invoice
+                      ? "Factura abierta…"
+                      : `⚡ Depositar ${bet.stakeSats} sats`}
                 </Button>
-                {weblnError ? (
-                  <p className="mt-2 text-sm text-[var(--lose)]">{weblnError}</p>
+                {invoice ? (
+                  <LightningInvoiceModal
+                    bolt11={invoice}
+                    amountSats={bet.stakeSats}
+                    title={bet.gameTitle}
+                    subtitle={rivalName ? `vs ${rivalName}` : undefined}
+                    countdown={bet.depositDeadline ? mmss : null}
+                    onPayExtension={payExtension}
+                    paying={weblnPaying}
+                    payError={weblnError}
+                    devMode={devMode}
+                    onSimulate={simulate}
+                    onConfirm={() => load()}
+                    onClose={() => setInvoice(null)}
+                  />
                 ) : null}
-                <button
-                  onClick={() => navigator.clipboard.writeText(invoice)}
-                  className="mt-3 w-full truncate rounded-sm border border-line px-3 py-2 font-mono text-xs text-muted hover:bg-white/5"
-                >
-                  {invoice}
-                </button>
-                {devMode ? (
-                  <Button variant="ghost" className="mt-3 w-full" onClick={simulate}>
-                    Simular depósito (dev)
-                  </Button>
-                ) : null}
-              </div>
+              </>
             )}
           </div>
         ) : bet.status === "pending_deposits" ? (

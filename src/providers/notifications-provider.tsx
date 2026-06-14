@@ -63,11 +63,11 @@ type NotificationsContextValue = {
 
 // Punto de color + halo por tipo de toast (ver design-spec §Toasts).
 const TOAST_DOT: Record<ToastKind, string> = {
-  info: "var(--blue)",
-  join: "var(--blue)",
-  play: "var(--green)",
-  btc: "var(--btc)",
-  warn: "var(--lose)",
+  info: "var(--ln-luna)",
+  join: "var(--ln-luna)",
+  play: "var(--ln-aurora)",
+  btc: "var(--ln-corona)",
+  warn: "var(--ln-danger)",
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(
@@ -322,22 +322,22 @@ export function NotificationsProvider({
     <NotificationsContext.Provider value={{ notify }}>
       {children}
 
-      {/* Banner de permiso */}
+      {/* Banner de permiso (sobre la tab bar en móvil) */}
       {showPermissionBanner ? (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4">
-          <div className="flex items-center gap-3 rounded-lg border border-line-2 bg-panel-2 px-4 py-3 text-sm shadow-[0_18px_40px_-22px_rgba(0,0,0,.85)]">
-            <span className="text-ink">
+        <div className="fixed inset-x-0 bottom-[88px] z-50 flex justify-center px-4 ln:bottom-4">
+          <div className="flex items-center gap-3 rounded-ln-lg border border-ln-border-strong bg-ln-card px-4 py-3 text-sm shadow-ln-modal">
+            <span className="text-ln-text">
               Activá las notificaciones para enterarte de invitaciones y mensajes.
             </span>
             <button
               onClick={requestPermission}
-              className="btn btn-blue shrink-0 px-3 py-1.5 text-xs"
+              className="btn btn-luna shrink-0 px-3 py-1.5 text-xs"
             >
               Activar
             </button>
             <button
               onClick={() => setShowPermissionBanner(false)}
-              className="shrink-0 rounded-sm px-2 py-1.5 text-xs text-muted hover:text-ink"
+              className="shrink-0 rounded-full px-2 py-1.5 text-xs text-ln-muted hover:text-ln-text"
             >
               Ahora no
             </button>
@@ -345,13 +345,12 @@ export function NotificationsProvider({
         </div>
       ) : null}
 
-      {/* Pila de toasts (abajo-derecha, entrada deslizante) */}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-xs flex-col gap-2">
+      {/* Pila de toasts: full-width sobre la tab bar en móvil; abajo-derecha en desktop. */}
+      <div className="pointer-events-none fixed inset-x-4 bottom-[88px] z-50 flex flex-col gap-2 ln:inset-x-auto ln:bottom-4 ln:right-4 ln:w-full ln:max-w-xs">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="toast-in pointer-events-auto rounded-lg border border-line-2 p-3 shadow-[0_18px_40px_-18px_rgba(0,0,0,.9)]"
-            style={{ background: "linear-gradient(180deg,#1a2433,#121a25)" }}
+            className="toast-in pointer-events-auto rounded-ln-lg border border-ln-border-strong bg-ln-card p-3 shadow-ln-modal"
           >
             <div className="flex items-start gap-2.5">
               <span
@@ -362,11 +361,11 @@ export function NotificationsProvider({
                 }}
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-ink">
+                <p className="truncate text-sm font-semibold text-ln-text">
                   {t.title}
                 </p>
                 {t.body ? (
-                  <p className="mt-0.5 text-xs text-muted">{t.body}</p>
+                  <p className="mt-0.5 text-xs text-ln-muted">{t.body}</p>
                 ) : null}
                 {t.href ? (
                   <button
@@ -374,7 +373,7 @@ export function NotificationsProvider({
                       openHref(t.href!);
                       dismiss(t.id);
                     }}
-                    className="mt-2 rounded-sm bg-blue/10 px-2.5 py-1 text-xs font-semibold text-blue hover:bg-white/10"
+                    className="mt-2 rounded-full bg-ln-luna/15 px-2.5 py-1 text-xs font-semibold text-ln-luna hover:bg-ln-luna/25"
                   >
                     {t.actionLabel ??
                       (t.href.startsWith("/game/") ||
@@ -386,7 +385,7 @@ export function NotificationsProvider({
               </div>
               <button
                 onClick={() => dismiss(t.id)}
-                className="shrink-0 text-faint hover:text-ink"
+                className="shrink-0 text-ln-faint hover:text-ln-text"
                 aria-label="Cerrar"
               >
                 ✕

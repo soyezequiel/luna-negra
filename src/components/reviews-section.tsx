@@ -14,9 +14,9 @@ type Review = {
 
 function Stars({ n }: { n: number }) {
   return (
-    <span className="text-amber-400" aria-label={`${n} de 5`}>
+    <span className="text-ln-corona" aria-label={`${n} de 5`}>
       {"★".repeat(n)}
-      <span className="text-faint">{"★".repeat(5 - n)}</span>
+      <span className="text-ln-faint">{"★".repeat(5 - n)}</span>
     </span>
   );
 }
@@ -103,7 +103,9 @@ export function ReviewsSection({
   return (
     <section className="mt-10">
       <div className="mb-3 flex items-center gap-3">
-        <h2 className="text-[17px] font-semibold text-ink">Reseñas</h2>
+        <h2 className="text-[19px] font-semibold text-ln-text">
+          Reseñas de la comunidad
+        </h2>
         {count > 0 ? (
           <span className="text-sm text-muted">
             <Stars n={Math.round(average)} /> {average.toFixed(1)} · {count}
@@ -119,7 +121,7 @@ export function ReviewsSection({
                 key={n}
                 onClick={() => setRating(n)}
                 className={
-                  n <= rating ? "text-xl text-amber-400" : "text-xl text-faint"
+                  n <= rating ? "text-xl text-ln-corona" : "text-xl text-ln-faint"
                 }
                 aria-label={`${n} estrellas`}
               >

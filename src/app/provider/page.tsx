@@ -15,7 +15,7 @@ import { CATEGORIES } from "@/lib/categories";
 import { satsLabel } from "@/lib/format";
 
 const inputCls =
-  "w-full rounded-sm border border-line bg-black/20 px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30";
+  "w-full rounded-ln-md border border-ln-border bg-ln-bg-deep px-3 py-2 text-sm text-ln-text outline-none transition-shadow placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/25";
 
 type Provider = {
   id: string;
@@ -91,15 +91,33 @@ function Kpi({
 }) {
   return (
     <div
-      className="rounded border border-line bg-panel p-4 pl-5"
+      className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 pl-5"
       style={{ borderLeft: `3px solid ${accent}` }}
     >
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-        {label}
+      <p className="ln-label">{label}</p>
+      <p className="mt-1 font-display text-[27px] font-extrabold leading-none text-ln-text">
+        {value}
       </p>
-      <p className="mt-1 text-[25px] font-bold leading-none text-ink">{value}</p>
-      {sub ? <p className="mt-1.5 text-[11.5px] text-muted">{sub}</p> : null}
+      {sub ? <p className="mt-1.5 text-[11.5px] text-ln-muted">{sub}</p> : null}
     </div>
+  );
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  published: "bg-ln-aurora/15 text-ln-aurora",
+  in_review: "bg-ln-corona/15 text-ln-corona",
+  draft: "bg-white/10 text-ln-muted",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+        STATUS_BADGE[status] ?? "bg-white/10 text-ln-muted"
+      }`}
+    >
+      {STATUS_LABEL[status] ?? status}
+    </span>
   );
 }
 
@@ -320,21 +338,21 @@ export default function ProviderPage() {
   const publishedCount = games.filter((g) => g.status === "published").length;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-[920px] px-[22px] py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
+          <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
             Panel de proveedor
           </h1>
-          <p className="mt-1 text-sm text-muted">
-            Gestiona tus juegos, cobros, API keys y webhooks.
+          <p className="mt-1 text-sm text-ln-muted">
+            Gestioná tus juegos, cobros, API keys y webhooks.
           </p>
         </div>
         <Link href="/dev" className="btn btn-ghost shrink-0 self-start">
-          Abrir guia /dev
+          Abrir guía /dev
         </Link>
       </div>
-      {msg ? <p className="mt-2 text-sm text-blue">{msg}</p> : null}
+      {msg ? <p className="mt-2 text-sm text-ln-luna">{msg}</p> : null}
 
       {provider ? (
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -588,13 +606,21 @@ export default function ProviderPage() {
                 {games.map((g) => (
                   <li
                     key={g.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-4 py-3"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-ln-lg border border-ln-border bg-ln-card/60 px-4 py-3"
                   >
                     <div>
-                      <p className="text-sm font-medium">{g.title}</p>
-                      <p className="text-xs text-faint">
-                        {STATUS_LABEL[g.status] ?? g.status} ·{" "}
-                        {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
+                      <p className="flex items-center gap-2 text-sm font-medium text-ln-text">
+                        {g.title}
+                        <StatusBadge status={g.status} />
+                      </p>
+                      <p className="text-xs text-ln-faint">
+                        {g.priceSats === 0 ? (
+                          <span className="text-ln-aurora-bright">Gratis</span>
+                        ) : (
+                          <span className="font-mono text-ln-corona-bright">
+                            {satsLabel(g.priceSats)} sats
+                          </span>
+                        )}
                       </p>
                       <p className="mt-1 flex items-center gap-1 text-xs text-faint">
                         <span>ID:</span>

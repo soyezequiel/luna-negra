@@ -1,234 +1,438 @@
 /* ============================================================
-   LUNA NEGRA — globals.css (rediseño Steam / dopamina)
-   Reemplaza src/app/globals.css por este archivo.
-   Tailwind v4: los tokens se exponen como utilidades (bg-panel,
-   text-ink, border-line, bg-btc, text-blue, etc.).
+   LUNA NEGRA — globals.css (rediseño "Eclipse")
+   Disco negro + corona luminosa. Social-first, cinematográfico.
+
+   Tailwind v4: los tokens se exponen como utilidades vía @theme.
+   Paleta de marca:
+     · Luna   #9d8cff  → acción primaria, navegación, identidad  (bg-ln-luna,   text-ln-luna)
+     · Corona #ffb648  → dinero: sats / Lightning / comprar / apostar
+     · Aurora #4fe6a8  → jugar / online / social / éxito
+   Capa de compat: los nombres viejos (panel, blue, btc, green, line…)
+   quedan remapeados a los valores Eclipse para no romper pantallas
+   todavía sin migrar. Migrá a clases ln-* al tocar cada vista.
    ============================================================ */
 
 @import "tailwindcss";
 
 :root {
-  /* superficies (oscuro profundo) */
-  --bg: #0e141c;
-  --bg-1: #080b11;
-  --panel: #131a24;
-  --panel-2: #18212e;
-  --panel-3: #243144;
+  /* ---------- Superficies ---------- */
+  --ln-bg: #08070c;
+  --ln-bg-deep: #050409;
+  --ln-panel: #110f18;
+  --ln-card: #181522;
+  --ln-surface: #221d30; /* placeholders / avatares vacíos */
+  --ln-logo-disc: #0a0810;
 
-  /* líneas / bordes */
-  --line: rgba(255, 255, 255, 0.055);
-  --line-2: rgba(255, 255, 255, 0.11);
+  /* ---------- Texto ---------- */
+  --ln-text: #e9e6f2;
+  --ln-soft: #cfc8de;
+  --ln-muted: #9a93ad;
+  --ln-faint: #5f5872;
 
-  /* texto */
-  --ink: #c4d3e0;
-  --muted: #7e8a98;
-  --faint: #525e6c;
+  /* ---------- Marca ---------- */
+  --ln-luna: #9d8cff;
+  --ln-luna-bright: #c2b5ff;
+  --ln-luna-deep: #7d6cf0;
+  --ln-corona: #ffb648;
+  --ln-corona-bright: #ffcd7a;
+  --ln-aurora: #4fe6a8;
+  --ln-aurora-bright: #84f3c6;
+  --ln-danger: #e8907a;
 
-  /* azul Steam — acción primaria de tienda / navegación */
-  --blue: #66c0f4;
-  --blue-hi: #a7dbff;
-  --blue-soft: rgba(102, 192, 244, 0.1);
-  --blue-line: rgba(102, 192, 244, 0.32);
-  --blue-glow: rgba(102, 192, 244, 0.3);
+  /* texto sobre fondos de marca (contraste) */
+  --ln-on-luna: #1a1430;
+  --ln-on-corona: #231304;
+  --ln-on-aurora: #062414;
 
-  /* naranja Bitcoin — SOLO dinero: sats, billetera, comprar, apostar, escrow, LN */
-  --btc: #f7931a;
-  --btc-hi: #ffaa3d;
-  --btc-soft: rgba(247, 147, 26, 0.13);
-  --btc-line: rgba(247, 147, 26, 0.4);
-  --btc-glow: rgba(247, 147, 26, 0.24);
+  /* ---------- Bordes ---------- */
+  --ln-border: rgba(255, 255, 255, 0.06);
+  --ln-border-strong: rgba(255, 255, 255, 0.1);
+  --ln-border-hair: rgba(255, 255, 255, 0.05);
 
-  /* verde Steam — jugar / instalar / ganar / estado online */
-  --green: #a1cd44;
-  --green-soft: rgba(161, 205, 68, 0.12);
-  --green-line: rgba(161, 205, 68, 0.4);
+  /* ---------- Gradientes de marca ---------- */
+  --ln-grad-luna: linear-gradient(120deg, #c2b5ff, #9d8cff);
+  --ln-grad-corona: linear-gradient(120deg, #ffcd7a, #ffb648);
+  --ln-grad-aurora: linear-gradient(120deg, #84f3c6, #4fe6a8);
+  --ln-grad-chat: linear-gradient(135deg, #9d8cff, #7d6cf0);
+
+  /* ---------- Glows / sombras ---------- */
+  --ln-glow-luna: 0 14px 36px -12px rgba(157, 140, 255, 0.7);
+  --ln-glow-corona: 0 14px 30px -14px rgba(255, 182, 72, 0.8);
+  --ln-glow-aurora: 0 12px 26px -14px rgba(79, 230, 168, 0.8);
+  --ln-shadow-card: 0 22px 48px -22px rgba(157, 140, 255, 0.55);
+  --ln-shadow-modal: 0 40px 100px -30px rgba(0, 0, 0, 0.95);
+
+  /* ---------- Fondo eclipse ---------- */
+  --ln-eclipse-bg:
+    radial-gradient(1100px 760px at 82% -12%, rgba(157, 140, 255, 0.16), transparent 58%),
+    radial-gradient(820px 620px at 88% 4%, rgba(255, 182, 72, 0.1), transparent 60%),
+    radial-gradient(900px 900px at 8% 108%, rgba(79, 230, 168, 0.06), transparent 60%),
+    #08070c;
+
+  /* ============================================================
+     CAPA DE COMPATIBILIDAD — nombres viejos → valores Eclipse.
+     Permite que las pantallas aún sin migrar adopten el look nuevo.
+     ============================================================ */
+  --bg: var(--ln-bg);
+  --bg-1: var(--ln-bg-deep);
+  --panel: var(--ln-panel);
+  --panel-2: var(--ln-card);
+  --panel-3: var(--ln-surface);
+
+  --line: var(--ln-border);
+  --line-2: var(--ln-border-strong);
+
+  --ink: var(--ln-text);
+  --muted: var(--ln-muted);
+  --faint: var(--ln-faint);
+
+  /* "blue" (acción/nav) → Luna */
+  --blue: var(--ln-luna);
+  --blue-hi: var(--ln-luna-bright);
+  --blue-soft: rgba(157, 140, 255, 0.1);
+  --blue-line: rgba(157, 140, 255, 0.32);
+  --blue-glow: rgba(157, 140, 255, 0.3);
+
+  /* "btc" (dinero) → Corona */
+  --btc: var(--ln-corona);
+  --btc-hi: var(--ln-corona-bright);
+  --btc-soft: rgba(255, 182, 72, 0.13);
+  --btc-line: rgba(255, 182, 72, 0.4);
+  --btc-glow: rgba(255, 182, 72, 0.3);
+
+  /* "green" (jugar/online) → Aurora */
+  --green: var(--ln-aurora);
+  --green-soft: rgba(79, 230, 168, 0.12);
+  --green-line: rgba(79, 230, 168, 0.4);
 
   /* estados */
-  --online: #a1cd44;
-  --busy: #f7931a;
-  --lose: #e06a5b;
-  --win: #a1cd44;
+  --online: var(--ln-aurora);
+  --busy: var(--ln-corona);
+  --lose: var(--ln-danger);
+  --win: var(--ln-aurora);
 
-  /* radios — cápsulas cuadradas estilo Steam */
-  --r-sm: 3px;
-  --r: 4px;
-  --r-lg: 7px;
+  /* radios Eclipse */
+  --r-sm: 9px;
+  --r: 13px;
+  --r-lg: 18px;
 
-  --background: var(--bg);
-  --foreground: var(--ink);
+  --background: var(--ln-bg);
+  --foreground: var(--ln-text);
 }
 
 @theme inline {
+  /* breakpoint único del rediseño */
+  --breakpoint-ln: 880px;
+
   /* superficies */
+  --color-ln-bg: var(--ln-bg);
+  --color-ln-bg-deep: var(--ln-bg-deep);
+  --color-ln-panel: var(--ln-panel);
+  --color-ln-card: var(--ln-card);
+  --color-ln-surface: var(--ln-surface);
+
+  /* texto */
+  --color-ln-text: var(--ln-text);
+  --color-ln-soft: var(--ln-soft);
+  --color-ln-muted: var(--ln-muted);
+  --color-ln-faint: var(--ln-faint);
+
+  /* marca */
+  --color-ln-luna: var(--ln-luna);
+  --color-ln-luna-bright: var(--ln-luna-bright);
+  --color-ln-luna-deep: var(--ln-luna-deep);
+  --color-ln-corona: var(--ln-corona);
+  --color-ln-corona-bright: var(--ln-corona-bright);
+  --color-ln-aurora: var(--ln-aurora);
+  --color-ln-aurora-bright: var(--ln-aurora-bright);
+  --color-ln-danger: var(--ln-danger);
+
+  --color-ln-on-luna: var(--ln-on-luna);
+  --color-ln-on-corona: var(--ln-on-corona);
+  --color-ln-on-aurora: var(--ln-on-aurora);
+
+  /* bordes como colores (border-ln-border, bg-ln-border) */
+  --color-ln-border: var(--ln-border);
+  --color-ln-border-strong: var(--ln-border-strong);
+
+  /* radios */
+  --radius-ln-sm: 9px;
+  --radius-ln-md: 13px;
+  --radius-ln-lg: 18px;
+  --radius-ln-xl: 22px;
+
+  /* sombras */
+  --shadow-ln-luna: var(--ln-glow-luna);
+  --shadow-ln-corona: var(--ln-glow-corona);
+  --shadow-ln-aurora: var(--ln-glow-aurora);
+  --shadow-ln-card: var(--ln-shadow-card);
+  --shadow-ln-modal: var(--ln-shadow-modal);
+
+  /* animaciones */
+  --animate-ln-corona: ln-corona 7s ease-in-out infinite;
+  --animate-ln-shimmer: ln-shimmer 1.4s linear infinite;
+  --animate-ln-rise: ln-rise 0.5s ease both;
+  --animate-ln-ping: ln-ping 1.4s ease-out infinite;
+
+  /* tipografía */
+  --font-display: var(--font-bricolage), "Bricolage Grotesque", sans-serif;
+  --font-sans: var(--font-geist-sans), "Geist", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+
+  /* ---- compat (nombres viejos como utilidades) ---- */
   --color-bg: var(--bg);
   --color-bg-1: var(--bg-1);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
   --color-panel-3: var(--panel-3);
-
-  /* texto + líneas */
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-faint: var(--faint);
   --color-line: var(--line);
   --color-line-2: var(--line-2);
-
-  /* acentos */
   --color-blue: var(--blue);
   --color-blue-hi: var(--blue-hi);
   --color-btc: var(--btc);
   --color-btc-hi: var(--btc-hi);
   --color-green: var(--green);
-
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
   --radius-sm: var(--r-sm);
   --radius: var(--r);
   --radius-lg: var(--r-lg);
 }
 
-body {
-  background: var(--bg);
-  color: var(--ink);
+html {
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Barrido azul diagonal de fondo (firma visual de Steam) + brillo BTC sutil */
-body::before {
+body {
+  background: var(--ln-eclipse-bg);
+  background-attachment: fixed;
+  color: var(--ln-text);
+  font-family: var(--font-sans);
+}
+
+/* "Corona" decorativa: aro luminoso arriba-derecha con pulso suave. */
+body::after {
   content: "";
   position: fixed;
-  inset: 0;
+  top: -190px;
+  right: -150px;
+  width: 520px;
+  height: 520px;
+  border-radius: 999px;
   pointer-events: none;
   z-index: 0;
-  background:
-    linear-gradient(125deg, rgba(28, 86, 128, 0.24) 0%, rgba(18, 42, 68, 0.08) 26%, transparent 50%),
-    radial-gradient(900px 520px at 80% -14%, rgba(247, 147, 26, 0.05), transparent 60%);
+  background: radial-gradient(
+    circle at 50% 50%,
+    transparent 52%,
+    rgba(255, 182, 72, 0.22) 56%,
+    rgba(157, 140, 255, 0.12) 62%,
+    transparent 72%
+  );
+  animation: ln-corona 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  body::after { animation: none; }
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 /* ============================================================
-   COMPONENTES base (úsalos con cn() o className directo).
-   Todo lo demás se hace con utilidades Tailwind + los tokens.
+   UTILIDADES de gradiente de marca (background-image).
+   bg-ln-grad-luna / -corona / -aurora / -chat
+   ============================================================ */
+@utility bg-ln-grad-luna {
+  background-image: var(--ln-grad-luna);
+}
+@utility bg-ln-grad-corona {
+  background-image: var(--ln-grad-corona);
+}
+@utility bg-ln-grad-aurora {
+  background-image: var(--ln-grad-aurora);
+}
+@utility bg-ln-grad-chat {
+  background-image: var(--ln-grad-chat);
+}
+@utility bg-ln-eclipse {
+  background: var(--ln-eclipse-bg);
+}
+
+/* ============================================================
+   COMPONENTES base — úsalos con cn() o className directo.
    ============================================================ */
 @layer components {
-  /* ---- Botones (extienden el patrón de src/components/ui/button.tsx) ---- */
+  /* ---------- Botones (pill, gradiente, glow) ---------- */
   .btn {
-    @apply relative inline-flex items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded-sm px-[18px] py-2.5 text-sm font-semibold transition-[background,box-shadow] duration-150 disabled:pointer-events-none disabled:opacity-50;
+    @apply relative inline-flex items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded-full px-[18px] py-2.5 text-sm font-semibold transition-[transform,box-shadow,background] duration-150 disabled:pointer-events-none disabled:opacity-50;
   }
-  /* brillo superior tipo Steam */
+  /* brillo superior sutil */
   .btn::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 45%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 42%);
     pointer-events: none;
   }
   .btn-ghost::after { display: none; }
 
-  /* JUGAR / ENTRAR / INSTALAR — verde */
-  .btn-play {
-    background: linear-gradient(95deg, #9ece3a 0%, #62932a 100%);
-    color: #142a03;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
-  }
-  .btn-play:hover {
-    background: linear-gradient(95deg, #aede48 0%, #6fa531 100%);
-    box-shadow: 0 10px 22px -10px rgba(161, 205, 68, 0.55);
-  }
-
-  /* Acción de TIENDA / navegación — azul */
+  /* Luna — acción / navegación (alias: .btn-blue) */
+  .btn-luna,
   .btn-blue {
-    background: linear-gradient(95deg, #3aa3e0 0%, #1c63ab 100%);
-    color: #eaf6ff;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: var(--ln-grad-luna);
+    color: var(--ln-on-luna);
   }
+  .btn-luna:hover,
   .btn-blue:hover {
-    background: linear-gradient(95deg, #54b8f2 0%, #2476c6 100%);
-    box-shadow: 0 10px 22px -10px var(--blue-glow);
+    transform: translateY(-2px);
+    box-shadow: var(--ln-glow-luna);
   }
 
-  /* DINERO: comprar / apostar / retirar — naranja Bitcoin */
+  /* Corona — dinero: comprar / apostar / depositar (alias: .btn-btc) */
+  .btn-corona,
   .btn-btc {
-    background: linear-gradient(95deg, #fba52e 0%, #e07f12 100%);
-    color: #231304;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+    background: var(--ln-grad-corona);
+    color: var(--ln-on-corona);
   }
+  .btn-corona:hover,
   .btn-btc:hover {
-    background: linear-gradient(95deg, #ffb54a 0%, #f18a18 100%);
-    box-shadow: 0 10px 22px -10px var(--btc-glow);
+    transform: translateY(-2px);
+    box-shadow: var(--ln-glow-corona);
+  }
+
+  /* Aurora — jugar / sala / online (alias: .btn-play) */
+  .btn-aurora,
+  .btn-play {
+    background: var(--ln-grad-aurora);
+    color: var(--ln-on-aurora);
+  }
+  .btn-aurora:hover,
+  .btn-play:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--ln-glow-aurora);
   }
 
   .btn-ghost {
-    background: rgba(103, 141, 177, 0.14);
-    border: 1px solid var(--line-2);
-    color: var(--ink);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--ln-border-strong);
+    color: var(--ln-text);
   }
   .btn-ghost:hover {
-    background: rgba(103, 141, 177, 0.24);
+    background: rgba(255, 255, 255, 0.09);
     color: #fff;
   }
 
-  /* CTA grande con pulso (dopamina) — para el "Jugar" del juego en biblioteca */
-  .btn-xl { @apply px-[22px] py-3.5 text-[15px] font-bold; }
-  .btn-play.btn-xl {
-    box-shadow: 0 12px 30px -12px rgba(161, 205, 68, 0.6), inset 0 0 0 1px rgba(161, 205, 68, 0.25);
-    animation: playPulse 2.6s ease-in-out infinite;
+  .btn-xl {
+    @apply px-[22px] py-3.5 text-[15px] font-bold;
   }
   @media (prefers-reduced-motion: reduce) {
-    .btn-play.btn-xl { animation: none; }
+    .btn:hover { transform: none; }
   }
 
-  /* ---- Portada generada por color (dopamina) ----
-     Pásale --h (0–360) por estilo inline: style={{['--h' as string]: hue}} */
+  /* ---------- Etiqueta mono uppercase ---------- */
+  .ln-label {
+    @apply font-mono uppercase;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--ln-faint);
+  }
+
+  /* ---------- Portada generada por color (--h: 0–360) ---------- */
   .cover {
     position: relative;
     overflow: hidden;
     background:
-      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 14px),
-      radial-gradient(120% 90% at 18% 12%, hsl(var(--h) 78% 30% / 0.95), transparent 60%),
-      radial-gradient(120% 110% at 88% 92%, hsl(calc(var(--h) + 48) 82% 26% / 0.95), transparent 65%),
-      linear-gradient(155deg, hsl(var(--h) 55% 22%), hsl(calc(var(--h) + 30) 60% 12%));
-  }
-  .cover::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(closest-side at 72% 28%, hsl(calc(var(--h) + 20) 90% 62% / 0.35), transparent 70%);
-    mix-blend-mode: screen;
+      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0 2px, transparent 2px 16px),
+      radial-gradient(130% 100% at 20% 8%, hsl(var(--h) 70% 34% / 0.95), transparent 60%),
+      radial-gradient(130% 120% at 85% 95%, hsl(calc(var(--h) + 50) 78% 26% / 0.95), transparent 65%),
+      linear-gradient(160deg, hsl(var(--h) 52% 22%), hsl(calc(var(--h) + 28) 58% 11%));
   }
 
-  /* ---- Chips de categoría (tienda) ---- */
-  .chip {
-    @apply cursor-pointer whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors;
-    color: var(--muted);
-    border-color: var(--line);
-    background: rgba(103, 141, 177, 0.1);
+  /* ---------- Avatar generado por color (--h) ---------- */
+  .av-gen {
+    background: linear-gradient(135deg, hsl(var(--h) 58% 50%), hsl(calc(var(--h) + 40) 62% 32%));
   }
-  .chip:hover { color: var(--ink); border-color: var(--line-2); background: rgba(103, 141, 177, 0.2); }
+
+  /* ---------- Chips de categoría ---------- */
+  .chip {
+    @apply cursor-pointer whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors;
+    color: var(--ln-muted);
+    border-color: var(--ln-border);
+    background: rgba(24, 21, 34, 0.6);
+  }
+  .chip:hover {
+    color: var(--ln-text);
+    border-color: var(--ln-border-strong);
+  }
   .chip-on {
-    color: #eaf6ff;
-    background: linear-gradient(95deg, #3aa3e0, #1c63ab);
+    background: var(--ln-grad-luna);
+    color: var(--ln-on-luna);
     border-color: transparent;
     font-weight: 600;
   }
+
+  /* ---------- Card base ---------- */
+  .ln-card {
+    background: rgba(24, 21, 34, 0.6);
+    border: 1px solid var(--ln-border);
+    border-radius: var(--r-lg);
+  }
 }
 
-@keyframes playPulse {
-  0%, 100% { box-shadow: 0 12px 30px -14px rgba(161, 205, 68, 0.55); }
-  50% { box-shadow: 0 14px 38px -10px rgba(161, 205, 68, 0.85); }
+/* ============================================================
+   KEYFRAMES
+   ============================================================ */
+@keyframes ln-corona {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.04); }
+}
+@keyframes ln-shimmer {
+  0% { background-position: -420px 0; }
+  100% { background-position: 420px 0; }
+}
+/* Entrada SIN opacidad 0 (no rompe SSR/print). */
+@keyframes ln-rise {
+  from { transform: translateY(16px); }
+  to { transform: translateY(0); }
+}
+@keyframes ln-ping {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  80%, 100% { transform: scale(2.4); opacity: 0; }
 }
 
-/* Toasts: entrada deslizante desde la derecha */
+/* Skeletons: barrido shimmer sobre superficie hundida. */
+.ln-shimmer {
+  background:
+    linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0) 30%,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    var(--ln-bg-deep);
+  background-size: 840px 100%;
+  background-repeat: no-repeat;
+  animation: ln-shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-shimmer { animation: none; }
+}
+
+/* Toasts: entrada deslizante. */
 @keyframes toastIn {
-  from { transform: translateX(110%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from { transform: translateY(16px); }
+  to { transform: translateY(0); }
 }
 .toast-in { animation: toastIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .toast-in { animation: none; }
 }
 
-/* Scrollbars finos en superficies oscuras */
+/* Scrollbars finos en superficies oscuras. */
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }

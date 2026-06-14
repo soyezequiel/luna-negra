@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { useGameContext } from "@/providers/game-context";
+import { useFriendsDrawer } from "@/providers/friends-drawer";
 import { useFriends } from "@/hooks/use-friends";
+import { cn } from "@/lib/utils";
 import {
   FriendSearch,
   globalResultName,
@@ -63,6 +65,7 @@ export function FriendsSidebar() {
   const { user, login, loading } = useSession();
   const { notify } = useNotify();
   const { currentGame } = useGameContext();
+  const { open: drawerOpen, setOpen: setDrawerOpen } = useFriendsDrawer();
   const { friends, refresh, refreshing } = useFriends();
 
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
@@ -319,7 +322,23 @@ export function FriendsSidebar() {
   const onlineCount = (friends ?? []).filter((f) => f.status).length;
 
   return (
-    <aside className="fixed right-0 top-16 bottom-0 z-40 hidden w-80 flex-col border-l border-line bg-bg-1/85 backdrop-blur xl:flex">
+    <>
+      {/* Overlay del drawer (solo móvil). */}
+      <div
+        className={cn(
+          "fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm transition-opacity duration-[280ms] ln:hidden",
+          drawerOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden
+      />
+      <aside
+        className={cn(
+          "fixed right-0 top-[66px] bottom-0 z-[60] flex w-[min(360px,88vw)] flex-col border-l border-ln-border bg-ln-bg-deep/95 backdrop-blur transition-transform duration-[280ms]",
+          "ln:z-40 ln:w-[308px] ln:translate-x-0 ln:bg-ln-bg-deep/85",
+          drawerOpen ? "translate-x-0" : "translate-x-full ln:translate-x-0",
+        )}
+      >
       {chatWith ? (
         <FriendsChatPanel
           friendPubkey={chatWith.pubkey}
@@ -369,6 +388,13 @@ export function FriendsSidebar() {
               >
                 Ver todos
               </Link>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="text-base text-muted hover:text-white ln:hidden"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
             </div>
           </div>
 
@@ -517,7 +543,7 @@ export function FriendsSidebar() {
                                 {name}
                               </span>
                               {f.isMember ? (
-                                <span className="shrink-0 rounded-sm bg-blue/20 px-1.5 py-0.5 text-[9px] text-blue">
+                                <span className="shrink-0 rounded-full bg-ln-corona/15 px-1.5 py-0.5 text-[9px] font-medium text-ln-corona">
                                   LN
                                 </span>
                               ) : null}
@@ -644,6 +670,7 @@ export function FriendsSidebar() {
           </div>
         </>
       )}
-    </aside>
+      </aside>
+    </>
   );
 }

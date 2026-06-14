@@ -163,17 +163,19 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
           ? "Generando…"
           : priceSats === 0
             ? "Agregar a la biblioteca"
-            : `Comprar · ${priceLabel(priceSats)}`}
+            : `⚡ Comprar con Lightning`}
       </Button>
       {phase === "error" && error ? (
         <p className="mt-2 text-sm text-[var(--lose)]">{error}</p>
       ) : null}
 
       {phase === "pending" && invoice ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-line-2 bg-panel-2 p-6 text-center">
-            <h3 className="text-lg font-semibold text-ink">Pagá con Lightning</h3>
-            <p className="mt-1 text-sm text-btc">
+        <div className="fixed inset-0 z-[92] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-ln-xl border border-ln-corona/40 bg-ln-card p-6 text-center shadow-ln-modal">
+            <h3 className="font-display text-lg font-bold text-white">
+              ⚡ Pagá con Lightning
+            </h3>
+            <p className="mt-1 text-sm text-ln-corona-bright">
               {priceLabel(priceSats)} · escaneá o copiá el invoice
             </p>
             {qr ? (

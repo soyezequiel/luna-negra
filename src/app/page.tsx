@@ -3,8 +3,9 @@ import type { CSSProperties } from "react";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GameCard } from "@/components/game-card";
+import { SocialRail } from "@/components/social-rail";
 import { CATEGORIES, normalizeCategory, categoryLabel } from "@/lib/categories";
-import { hueFromSlug } from "@/lib/format";
+import { hueFromSlug, priceLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -63,10 +64,21 @@ export default async function StorePage({
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-[1240px] px-[22px] py-8">
+      {/* Buscador full-width (solo móvil, al tope del Home) */}
+      <form action="/" method="get" className="mb-6 ln:hidden">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Buscar juegos…"
+          aria-label="Buscar juegos"
+          className="h-[46px] w-full rounded-full border border-ln-border bg-ln-bg-deep px-5 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/20"
+        />
+      </form>
+
       {hero ? (
         <section
-          className="cover relative mb-8 overflow-hidden rounded-lg border border-line shadow-[0_18px_40px_-22px_rgba(0,0,0,.85)]"
+          className="cover relative mb-9 animate-ln-rise overflow-hidden rounded-ln-xl border border-ln-border shadow-ln-card"
           style={{ "--h": hueFromSlug(hero.slug) } as CSSProperties}
         >
           {hero.horizontalCoverUrl || hero.coverUrl ? (
@@ -77,63 +89,74 @@ export default async function StorePage({
               className="absolute inset-0 h-full w-full object-cover"
             />
           ) : null}
+
+          {/* Corona decorativa arriba-derecha */}
           <div
-            className="relative flex min-h-[300px] flex-col justify-end gap-3 p-6 sm:min-h-[340px] sm:p-10"
+            className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] animate-ln-corona rounded-full"
             style={{
               background:
-                "linear-gradient(90deg, rgba(13,20,30,.96), rgba(13,20,30,.55) 45%, transparent 72%)",
+                "radial-gradient(circle at 50% 50%, transparent 52%, rgba(255,182,72,.22) 56%, rgba(157,140,255,.14) 62%, transparent 72%)",
+            }}
+            aria-hidden
+          />
+
+          <div
+            className="relative flex min-h-[350px] flex-col justify-end gap-3 p-6 ln:min-h-[430px] ln:p-12"
+            style={{
+              background:
+                "linear-gradient(95deg, rgba(8,7,12,.96) 8%, rgba(8,7,12,.7) 42%, transparent 78%)",
             }}
           >
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-blue">
-              Destacado
-            </p>
-            <h1 className="max-w-xl text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              {hero.title}
-            </h1>
-            {hero.description ? (
-              <p className="max-w-lg text-sm text-ink/90 line-clamp-2">
-                {hero.description}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              <span className="rounded-sm bg-white/10 px-2 py-1 text-faint">
-                Sin instalar
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="ln-label rounded-full bg-black/40 px-2.5 py-1 !text-ln-corona-bright">
+                ★ Destacado
               </span>
               {hero.category ? (
-                <span className="rounded-sm bg-white/10 px-2 py-1 text-faint">
+                <span className="flex items-center gap-1.5 text-[12px] text-ln-soft">
                   {categoryLabel(hero.category)}
                 </span>
               ) : null}
-              <span className="rounded-sm bg-white/10 px-2 py-1 text-faint">
-                Web · Lightning
-              </span>
             </div>
-            <div className="mt-2">
-              <Link href={`/game/${hero.slug}`} className="btn btn-blue btn-xl">
-                Ver juego
+
+            <h1 className="max-w-2xl font-display text-[38px] font-extrabold leading-[1.04] tracking-tight text-white ln:text-[62px]">
+              {hero.title}
+            </h1>
+
+            {hero.description ? (
+              <p className="max-w-[480px] text-sm leading-relaxed text-ln-soft line-clamp-2">
+                {hero.description}
+              </p>
+            ) : null}
+
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              <Link
+                href={`/game/${hero.slug}`}
+                className="btn btn-luna btn-xl shadow-ln-luna"
+              >
+                ▶ Ver juego
               </Link>
+              <span className="font-mono text-sm text-ln-corona-bright">
+                {priceLabel(hero.priceSats)}{" "}
+                <span className="text-ln-faint">· Web · Lightning</span>
+              </span>
             </div>
           </div>
         </section>
       ) : (
-        <section className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight text-white">Tienda</h1>
-          <p className="mt-2 max-w-xl text-muted">
-            Todo se juega en el navegador. Pagos en Bitcoin (Lightning).
+        <section className="mb-8">
+          <h1 className="font-display text-[40px] font-extrabold tracking-tight text-white">
+            Tienda
+          </h1>
+          <p className="mt-2 max-w-xl text-ln-muted">
+            Todo se juega en el navegador. Pagá con Lightning, conectá con Nostr.
           </p>
         </section>
       )}
 
-      <form action="/" method="get" className="mb-5 flex gap-2 md:hidden">
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Buscar juegos…"
-          className="w-full max-w-sm rounded-sm border border-line bg-black/30 px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
-        />
-        <button className="btn btn-blue">Buscar</button>
-      </form>
+      {/* Riel social "amigos jugando" (cliente) */}
+      <SocialRail />
 
+      {/* Chips de categoría */}
       <nav className="mb-7 flex flex-wrap gap-2">
         {[{ slug: "", label: "Todas" }, ...CATEGORIES].map((c) => {
           const active = (c.slug || null) === cat;
@@ -150,22 +173,28 @@ export default async function StorePage({
       </nav>
 
       <section>
-        <h2 className="mb-4 text-[17px] font-semibold text-ink">
-          {q
-            ? `Resultados para "${q}"`
-            : cat
-              ? categoryLabel(cat)
-              : "Catálogo"}
-        </h2>
+        <div className="mb-4 flex items-baseline justify-between gap-3">
+          <h2 className="text-[21px] font-semibold text-ln-text">
+            {q
+              ? `Resultados para "${q}"`
+              : cat
+                ? categoryLabel(cat)
+                : "Catálogo"}
+          </h2>
+          <span className="font-mono text-xs text-ln-faint">
+            {total} {total === 1 ? "juego" : "juegos"}
+          </span>
+        </div>
+
         {games.length === 0 ? (
-          <p className="text-sm text-faint">
+          <p className="text-sm text-ln-faint">
             {q
               ? "No hay juegos que coincidan con tu búsqueda."
               : "Todavía no hay juegos publicados."}
           </p>
         ) : (
           <>
-            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+            <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(214px,1fr))]">
               {gridGames.map((g) => (
                 <GameCard
                   key={g.id}
@@ -181,22 +210,22 @@ export default async function StorePage({
             </div>
 
             {totalPages > 1 ? (
-              <div className="mt-8 flex items-center justify-center gap-4 text-sm">
+              <div className="mt-10 flex items-center justify-center gap-4 text-sm">
                 {page > 1 ? (
                   <Link
                     href={linkFor(page - 1)}
-                    className="rounded-sm border border-line px-3 py-1.5 text-ink hover:bg-white/5"
+                    className="rounded-full border border-ln-border px-4 py-2 text-ln-text transition-colors hover:bg-white/5"
                   >
                     ← Anterior
                   </Link>
                 ) : null}
-                <span className="text-faint">
+                <span className="text-ln-faint">
                   Página {page} de {totalPages}
                 </span>
                 {page < totalPages ? (
                   <Link
                     href={linkFor(page + 1)}
-                    className="rounded-sm border border-line px-3 py-1.5 text-ink hover:bg-white/5"
+                    className="rounded-full border border-ln-border px-4 py-2 text-ln-text transition-colors hover:bg-white/5"
                   >
                     Siguiente →
                   </Link>

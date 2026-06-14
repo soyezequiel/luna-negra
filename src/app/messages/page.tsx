@@ -248,17 +248,11 @@ export default function MessagesPage() {
                     return (
                       <div
                         key={m.id}
-                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                          m.fromMe ? "ml-auto text-white" : "bg-panel-3 text-ink"
-                        }`}
-                        style={
+                        className={`max-w-[80%] rounded-ln-md px-3 py-2 text-sm ${
                           m.fromMe
-                            ? {
-                                background:
-                                  "linear-gradient(95deg,#3aa3e0,#1c63ab)",
-                              }
-                            : undefined
-                        }
+                            ? "bg-ln-grad-chat ml-auto text-white"
+                            : "bg-white/[0.06] text-ln-text"
+                        }`}
                       >
                         {invite ? (
                           <div className="flex flex-col gap-2">

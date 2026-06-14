@@ -110,16 +110,11 @@ export function FriendsChatPanel({
             return (
               <div
                 key={m.id}
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                className={`max-w-[85%] rounded-ln-md px-3 py-2 text-sm ${
                   m.fromMe
-                    ? "ml-auto text-white"
-                    : "bg-panel-3 text-ink"
+                    ? "bg-ln-grad-chat ml-auto text-white"
+                    : "bg-white/[0.06] text-ln-text"
                 }`}
-                style={
-                  m.fromMe
-                    ? { background: "linear-gradient(95deg,#3aa3e0,#1c63ab)" }
-                    : undefined
-                }
               >
                 {invite ? (
                   <div className="flex flex-col gap-2">
@@ -131,7 +126,7 @@ export function FriendsChatPanel({
                     ) : (
                       <button
                         onClick={() => onJoinRoom(invite)}
-                        className="self-start rounded-sm bg-green/20 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/30"
+                        className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
                       >
                         Unirse a la sala
                       </button>
@@ -147,9 +142,9 @@ export function FriendsChatPanel({
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-2 border-t border-line p-2.5">
+      <div className="flex items-center gap-2 border-t border-ln-border p-2.5">
         <input
-          className="min-w-0 flex-1 rounded-full border border-line bg-black/30 px-3.5 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
+          className="min-w-0 flex-1 rounded-full border border-ln-border bg-ln-bg-deep px-3.5 py-2 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/25"
           placeholder="Escribí un mensaje…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -160,8 +155,7 @@ export function FriendsChatPanel({
         <button
           onClick={submit}
           disabled={sending || !text.trim()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-50"
-          style={{ background: "linear-gradient(95deg,#3aa3e0,#1c63ab)" }}
+          className="bg-ln-grad-luna flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ln-on-luna disabled:opacity-50"
           aria-label="Enviar"
         >
           {sending ? "…" : "➤"}

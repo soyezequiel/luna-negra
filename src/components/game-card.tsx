@@ -9,6 +9,7 @@ export type GameCardData = {
   coverUrl: string | null;
   priceSats: number;
   category?: string | null;
+  multiplayer?: boolean;
 };
 
 export function GameCard({ game }: { game: GameCardData }) {
@@ -18,7 +19,7 @@ export function GameCard({ game }: { game: GameCardData }) {
   return (
     <Link href={`/game/${game.slug}`} className="group block">
       <div
-        className="cover relative aspect-[3/4] overflow-hidden rounded border border-line transition-all duration-150 group-hover:-translate-y-[3px] group-hover:ring-1 group-hover:ring-blue/40 group-hover:shadow-[0_0_26px_-6px_var(--blue-glow)]"
+        className="cover relative aspect-[3/4] overflow-hidden rounded-ln-lg border border-ln-border transition-[transform,box-shadow,border-color] duration-150 group-hover:-translate-y-[5px] group-hover:border-ln-luna/50 group-hover:shadow-ln-card"
         style={{ "--h": hue } as CSSProperties}
       >
         {game.coverUrl ? (
@@ -29,28 +30,39 @@ export function GameCard({ game }: { game: GameCardData }) {
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-sm font-semibold text-white/90">
+          <div className="absolute inset-0 flex items-center justify-center p-3 text-center font-display text-base font-bold text-white/90">
             {game.title}
           </div>
         )}
-        {/* Overlay al hover con CTA azul "Ver juego" */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-          <span className="btn btn-blue px-4 py-2 text-[13px]">Ver juego</span>
-        </div>
+
+        {/* Badges superiores */}
+        {game.category ? (
+          <span className="absolute left-2 top-2 rounded-full bg-black/45 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-soft backdrop-blur-sm">
+            {categoryLabel(game.category)}
+          </span>
+        ) : null}
+        {game.multiplayer ? (
+          <span className="absolute right-2 top-2 rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
+            ⚇ Multi
+          </span>
+        ) : null}
+
+        {/* Degradado inferior para legibilidad */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="truncate text-[15px] text-ink">{game.title}</span>
+
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <span className="truncate text-[15px] text-ln-text transition-colors group-hover:text-white">
+          {game.title}
+        </span>
         <span
-          className={`shrink-0 font-mono text-xs font-semibold ${free ? "text-green" : "text-btc"}`}
+          className={`shrink-0 font-mono text-xs font-semibold ${
+            free ? "text-ln-aurora-bright" : "text-ln-corona-bright"
+          }`}
         >
           {priceLabel(game.priceSats)}
         </span>
       </div>
-      {game.category ? (
-        <div className="mt-1 text-[11px] text-faint">
-          {categoryLabel(game.category)}
-        </div>
-      ) : null}
     </Link>
   );
 }

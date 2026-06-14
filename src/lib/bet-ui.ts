@@ -38,20 +38,27 @@ export function betTone(status: string, result?: string | null): BetTone {
   return "void";
 }
 
-/** Color de acento (variable CSS) por tono, para la barra izquierda de la fila. */
+/**
+ * Color de acento (variable CSS) por tono, para la barra izquierda de la fila.
+ * Mapeo Eclipse: pozo financiado/en juego → aurora; esperando depósitos → corona
+ * (dinero); ganada → aurora; perdida/expirada → danger; settled/empate → luna;
+ * cancelada/reembolsada → gris.
+ */
 export function toneAccent(tone: BetTone): string {
   switch (tone) {
     case "won":
+      return "var(--ln-aurora)";
     case "tie":
-      return "var(--win)";
+      return "var(--ln-luna)";
     case "lost":
-      return "var(--lose)";
+      return "var(--ln-danger)";
     case "active":
+      return "var(--ln-aurora)";
     case "waiting":
-      return "var(--btc)";
+      return "var(--ln-corona)";
     case "void":
     default:
-      return "var(--faint)";
+      return "var(--ln-faint)";
   }
 }
 

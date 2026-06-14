@@ -12,6 +12,7 @@ import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
 import { GameCard } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
+import { GameSocialPanel } from "@/components/game-social-panel";
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
 import { gameGalleryMedia } from "@/lib/game-media";
@@ -78,43 +79,43 @@ export default async function GamePage({
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-[1240px] px-[22px] py-8">
       <Link
         href="/"
-        className="text-xs uppercase tracking-wide text-faint hover:text-ink"
+        className="ln-label transition-colors hover:text-ln-text"
       >
         ← Tienda
       </Link>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-bold tracking-tight text-white">
+        <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
           {game.title}
         </h1>
         {mode === "library" ? (
-          <span className="rounded-sm bg-green/15 px-2 py-1 text-xs font-semibold text-green ring-1 ring-inset ring-green/30">
+          <span className="rounded-full bg-ln-aurora/15 px-2.5 py-1 text-xs font-semibold text-ln-aurora ring-1 ring-inset ring-ln-aurora/30">
             ✓ En tu biblioteca
           </span>
         ) : null}
         {game.category ? (
           <Link
             href={`/?cat=${game.category}`}
-            className="rounded-sm border border-line px-2 py-0.5 text-xs text-muted hover:bg-white/5"
+            className="rounded-full border border-ln-border px-2.5 py-0.5 text-xs text-ln-muted transition-colors hover:bg-white/5"
           >
             {categoryLabel(game.category)}
           </Link>
         ) : null}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:[grid-template-columns:minmax(0,1fr)_330px]">
-        {/* Columna izquierda: media + descripción */}
-        <div className="min-w-0">
+      <div className="mt-6 grid gap-6 ln:[grid-template-columns:minmax(0,1fr)_340px]">
+        {/* Columna izquierda: media + descripción (en móvil va debajo de la compra) */}
+        <div className="order-2 min-w-0 ln:order-none">
           <GameMediaGallery title={game.title} hue={hue} media={media} />
 
           <section className="mt-8">
-            <h2 className="mb-3 text-[17px] font-semibold text-ink">
+            <h2 className="mb-3 text-[19px] font-semibold text-ln-text">
               Acerca del juego
             </h2>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ln-muted">
               {game.description || "Sin descripción."}
             </p>
             {features.length > 1 ? (
@@ -122,9 +123,9 @@ export default async function GamePage({
                 {features.map((f, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 text-sm text-ink"
+                    className="flex items-start gap-2 text-sm text-ln-text"
                   >
-                    <span className="mt-0.5 text-blue">›</span>
+                    <span className="mt-0.5 text-ln-luna">›</span>
                     <span className="min-w-0 truncate">{f}</span>
                   </li>
                 ))}
@@ -133,20 +134,21 @@ export default async function GamePage({
           </section>
         </div>
 
-        {/* Columna derecha (sticky): acción + metadatos */}
-        <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        {/* Columna derecha (sticky): acción + social + metadatos. En móvil, primero. */}
+        <aside className="order-1 space-y-4 ln:order-none ln:sticky ln:top-[86px] ln:self-start">
           {mode === "library" ? (
-            <div className="rounded-lg border border-green/30 bg-panel p-4 shadow-[0_0_30px_-18px_var(--green)]">
-              <p className="mb-3 text-sm font-semibold text-green">
+            <div className="rounded-ln-lg border border-ln-aurora/30 bg-ln-card p-4 shadow-ln-aurora">
+              <p className="mb-3 text-sm font-semibold text-ln-aurora-bright">
                 ✓ En tu biblioteca
               </p>
-              <div className="space-y-2">
+              <div className="space-y-2 [&>*]:w-full">
                 {game.gameUrl ? (
                   <PlayButton
                     gameId={game.id}
                     gameUrl={game.gameUrl}
                     title={game.title}
                     slug={game.slug}
+                    label="▶ Jugar"
                     variant="play"
                     size="xl"
                     className="w-full"
@@ -154,41 +156,41 @@ export default async function GamePage({
                 ) : null}
                 <Link
                   href={`/game/${game.slug}?view=store`}
-                  className="btn btn-blue w-full"
+                  className="btn btn-ghost w-full"
                 >
                   Ver en la tienda
                 </Link>
               </div>
               {supportsRooms ? (
-                <p className="mt-3 text-center text-[11px] text-faint">
+                <p className="mt-3 text-center text-[11px] text-ln-faint">
                   Compatible con salas de Luna Negra
                 </p>
               ) : null}
             </div>
           ) : (
-            <div className="rounded-lg border border-line bg-panel p-4">
+            <div className="rounded-ln-lg border border-ln-corona/40 bg-ln-card p-5 shadow-ln-corona">
               <div className="mb-3 flex items-baseline justify-between">
-                <span className="text-xs uppercase tracking-wide text-faint">
-                  Precio
-                </span>
+                <span className="ln-label">Precio</span>
                 <span
-                  className={`font-mono text-xl font-bold ${game.priceSats === 0 ? "text-green" : "text-btc"}`}
+                  className={`font-mono text-2xl font-bold ${game.priceSats === 0 ? "text-ln-aurora-bright" : "text-ln-corona-bright"}`}
                 >
                   {priceLabel(game.priceSats)}
                 </span>
               </div>
               {owned ? (
                 <div className="space-y-2">
-                  <p className="text-sm text-muted">Ya está en tu biblioteca.</p>
+                  <p className="text-sm text-ln-muted">
+                    Ya está en tu biblioteca.
+                  </p>
                   <Link
                     href={`/game/${game.slug}`}
-                    className="btn btn-play w-full"
+                    className="btn btn-aurora w-full"
                   >
                     Ir a tu biblioteca
                   </Link>
                 </div>
               ) : (
-                <div className="[&>button]:w-full">
+                <div className="space-y-2 [&>button]:w-full">
                   <BuyButton
                     gameId={game.id}
                     priceSats={game.priceSats}
@@ -197,10 +199,19 @@ export default async function GamePage({
                     title={game.title}
                     slug={game.slug}
                   />
+                  <button
+                    type="button"
+                    className="w-full rounded-full border border-ln-border px-4 py-2 text-[13px] text-ln-soft transition-colors hover:bg-white/5"
+                  >
+                    + Agregar a deseados
+                  </button>
                 </div>
               )}
             </div>
           )}
+
+          {/* Panel social "Jugá con amigos" (juegos con salas y comprables) */}
+          {supportsRooms && canPlay ? <GameSocialPanel /> : null}
 
           {/* Sala por invitación (link ?room=...) */}
           {game.gameUrl && canPlay ? (
@@ -222,26 +233,26 @@ export default async function GamePage({
           ) : null}
 
           {/* Metadatos */}
-          <dl className="rounded-lg border border-line bg-panel p-4 text-sm">
+          <dl className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 text-sm">
             <div className="flex justify-between py-1.5">
-              <dt className="text-faint">Proveedor</dt>
-              <dd className="text-blue">{game.provider.name}</dd>
+              <dt className="text-ln-faint">Proveedor</dt>
+              <dd className="text-ln-luna">{game.provider.name}</dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-faint">Modos</dt>
-              <dd className="text-ink">
+              <dt className="text-ln-faint">Modos</dt>
+              <dd className="text-ln-text">
                 {supportsRooms ? "1 jugador · 1v1" : "1 jugador"}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-faint">Lanzamiento</dt>
-              <dd className="text-ink">
+              <dt className="text-ln-faint">Lanzamiento</dt>
+              <dd className="text-ln-text">
                 {game.createdAt.toLocaleDateString("es-AR")}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
-              <dt className="text-faint">Plataforma</dt>
-              <dd className="text-ink">Web · Lightning</dd>
+              <dt className="text-ln-faint">Plataforma</dt>
+              <dd className="text-ln-text">Web · Lightning</dd>
             </div>
           </dl>
         </aside>
@@ -265,10 +276,10 @@ export default async function GamePage({
 
       {related.length > 0 ? (
         <section className="mt-12">
-          <h2 className="mb-4 text-[17px] font-semibold text-ink">
+          <h2 className="mb-4 text-[19px] font-semibold text-ln-text">
             Más juegos web
           </h2>
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
+          <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
             {related.map((g) => (
               <GameCard
                 key={g.id}

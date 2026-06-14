@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: #08070c; color: #e9e6f2; font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(157,140,255,.16); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(157,140,255,.30); }
+  ::selection { background: rgba(255,182,72,.28); }
+  @keyframes lnCorona { 0%,100% { opacity:.55; transform: scale(1); } 50% { opacity:.9; transform: scale(1.04); } }
+  @keyframes lnShimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+  @keyframes lnToast { from { transform: translateY(14px) scale(.96); opacity:0; } to { transform: translateY(0) scale(1); opacity:1; } }
+  @keyframes lnRise { from { transform: translateY(16px); } to { transform: translateY(0); } }
+  @keyframes lnPing { 0% { transform: scale(.6); opacity:.8; } 80%,100% { transform: scale(2.4); opacity:0; } }
+</style>
+</helmet>
+
+<div style="position:relative; min-height:100vh; overflow-x:hidden;">
+
+  <!-- ===== Fondo eclipse ===== -->
+  <div style="position:fixed; inset:0; z-index:0; pointer-events:none; background: radial-gradient(1100px 760px at 82% -12%, rgba(157,140,255,.16), transparent 58%), radial-gradient(820px 620px at 88% 4%, rgba(255,182,72,.10), transparent 60%), radial-gradient(900px 900px at 8% 108%, rgba(79,230,168,.06), transparent 60%), #08070c;"></div>
+  <div style="position:fixed; top:-180px; right:-120px; z-index:0; width:520px; height:520px; border-radius:50%; pointer-events:none; background: radial-gradient(circle at 50% 50%, transparent 52%, rgba(255,182,72,.22) 56%, rgba(157,140,255,.12) 62%, transparent 72%); filter: blur(2px); animation: lnCorona 7s ease-in-out infinite;"></div>
+
+  <!-- ===== NAVBAR ===== -->
+  <header style="position:sticky; top:0; z-index:50; backdrop-filter: blur(14px); background: linear-gradient(180deg, rgba(17,15,24,.92), rgba(8,7,12,.82)); border-bottom:1px solid rgba(255,255,255,.06);">
+    <div style="max-width:1240px; margin:0 auto; height:66px; padding:0 22px; display:flex; align-items:center; gap:18px;">
+      <button onClick="{{ goHome }}" style="display:flex; align-items:center; gap:11px; background:none; border:none; cursor:pointer; padding:0;">
+        <span style="position:relative; width:26px; height:26px; border-radius:50%; background:#0a0810; box-shadow: 0 0 0 1.5px rgba(255,182,72,.85), 0 0 16px 1px rgba(255,182,72,.55), inset 0 0 7px rgba(157,140,255,.5);"></span>
+        <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:16px; letter-spacing:.02em; color:#e9e6f2;">Luna&nbsp;<span style="color:#ffb648;">Negra</span></span>
+      </button>
+
+      <sc-if value="{{ showNavLinks }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex; align-items:center; gap:3px; margin-left:6px;">
+        <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="5">
+          <button onClick="{{ item.on }}" style="position:relative; background:none; border:none; cursor:pointer; padding:9px 13px; border-radius:10px; font-size:12.5px; font-weight:600; letter-spacing:.01em; color:#b7b0c8; font-family:'Geist',sans-serif;" style-hover="color:#ffffff; background:rgba(255,255,255,.05);">
+            <sc-if value="{{ item.active }}" hint-placeholder-val="{{ true }}">
+              <span style="position:absolute; inset:0; border-radius:10px; background:rgba(157,140,255,.14); box-shadow: inset 0 0 0 1px rgba(157,140,255,.34);"></span>
+              <span style="position:absolute; left:50%; bottom:2px; width:16px; height:2px; margin-left:-8px; border-radius:2px; background:#ffb648; box-shadow:0 0 8px rgba(255,182,72,.8);"></span>
+            </sc-if>
+            <span style="position:relative; z-index:1;">{{ item.label }}</span>
+          </button>
+        </sc-for>
+      </nav>
+      </sc-if>
+
+      <div style="margin-left:auto; display:flex; align-items:center; gap:13px;">
+        <sc-if value="{{ showTopSearch }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative; display:flex; align-items:center;">
+          <span style="position:absolute; left:12px; font-size:13px; color:#5f5872; pointer-events:none;">⌕</span>
+          <input value="{{ q }}" onInput="{{ setQ }}" placeholder="Buscar juegos…" style="width:180px; height:38px; border-radius:999px; border:1px solid rgba(255,255,255,.08); background:rgba(5,4,9,.6); color:#e9e6f2; font-size:13px; font-family:'Geist',sans-serif; padding:0 14px 0 30px; outline:none;" style-focus="border-color:rgba(157,140,255,.5); box-shadow:0 0 0 3px rgba(157,140,255,.16); width:212px;" />
+        </div>
+        </sc-if>
+        <div style="display:flex; align-items:center; gap:7px; height:38px; padding:0 14px; border-radius:999px; background:rgba(255,182,72,.1); border:1px solid rgba(255,182,72,.28); cursor:pointer;" style-hover="background:rgba(255,182,72,.16);">
+          <span style="font-size:12px;">⚡</span>
+          <span style="font-family:'Geist Mono',monospace; font-size:12.5px; font-weight:600; color:#ffcd7a; letter-spacing:.02em;">42 480</span>
+        </div>
+        <button onClick="{{ goProfile }}" title="Tu perfil" style="width:38px; height:38px; border-radius:50%; border:1px solid rgba(255,255,255,.14); cursor:pointer; background:linear-gradient(135deg, hsl(286 55% 46%), hsl(266 60% 32%)); color:#fff; font-weight:600; font-size:13px; font-family:'Geist',sans-serif;" style-hover="border-color:rgba(157,140,255,.7); box-shadow:0 0 14px rgba(157,140,255,.4);">VN</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== LAYOUT ===== -->
+  <div style="position:relative; z-index:10; display:flex;">
+    <main style="flex:1; min-width:0;">
+      <div style="max-width:1240px; margin:0 auto; padding:0 22px;">
+
+        <!-- ============ HOME ============ -->
+        <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:30px 0 64px;">
+
+          <!-- Búsqueda (solo móvil) -->
+          <sc-if value="{{ mob }}" hint-placeholder-val="{{ false }}">
+            <div style="position:relative; display:flex; align-items:center; margin-bottom:18px;">
+              <span style="position:absolute; left:14px; font-size:14px; color:#5f5872; pointer-events:none;">⌕</span>
+              <input value="{{ q }}" onInput="{{ setQ }}" placeholder="Buscar juegos…" style="width:100%; height:46px; border-radius:999px; border:1px solid rgba(255,255,255,.1); background:rgba(5,4,9,.6); color:#e9e6f2; font-size:15px; padding:0 16px 0 38px; outline:none; font-family:'Geist',sans-serif;" style-focus="border-color:rgba(157,140,255,.5); box-shadow:0 0 0 3px rgba(157,140,255,.14);" />
+            </div>
+          </sc-if>
+
+          <!-- Hero cinematográfico -->
+          <section style="position:relative; border-radius:22px; overflow:hidden; border:1px solid rgba(255,255,255,.07); box-shadow:0 40px 90px -50px rgba(0,0,0,.95); animation:lnRise .5s ease both;">
+            <div style="{{ featured.coverStyle }}"></div>
+            <div style="position:absolute; inset:0; background:linear-gradient(95deg, rgba(8,7,12,.96) 8%, rgba(8,7,12,.72) 42%, rgba(8,7,12,.15) 78%, transparent);"></div>
+            <div style="position:absolute; top:-120px; right:60px; width:340px; height:340px; border-radius:50%; pointer-events:none; background:radial-gradient(circle at 50% 50%, transparent 54%, rgba(255,182,72,.4) 58%, transparent 70%); animation:lnCorona 6s ease-in-out infinite;"></div>
+            <div style="{{ heroInnerStyle }}">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-family:'Geist Mono',monospace; font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:#ffb648;">★ Destacado</span>
+                <span style="width:4px; height:4px; border-radius:50%; background:#5f5872;"></span>
+                <span style="display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:#4fe6a8;"><span style="width:7px; height:7px; border-radius:50%; background:#4fe6a8; box-shadow:0 0 8px #4fe6a8;"></span>{{ featured.online }} jugando ahora</span>
+              </div>
+              <h1 style="{{ heroTitleStyle }}">{{ featured.title }}</h1>
+              <p style="margin:0; max-width:480px; font-size:15px; line-height:1.6; color:#c7c1d6;">{{ featured.desc }}</p>
+              <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                <sc-for list="{{ featured.tags }}" as="tag" hint-placeholder-count="3">
+                  <span style="font-size:11.5px; color:#cfc8de; padding:5px 11px; border-radius:999px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.1);">{{ tag }}</span>
+                </sc-for>
+              </div>
+              <div style="display:flex; align-items:center; gap:13px; margin-top:6px;">
+                <button onClick="{{ featured.open }}" style="display:inline-flex; align-items:center; gap:9px; height:50px; padding:0 28px; border-radius:999px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:700; font-size:15px; color:#1a1430; background:linear-gradient(120deg, #c2b5ff, #9d8cff); box-shadow:0 14px 36px -12px rgba(157,140,255,.7);" style-hover="box-shadow:0 18px 46px -10px rgba(157,140,255,.95); transform:translateY(-2px);"><span style="font-size:13px;">▶</span> Ver juego</button>
+                <div style="display:flex; align-items:center; gap:9px;">
+                  <span style="font-family:'Geist Mono',monospace; font-size:18px; font-weight:600; color:#ffcd7a;">{{ featured.priceText }}</span>
+                  <span style="font-size:12px; color:#9a93ad;">· Web · Lightning</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Riel social: Jugando ahora -->
+          <section style="margin-top:38px; animation:lnRise .55s ease both;">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:15px;">
+              <h2 style="margin:0; display:flex; align-items:center; gap:10px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:21px; color:#e9e6f2;"><span style="width:8px; height:8px; border-radius:50%; background:#4fe6a8; box-shadow:0 0 10px #4fe6a8;"></span>Tus amigos están jugando</h2>
+              <button onClick="{{ goFriends }}" style="background:none; border:none; cursor:pointer; font-size:12.5px; color:#9d8cff; font-family:'Geist',sans-serif;" style-hover="color:#c2b5ff;">Ver todos ›</button>
+            </div>
+            <div style="display:flex; gap:13px; overflow-x:auto; padding-bottom:6px;">
+              <sc-for list="{{ playing }}" as="p" hint-placeholder-count="5">
+                <button onClick="{{ p.open }}" style="flex:0 0 auto; width:182px; text-align:left; cursor:pointer; padding:13px; border-radius:16px; background:rgba(24,21,34,.7); border:1px solid rgba(255,255,255,.07);" style-hover="border-color:rgba(79,230,168,.4); background:rgba(24,21,34,.95); transform:translateY(-3px);">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="{{ p.avatarStyle }}">{{ p.initials }}<span style="position:absolute; bottom:-1px; right:-1px; width:11px; height:11px; border-radius:50%; background:#4fe6a8; border:2.5px solid #181522;"></span></span>
+                    <div style="min-width:0;">
+                      <div style="font-size:13px; font-weight:600; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</div>
+                      <div style="font-size:11px; color:#4fe6a8;">jugando ahora</div>
+                    </div>
+                  </div>
+                  <div style="margin-top:11px; display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:10px; background:rgba(5,4,9,.5);">
+                    <span style="position:relative; width:26px; height:26px; border-radius:7px; overflow:hidden; flex:0 0 auto;"><span style="{{ p.coverStyle }}"></span></span>
+                    <span style="font-size:12px; color:#c7c1d6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.game }}</span>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+          </section>
+
+          <!-- Chips de categoría -->
+          <section style="margin-top:40px;">
+            <div style="display:flex; flex-wrap:wrap; gap:9px;">
+              <sc-for list="{{ chips }}" as="c" hint-placeholder-count="8">
+                <button onClick="{{ c.pick }}" style="position:relative; cursor:pointer; padding:8px 15px; border-radius:999px; font-size:12.5px; font-weight:600; font-family:'Geist',sans-serif; border:1px solid rgba(255,255,255,.08); color:#b7b0c8; background:rgba(24,21,34,.6);" style-hover="color:#fff; border-color:rgba(255,255,255,.18);">
+                  <sc-if value="{{ c.active }}" hint-placeholder-val="{{ false }}">
+                    <span style="position:absolute; inset:0; border-radius:999px; background:linear-gradient(120deg,#c2b5ff,#9d8cff);"></span>
+                  </sc-if>
+                  <span style="{{ c.labelStyle }}">{{ c.label }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </section>
+
+          <!-- Catálogo -->
+          <section style="margin-top:26px;">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:18px;">
+              <h2 style="margin:0; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:21px; color:#e9e6f2;">{{ catalogTitle }}</h2>
+              <span style="font-size:12px; color:#5f5872; font-family:'Geist Mono',monospace;">{{ catalogCount }}</span>
+            </div>
+
+            <!-- Skeletons -->
+            <sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(214px,1fr)); gap:18px;">
+                <sc-for list="{{ skeletons }}" as="s" hint-placeholder-count="8">
+                  <div>
+                    <div style="aspect-ratio:3/4; border-radius:14px; background:linear-gradient(100deg, rgba(255,255,255,.04) 30%, rgba(255,255,255,.10) 50%, rgba(255,255,255,.04) 70%); background-size:420px 100%; animation:lnShimmer 1.4s linear infinite;"></div>
+                    <div style="height:13px; width:70%; margin-top:11px; border-radius:5px; background:rgba(255,255,255,.07);"></div>
+                    <div style="height:11px; width:40%; margin-top:8px; border-radius:5px; background:rgba(255,255,255,.05);"></div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <!-- Grid real -->
+            <sc-if value="{{ loaded }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(214px,1fr)); gap:18px;">
+                <sc-for list="{{ grid }}" as="g" hint-placeholder-count="8">
+                  <button onClick="{{ g.open }}" style="text-align:left; background:none; border:none; padding:0; cursor:pointer; display:block;">
+                    <div style="position:relative; aspect-ratio:3/4; border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,.07); transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;" style-hover="transform:translateY(-5px); border-color:rgba(157,140,255,.45); box-shadow:0 22px 48px -22px rgba(157,140,255,.6);">
+                      <div style="{{ g.coverStyle }}"></div>
+                      <span style="position:absolute; top:9px; left:9px; font-family:'Geist Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.78); background:rgba(5,4,9,.45); padding:3px 7px; border-radius:6px; backdrop-filter:blur(4px);">{{ g.catLabel }}</span>
+                      <sc-if value="{{ g.multi }}" hint-placeholder-val="{{ false }}">
+                        <span style="position:absolute; top:9px; right:9px; display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:600; color:#4fe6a8; background:rgba(5,4,9,.5); padding:3px 7px; border-radius:6px; backdrop-filter:blur(4px);">⚇ Multi</span>
+                      </sc-if>
+                      <div style="position:absolute; left:0; right:0; bottom:0; height:62px; background:linear-gradient(transparent, rgba(5,4,9,.92));"></div>
+                    </div>
+                    <div style="margin-top:11px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                      <span style="font-size:14.5px; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.title }}</span>
+                      <span style="{{ g.priceStyle }}">{{ g.priceText }}</span>
+                    </div>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- ============ GAME ============ -->
+        <sc-if value="{{ isGame }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px 0 64px; animation:lnRise .4s ease both;">
+          <button onClick="{{ goHome }}" style="background:none; border:none; cursor:pointer; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:#5f5872; font-family:'Geist Mono',monospace; padding:0;" style-hover="color:#9d8cff;">← Tienda</button>
+          <div style="margin-top:14px; display:flex; flex-wrap:wrap; align-items:center; gap:14px;">
+            <h1 style="margin:0; font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:40px; letter-spacing:-.02em; color:#fff;">{{ sel.title }}</h1>
+            <span style="font-size:12px; color:#b7b0c8; padding:5px 11px; border-radius:999px; border:1px solid rgba(255,255,255,.1); background:rgba(24,21,34,.6);">{{ sel.catLabel }}</span>
+            <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#4fe6a8;"><span style="width:7px; height:7px; border-radius:50%; background:#4fe6a8; box-shadow:0 0 8px #4fe6a8;"></span>{{ sel.online }} en línea</span>
+          </div>
+
+          <div style="{{ gameGridStyle }}">
+            <div style="min-width:0;">
+              <!-- Galería -->
+              <div style="position:relative; aspect-ratio:16/9; border-radius:18px; overflow:hidden; border:1px solid rgba(255,255,255,.08);">
+                <div style="{{ sel.coverStyle }}"></div>
+                <div style="position:absolute; inset:0; background:radial-gradient(120% 100% at 50% 0%, transparent 50%, rgba(5,4,9,.55));"></div>
+                <span style="position:absolute; bottom:14px; left:14px; font-family:'Geist Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:rgba(255,255,255,.6);">tráiler · captura principal</span>
+              </div>
+              <div style="{{ shotsGridStyle }}">
+                <sc-for list="{{ sel.shots }}" as="sh" hint-placeholder-count="4">
+                  <div style="position:relative; aspect-ratio:16/10; border-radius:11px; overflow:hidden; border:1px solid rgba(255,255,255,.07); cursor:pointer;" style-hover="border-color:rgba(157,140,255,.5);">
+                    <div style="{{ sh.style }}"></div>
+                    <span style="position:absolute; bottom:6px; left:7px; font-family:'Geist Mono',monospace; font-size:8.5px; color:rgba(255,255,255,.5);">{{ sh.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <section style="margin-top:30px;">
+                <h2 style="margin:0 0 12px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:19px; color:#e9e6f2;">Acerca del juego</h2>
+                <p style="margin:0; font-size:14px; line-height:1.75; color:#9a93ad;">{{ sel.about }}</p>
+                <ul style="{{ featGridStyle }}">
+                  <sc-for list="{{ sel.features }}" as="f" hint-placeholder-count="4">
+                    <li style="display:flex; align-items:flex-start; gap:9px; font-size:13.5px; color:#cfc8de;"><span style="color:#9d8cff; margin-top:1px;">›</span>{{ f }}</li>
+                  </sc-for>
+                </ul>
+              </section>
+
+              <!-- Reseñas -->
+              <section style="margin-top:34px;">
+                <h2 style="margin:0 0 14px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:19px; color:#e9e6f2;">Reseñas de la comunidad</h2>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                  <sc-for list="{{ sel.reviews }}" as="r" hint-placeholder-count="3">
+                    <div style="padding:15px 17px; border-radius:14px; background:rgba(24,21,34,.6); border:1px solid rgba(255,255,255,.06);">
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="{{ r.avatarStyle }}">{{ r.initials }}</span>
+                        <span style="font-size:13px; font-weight:600; color:#e9e6f2;">{{ r.name }}</span>
+                        <span style="margin-left:auto; font-size:12px; color:#ffb648;">{{ r.stars }}</span>
+                      </div>
+                      <p style="margin:10px 0 0; font-size:13px; line-height:1.6; color:#9a93ad;">{{ r.text }}</p>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+            </div>
+
+            <!-- Columna derecha sticky -->
+            <aside style="{{ gameAsideStyle }}">
+              <div style="padding:20px; border-radius:18px; background:linear-gradient(180deg, rgba(24,21,34,.9), rgba(17,15,24,.9)); border:1px solid rgba(255,182,72,.22); box-shadow:0 30px 60px -40px rgba(255,182,72,.5);">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:15px;">
+                  <span style="font-family:'Geist Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#5f5872;">Precio</span>
+                  <span style="font-family:'Geist Mono',monospace; font-size:26px; font-weight:700; color:#ffcd7a;">{{ sel.priceText }}</span>
+                </div>
+                <button style="width:100%; height:50px; border-radius:13px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:700; font-size:15px; color:#231304; background:linear-gradient(120deg,#ffcd7a,#ffb648); box-shadow:0 14px 30px -14px rgba(255,182,72,.8);" style-hover="transform:translateY(-2px); box-shadow:0 18px 40px -12px rgba(255,182,72,.95);">⚡ Comprar con Lightning</button>
+                <button style="width:100%; height:44px; margin-top:9px; border-radius:13px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:13.5px; color:#e9e6f2; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);" style-hover="background:rgba(255,255,255,.1);">+ Agregar a deseados</button>
+              </div>
+
+              <!-- Panel social / multijugador -->
+              <div style="padding:18px; border-radius:18px; background:rgba(79,230,168,.06); border:1px solid rgba(79,230,168,.24);">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;"><span style="font-size:14px;">⚇</span><span style="font-size:13.5px; font-weight:700; color:#84f3c6;">Jugá con amigos</span></div>
+                <div style="display:flex; align-items:center; margin-bottom:12px;">
+                  <sc-for list="{{ sel.friendsAvatars }}" as="a" hint-placeholder-count="3">
+                    <span style="{{ a.style }}">{{ a.initials }}</span>
+                  </sc-for>
+                  <span style="margin-left:18px; font-size:12px; color:#9a93ad;">{{ sel.friendsNote }}</span>
+                </div>
+                <button style="width:100%; height:42px; border-radius:12px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:700; font-size:13.5px; color:#062414; background:linear-gradient(120deg,#84f3c6,#4fe6a8); box-shadow:0 12px 26px -14px rgba(79,230,168,.8);" style-hover="transform:translateY(-2px);">▶ Crear sala e invitar</button>
+              </div>
+
+              <!-- Metadatos -->
+              <div style="padding:6px 18px; border-radius:18px; background:rgba(24,21,34,.6); border:1px solid rgba(255,255,255,.06);">
+                <sc-for list="{{ sel.meta }}" as="m" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px solid rgba(255,255,255,.05);">
+                    <span style="font-size:12.5px; color:#5f5872;">{{ m.k }}</span>
+                    <span style="{{ m.vStyle }}">{{ m.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </aside>
+          </div>
+
+          <!-- Relacionados -->
+          <section style="margin-top:42px;">
+            <h2 style="margin:0 0 18px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:19px; color:#e9e6f2;">Más juegos como este</h2>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:18px;">
+              <sc-for list="{{ sel.related }}" as="g" hint-placeholder-count="4">
+                <button onClick="{{ g.open }}" style="text-align:left; background:none; border:none; padding:0; cursor:pointer;">
+                  <div style="position:relative; aspect-ratio:3/4; border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,.07); transition:transform .16s ease, box-shadow .16s ease;" style-hover="transform:translateY(-5px); box-shadow:0 20px 44px -22px rgba(157,140,255,.6);">
+                    <div style="{{ g.coverStyle }}"></div>
+                  </div>
+                  <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                    <span style="font-size:14px; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.title }}</span>
+                    <span style="{{ g.priceStyle }}">{{ g.priceText }}</span>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- ============ LIBRARY ============ -->
+        <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:30px 0 64px; animation:lnRise .4s ease both;">
+          <h1 style="margin:0; font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:38px; letter-spacing:-.02em; color:#fff;">Tu biblioteca</h1>
+          <p style="margin:8px 0 0; font-size:14px; color:#9a93ad;">{{ libCount }} juegos · todos se juegan en el navegador.</p>
+
+          <section style="margin-top:30px;">
+            <h2 style="margin:0 0 16px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Seguir jugando</h2>
+            <div style="{{ keepGridStyle }}">
+              <sc-for list="{{ keepPlaying }}" as="g" hint-placeholder-count="3">
+                <div style="position:relative; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,.07);" style-hover="border-color:rgba(79,230,168,.4);">
+                  <div style="position:relative; aspect-ratio:16/9;">
+                    <div style="{{ g.coverStyle }}"></div>
+                    <div style="position:absolute; inset:0; background:linear-gradient(transparent 40%, rgba(5,4,9,.92));"></div>
+                  </div>
+                  <div style="position:absolute; left:0; right:0; bottom:0; padding:16px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                    <div style="min-width:0;">
+                      <div style="font-size:15px; font-weight:600; color:#fff; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{ g.title }}</div>
+                      <div style="font-size:11.5px; color:#9a93ad; margin-top:3px;">{{ g.lastPlayed }}</div>
+                    </div>
+                    <button onClick="{{ g.play }}" style="flex:0 0 auto; display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 18px; border-radius:999px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:700; font-size:13.5px; color:#062414; background:linear-gradient(120deg,#84f3c6,#4fe6a8); box-shadow:0 12px 26px -14px rgba(79,230,168,.8);" style-hover="transform:translateY(-2px);">▶ Jugar</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section style="margin-top:38px;">
+            <h2 style="margin:0 0 16px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Todos tus juegos</h2>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:18px;">
+              <sc-for list="{{ library }}" as="g" hint-placeholder-count="6">
+                <div>
+                  <button onClick="{{ g.open }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:0; cursor:pointer;">
+                    <div style="position:relative; aspect-ratio:16/10; border-radius:13px; overflow:hidden; border:1px solid rgba(255,255,255,.07); transition:transform .16s ease, box-shadow .16s ease;" style-hover="transform:translateY(-4px); box-shadow:0 18px 40px -22px rgba(157,140,255,.55);">
+                      <div style="{{ g.coverStyle }}"></div>
+                    </div>
+                  </button>
+                  <div style="margin-top:10px; font-size:14px; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.title }}</div>
+                  <div style="margin-top:9px; display:flex; gap:8px;">
+                    <button onClick="{{ g.play }}" style="flex:1; height:36px; border-radius:9px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:12.5px; color:#062414; background:linear-gradient(120deg,#84f3c6,#4fe6a8);" style-hover="filter:brightness(1.08);">▶ Jugar</button>
+                    <button onClick="{{ g.open }}" style="flex:0 0 auto; padding:0 14px; height:36px; border-radius:9px; cursor:pointer; font-size:12.5px; color:#cfc8de; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);" style-hover="background:rgba(255,255,255,.1);">Ver</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- ============ PROVIDER ============ -->
+        <sc-if value="{{ isProvider }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:30px 0 64px; max-width:920px; margin:0 auto; animation:lnRise .4s ease both;">
+          <div style="display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:14px;">
+            <div>
+              <h1 style="margin:0; font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:34px; letter-spacing:-.02em; color:#fff;">Panel de proveedor</h1>
+              <p style="margin:8px 0 0; font-size:14px; color:#9a93ad;">Gestioná tus juegos, cobros en sats, API keys y webhooks.</p>
+            </div>
+            <button style="height:40px; padding:0 18px; border-radius:999px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:13px; color:#cfc8de; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);" style-hover="background:rgba(255,255,255,.1);">Abrir guía /dev</button>
+          </div>
+
+          <div style="{{ kpiGridStyle }}">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+              <div style="position:relative; padding:17px 18px; border-radius:15px; background:rgba(24,21,34,.6); border:1px solid rgba(255,255,255,.06); overflow:hidden;">
+                <span style="{{ k.barStyle }}"></span>
+                <p style="margin:0; font-family:'Geist Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:#5f5872;">{{ k.label }}</p>
+                <p style="{{ k.valueStyle }}">{{ k.value }}</p>
+                <p style="margin:7px 0 0; font-size:11.5px; color:#9a93ad;">{{ k.sub }}</p>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:22px; padding:22px; border-radius:18px; background:rgba(17,15,24,.7); border:1px solid rgba(255,255,255,.07);">
+            <h2 style="margin:0 0 16px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:17px; color:#e9e6f2;">Nuevo juego</h2>
+            <div style="display:flex; flex-direction:column; gap:13px;">
+              <input placeholder="Título del juego" style="height:44px; border-radius:11px; border:1px solid rgba(255,255,255,.09); background:rgba(5,4,9,.5); color:#e9e6f2; font-family:'Geist',sans-serif; font-size:14px; padding:0 14px; outline:none;" style-focus="border-color:rgba(157,140,255,.5); box-shadow:0 0 0 3px rgba(157,140,255,.14);" />
+              <textarea placeholder="Descripción" rows="3" style="border-radius:11px; border:1px solid rgba(255,255,255,.09); background:rgba(5,4,9,.5); color:#e9e6f2; font-family:'Geist',sans-serif; font-size:14px; padding:11px 14px; outline:none; resize:vertical;" style-focus="border-color:rgba(157,140,255,.5); box-shadow:0 0 0 3px rgba(157,140,255,.14);"></textarea>
+              <div style="{{ provFormGridStyle }}">
+                <div>
+                  <label style="display:block; font-size:12px; color:#9a93ad; margin-bottom:6px;">Precio (sats)</label>
+                  <input value="0" style="width:100%; height:44px; border-radius:11px; border:1px solid rgba(255,255,255,.09); background:rgba(5,4,9,.5); color:#ffcd7a; font-family:'Geist Mono',monospace; font-size:14px; padding:0 14px; outline:none;" style-focus="border-color:rgba(255,182,72,.5); box-shadow:0 0 0 3px rgba(255,182,72,.14);" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:12px; color:#9a93ad; margin-bottom:6px;">Categoría</label>
+                  <div style="height:44px; border-radius:11px; border:1px solid rgba(255,255,255,.09); background:rgba(5,4,9,.5); color:#cfc8de; font-size:14px; padding:0 14px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" style-hover="border-color:rgba(157,140,255,.4);">Acción <span style="color:#5f5872;">▾</span></div>
+                </div>
+              </div>
+              <div style="{{ provUploadStyle }}">
+                <div style="flex:1; height:96px; border-radius:12px; border:1.5px dashed rgba(255,255,255,.14); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; cursor:pointer; color:#9a93ad;" style-hover="border-color:rgba(157,140,255,.5); color:#cfc8de;"><span style="font-size:18px;">⬆</span><span style="font-size:12px;">Portada vertical</span></div>
+                <div style="flex:1.6; height:96px; border-radius:12px; border:1.5px dashed rgba(255,255,255,.14); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; cursor:pointer; color:#9a93ad;" style-hover="border-color:rgba(157,140,255,.5); color:#cfc8de;"><span style="font-size:18px;">⬆</span><span style="font-size:12px;">Portada horizontal</span></div>
+              </div>
+              <button style="align-self:flex-start; height:44px; padding:0 22px; border-radius:11px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:700; font-size:14px; color:#1a1430; background:linear-gradient(120deg,#c2b5ff,#9d8cff); box-shadow:0 12px 26px -14px rgba(157,140,255,.7);" style-hover="transform:translateY(-2px);">Crear borrador</button>
+            </div>
+          </div>
+
+          <section style="margin-top:26px;">
+            <h2 style="margin:0 0 14px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:17px; color:#e9e6f2;">Tus juegos</h2>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <sc-for list="{{ provGames }}" as="g" hint-placeholder-count="4">
+                <div style="display:flex; align-items:center; gap:14px; padding:13px 16px; border-radius:13px; background:rgba(24,21,34,.6); border:1px solid rgba(255,255,255,.06);" style-hover="border-color:rgba(255,255,255,.13);">
+                  <span style="width:38px; height:38px; border-radius:9px; overflow:hidden; position:relative; flex:0 0 auto;"><span style="{{ g.coverStyle }}"></span></span>
+                  <div style="min-width:0; flex:1;">
+                    <div style="font-size:14px; font-weight:600; color:#e9e6f2;">{{ g.title }}</div>
+                    <div style="font-size:11.5px; color:#9a93ad; margin-top:2px;">{{ g.priceText }}</div>
+                  </div>
+                  <span style="{{ g.statusStyle }}">{{ g.status }}</span>
+                  <button style="height:34px; padding:0 14px; border-radius:9px; cursor:pointer; font-size:12.5px; color:#cfc8de; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);" style-hover="background:rgba(255,255,255,.1);">Editar</button>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section style="margin-top:26px;">
+            <h2 style="margin:0 0 14px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:17px; color:#e9e6f2;">Ventas recientes</h2>
+            <div style="border-radius:13px; overflow:hidden; border:1px solid rgba(255,255,255,.06);">
+              <sc-for list="{{ sales }}" as="s" hint-placeholder-count="4">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:13px 16px; background:rgba(24,21,34,.5); border-bottom:1px solid rgba(255,255,255,.05);">
+                  <span style="font-size:13.5px; color:#cfc8de;">{{ s.title }}</span>
+                  <span style="display:flex; align-items:center; gap:12px;">
+                    <span style="font-family:'Geist Mono',monospace; font-size:13px; font-weight:600; color:#ffcd7a;">+{{ s.amount }}</span>
+                    <span style="{{ s.statusStyle }}">{{ s.status }}</span>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        </sc-if>
+
+        <!-- ============ APUESTAS ============ -->
+        <sc-if value="{{ isBets }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:30px 0 64px; animation:lnRise .4s ease both;">
+          <div style="display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:14px;">
+            <div>
+              <h1 style="margin:0; font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:34px; letter-spacing:-.02em; color:#fff;">Apuestas</h1>
+              <p style="margin:8px 0 0; font-size:14px; color:#9a93ad; max-width:560px;">Duelos con pozo en sats. El stake va a <span style="color:#cfc8de;">escrow</span> hasta que termina la partida; el ganador cobra por Lightning. Sin custodia: si nadie deposita, se reembolsa solo.</p>
+            </div>
+            <span style="display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 14px; border-radius:999px; font-size:11.5px; color:#84f3c6; background:rgba(79,230,168,.1); border:1px solid rgba(79,230,168,.26);"><span style="width:6px; height:6px; border-radius:50%; background:#4fe6a8; box-shadow:0 0 7px #4fe6a8;"></span>Escrow Lightning activo</span>
+          </div>
+
+          <div style="margin-top:24px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+            <sc-for list="{{ betKpis }}" as="k" hint-placeholder-count="3">
+              <div style="position:relative; padding:17px 18px; border-radius:15px; background:rgba(24,21,34,.6); border:1px solid rgba(255,255,255,.06); overflow:hidden;">
+                <span style="{{ k.barStyle }}"></span>
+                <p style="margin:0; font-family:'Geist Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:#5f5872;">{{ k.label }}</p>
+                <p style="{{ k.valueStyle }}">{{ k.value }}</p>
+                <p style="margin:7px 0 0; font-size:11.5px; color:#9a93ad;">{{ k.sub }}</p>
+              </div>
+            </sc-for>
+          </div>
+
+          <h2 style="margin:30px 0 16px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Duelos activos</h2>
+          <div style="{{ betGridStyle }}">
+            <sc-for list="{{ activeBets }}" as="b" hint-placeholder-count="2">
+              <div style="border-radius:18px; background:linear-gradient(180deg, rgba(24,21,34,.85), rgba(17,15,24,.85)); border:1px solid rgba(255,255,255,.08); overflow:hidden;" style-hover="border-color:rgba(255,182,72,.3);">
+                <!-- cabecera juego -->
+                <div style="position:relative; height:74px; overflow:hidden;">
+                  <div style="{{ b.coverStyle }}"></div>
+                  <div style="position:absolute; inset:0; background:linear-gradient(100deg, rgba(8,7,12,.92), rgba(8,7,12,.45));"></div>
+                  <div style="position:absolute; inset:0; padding:0 16px; display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:16px; color:#fff;">{{ b.gameTitle }}</span>
+                    <span style="{{ b.statusStyle }}"><span style="{{ b.statusDot }}"></span>{{ b.statusLabel }}</span>
+                  </div>
+                </div>
+                <div style="padding:16px;">
+                  <!-- VS -->
+                  <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:14px;">
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;"><span style="{{ b.meAvatar }}">{{ b.meInitials }}</span><span style="font-size:11px; color:#cfc8de;">Vos</span></div>
+                    <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:13px; color:#5f5872;">VS</span>
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:6px;"><span style="{{ b.rivalAvatar }}">{{ b.rivalInitials }}</span><span style="font-size:11px; color:#cfc8de;">{{ b.rival }}</span></div>
+                  </div>
+                  <!-- pozo -->
+                  <div style="display:flex; align-items:stretch; gap:10px; margin-bottom:14px;">
+                    <div style="flex:1; padding:11px 13px; border-radius:12px; background:rgba(5,4,9,.45);">
+                      <div style="font-family:'Geist Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#5f5872;">Tu stake</div>
+                      <div style="margin-top:4px; font-family:'Geist Mono',monospace; font-size:15px; font-weight:600; color:#e9e6f2;">{{ b.stakeText }}</div>
+                    </div>
+                    <div style="flex:1.3; padding:11px 13px; border-radius:12px; background:rgba(255,182,72,.08); border:1px solid rgba(255,182,72,.2);">
+                      <div style="font-family:'Geist Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#ffb648;">Premio al ganador</div>
+                      <div style="margin-top:4px; font-family:'Geist Mono',monospace; font-size:15px; font-weight:700; color:#ffcd7a;">{{ b.netText }}</div>
+                    </div>
+                  </div>
+                  <!-- victoria + fee -->
+                  <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; font-size:12px; color:#9a93ad; line-height:1.5;"><span style="color:#9d8cff; margin-top:1px;">▸</span><span>{{ b.victoria }}</span></div>
+                  <!-- progreso depósitos -->
+                  <div style="margin-bottom:5px; display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-size:11.5px; color:#cfc8de;">{{ b.depositText }}</span>
+                    <span style="font-size:11px; color:#5f5872; font-family:'Geist Mono',monospace;">comisión {{ b.feeText }}</span>
+                  </div>
+                  <div style="height:6px; border-radius:999px; background:rgba(255,255,255,.07); overflow:hidden; margin-bottom:8px;"><div style="{{ b.barFillStyle }}"></div></div>
+                  <div style="font-size:11px; color:#5f5872; margin-bottom:14px;">⏱ {{ b.deadlineText }}</div>
+                  <!-- acciones -->
+                  <button onClick="{{ b.onPrimary }}" style="{{ b.primaryStyle }}" style-hover="filter:brightness(1.06);">{{ b.primaryLabel }}</button>
+                  <button onClick="{{ b.onCancel }}" style="width:100%; height:38px; margin-top:8px; border-radius:11px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:12.5px; color:#9a93ad; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);" style-hover="color:#e8907a; border-color:rgba(232,144,122,.3);">Cancelar y reembolsar</button>
+                </div>
+              </div>
+            </sc-for>
+
+            <!-- crear nuevo duelo -->
+            <button onClick="{{ goHome }}" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px; border-radius:18px; cursor:pointer; background:rgba(157,140,255,.05); border:1.5px dashed rgba(157,140,255,.3); color:#b7b0c8; font-family:'Geist',sans-serif;" style-hover="border-color:rgba(157,140,255,.6); background:rgba(157,140,255,.1); color:#e9e6f2;">
+              <span style="width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; background:rgba(157,140,255,.16); color:#c2b5ff;">+</span>
+              <span style="font-size:14px; font-weight:600;">Crear un duelo</span>
+              <span style="font-size:12px; color:#9a93ad; max-width:200px; text-align:center;">Elegí un juego con sala, fijá el stake e invitá a un amigo.</span>
+            </button>
+          </div>
+
+          <h2 style="margin:36px 0 14px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Historial</h2>
+          <div style="border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,.06);">
+            <sc-for list="{{ betHistory }}" as="h" hint-placeholder-count="4">
+              <div style="display:flex; align-items:center; gap:14px; padding:13px 16px; background:rgba(24,21,34,.5); border-bottom:1px solid rgba(255,255,255,.05);">
+                <span style="width:34px; height:34px; border-radius:9px; overflow:hidden; position:relative; flex:0 0 auto;"><span style="{{ h.coverStyle }}"></span></span>
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:13.5px; font-weight:600; color:#e9e6f2;">{{ h.gameTitle }}</div>
+                  <div style="font-size:11.5px; color:#9a93ad; margin-top:2px;">{{ h.vsText }}</div>
+                </div>
+                <span style="{{ h.resultStyle }}">{{ h.resultLabel }}</span>
+                <span style="{{ h.payoutStyle }}">{{ h.payoutText }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ============ PERFIL ============ -->
+        <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:30px 0 64px; animation:lnRise .4s ease both;">
+          <!-- cabecera perfil -->
+          <div style="position:relative; border-radius:22px; overflow:hidden; border:1px solid rgba(255,255,255,.08);">
+            <div style="position:absolute; inset:0; background:radial-gradient(120% 180% at 12% 0%, rgba(157,140,255,.28), transparent 55%), radial-gradient(120% 160% at 90% 10%, rgba(255,182,72,.16), transparent 55%), linear-gradient(160deg, rgba(24,21,34,.9), rgba(17,15,24,.9));"></div>
+            <div style="position:relative; padding:28px; display:flex; flex-wrap:wrap; align-items:center; gap:22px;">
+              <span style="{{ profile.avatar }}">VN</span>
+              <div style="min-width:0;">
+                <h1 style="margin:0; font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:32px; letter-spacing:-.02em; color:#fff;">{{ profile.name }}</h1>
+                <div style="margin-top:6px; display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+                  <span style="display:inline-flex; align-items:center; gap:6px; font-family:'Geist Mono',monospace; font-size:12px; color:#c2b5ff; background:rgba(157,140,255,.12); padding:4px 10px; border-radius:8px;">⬡ {{ profile.npub }}</span>
+                  <span style="font-size:12.5px; color:#9a93ad;">{{ profile.memberSince }}</span>
+                </div>
+                <div style="margin-top:11px; display:flex; align-items:center; gap:8px;">
+                  <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#ffcd7a; background:rgba(255,182,72,.1); border:1px solid rgba(255,182,72,.26); padding:5px 12px; border-radius:999px;">⚡ {{ profile.balanceText }} sats</span>
+                  <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#84f3c6; background:rgba(79,230,168,.1); border:1px solid rgba(79,230,168,.26); padding:5px 12px; border-radius:999px;">🏆 Ranking #{{ profile.rank }}</span>
+                </div>
+              </div>
+              <div style="margin-left:auto; display:flex; gap:9px;">
+                <button style="height:40px; padding:0 18px; border-radius:11px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:13px; color:#1a1430; background:linear-gradient(120deg,#c2b5ff,#9d8cff);" style-hover="filter:brightness(1.06);">Editar perfil</button>
+                <button style="height:40px; padding:0 16px; border-radius:11px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:13px; color:#cfc8de; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12);" style-hover="background:rgba(255,255,255,.12);">Compartir</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- stats -->
+          <div style="margin-top:18px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+            <sc-for list="{{ profStats }}" as="k" hint-placeholder-count="4">
+              <div style="position:relative; padding:17px 18px; border-radius:15px; background:rgba(24,21,34,.6); border:1px solid rgba(255,255,255,.06); overflow:hidden;">
+                <span style="{{ k.barStyle }}"></span>
+                <p style="margin:0; font-family:'Geist Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:#5f5872;">{{ k.label }}</p>
+                <p style="{{ k.valueStyle }}">{{ k.value }}</p>
+                <p style="margin:7px 0 0; font-size:11.5px; color:#9a93ad;">{{ k.sub }}</p>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- dos columnas: actividad + ranking -->
+          <div style="{{ profColsStyle }}">
+            <div style="min-width:0;">
+              <h2 style="margin:0 0 14px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Actividad reciente</h2>
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <sc-for list="{{ profActivity }}" as="a" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; gap:13px; padding:13px 15px; border-radius:13px; background:rgba(24,21,34,.55); border:1px solid rgba(255,255,255,.05);">
+                    <div style="min-width:0; flex:1;">
+                      <div style="font-size:13.5px; color:#e9e6f2;">{{ a.text }}</div>
+                      <div style="font-size:11px; color:#5f5872; margin-top:3px;">{{ a.when }}</div>
+                    </div>
+                    <span style="{{ a.metaStyle }}">{{ a.meta }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="min-width:0;">
+              <h2 style="margin:0 0 14px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Ranking de victorias</h2>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <sc-for list="{{ leaderboard }}" as="l" hint-placeholder-count="5">
+                  <div style="{{ l.rowStyle }}">
+                    <span style="{{ l.rankStyle }}">{{ l.rank }}</span>
+                    <span style="{{ l.avatar }}">{{ l.initials }}</span>
+                    <span style="flex:1; min-width:0;">
+                      <span style="display:block; font-size:13.5px; font-weight:600; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ l.name }}</span>
+                      <span style="display:block; font-family:'Geist Mono',monospace; font-size:11px; color:#9a93ad; margin-top:1px;">{{ l.wins }}</span>
+                    </span>
+                    <sc-if value="{{ l.me }}" hint-placeholder-val="{{ false }}">
+                      <span style="flex:0 0 auto; font-size:9.5px; font-weight:700; color:#c2b5ff; background:rgba(157,140,255,.18); padding:3px 8px; border-radius:6px;">VOS</span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <!-- biblioteca -->
+          <h2 style="margin:30px 0 16px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#e9e6f2;">Tu biblioteca</h2>
+          <div style="{{ profGamesGridStyle }}">
+            <sc-for list="{{ profGames }}" as="g" hint-placeholder-count="4">
+              <button onClick="{{ g.open }}" style="text-align:left; background:none; border:none; padding:0; cursor:pointer;">
+                <div style="position:relative; aspect-ratio:3/4; border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,.07); transition:transform .16s ease, box-shadow .16s ease;" style-hover="transform:translateY(-5px); box-shadow:0 20px 44px -22px rgba(157,140,255,.6);">
+                  <div style="{{ g.coverStyle }}"></div>
+                </div>
+                <div style="margin-top:10px; font-size:14px; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.title }}</div>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+
+      <!-- ===== FOOTER ===== -->
+      <footer style="border-top:1px solid rgba(255,255,255,.06); margin-top:20px;">
+        <div style="max-width:1240px; margin:0 auto; padding:34px 22px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:18px;">
+          <div style="display:flex; align-items:center; gap:11px;">
+            <span style="width:22px; height:22px; border-radius:50%; background:#0a0810; box-shadow:0 0 0 1.5px rgba(255,182,72,.8), 0 0 12px rgba(255,182,72,.45);"></span>
+            <div>
+              <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:14px; color:#e9e6f2;">Luna Negra</div>
+              <div style="font-size:11.5px; color:#5f5872;">Jugá en el navegador. Pagá con Lightning. Conectá con Nostr.</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:20px; font-size:12.5px; color:#9a93ad;">
+            <span style="cursor:pointer;" style-hover="color:#cfc8de;">Términos</span>
+            <span style="cursor:pointer;" style-hover="color:#cfc8de;">Privacidad</span>
+            <span style="cursor:pointer;" style-hover="color:#cfc8de;">Desarrolladores</span>
+            <span style="color:#5f5872;">© 2026</span>
+          </div>
+        </div>
+      </footer>
+      <sc-if value="{{ mob }}" hint-placeholder-val="{{ false }}">
+        <div style="height:76px;"></div>
+      </sc-if>
+    </main>
+
+    <!-- ===== OVERLAY DRAWER (móvil) ===== -->
+    <sc-if value="{{ showOverlay }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeDrawer }}" style="position:fixed; inset:0; z-index:88; background:rgba(3,2,6,.62); backdrop-filter:blur(2px);"></div>
+    </sc-if>
+
+    <!-- ===== BARRA DE AMIGOS ===== -->
+    <aside style="{{ asideStyle }}">
+      <sc-if value="{{ chatOpen }}" hint-placeholder-val="{{ false }}">
+        <!-- Panel de chat -->
+        <div style="display:flex; flex-direction:column; height:100%;">
+          <div style="display:flex; align-items:center; gap:10px; padding:13px 14px; border-bottom:1px solid rgba(255,255,255,.06);">
+            <button onClick="{{ closeChat }}" style="background:none; border:none; cursor:pointer; color:#9a93ad; font-size:16px; padding:0;" style-hover="color:#fff;">‹</button>
+            <span style="{{ chat.avatarStyle }}">{{ chat.initials }}<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:#4fe6a8; border:2px solid #050409;"></span></span>
+            <div style="min-width:0;">
+              <div style="font-size:13.5px; font-weight:600; color:#e9e6f2;">{{ chat.name }}</div>
+              <div style="font-size:11px; color:#4fe6a8;">{{ chat.presence }}</div>
+            </div>
+          </div>
+          <div style="flex:1; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:10px;">
+            <sc-for list="{{ chat.messages }}" as="m" hint-placeholder-count="4">
+              <div style="{{ m.wrapStyle }}">
+                <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:12px 14px; border-top:1px solid rgba(255,255,255,.06);">
+            <div style="padding:10px 12px; border-radius:12px; background:rgba(79,230,168,.08); border:1px solid rgba(79,230,168,.22); margin-bottom:10px;">
+              <p style="margin:0; font-size:11.5px; color:#84f3c6;">⚇ Invitalo a jugar lo que estés viendo.</p>
+              <button onClick="{{ chat.invite }}" style="width:100%; margin-top:8px; height:36px; border-radius:9px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:12.5px; color:#062414; background:linear-gradient(120deg,#84f3c6,#4fe6a8);" style-hover="filter:brightness(1.08);">{{ chat.inviteLabel }}</button>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <input placeholder="Escribí un mensaje…" style="flex:1; height:38px; border-radius:999px; border:1px solid rgba(255,255,255,.1); background:rgba(5,4,9,.6); color:#e9e6f2; font-size:13px; padding:0 14px; outline:none; font-family:'Geist',sans-serif;" style-focus="border-color:rgba(157,140,255,.5);" />
+              <button style="width:38px; height:38px; border-radius:50%; border:none; cursor:pointer; background:linear-gradient(120deg,#c2b5ff,#9d8cff); color:#1a1430; font-weight:700;" style-hover="filter:brightness(1.08);">➤</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ listOpen }}" hint-placeholder-val="{{ true }}">
+        <!-- Lista de amigos -->
+        <div style="display:flex; flex-direction:column; height:100%;">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.06);">
+            <h2 style="margin:0; display:flex; align-items:center; gap:9px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:15px; color:#e9e6f2;">Amigos<span style="display:flex; align-items:center; gap:5px; font-family:'Geist',sans-serif; font-weight:500; font-size:11px; color:#4fe6a8;"><span style="width:6px; height:6px; border-radius:50%; background:#4fe6a8; box-shadow:0 0 7px #4fe6a8;"></span>{{ onlineCount }}</span></h2>
+            <span style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:12px; color:#9a93ad; cursor:pointer;" style-hover="color:#fff;">↻</span>
+              <sc-if value="{{ mob }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ closeDrawer }}" style="background:none; border:none; cursor:pointer; color:#9a93ad; font-size:17px; line-height:1; padding:0;" style-hover="color:#fff;">✕</button>
+              </sc-if>
+            </span>
+          </div>
+          <div style="padding:11px 12px; border-bottom:1px solid rgba(255,255,255,.06);">
+            <div style="position:relative; display:flex; align-items:center;">
+              <span style="position:absolute; left:12px; font-size:12px; color:#5f5872;">⌕</span>
+              <input placeholder="Buscar o agregar por npub…" style="width:100%; height:36px; border-radius:999px; border:1px solid rgba(255,255,255,.08); background:rgba(5,4,9,.6); color:#e9e6f2; font-size:12.5px; padding:0 12px 0 30px; outline:none; font-family:'Geist',sans-serif;" style-focus="border-color:rgba(157,140,255,.5);" />
+            </div>
+          </div>
+          <div style="flex:1; overflow-y:auto; padding:8px;">
+            <sc-for list="{{ friends }}" as="f" hint-placeholder-count="7">
+              <div style="border-radius:12px; padding:9px; margin-bottom:2px; transition:background .14s ease;" style-hover="background:rgba(255,255,255,.04);">
+                <button onClick="{{ f.chat }}" style="width:100%; display:flex; align-items:center; gap:10px; background:none; border:none; cursor:pointer; padding:0; text-align:left;">
+                  <span style="{{ f.avatarStyle }}">{{ f.initials }}<span style="{{ f.dotStyle }}"></span></span>
+                  <span style="min-width:0; flex:1;">
+                    <span style="display:flex; align-items:center; gap:6px;"><span style="font-size:13.5px; font-weight:600; color:#e9e6f2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ f.name }}</span><sc-if value="{{ f.ln }}" hint-placeholder-val="{{ false }}"><span style="flex:0 0 auto; font-size:8.5px; font-weight:700; color:#ffb648; background:rgba(255,182,72,.15); padding:2px 5px; border-radius:5px;">LN</span></sc-if></span>
+                    <span style="{{ f.presenceStyle }}">{{ f.presence }}</span>
+                  </span>
+                  <span style="flex:0 0 auto; color:#5f5872; font-size:14px;">›</span>
+                </button>
+                <sc-if value="{{ f.canInvite }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ f.invite }}" style="width:100%; margin-top:8px; height:32px; border-radius:8px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:11.5px; color:#84f3c6; background:rgba(79,230,168,.1); border:1px solid rgba(79,230,168,.3);" style-hover="background:rgba(79,230,168,.18);">{{ f.inviteLabel }}</button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </aside>
+  </div>
+
+  <!-- ===== TAB BAR INFERIOR (móvil) ===== -->
+  <sc-if value="{{ mob }}" hint-placeholder-val="{{ false }}">
+    <nav style="position:fixed; left:0; right:0; bottom:0; z-index:85; display:flex; background:rgba(12,10,18,.97); backdrop-filter:blur(16px); border-top:1px solid rgba(255,255,255,.08); box-shadow:0 -10px 30px -16px rgba(0,0,0,.8);">
+      <sc-for list="{{ bottomTabs }}" as="t" hint-placeholder-count="5">
+        <button onClick="{{ t.on }}" style="flex:1; height:62px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; background:none; border:none; cursor:pointer; padding:0;">
+          <span style="{{ t.iconStyle }}">{{ t.icon }}</span>
+          <span style="{{ t.labelStyle }}">{{ t.label }}</span>
+        </button>
+      </sc-for>
+    </nav>
+  </sc-if>
+
+  <!-- ===== FACTURA LIGHTNING ===== -->
+  <sc-if value="{{ showInvoice }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeInvoice }}" style="position:fixed; inset:0; z-index:92; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(3,2,6,.74); backdrop-filter:blur(5px); animation:lnToast .2s ease both;">
+      <div onClick="{{ stopProp }}" style="width:362px; max-width:100%; border-radius:20px; background:linear-gradient(180deg, rgba(26,22,36,.99), rgba(16,14,22,.99)); border:1px solid rgba(255,182,72,.26); box-shadow:0 40px 100px -30px rgba(0,0,0,.95); overflow:hidden;">
+        <!-- cabecera -->
+        <div style="display:flex; align-items:center; gap:11px; padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.06);">
+          <span style="width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; background:rgba(255,182,72,.14); color:#ffcd7a;">⚡</span>
+          <div style="min-width:0; flex:1;">
+            <div style="font-size:14px; font-weight:700; color:#e9e6f2;">Depósito de apuesta</div>
+            <div style="font-size:11.5px; color:#9a93ad; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ invoice.gameTitle }} · vs {{ invoice.rival }}</div>
+          </div>
+          <button onClick="{{ closeInvoice }}" style="background:none; border:none; cursor:pointer; color:#9a93ad; font-size:17px; line-height:1; padding:4px;" style-hover="color:#fff;">✕</button>
+        </div>
+
+        <div style="padding:20px 18px;">
+          <!-- monto -->
+          <div style="text-align:center; margin-bottom:16px;">
+            <div style="font-family:'Geist Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#5f5872;">Pagá exactamente</div>
+            <div style="margin-top:4px; font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:30px; color:#ffcd7a;">{{ invoice.amountText }}</div>
+          </div>
+
+          <!-- QR -->
+          <div style="position:relative; width:204px; height:204px; padding:13px; border-radius:15px; background:#ffffff; margin:0 auto; box-shadow:0 14px 34px -16px rgba(255,182,72,.45);">
+            <div style="width:100%; height:100%; display:grid; grid-template-columns:repeat(25,1fr); grid-template-rows:repeat(25,1fr);">
+              <sc-for list="{{ invoice.qrCells }}" as="c" hint-placeholder-count="60">
+                <span style="{{ c.cellStyle }}"></span>
+              </sc-for>
+            </div>
+            <span style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:18px; background:#0a0810; color:#ffcd7a; box-shadow:0 0 0 4px #fff;">⚡</span>
+          </div>
+
+          <!-- esperando -->
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin:15px 0;">
+            <span style="position:relative; width:8px; height:8px;"><span style="position:absolute; inset:0; border-radius:50%; background:#4fe6a8;"></span><span style="position:absolute; inset:0; border-radius:50%; background:#4fe6a8; animation:lnPing 1.4s ease-out infinite;"></span></span>
+            <span style="font-size:12px; color:#84f3c6;">Esperando el pago · expira en 9:58</span>
+          </div>
+
+          <!-- bolt11 -->
+          <div style="display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:11px; background:rgba(5,4,9,.5); border:1px solid rgba(255,255,255,.07);">
+            <span style="flex:1; min-width:0; font-family:'Geist Mono',monospace; font-size:11.5px; color:#9a93ad; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ invoice.bolt11Short }}</span>
+            <button onClick="{{ invoice.copy }}" style="flex:0 0 auto; height:30px; padding:0 12px; border-radius:8px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:11.5px; color:#c2b5ff; background:rgba(157,140,255,.12); border:1px solid rgba(157,140,255,.3);" style-hover="background:rgba(157,140,255,.2);">Copiar</button>
+          </div>
+
+          <!-- acciones -->
+          <button onClick="{{ invoice.wallet }}" style="width:100%; height:46px; margin-top:13px; border-radius:12px; border:none; cursor:pointer; font-family:'Geist',sans-serif; font-weight:700; font-size:14px; color:#231304; background:linear-gradient(120deg,#ffcd7a,#ffb648); box-shadow:0 12px 28px -14px rgba(255,182,72,.8);" style-hover="transform:translateY(-1px); filter:brightness(1.04);">⚡ Abrir en wallet</button>
+          <button onClick="{{ invoice.confirm }}" style="width:100%; height:40px; margin-top:8px; border-radius:12px; cursor:pointer; font-family:'Geist',sans-serif; font-weight:600; font-size:13px; color:#84f3c6; background:rgba(79,230,168,.08); border:1px solid rgba(79,230,168,.26);" style-hover="background:rgba(79,230,168,.16);">Ya pagué — confirmar</button>
+          <p style="margin:12px 0 0; text-align:center; font-size:11px; color:#5f5872; line-height:1.5;">El stake queda en escrow hasta el final del duelo. Si la sala no se llena, se reembolsa automáticamente.</p>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===== TOAST ===== -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="{{ toastStyle }}">
+      <span style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(79,230,168,.18); color:#4fe6a8; font-size:12px;">✓</span>
+      <span style="font-size:13px; color:#e9e6f2;">{{ toast }}</span>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: "home", slug: "eclipse-arena", cat: "", q: "", loaded: false, invited: {}, chatPk: null, toast: null, w: (typeof window !== "undefined" ? window.innerWidth : 1200), drawer: false, invoiceBet: null };
+
+  componentDidMount() {
+    this._t = setTimeout(() => this.setState({ loaded: true }), 850);
+    this._onR = () => { const w = window.innerWidth; if (w !== this.state.w) this.setState({ w }); };
+    window.addEventListener("resize", this._onR);
+  }
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._toast); if (this._onR) window.removeEventListener("resize", this._onR); }
+
+  money(s) { return s === 0 ? "Gratis" : s.toLocaleString("es-AR") + " sats"; }
+
+  coverStyle(h) {
+    const h2 = (h + 50) % 360, h3 = (h + 28) % 360;
+    return {
+      position: "absolute", inset: 0,
+      background:
+        "repeating-linear-gradient(135deg, rgba(255,255,255,.045) 0 2px, transparent 2px 16px)," +
+        "radial-gradient(130% 100% at 20% 8%, hsl(" + h + " 70% 34% / .95), transparent 60%)," +
+        "radial-gradient(130% 120% at 85% 95%, hsl(" + h2 + " 78% 26% / .95), transparent 65%)," +
+        "linear-gradient(160deg, hsl(" + h + " 52% 22%), hsl(" + h3 + " 58% 11%))",
+    };
+  }
+
+  av(h, size, fs, extra) {
+    return Object.assign({
+      position: "relative", width: size + "px", height: size + "px", borderRadius: "50%",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontWeight: 600, fontSize: fs + "px", color: "#fff", flex: "0 0 auto",
+      background: "linear-gradient(135deg, hsl(" + h + " 58% 50%), hsl(" + ((h + 40) % 360) + " 62% 32%))",
+    }, extra || {});
+  }
+
+  // --- Lightning: factura demo (QR + bolt11 deterministas) ---
+  openInvoice(bet) { this.setState({ invoiceBet: bet }); }
+  closeInvoice() { this.setState({ invoiceBet: null }); }
+  makeBolt11(sats) {
+    const chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+    let h = 0x811c9dc5 >>> 0; const seed = "ln" + sats + "luna";
+    for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+    let s = ""; for (let i = 0; i < 56; i++) { h = (h * 1103515245 + 12345) >>> 0; s += chars[(h >>> 8) % 32]; }
+    return "lnbc" + sats + "1p" + s;
+  }
+  qrCells(seed, n) {
+    n = n || 25;
+    let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    const rnd = (x, y) => { let v = (h ^ (x * 73856093) ^ (y * 19349663)) >>> 0; v = (v * 1103515245 + 12345) >>> 0; return ((v >>> 17) & 1) === 1; };
+    const finder = (gx, gy, x, y) => { const lx = x - gx, ly = y - gy; if (lx < 0 || ly < 0 || lx > 6 || ly > 6) return null; const border = lx === 0 || lx === 6 || ly === 0 || ly === 6; const inner = lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4; return border || inner; };
+    const near = (gx, gy, x, y) => x >= gx - 1 && x <= gx + 7 && y >= gy - 1 && y <= gy + 7;
+    const cells = [];
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      let f = finder(0, 0, x, y); if (f === null) f = finder(n - 7, 0, x, y); if (f === null) f = finder(0, n - 7, x, y);
+      let on;
+      if (f !== null) on = f;
+      else if (near(0, 0, x, y) || near(n - 7, 0, x, y) || near(0, n - 7, x, y)) on = false;
+      else on = rnd(x, y);
+      cells.push({ cellStyle: { background: on ? "#0a0810" : "transparent" } });
+    }
+    return cells;
+  }
+
+  go(screen) { this.setState({ screen, chatPk: null, drawer: false }); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }
+  open(slug) { this.setState({ screen: "game", slug, chatPk: null, drawer: false }); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }
+  fireToast(t) { this.setState({ toast: t }); clearTimeout(this._toast); this._toast = setTimeout(() => this.setState({ toast: null }), 2600); }
+  invite(pk, name) { this.setState(s => ({ invited: { ...s.invited, [pk]: true } })); this.fireToast("Invitación enviada a " + name); }
+
+  RAW() {
+    return [
+      ["eclipse-arena", "Eclipse Arena", "accion", "Acción", 12000, 268, true],
+      ["neon-drift", "Neón Drift", "arcade", "Arcade", 8000, 192, false],
+      ["cazador-bloques", "Cazador de Bloques", "aventura", "Aventura", 0, 150, false],
+      ["satoshis-quest", "Satoshi's Quest", "estrategia", "Estrategia", 25000, 38, false],
+      ["orbita-cero", "Órbita Cero", "puzzle", "Puzzle", 5000, 210, false],
+      ["lunar-tactics", "Lunar Tactics", "estrategia", "Estrategia", 15000, 286, true],
+      ["pulso", "Pulso", "arcade", "Arcade", 0, 330, false],
+      ["vacio-profundo", "Vacío Profundo", "accion", "Acción", 18000, 256, false],
+      ["relampago", "Relámpago", "arcade", "Arcade", 3000, 46, false],
+      ["corona-real", "Corona Real", "casino", "Casino", 9000, 22, false],
+      ["sector-7", "Sector 7", "multijugador", "Multijugador", 11000, 168, true],
+      ["hoja-ruta", "Hoja de Ruta", "puzzle", "Puzzle", 6000, 300, false],
+    ];
+  }
+
+  gameObj(r) {
+    const free = r[4] === 0;
+    return {
+      slug: r[0], title: r[1], cat: r[2], catLabel: r[3], price: r[4], hue: r[5], multi: r[6],
+      free, priceText: this.money(r[4]),
+      priceStyle: { fontFamily: "'Geist Mono',monospace", fontSize: "12px", fontWeight: 600, flex: "0 0 auto", color: free ? "#84f3c6" : "#ffcd7a" },
+      coverStyle: this.coverStyle(r[5]),
+      open: () => this.open(r[0]),
+      play: () => this.fireToast("Abriendo " + r[1] + "…"),
+    };
+  }
+
+  renderVals() {
+    const { screen, cat, q, loaded, invited, chatPk, toast, w, drawer } = this.state;
+    const mob = w < 880;
+    const all = this.RAW().map(r => this.gameObj(r));
+    const bySlug = {}; all.forEach(g => (bySlug[g.slug] = g));
+
+    const navDef = [["Tienda", "home"], ["Biblioteca", "library"], ["Apuestas", "bets"], ["Amigos", "friends"], ["Proveedor", "provider"]];
+    const navItems = navDef.map(([label, key]) => ({
+      label, active: screen === key,
+      on: key === "friends" ? () => this.fireToast("Tus amigos están en la barra derecha →")
+        : () => this.go(key),
+    }));
+
+    const cats = [["", "Todas"], ["accion", "Acción"], ["aventura", "Aventura"], ["puzzle", "Puzzle"], ["estrategia", "Estrategia"], ["arcade", "Arcade"], ["casino", "Casino"], ["multijugador", "Multijugador"]];
+    const chips = cats.map(([slug, label]) => ({
+      slug, label, active: cat === slug,
+      labelStyle: { position: "relative", zIndex: 1, color: cat === slug ? "#1a1430" : "#b7b0c8", fontWeight: cat === slug ? 700 : 600 },
+      pick: () => this.setState({ cat: slug }),
+    }));
+
+    const fr = bySlug["eclipse-arena"];
+    const featured = {
+      ...fr, online: "1 240",
+      desc: "Duelos lunares en tiempo real. Entrá a una sala, invitá a tus amigos y peleá por la corona en partidas de 1v1 que duran lo que un eclipse.",
+      tags: ["Co-op · 1v1", "Salas en vivo", "Cross-play web"], priceText: this.money(fr.price),
+    };
+
+    const playDef = [["Mara", 312, "eclipse-arena"], ["Tobías", 192, "neon-drift"], ["Lía", 168, "sector-7"], ["Nico", 286, "lunar-tactics"], ["Vera", 38, "satoshis-quest"]];
+    const playing = playDef.map(([name, hue, slug]) => ({
+      name, initials: name.slice(0, 1).toUpperCase(), avatarStyle: this.av(hue, 40, 14),
+      game: bySlug[slug].title, coverStyle: bySlug[slug].coverStyle, open: () => this.open(slug),
+    }));
+
+    const ql = q.trim().toLowerCase();
+    const grid = all.filter(g => (!cat || g.cat === cat) && (!ql || g.title.toLowerCase().includes(ql)));
+    const catalogTitle = ql ? 'Resultados para "' + q.trim() + '"' : cat ? (cats.find(c => c[0] === cat) || [, "Catálogo"])[1] : "Catálogo";
+    const catalogCount = grid.length + " juegos";
+    const skeletons = [0, 1, 2, 3, 4, 5, 6, 7];
+
+    const g = bySlug[bySlug[this.state.slug] ? this.state.slug : "eclipse-arena"];
+    const shots = [0, 1, 2, 3].map(i => ({ label: "captura 0" + (i + 1), style: this.coverStyle((g.hue + 30 + i * 24) % 360) }));
+    const revDef = [["Camila", 312, "★★★★★", "Lo mejor que jugué en el navegador. Las salas con amigos vuelan, cero instalación."], ["Bruno", 38, "★★★★☆", "Pagué con Lightning en dos segundos y a jugar. El 1v1 es adictivo."], ["Delfina", 168, "★★★★★", "El arte generado le da una identidad única. Muy pulido para ser web."]];
+    const reviews = revDef.map(([name, hue, stars, text]) => ({ name, initials: name.slice(0, 1).toUpperCase(), avatarStyle: this.av(hue, 30, 12), stars, text }));
+    const favDef = [["Mara", 312], ["Lía", 168], ["Nico", 286]];
+    const sel = {
+      ...g, online: "1 240",
+      about: "Una arena lunar donde la velocidad y la lectura del rival lo son todo. Elegí tu nave, sincronizá con tu escuadrón y dominá las salas en vivo. Sin descargas: abrís la pestaña y ya estás adentro. Pagás una vez, jugás para siempre, y todo el progreso vive en tu identidad Nostr.",
+      features: ["1 jugador y 1v1 en vivo", "Salas con invitación por Nostr", "Pagos y premios en Lightning", "Tablas de posiciones globales"],
+      shots, reviews,
+      friendsAvatars: favDef.map(([name, hue]) => ({ initials: name.slice(0, 1).toUpperCase(), style: this.av(hue, 30, 11, { marginRight: "-8px", border: "2px solid #110f18" }) })),
+      friendsNote: "3 amigos lo tienen",
+      meta: [
+        { k: "Proveedor", v: "Estudio Umbra", vStyle: { fontSize: "12.5px", color: "#9d8cff" } },
+        { k: "Modos", v: g.multi ? "1 jugador · 1v1" : "1 jugador", vStyle: { fontSize: "12.5px", color: "#cfc8de" } },
+        { k: "Lanzamiento", v: "12/03/2026", vStyle: { fontSize: "12.5px", color: "#cfc8de" } },
+        { k: "Plataforma", v: "Web · Lightning", vStyle: { fontSize: "12.5px", color: "#cfc8de" } },
+      ],
+      related: all.filter(x => x.cat === g.cat && x.slug !== g.slug).slice(0, 4),
+    };
+
+    const libSlugs = ["eclipse-arena", "sector-7", "orbita-cero", "lunar-tactics", "neon-drift", "pulso"];
+    const lastDef = { "eclipse-arena": "Jugaste hace 2 h", "sector-7": "Jugaste ayer", "orbita-cero": "Jugaste hace 3 d" };
+    const library = libSlugs.map(s => bySlug[s]);
+    const keepPlaying = ["eclipse-arena", "sector-7", "orbita-cero"].map(s => ({ ...bySlug[s], lastPlayed: lastDef[s] }));
+
+    const friendDef = [
+      ["mara", "Mara", 312, true, "🎮 Eclipse Arena", true],
+      ["tobias", "Tobías", 192, true, "🎮 Neón Drift", false],
+      ["lia", "Lía", 168, true, "En línea", true],
+      ["vera", "Vera", 38, true, "🎮 Satoshi's Quest", false],
+      ["nico", "Nico", 286, false, "Visto hace 2 h", false],
+      ["ariel", "Ariel", 258, false, "Visto ayer", true],
+      ["sol", "Sol", 128, false, "Visto hace 3 d", false],
+    ];
+    const canInvite = screen === "game";
+    const friends = friendDef.map(([pk, name, hue, online, presence, ln]) => ({
+      pk, name, ln, initials: name.slice(0, 1).toUpperCase(), online, presence,
+      avatarStyle: this.av(hue, 38, 13),
+      dotStyle: { position: "absolute", bottom: "-1px", right: "-1px", width: "11px", height: "11px", borderRadius: "50%", border: "2.5px solid #07060c", background: online ? "#4fe6a8" : "#5f5872" },
+      presenceStyle: { display: "block", fontSize: "11.5px", marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: online && presence.indexOf("🎮") === 0 ? "#4fe6a8" : online ? "#84f3c6" : "#5f5872" },
+      canInvite, inviteLabel: invited[pk] ? "✓ Invitado" : "⚇ Invitar a jugar",
+      chat: () => this.setState({ chatPk: pk }), invite: () => this.invite(pk, name),
+    }));
+    const onlineCount = friendDef.filter(f => f[3]).length;
+
+    const chatFriend = friendDef.find(f => f[0] === chatPk);
+    let chat = null;
+    if (chatFriend) {
+      const [pk, name, hue, online, presence] = chatFriend;
+      const msgsDef = [["in", "eh, te metés a una sala?"], ["out", "dale, abrí vos y me pasás"], ["in", "ya creo, entrá 🌑"], ["out", "voy 🚀"]];
+      chat = {
+        name, initials: name.slice(0, 1).toUpperCase(), presence: online ? "En línea" : presence,
+        avatarStyle: this.av(hue, 34, 13),
+        inviteLabel: invited[pk] ? "✓ Invitado" : "Invitar a esta partida",
+        invite: () => this.invite(pk, name),
+        messages: msgsDef.map(([dir, text]) => ({
+          text,
+          wrapStyle: { maxWidth: "78%", alignSelf: dir === "out" ? "flex-end" : "flex-start" },
+          bubbleStyle: Object.assign({ padding: "9px 13px", borderRadius: "14px", fontSize: "13px", lineHeight: 1.45 },
+            dir === "out" ? { background: "linear-gradient(120deg,#9d8cff,#7d6cf0)", color: "#16102e" } : { background: "rgba(255,255,255,.06)", color: "#cfc8de" }),
+        })),
+      };
+    }
+
+    const kpiDef = [
+      ["Ingresos pagados", "482 300", "sats acumulados", "#ffb648", "#ffcd7a"],
+      ["Pendiente de cobro", "56 000", "en proceso", "#ffb648", "#ffcd7a"],
+      ["Juegos publicados", "4", "de 6 en total", "#9d8cff", "#e9e6f2"],
+      ["Ventas", "128", "transacciones", "#4fe6a8", "#e9e6f2"],
+    ];
+    const kpis = kpiDef.map(([label, value, sub, bar, vc]) => ({
+      label, value, sub,
+      barStyle: { position: "absolute", left: 0, top: 0, bottom: 0, width: "3px", background: bar },
+      valueStyle: { margin: "7px 0 0", fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: "27px", lineHeight: 1, color: vc },
+    }));
+    const statusStyleFor = (st) => Object.assign({ fontSize: "11px", fontWeight: 600, padding: "5px 11px", borderRadius: "999px", flex: "0 0 auto" },
+      st === "Publicado" ? { color: "#4fe6a8", background: "rgba(79,230,168,.13)" } : st === "En revisión" ? { color: "#ffb648", background: "rgba(255,182,72,.13)" } : { color: "#9a93ad", background: "rgba(255,255,255,.07)" });
+    const provDef = [["eclipse-arena", "Eclipse Arena", 12000, "Publicado"], ["lunar-tactics", "Lunar Tactics", 15000, "Publicado"], ["sector-7", "Sector 7", 11000, "En revisión"], ["orbita-cero", "Órbita Cero", 5000, "Borrador"]];
+    const provGames = provDef.map(([s, title, price, status]) => ({ title, priceText: this.money(price), status, statusStyle: statusStyleFor(status), coverStyle: bySlug[s].coverStyle }));
+    const saleDef = [["Eclipse Arena", "9 600", "Pagado"], ["Lunar Tactics", "12 000", "Pagado"], ["Sector 7", "8 800", "En proceso"], ["Eclipse Arena", "9 600", "Pagado"]];
+    const sales = saleDef.map(([title, amount, status]) => ({ title, amount, status, statusStyle: { fontSize: "11px", fontWeight: 600, color: status === "Pagado" ? "#4fe6a8" : "#ffb648" } }));
+
+    // ===== APUESTAS (modelo escrow real: sala + stake + pozo + estados) =====
+    const FEE_PCT = 4;
+    const betDef = [
+      // slug, rival, rivalHue, stakeSats, status, depositsReceived, depositsTotal, deadlineMin, victoria
+      ["eclipse-arena", "Mara", 312, 5000, "funded", 2, 2, 8, "Mejor de 3 rondas. Gana quien quede en pie."],
+      ["sector-7", "Tobías", 192, 2000, "pending_deposits", 1, 2, 14, "Primero en 10 líneas gana el pozo."],
+      ["lunar-tactics", "Lía", 168, 10000, "pending_deposits", 1, 4, 22, "Battle royale a 4. Último vivo se lleva todo."],
+    ];
+    const betStatusMeta = {
+      pending_deposits: { label: "Esperando depósitos", color: "#ffb648", bg: "rgba(255,182,72,.13)", dot: "#ffb648" },
+      funded: { label: "Pozo financiado", color: "#4fe6a8", bg: "rgba(79,230,168,.13)", dot: "#4fe6a8" },
+      settled: { label: "Liquidada", color: "#9d8cff", bg: "rgba(157,140,255,.14)", dot: "#9d8cff" },
+      cancelled: { label: "Cancelada", color: "#9a93ad", bg: "rgba(255,255,255,.06)", dot: "#5f5872" },
+      expired: { label: "Expirada", color: "#e8907a", bg: "rgba(232,144,122,.12)", dot: "#e8907a" },
+      refunded: { label: "Reembolsada", color: "#9a93ad", bg: "rgba(255,255,255,.06)", dot: "#5f5872" },
+    };
+    const activeBets = betDef.map((b, i) => {
+      const [slug, rival, hue, stake, status, recv, total, deadline, victoria] = b;
+      const pot = stake * total;
+      const fee = Math.round(pot * FEE_PCT / 100);
+      const net = pot - fee;
+      const meta = betStatusMeta[status];
+      const funded = status === "funded";
+      return {
+        id: "bet-" + i, slug, gameTitle: bySlug[slug].title, coverStyle: bySlug[slug].coverStyle,
+        rival, rivalInitials: rival.slice(0, 1).toUpperCase(), rivalAvatar: this.av(hue, 36, 13),
+        meInitials: "VN", meAvatar: this.av(286, 36, 13),
+        stakeText: this.money(stake), potText: this.money(pot), netText: this.money(net),
+        feeText: fee.toLocaleString("es-AR") + " sats · " + FEE_PCT + "%",
+        victoria, deadlineText: funded ? "Empieza al confirmar ambos" : "Vence en " + deadline + " min",
+        statusLabel: meta.label,
+        statusStyle: { display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: 600, padding: "5px 11px", borderRadius: "999px", color: meta.color, background: meta.bg },
+        statusDot: { width: "6px", height: "6px", borderRadius: "50%", background: meta.dot, boxShadow: "0 0 7px " + meta.dot },
+        depositText: recv + "/" + total + " depósitos",
+        depositPct: Math.round(recv / total * 100),
+        barFillStyle: { height: "100%", width: Math.round(recv / total * 100) + "%", borderRadius: "999px", background: funded ? "linear-gradient(90deg,#84f3c6,#4fe6a8)" : "linear-gradient(90deg,#ffcd7a,#ffb648)", transition: "width .4s ease" },
+        primaryLabel: funded ? "▶ Entrar a la sala" : "⚡ Depositar " + this.money(stake),
+        primaryStyle: { width: "100%", height: "44px", borderRadius: "12px", border: "none", cursor: "pointer", fontFamily: "'Geist',sans-serif", fontWeight: 700, fontSize: "13.5px", color: funded ? "#062414" : "#231304", background: funded ? "linear-gradient(120deg,#84f3c6,#4fe6a8)" : "linear-gradient(120deg,#ffcd7a,#ffb648)" },
+        onPrimary: () => funded ? this.fireToast("Entrando a la sala de " + bySlug[slug].title + "…") : this.openInvoice({ gameTitle: bySlug[slug].title, stake, rival, hue }),
+        onCancel: () => this.fireToast("Apuesta cancelada · depósito reembolsado"),
+      };
+    });
+    const betHistDef = [
+      ["eclipse-arena", "Nico", 8000, "won", 15360],
+      ["neon-drift", "Vera", 3000, "lost", 0],
+      ["sector-7", "Ariel", 5000, "won", 9600],
+      ["lunar-tactics", "Sol", 2000, "refunded", 2000],
+    ];
+    const betHistory = betHistDef.map(([slug, rival, stake, result, payout]) => {
+      const map = { won: { label: "Ganada", color: "#4fe6a8", sign: "+" }, lost: { label: "Perdida", color: "#e8907a", sign: "−" }, refunded: { label: "Reembolso", color: "#9a93ad", sign: "" } };
+      const m = map[result];
+      return {
+        gameTitle: bySlug[slug].title, coverStyle: bySlug[slug].coverStyle, rival,
+        vsText: "vs " + rival + " · " + this.money(stake), resultLabel: m.label,
+        resultStyle: { fontSize: "11px", fontWeight: 600, color: m.color },
+        payoutText: result === "lost" ? "−" + this.money(stake) : m.sign + (payout ? this.money(payout) : "0 sats"),
+        payoutStyle: { fontFamily: "'Geist Mono',monospace", fontSize: "13px", fontWeight: 600, color: m.color },
+      };
+    });
+    const betWon = betHistDef.filter(b => b[3] === "won").length;
+    const betWinRate = Math.round(betWon / betHistDef.filter(b => b[3] !== "refunded").length * 100);
+    const betKpis = [
+      { label: "En juego ahora", value: activeBets.reduce((a, b, i) => a + betDef[i][3] * betDef[i][6], 0).toLocaleString("es-AR"), sub: "sats en escrow", vc: "#ffcd7a", bar: "#ffb648" },
+      { label: "Ganadas", value: betWon + "/" + betHistDef.filter(b => b[3] !== "refunded").length, sub: betWinRate + "% efectividad", vc: "#4fe6a8", bar: "#4fe6a8" },
+      { label: "Duelos activos", value: String(activeBets.length), sub: "salas con apuesta", vc: "#e9e6f2", bar: "#9d8cff" },
+    ].map(k => ({ label: k.label, value: k.value, sub: k.sub, valueStyle: { margin: "7px 0 0", fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: "27px", lineHeight: 1, color: k.vc }, barStyle: { position: "absolute", left: 0, top: 0, bottom: 0, width: "3px", background: k.bar } }));
+    const betGridStyle = { display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(2,1fr)", gap: "16px" };
+
+    // factura Lightning (al tocar "Depositar")
+    const ib = this.state.invoiceBet;
+    let invoice = null;
+    if (ib) {
+      const bolt11 = this.makeBolt11(ib.stake);
+      invoice = {
+        gameTitle: ib.gameTitle, rival: ib.rival, amountText: this.money(ib.stake),
+        bolt11, bolt11Short: bolt11.slice(0, 20) + "…" + bolt11.slice(-10),
+        qrCells: this.qrCells(bolt11, 25),
+        rivalAvatar: this.av(ib.hue, 30, 11),
+        copy: () => { try { if (navigator.clipboard) navigator.clipboard.writeText(bolt11); } catch (e) {} this.fireToast("Factura copiada al portapapeles"); },
+        confirm: () => { this.setState({ invoiceBet: null }); this.fireToast("Pago recibido · depósito confirmado ⚡"); },
+        wallet: () => this.fireToast("Abriendo tu wallet Lightning…"),
+      };
+    }
+
+    // ===== PERFIL (identidad Nostr + wins del leaderboard + Lightning) =====
+    const profile = {
+      name: "VeNuS", handle: "@venus", npub: "npub1q9x…4kf2", avatar: this.av(286, 96, 34, { boxShadow: "0 0 0 3px rgba(157,140,255,.4), 0 14px 40px -16px rgba(157,140,255,.7)" }),
+      memberSince: "Miembro desde marzo 2026", balanceText: "42 480",
+      wins: 128, rank: 7, winRate: betWinRate,
+    };
+    const profStats = [
+      { label: "Victorias", value: "128", sub: "ranking global #7", vc: "#4fe6a8", bar: "#4fe6a8" },
+      { label: "Saldo Lightning", value: "42 480", sub: "sats disponibles", vc: "#ffcd7a", bar: "#ffb648" },
+      { label: "Juegos", value: "6", sub: "en tu biblioteca", vc: "#e9e6f2", bar: "#9d8cff" },
+      { label: "Amigos", value: String(onlineCount + 3), sub: onlineCount + " en línea", vc: "#e9e6f2", bar: "#9d8cff" },
+    ].map(k => ({ label: k.label, value: k.value, sub: k.sub, valueStyle: { margin: "7px 0 0", fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 700, fontSize: "27px", lineHeight: 1, color: k.vc }, barStyle: { position: "absolute", left: 0, top: 0, bottom: 0, width: "3px", background: k.bar } }));
+    const profGames = ["eclipse-arena", "sector-7", "lunar-tactics", "orbita-cero"].map(s => bySlug[s]);
+    const leaderDef = [
+      ["Camila", 312, 214], ["Bruno", 38, 188], ["Delfina", 168, 171], ["Mara", 258, 155], ["VeNuS", 286, 128],
+    ];
+    const leaderboard = leaderDef.map(([name, hue, wins], i) => ({
+      rank: i + 1, name, wins: wins + " victorias", initials: name.slice(0, 1).toUpperCase(),
+      avatar: this.av(hue, 34, 13), me: name === "VeNuS",
+      rowStyle: { display: "flex", alignItems: "center", gap: "13px", padding: "12px 15px", borderRadius: "12px", background: name === "VeNuS" ? "rgba(157,140,255,.12)" : "rgba(24,21,34,.55)", border: name === "VeNuS" ? "1px solid rgba(157,140,255,.34)" : "1px solid rgba(255,255,255,.05)" },
+      rankStyle: { fontFamily: "'Geist Mono',monospace", fontSize: "14px", fontWeight: 700, width: "26px", color: i === 0 ? "#ffcd7a" : i === 1 ? "#cfc8de" : i === 2 ? "#e8b07a" : "#5f5872" },
+    }));
+    const profActivityDef = [
+      ["Ganaste un duelo en Eclipse Arena", "+15 360 sats", "#4fe6a8", "hace 2 h"],
+      ["Compraste Lunar Tactics", "−15 000 sats", "#ffcd7a", "ayer"],
+      ["Mara te invitó a una sala", "Sector 7", "#9d8cff", "ayer"],
+      ["Alcanzaste el puesto #7 del ranking", "128 victorias", "#4fe6a8", "hace 3 d"],
+    ];
+    const profActivity = profActivityDef.map(([text, meta, color, when]) => ({ text, meta, when, metaStyle: { fontFamily: "'Geist Mono',monospace", fontSize: "12.5px", fontWeight: 600, color } }));
+    const profGamesGridStyle = { display: "grid", gridTemplateColumns: mob ? "repeat(2,1fr)" : "repeat(4,1fr)", gap: "16px" };
+    const profColsStyle = { marginTop: "26px", display: "grid", gridTemplateColumns: mob ? "1fr" : "1.1fr .9fr", gap: mob ? "26px" : "24px", alignItems: "start" };
+
+    // ----- responsive style objects (derivados del ancho de ventana) -----
+    const heroInnerStyle = { position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: mob ? "13px" : "16px", minHeight: mob ? "350px" : "430px", padding: mob ? "26px 22px" : "44px" };
+    const heroTitleStyle = { margin: 0, fontFamily: "'Bricolage Grotesque',sans-serif", fontWeight: 800, fontSize: mob ? "38px" : "62px", lineHeight: .96, letterSpacing: "-.02em", color: "#fff", maxWidth: "620px", textShadow: "0 8px 40px rgba(0,0,0,.6)" };
+    const gameGridStyle = { marginTop: "22px", display: "grid", gridTemplateColumns: mob ? "minmax(0,1fr)" : "minmax(0,1fr) 340px", gap: mob ? "20px" : "26px", alignItems: "start" };
+    const gameAsideStyle = { position: mob ? "static" : "sticky", top: "86px", display: "flex", flexDirection: "column", gap: "16px", order: mob ? -1 : 0 };
+    const shotsGridStyle = { marginTop: "12px", display: "grid", gridTemplateColumns: mob ? "repeat(2,1fr)" : "repeat(4,1fr)", gap: "12px" };
+    const featGridStyle = { margin: "18px 0 0", padding: 0, listStyle: "none", display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: "10px" };
+    const keepGridStyle = { display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(3,1fr)", gap: "18px" };
+    const kpiGridStyle = { marginTop: "24px", display: "grid", gridTemplateColumns: mob ? "repeat(2,1fr)" : "repeat(4,1fr)", gap: "14px" };
+    const provFormGridStyle = { display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: "13px" };
+    const provUploadStyle = { display: "flex", flexDirection: mob ? "column" : "row", gap: "13px" };
+    const asideStyle = mob ? {
+      position: "fixed", top: 0, right: 0, height: "100vh", width: "min(360px,88vw)", zIndex: 90,
+      transform: drawer ? "translateX(0)" : "translateX(105%)", transition: "transform .28s cubic-bezier(.22,1,.36,1)",
+      borderLeft: "1px solid rgba(255,255,255,.08)", background: "rgba(7,6,12,.97)", backdropFilter: "blur(14px)",
+      display: "flex", flexDirection: "column", boxShadow: "-30px 0 60px -30px rgba(0,0,0,.9)",
+    } : {
+      position: "sticky", top: "66px", alignSelf: "flex-start", width: "308px", flex: "0 0 308px",
+      height: "calc(100vh - 66px)", borderLeft: "1px solid rgba(255,255,255,.06)", background: "rgba(5,4,9,.55)",
+      backdropFilter: "blur(10px)", display: "flex", flexDirection: "column",
+    };
+    const toastStyle = Object.assign({
+      position: "fixed", zIndex: 95, display: "flex", alignItems: "center", gap: "11px", padding: "13px 17px",
+      borderRadius: "13px", background: "rgba(24,21,34,.96)", border: "1px solid rgba(79,230,168,.34)",
+      boxShadow: "0 20px 50px -18px rgba(0,0,0,.9)", backdropFilter: "blur(10px)",
+      animation: "lnToast .3s cubic-bezier(.22,1,.36,1) both",
+    }, mob ? { left: "14px", right: "14px", bottom: "82px" } : { right: "330px", bottom: "22px" });
+
+    const tabDef = [["Tienda", "◎", "home"], ["Biblioteca", "▦", "library"], ["Apuestas", "◆", "bets"], ["Amigos", "◉", "friends"], ["Proveedor", "▲", "provider"]];
+    const bottomTabs = tabDef.map(([label, icon, key]) => {
+      const active = key === "friends" ? drawer : (screen === key && !drawer);
+      return {
+        label, icon, active,
+        iconStyle: { fontSize: "17px", lineHeight: 1, color: active ? "#ffb648" : "#6b6480", transition: "color .15s ease" },
+        labelStyle: { fontSize: "10px", fontWeight: 600, fontFamily: "'Geist',sans-serif", color: active ? "#e9e6f2" : "#6b6480" },
+        on: key === "friends" ? () => this.setState({ drawer: true })
+          : () => this.go(key),
+      };
+    });
+
+    return {
+      mob, showNavLinks: !mob, showTopSearch: !mob, showOverlay: mob && drawer,
+      drawerOpen: drawer, closeDrawer: () => this.setState({ drawer: false }),
+      heroInnerStyle, heroTitleStyle, gameGridStyle, gameAsideStyle, shotsGridStyle, featGridStyle,
+      keepGridStyle, kpiGridStyle, provFormGridStyle, provUploadStyle, asideStyle, toastStyle, bottomTabs,
+      goHome: () => this.go("home"), goFriends: () => mob ? this.setState({ drawer: true }) : this.fireToast("Tus amigos están en la barra derecha →"),
+      navItems, q, setQ: (e) => this.setState({ q: e.target.value }),
+      isHome: screen === "home", isGame: screen === "game", isLibrary: screen === "library", isProvider: screen === "provider", isBets: screen === "bets", isProfile: screen === "profile",
+      goProfile: () => this.go("profile"),
+      featured, playing, chips,
+      loading: !loaded, loaded, skeletons, grid, catalogTitle, catalogCount,
+      sel,
+      library, keepPlaying, libCount: library.length,
+      kpis, provGames, sales,
+      activeBets, betHistory, betKpis, betGridStyle,
+      invoice, showInvoice: !!invoice, closeInvoice: () => this.closeInvoice(), stopProp: (e) => e.stopPropagation(),
+      profile, profStats, profGames, leaderboard, profActivity, profGamesGridStyle, profColsStyle,
+      friends, onlineCount,
+      chatOpen: !!chat, listOpen: !chat, chat, closeChat: () => this.setState({ chatPk: null }),
+      toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

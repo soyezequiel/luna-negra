@@ -25,7 +25,7 @@ function Cover({
 }) {
   return (
     <div
-      className={`cover relative overflow-hidden rounded border border-line ${className ?? ""}`}
+      className={`cover relative overflow-hidden rounded-ln-lg border border-ln-border ${className ?? ""}`}
       style={{ "--h": hueFromSlug(game.slug) } as CSSProperties}
     >
       {game.coverUrl ? (
@@ -60,11 +60,15 @@ export default function LibraryPage() {
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold text-white">Tu biblioteca</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para ver tus juegos.</p>
+      <div className="mx-auto max-w-[1240px] px-[22px] py-16 text-center">
+        <h1 className="font-display text-3xl font-extrabold text-white">
+          Tu biblioteca
+        </h1>
+        <p className="mt-2 text-ln-muted">
+          Conectá tu Nostr para ver tus juegos.
+        </p>
         <div className="mt-4 flex justify-center">
-          <Button variant="blue" onClick={login}>
+          <Button variant="luna" onClick={login}>
             Conectar con Nostr
           </Button>
         </div>
@@ -75,17 +79,24 @@ export default function LibraryPage() {
   const keepPlaying = games?.slice(0, 3) ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight text-white">
-        Tu biblioteca
-      </h1>
+    <div className="mx-auto max-w-[1240px] px-[22px] py-8">
+      <div className="flex items-baseline gap-3">
+        <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
+          Tu biblioteca
+        </h1>
+        {games && games.length > 0 ? (
+          <span className="font-mono text-xs text-ln-faint">
+            {games.length} {games.length === 1 ? "juego" : "juegos"}
+          </span>
+        ) : null}
+      </div>
 
       {games === null ? (
-        <p className="mt-4 text-sm text-faint">Cargando…</p>
+        <p className="mt-4 text-sm text-ln-faint">Cargando…</p>
       ) : games.length === 0 ? (
-        <p className="mt-4 text-muted">
+        <p className="mt-4 text-ln-muted">
           Todavía no tenés juegos.{" "}
-          <Link href="/" className="text-blue hover:underline">
+          <Link href="/" className="text-ln-luna hover:underline">
             Ir a la tienda
           </Link>
           .
@@ -93,48 +104,50 @@ export default function LibraryPage() {
       ) : (
         <>
           {keepPlaying.length > 0 ? (
-            <section className="mt-7">
-              <h2 className="mb-3 text-[15px] font-semibold text-ink">
+            <section className="mt-8">
+              <h2 className="mb-3 text-[17px] font-semibold text-ln-text">
                 Seguir jugando
               </h2>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-[18px] sm:grid-cols-2 ln:grid-cols-3">
                 {keepPlaying.map((g) => (
                   <div key={g.id} className="group relative">
                     <Link href={`/game/${g.slug}`} className="block">
                       <Cover game={g} className="aspect-[16/9]" />
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 rounded-b-ln-lg bg-gradient-to-t from-black/80 to-transparent" />
+                      <p className="absolute bottom-3 left-3 right-3 truncate font-display text-base font-bold text-white">
+                        {g.title}
+                      </p>
                     </Link>
                     {g.gameUrl ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                        <div className="pointer-events-auto">
-                          <PlayButton
-                            gameId={g.id}
-                            gameUrl={g.gameUrl}
-                            title={g.title}
-                            slug={g.slug}
-                            variant="play"
-                            label="Jugar"
-                          />
-                        </div>
+                      <div className="absolute bottom-3 right-3">
+                        <PlayButton
+                          gameId={g.id}
+                          gameUrl={g.gameUrl}
+                          title={g.title}
+                          slug={g.slug}
+                          variant="play"
+                          size="sm"
+                          label="▶ Jugar"
+                        />
                       </div>
                     ) : null}
-                    <p className="mt-2 truncate text-sm text-ink">{g.title}</p>
                   </div>
                 ))}
               </div>
             </section>
           ) : null}
 
-          <section className="mt-9">
-            <h2 className="mb-3 text-[15px] font-semibold text-ink">
+          <section className="mt-10">
+            <h2 className="mb-3 text-[17px] font-semibold text-ln-text">
               Todos tus juegos
             </h2>
-            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
+            <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
               {games.map((g) => (
                 <div key={g.id} className="group">
                   <Link href={`/game/${g.slug}`} className="block">
                     <Cover game={g} className="aspect-[16/10]" />
                   </Link>
-                  <p className="mt-2 truncate text-sm text-ink">{g.title}</p>
+                  <p className="mt-2 truncate text-sm text-ln-text">{g.title}</p>
                   <div className="mt-2 flex gap-2">
                     {g.gameUrl ? (
                       <PlayButton
@@ -144,7 +157,7 @@ export default function LibraryPage() {
                         slug={g.slug}
                         variant="play"
                         size="sm"
-                        label="Jugar"
+                        label="▶ Jugar"
                       />
                     ) : (
                       <Button variant="ghost" size="sm" disabled>
@@ -155,7 +168,7 @@ export default function LibraryPage() {
                       href={`/game/${g.slug}`}
                       className="btn btn-ghost px-3 py-1.5 text-[13px]"
                     >
-                      Ver juego
+                      Ver
                     </Link>
                   </div>
                 </div>

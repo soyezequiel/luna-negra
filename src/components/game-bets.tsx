@@ -51,17 +51,17 @@ export function GameBets({
 
   return (
     <section>
-      <h2 className="mb-3 text-[17px] font-semibold text-ink">
+      <h2 className="mb-3 text-[19px] font-semibold text-ln-text">
         Tus apuestas en {title}
       </h2>
       {bets === null ? (
-        <p className="text-sm text-faint">Cargando…</p>
+        <p className="text-sm text-ln-faint">Cargando…</p>
       ) : bets.length === 0 ? (
-        <div className="rounded border border-line bg-panel p-5 text-center">
-          <p className="text-sm text-muted">
+        <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5 text-center">
+          <p className="text-sm text-ln-muted">
             Todavía no apostaste en este juego.
           </p>
-          <p className="mt-1 text-xs text-faint">
+          <p className="mt-1 text-xs text-ln-faint">
             Usá “Crear apuesta 1v1” para desafiar a un amigo.
           </p>
         </div>
@@ -73,11 +73,11 @@ export function GameBets({
               <li key={b.id}>
                 <Link
                   href={`/bets/${b.id}`}
-                  className="flex items-center justify-between gap-3 rounded border border-line border-l-[3px] bg-panel px-4 py-3 transition-colors hover:bg-white/[.02]"
+                  className="flex items-center justify-between gap-3 rounded-ln-md border border-ln-border border-l-[3px] bg-ln-card/60 px-4 py-3 transition-colors hover:bg-white/[.02]"
                   style={{ borderLeftColor: toneAccent(tone) }}
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm text-ink">
+                    <p className="truncate text-sm text-ln-text">
                       {betStatusLabel(b.status)}
                       {b.status === "settled" && b.result === "won"
                         ? " · ganaste"
@@ -86,7 +86,7 @@ export function GameBets({
                           : ""}
                     </p>
                   </div>
-                  <span className="shrink-0 font-mono text-sm text-btc">
+                  <span className="shrink-0 font-mono text-sm text-ln-corona-bright">
                     {satsLabel(b.stakeSats)} sats
                   </span>
                 </Link>

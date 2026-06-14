@@ -51,11 +51,11 @@ export function MultiplayerPanel({
 
   if (!user) {
     return (
-      <div className="mt-4 rounded border border-blue/30 bg-blue/10 p-4">
-        <p className="text-sm text-ink">
-          Te invitaron a una sala. Conecta tu Nostr para unirte.
+      <div className="rounded-ln-lg border border-ln-luna/30 bg-ln-luna/10 p-4">
+        <p className="text-sm text-ln-text">
+          Te invitaron a una sala. Conectá tu Nostr para unirte.
         </p>
-        <Button variant="blue" className="mt-3" onClick={login}>
+        <Button variant="luna" className="mt-3" onClick={login}>
           Conectar con Nostr
         </Button>
       </div>
@@ -63,9 +63,10 @@ export function MultiplayerPanel({
   }
 
   return (
-    <div className="mt-4 rounded border border-blue/30 bg-blue/10 p-4">
-      <p className="text-sm text-ink">
-        Te invitaron a la sala <code className="text-blue">{roomParam}</code>.
+    <div className="rounded-ln-lg border border-ln-aurora/30 bg-ln-aurora/[0.06] p-4">
+      <p className="text-sm text-ln-text">
+        Te invitaron a la sala{" "}
+        <code className="text-ln-aurora-bright">{roomParam}</code>.
       </p>
       <Button
         variant="play"

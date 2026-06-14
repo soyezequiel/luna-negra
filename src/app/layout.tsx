@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/providers/session-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
 import { GameContextProvider } from "@/providers/game-context";
+import { FriendsDrawerProvider } from "@/providers/friends-drawer";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { FriendsSidebar } from "@/components/friends-sidebar";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { LoginModal } from "@/components/login-modal";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
+  subsets: ["latin"],
+  weight: ["700", "800"],
+});
 
 export const metadata: Metadata = {
   title: "Luna Negra",
@@ -23,18 +30,25 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
     >
-      <body className="relative flex min-h-full flex-col bg-bg text-ink">
+      <body className="relative flex min-h-full flex-col font-sans text-ln-text">
         <SessionProvider>
           <NotificationsProvider>
             <GameContextProvider>
-              <Navbar />
-              {/* Reservamos espacio a la derecha para la barra de amigos/chat fija. */}
-              <main className="relative z-10 flex-1 xl:pr-80">{children}</main>
-              <Footer />
-              <FriendsSidebar />
-              <LoginModal />
+              <FriendsDrawerProvider>
+                <Navbar />
+                {/* Reservamos espacio a la derecha para la barra de amigos/chat
+                    fija (≥880px). En móvil el aside es un drawer y dejamos un
+                    spacer inferior (76px) para que la tab bar no tape contenido. */}
+                <main className="relative z-10 flex-1 pb-[76px] ln:pr-[308px] ln:pb-0">
+                  {children}
+                </main>
+                <Footer />
+                <FriendsSidebar />
+                <MobileTabBar />
+                <LoginModal />
+              </FriendsDrawerProvider>
             </GameContextProvider>
           </NotificationsProvider>
         </SessionProvider>
