@@ -1,0 +1,19 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#66c0f4" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#66c0f4" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="moon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#243144" />
+      <stop offset="100%" stop-color="#080b11" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0e141c" />
+  <circle cx="16" cy="16" r="12" fill="url(#glow)" />
+  <circle cx="16" cy="16" r="9" fill="url(#moon)" stroke="#66c0f4" stroke-width="1.25" stroke-opacity="0.55" />
+  <circle cx="16" cy="16" r="9" fill="#080b11" fill-opacity="0.35" />
+  <circle cx="12.5" cy="13" r="1.4" fill="#1b2532" />
+  <circle cx="19" cy="18.5" r="1.9" fill="#1b2532" />
+  <circle cx="14.5" cy="19.5" r="1" fill="#1b2532" />
+</svg>
