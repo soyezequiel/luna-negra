@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ownedGame } from "@/lib/provider";
-import { normalizeCategory } from "@/lib/categories";
+import { normalizeCategories } from "@/lib/categories";
 
 export async function PATCH(
   req: Request,
@@ -24,8 +24,8 @@ export async function PATCH(
     data.title = body.title.trim();
   if (typeof body.description === "string")
     data.description = body.description.trim();
-  if (body.category !== undefined)
-    data.category = normalizeCategory(body.category);
+  if (body.categories !== undefined)
+    data.categories = normalizeCategories(body.categories);
   if (body.priceSats !== undefined)
     data.priceSats = Math.max(0, Math.floor(Number(body.priceSats) || 0));
   if (typeof body.gameUrl === "string")

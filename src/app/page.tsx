@@ -25,7 +25,7 @@ export default async function StorePage({
   const where: Prisma.GameWhereInput = {
     status: "published",
     ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
-    ...(cat ? { category: cat } : {}),
+    ...(cat ? { categories: { has: cat } } : {}),
   };
 
   const [games, total] = await Promise.all([
@@ -111,9 +111,9 @@ export default async function StorePage({
               <span className="ln-label rounded-full bg-black/40 px-2.5 py-1 !text-ln-corona-bright">
                 ★ Destacado
               </span>
-              {hero.category ? (
+              {hero.categories.length > 0 ? (
                 <span className="flex items-center gap-1.5 text-[12px] text-ln-soft">
-                  {categoryLabel(hero.category)}
+                  {hero.categories.map((c) => categoryLabel(c)).join(" · ")}
                 </span>
               ) : null}
             </div>
@@ -203,7 +203,7 @@ export default async function StorePage({
                     title: g.title,
                     coverUrl: g.coverUrl,
                     priceSats: g.priceSats,
-                    category: g.category,
+                    categories: g.categories,
                   }}
                 />
               ))}

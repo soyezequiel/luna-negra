@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { uniqueGameSlug } from "@/lib/slug";
-import { normalizeCategory } from "@/lib/categories";
+import { normalizeCategories } from "@/lib/categories";
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       title,
       description:
         typeof body.description === "string" ? body.description.trim() : "",
-      category: normalizeCategory(body.category),
+      categories: normalizeCategories(body.categories),
       priceSats: Math.max(0, Math.floor(Number(body.priceSats) || 0)),
       gameUrl:
         typeof body.gameUrl === "string" && body.gameUrl.trim()

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { normalizeCategory, categoryLabel } from "@/lib/categories";
+import {
+  normalizeCategory,
+  normalizeCategories,
+  categoryLabel,
+} from "@/lib/categories";
 
 describe("normalizeCategory", () => {
   it("acepta un slug válido", () => {
@@ -15,6 +19,26 @@ describe("normalizeCategory", () => {
     expect(normalizeCategory("")).toBeNull();
     expect(normalizeCategory(undefined)).toBeNull();
     expect(normalizeCategory(123)).toBeNull();
+  });
+});
+
+describe("normalizeCategories", () => {
+  it("filtra a slugs válidos y normaliza", () => {
+    expect(normalizeCategories(["Puzzle", " arcade "])).toEqual([
+      "puzzle",
+      "arcade",
+    ]);
+  });
+  it("descarta inválidos y elimina duplicados preservando orden", () => {
+    expect(
+      normalizeCategories(["accion", "inventada", "accion", "puzzle"]),
+    ).toEqual(["accion", "puzzle"]);
+  });
+  it("devuelve [] para valores no-array o vacíos", () => {
+    expect(normalizeCategories(undefined)).toEqual([]);
+    expect(normalizeCategories("accion")).toEqual([]);
+    expect(normalizeCategories([])).toEqual([]);
+    expect(normalizeCategories([123, null, ""])).toEqual([]);
   });
 });
 

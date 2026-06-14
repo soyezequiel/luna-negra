@@ -8,7 +8,7 @@ export type GameCardData = {
   title: string;
   coverUrl: string | null;
   priceSats: number;
-  category?: string | null;
+  categories?: string[];
   multiplayer?: boolean;
 };
 
@@ -35,10 +35,10 @@ export function GameCard({ game }: { game: GameCardData }) {
           </div>
         )}
 
-        {/* Badges superiores */}
-        {game.category ? (
+        {/* Badges superiores: en la portada solo cabe la primera categoría. */}
+        {game.categories && game.categories.length > 0 ? (
           <span className="absolute left-2 top-2 rounded-full bg-black/45 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-soft backdrop-blur-sm">
-            {categoryLabel(game.category)}
+            {categoryLabel(game.categories[0])}
           </span>
         ) : null}
         {game.multiplayer ? (

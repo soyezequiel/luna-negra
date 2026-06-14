@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES } from "@/lib/categories";
+import { cn } from "@/lib/utils";
 
 import { satsLabel } from "@/lib/format";
 
@@ -29,7 +30,7 @@ type Game = {
   title: string;
   slug: string;
   description: string;
-  category: string | null;
+  categories: string[];
   priceSats: number;
   gameUrl: string | null;
   coverUrl: string | null;
@@ -46,7 +47,7 @@ type Sale = {
 type GameForm = {
   title: string;
   description: string;
-  category: string;
+  categories: string[];
   priceSats: string;
   gameUrl: string;
   coverUrl: string;
@@ -70,7 +71,7 @@ const PAYOUT_LABEL: Record<string, string> = {
 const emptyForm: GameForm = {
   title: "",
   description: "",
-  category: "",
+  categories: [],
   priceSats: "0",
   gameUrl: "",
   coverUrl: "",
@@ -262,7 +263,7 @@ export default function ProviderPage() {
     setForm({
       title: g.title,
       description: g.description,
-      category: g.category ?? "",
+      categories: g.categories ?? [],
       priceSats: String(g.priceSats),
       gameUrl: g.gameUrl ?? "",
       coverUrl: g.coverUrl ?? "",
@@ -407,36 +408,45 @@ export default function ProviderPage() {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-sm text-muted">Precio (sats)</label>
-                <input
-                  className={`${inputCls} mt-1`}
-                  type="number"
-                  min={0}
-                  placeholder="0 = gratis"
-                  value={form.priceSats}
-                  onChange={(e) =>
-                    setForm({ ...form, priceSats: e.target.value })
-                  }
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm text-muted">Categoría</label>
-                <select
-                  className={`${inputCls} mt-1`}
-                  value={form.category}
-                  onChange={(e) =>
-                    setForm({ ...form, category: e.target.value })
-                  }
-                >
-                  <option value="">Sin categoría</option>
-                  {CATEGORIES.map((c) => (
-                    <option key={c.slug} value={c.slug}>
+            <div>
+              <label className="block text-sm text-muted">Precio (sats)</label>
+              <input
+                className={`${inputCls} mt-1`}
+                type="number"
+                min={0}
+                placeholder="0 = gratis"
+                value={form.priceSats}
+                onChange={(e) =>
+                  setForm({ ...form, priceSats: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-muted">
+                Categorías{" "}
+                <span className="text-ln-faint">(podés elegir varias)</span>
+              </label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {CATEGORIES.map((c) => {
+                  const on = form.categories.includes(c.slug);
+                  return (
+                    <button
+                      key={c.slug}
+                      type="button"
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          categories: on
+                            ? form.categories.filter((s) => s !== c.slug)
+                            : [...form.categories, c.slug],
+                        })
+                      }
+                      className={cn("chip", on && "chip-on")}
+                    >
                       {c.label}
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <input

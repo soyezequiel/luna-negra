@@ -165,7 +165,7 @@ model Game {
   slug               String   @unique
   title              String
   description        String   @default("")
-  category           String? // slug de categoría curada (ver src/lib/categories.ts)
+  categories         String[] @default([]) // slugs de categorías curadas (ver src/lib/categories.ts)
   priceSats          Int      @default(0) // 0 = gratis
   coverUrl           String?
   horizontalCoverUrl String?

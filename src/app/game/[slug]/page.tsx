@@ -67,12 +67,14 @@ export default async function GamePage({
     .slice(0, 6);
   const supportsRooms = Boolean(game.gameUrl);
 
-  // Más juegos web (misma categoría, excluyendo este).
+  // Más juegos web (que compartan alguna categoría, excluyendo este).
   const related = await prisma.game.findMany({
     where: {
       status: "published",
       id: { not: game.id },
-      ...(game.category ? { category: game.category } : {}),
+      ...(game.categories.length > 0
+        ? { categories: { hasSome: game.categories } }
+        : {}),
     },
     orderBy: { createdAt: "desc" },
     take: 4,
@@ -96,14 +98,15 @@ export default async function GamePage({
             ✓ En tu biblioteca
           </span>
         ) : null}
-        {game.category ? (
+        {game.categories.map((c) => (
           <Link
-            href={`/?cat=${game.category}`}
+            key={c}
+            href={`/?cat=${c}`}
             className="rounded-full border border-ln-border px-2.5 py-0.5 text-xs text-ln-muted transition-colors hover:bg-white/5"
           >
-            {categoryLabel(game.category)}
+            {categoryLabel(c)}
           </Link>
-        ) : null}
+        ))}
       </div>
 
       <div className="mt-6 grid gap-6 ln:[grid-template-columns:minmax(0,1fr)_340px]">
@@ -288,7 +291,7 @@ export default async function GamePage({
                   title: g.title,
                   coverUrl: g.coverUrl,
                   priceSats: g.priceSats,
-                  category: g.category,
+                  categories: g.categories,
                 }}
               />
             ))}

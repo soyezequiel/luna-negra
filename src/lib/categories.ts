@@ -23,6 +23,21 @@ export function normalizeCategory(value: unknown): string | null {
   return SLUGS.has(v) ? v : null;
 }
 
+/**
+ * Normaliza una lista de categorías: filtra a slugs válidos, sin duplicados y
+ * preservando el orden de aparición. Acepta cualquier valor (típicamente el body
+ * de la API) y devuelve siempre un array (vacío si nada es válido).
+ */
+export function normalizeCategories(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    const slug = normalizeCategory(item);
+    if (slug && !out.includes(slug)) out.push(slug);
+  }
+  return out;
+}
+
 /** Label legible para un slug (o "Sin categoría" si no hay/no existe). */
 export function categoryLabel(slug: string | null | undefined): string {
   if (!slug) return "Sin categoría";
