@@ -271,7 +271,7 @@ export default function FriendsPage() {
                     npub={g.npub}
                     name={globalResultName(g)}
                     picture={g.profile?.picture ?? null}
-                    isMember={false}
+                    isMember={g.isMember ?? false}
                     canInvite={Boolean(activeRoom)}
                     invited={invited.has(g.pubkey)}
                     inviting={invitingPk === g.pubkey}

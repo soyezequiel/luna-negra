@@ -274,7 +274,38 @@ export type GlobalResult = {
   pubkey: string;
   npub: string;
   profile?: Profile;
+  /** Tiene cuenta en Luna Negra (vino del directorio de miembros, no de relays). */
+  isMember?: boolean;
 };
+
+/**
+ * Busca miembros de Luna Negra por nombre en la DB de la tienda. Necesario
+ * porque una cuenta custodial creada en la tienda puede no estar indexada en
+ * ningún relay NIP-50, pero la tienda sí conoce su displayName.
+ */
+async function searchMembers(q: string): Promise<GlobalResult[]> {
+  // Solo en el navegador: usa una URL relativa contra la propia app. En el
+  // servidor (p. ej. API pública v1/friends) no hay base URL y se omite.
+  if (typeof window === "undefined") return [];
+  try {
+    const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      users?: { pubkey: string; npub: string; displayName?: string | null; avatarUrl?: string | null }[];
+    };
+    return (data.users ?? []).map((u) => ({
+      pubkey: u.pubkey,
+      npub: u.npub,
+      profile: {
+        name: u.displayName ?? undefined,
+        picture: u.avatarUrl ?? undefined,
+      },
+      isMember: true,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Busca usuarios en TODO Nostr cuando no están en tus follows. Resuelve, en
@@ -314,18 +345,21 @@ export async function searchProfiles(
     }
   }
 
-  // 3) Texto libre (NIP-50).
-  const evs = await pool().querySync(
-    SEARCH_RELAYS,
-    { kinds: [0], search: q, limit },
-    { maxWait: MAX_WAIT },
-  );
+  // 3) Texto libre: en paralelo, miembros de Luna Negra (DB) y NIP-50 (relays).
+  const [members, evs] = await Promise.all([
+    searchMembers(q),
+    pool().querySync(
+      SEARCH_RELAYS,
+      { kinds: [0], search: q, limit },
+      { maxWait: MAX_WAIT },
+    ),
+  ]);
   const byPubkey = new Map<string, (typeof evs)[number]>();
   for (const ev of evs) {
     const prev = byPubkey.get(ev.pubkey);
     if (!prev || ev.created_at > prev.created_at) byPubkey.set(ev.pubkey, ev);
   }
-  return [...byPubkey.values()].slice(0, limit).map((ev) => {
+  const fromRelays: GlobalResult[] = [...byPubkey.values()].map((ev) => {
     let profile: Profile | undefined;
     try {
       profile = JSON.parse(ev.content) as Profile;
@@ -334,6 +368,16 @@ export async function searchProfiles(
     }
     return { pubkey: ev.pubkey, npub: npubOf(ev.pubkey), profile };
   });
+
+  // Miembros primero (resultado fiable); luego relays sin duplicar pubkeys.
+  const seen = new Set(members.map((m) => m.pubkey));
+  const merged = [...members];
+  for (const r of fromRelays) {
+    if (seen.has(r.pubkey)) continue;
+    seen.add(r.pubkey);
+    merged.push(r);
+  }
+  return merged.slice(0, limit);
 }
 
 // --- Presencia (NIP-38, kind:30315 d="general") ---
