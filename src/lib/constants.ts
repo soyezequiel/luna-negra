@@ -14,6 +14,12 @@ export const RELAYS = [
   "wss://relay.primal.net",
 ];
 
-// Relays con soporte NIP-50 (búsqueda full-text de perfiles kind:0). nostr.band
-// indexa nombres/about y es el que mejor responde a búsquedas de usuarios.
-export const SEARCH_RELAYS = ["wss://relay.nostr.band"];
+// Relays con soporte NIP-50 (búsqueda full-text de perfiles kind:0). Usamos
+// varios porque ninguno es 100% fiable: si uno está caído o no responde (p. ej.
+// relay.nostr.band suele rechazar conexiones), los demás cubren la búsqueda.
+// querySync agrega los eventos de todos y searchProfiles deduplica por pubkey.
+export const SEARCH_RELAYS = [
+  "wss://search.nos.today",
+  "wss://relay.nostr.band",
+  "wss://nostr.wine",
+];
