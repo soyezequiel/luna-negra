@@ -20,6 +20,9 @@ function friend(pubkey: string): Friend {
   };
 }
 
+// La marca "l":"luna-negra" la añade Luna Negra al publicar; los tests la
+// incluyen por defecto salvo que se pasen `tags` propios (p. ej. para simular
+// una presencia ajena sin la marca).
 function statusEvent(input: {
   pubkey: string;
   createdAt: number;
@@ -30,7 +33,10 @@ function statusEvent(input: {
     pubkey: input.pubkey,
     created_at: input.createdAt,
     content: input.content ?? "Jugando Tetris (Beta) en Luna Negra",
-    tags: input.tags ?? [["d", "general"]],
+    tags: input.tags ?? [
+      ["d", "general"],
+      ["l", "luna-negra"],
+    ],
   };
 }
 
@@ -87,8 +93,25 @@ describe("NIP-38 presence freshness", () => {
           createdAt: now - 1,
           tags: [
             ["d", "general"],
+            ["l", "luna-negra"],
             ["expiration", String(now)],
           ],
+        }),
+      ],
+      now,
+    );
+
+    expect(result.a).toBeUndefined();
+  });
+
+  it("ignores a general status not published from Luna Negra", () => {
+    const result = selectFreshStatuses(
+      [
+        statusEvent({
+          pubkey: "a",
+          createdAt: now - 1,
+          content: "Accounts",
+          tags: [["d", "general"]],
         }),
       ],
       now,
@@ -105,6 +128,7 @@ describe("NIP-38 presence freshness", () => {
           createdAt: now - 2,
           tags: [
             ["d", "general"],
+            ["l", "luna-negra"],
             ["expiration", String(now + 30)],
           ],
         }),

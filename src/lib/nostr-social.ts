@@ -31,6 +31,18 @@ const MAX_WAIT = 4000;
 // expiración explícita (como los publicados a mano) desaparezcan en 2 minutos.
 export const STATUS_FALLBACK_TTL_SECONDS = 3600;
 
+// Marca que distingue la presencia NIP-38 publicada DESDE Luna Negra de la que
+// el mismo `d:"general"` pueda tener seteada por otra app Nostr. El estado
+// `general` es global y compartido entre clientes: sin esta marca, el riel
+// "amigos jugando" mostraría cualquier estado ajeno (p. ej. "Accounts" puesto
+// por nostr.build) como si fuera un juego abierto en la tienda. Usamos un tag de
+// una sola letra ("l", etiqueta NIP-32) para poder filtrar también en el relay.
+const LN_STATUS_LABEL = "luna-negra";
+const lunaNegraStatusTag = (): string[] => ["l", LN_STATUS_LABEL];
+function hasLunaNegraLabel(ev: { tags: string[][] }): boolean {
+  return ev.tags.some((t) => t[0] === "l" && t[1] === LN_STATUS_LABEL);
+}
+
 export function npubOf(pubkey: string): string {
   return nip19.npubEncode(pubkey);
 }
@@ -302,6 +314,9 @@ export function selectFreshStatuses(
   const map: Record<string, Status> = {};
   for (const [pubkey, ev] of latest) {
     if (!ev.content) continue;
+    // Solo presencia originada en Luna Negra: ignoramos estados `general`
+    // seteados por otras apps Nostr (el `d:"general"` es compartido).
+    if (!hasLunaNegraLabel(ev)) continue;
 
     const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
     if (exp) {
@@ -327,6 +342,7 @@ export async function fetchStatuses(
       kinds: [30315],
       authors: pubkeys,
       "#d": ["general"],
+      "#l": [LN_STATUS_LABEL],
     },
     { maxWait: MAX_WAIT },
   );
@@ -338,7 +354,7 @@ export async function publishStatus(content: string): Promise<void> {
     await sign({
       kind: 30315,
       created_at: now(),
-      tags: [["d", "general"]],
+      tags: [["d", "general"], lunaNegraStatusTag()],
       content,
     }),
   );
@@ -357,7 +373,7 @@ export async function publishPlayingStatus(
   gameUrl?: string,
   ttlSeconds = 30,
 ): Promise<void> {
-  const tags: string[][] = [["d", "general"]];
+  const tags: string[][] = [["d", "general"], lunaNegraStatusTag()];
   if (gameUrl) tags.push(["r", gameUrl]);
   tags.push(["expiration", String(now() + ttlSeconds)]);
   await publish(
