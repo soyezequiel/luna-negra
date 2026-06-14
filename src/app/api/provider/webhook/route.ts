@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   });
   if (!data) {
     return NextResponse.json(
-      { error: "La URL debe empezar con http(s)://" },
+      { error: "URL inválida: usá una URL pública http(s):// (no direcciones internas)" },
       { status: 400 },
     );
   }

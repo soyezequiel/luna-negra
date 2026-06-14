@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     currentSecret: provider.webhookSecret,
   });
   if (!data) {
-    return apiError("INVALID_WEBHOOK_URL", "La URL debe empezar con http(s)://", 400);
+    return apiError("INVALID_WEBHOOK_URL", "URL inválida: usá una URL pública http(s):// (no direcciones internas)", 400);
   }
 
   const updated = await prisma.provider.update({

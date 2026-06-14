@@ -326,6 +326,18 @@ model Review {
   @@unique([userId, gameId]) // una reseña por usuario y juego
 }
 
+// Magic links de login por email ya canjeados. El token JWT trae un `jti` único;
+// al canjearlo insertamos ese jti acá, y el unique constraint hace el consumo de
+// un solo uso atómico (un segundo canje del mismo link choca y se rechaza). El
+// barrido por `expiresAt` permite purgar filas viejas (el token ya no es válido).
+model ConsumedMagicLink {
+  jti       String   @id
+  consumedAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 // ───────────────────────── Apuestas / Escrow (Fase C) ─────────────────────────
 
 model Bet {

@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import { getSigningKeys, TOKEN_ISSUER, TOKEN_AUDIENCE } from "@/lib/jwks";
 
@@ -21,7 +22,7 @@ export type SessionPayload = {
 // --- Sesión (cookie httpOnly, larga) ---
 
 export async function signSession(payload: SessionPayload): Promise<string> {
-  return new SignJWT({ ...payload })
+  return new SignJWT({ ...payload, purpose: "session" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("30d")
@@ -33,6 +34,14 @@ export async function verifySession(
 ): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret);
+    // El claim `purpose` separa la cookie de sesión de otros tokens firmados con
+    // el mismo secreto (challenge/email-magic/bet-session/withdraw) y evita que se
+    // usen como sesión. Transición: las cookies emitidas antes de este cambio no
+    // lo traen, así que también se aceptan ausentes; endurecer a estricto cuando
+    // hayan caducado (30 días).
+    if (payload.purpose !== undefined && payload.purpose !== "session") {
+      return null;
+    }
     return {
       sub: payload.sub as string,
       npub: payload.npub as string,
@@ -80,6 +89,7 @@ export async function verifyChallenge(
 export async function signMagicLink(email: string): Promise<string> {
   return new SignJWT({ email, purpose: "email-magic" })
     .setProtectedHeader({ alg: "HS256" })
+    .setJti(randomUUID()) // identificador único → consumo de un solo uso
     .setIssuedAt()
     .setExpirationTime("15m")
     .sign(secret);
@@ -87,11 +97,19 @@ export async function signMagicLink(email: string): Promise<string> {
 
 export async function verifyMagicLink(
   token: string,
-): Promise<{ email: string } | null> {
+): Promise<{ email: string; jti: string; expiresAt: Date } | null> {
   try {
     const { payload } = await jwtVerify(token, secret);
     if (payload.purpose !== "email-magic") return null;
-    return { email: payload.email as string };
+    if (typeof payload.jti !== "string") return null;
+    return {
+      email: payload.email as string,
+      jti: payload.jti,
+      expiresAt:
+        typeof payload.exp === "number"
+          ? new Date(payload.exp * 1000)
+          : new Date(Date.now() + 15 * 60_000),
+    };
   } catch {
     return null;
   }

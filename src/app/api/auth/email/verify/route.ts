@@ -34,6 +34,19 @@ export async function POST(req: Request) {
     );
   }
 
+  // Consumo de un solo uso: registramos el jti del link. Si ya estaba (replay
+  // dentro de la ventana de 15 min) el unique constraint choca y lo rechazamos.
+  try {
+    await prisma.consumedMagicLink.create({
+      data: { jti: magic.jti, expiresAt: magic.expiresAt },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Este link ya fue usado. Pedí uno nuevo." },
+      { status: 401 },
+    );
+  }
+
   // Crea-o-encuentra por email. upsert evita la carrera de dos clics simultáneos
   // creando la misma cuenta; el keypair generado solo se usa en el create.
   const fresh = generateCustodialIdentity();

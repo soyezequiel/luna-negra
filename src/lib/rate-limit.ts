@@ -82,7 +82,19 @@ export function rateLimitHeaders(r: RateLimitResult): Record<string, string> {
   return h;
 }
 
+/**
+ * IP del cliente para keyear rate-limits. Prioriza `x-real-ip`, que en Vercel lo
+ * setea la plataforma con la IP real y el cliente NO puede falsificar. El
+ * `x-forwarded-for` es prefijable por el cliente (Vercel le antepone su valor),
+ * así que tomar su primer elemento permitiría evadir el límite spoofeando el
+ * header; solo lo usamos como fallback en dev, donde no hay proxy confiable.
+ */
 export function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
-  return xff?.split(",")[0]?.trim() || "unknown";
+  const realIp = req.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  if (process.env.NODE_ENV !== "production") {
+    const xff = req.headers.get("x-forwarded-for");
+    if (xff) return xff.split(",")[0]?.trim() || "unknown";
+  }
+  return "unknown";
 }
