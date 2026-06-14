@@ -123,7 +123,8 @@ export function Navbar() {
             </>
           ) : (
             <Button variant="luna" size="sm" onClick={login}>
-              Conectar con Nostr
+              <span className="ln:hidden">Conectar</span>
+              <span className="hidden ln:inline">Conectar con Nostr</span>
             </Button>
           )}
         </div>
