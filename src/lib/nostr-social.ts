@@ -93,9 +93,9 @@ async function publish(ev: Event): Promise<void> {
   await Promise.allSettled(pool().publish(RELAYS, ev));
 }
 
-// Kinds que Luna Negra firma con la extensión: 1 (notas), 4 (DM),
-// 27235 (login NIP-98), 30315 (presencia NIP-38).
-const SIGN_KINDS = [1, 4, 27235, 30315];
+// Kinds que Luna Negra firma con la extensión: 1 (notas), 3 (follows NIP-02),
+// 4 (DM), 27235 (login NIP-98), 30315 (presencia NIP-38).
+const SIGN_KINDS = [1, 3, 4, 27235, 30315];
 
 // --- Modo de permisos NIP-07 ---
 //
@@ -206,6 +206,46 @@ export function clampContacts(contacts: string[], max = 150): string[] {
     }
   }
   return out.reverse();
+}
+
+/** Trae el evento kind:3 (lista de contactos) más nuevo del usuario, o null. */
+async function fetchContactEvent(pubkey: string): Promise<Event | null> {
+  const evs = await pool().querySync(
+    RELAYS,
+    { kinds: [3], authors: [pubkey] },
+    { maxWait: MAX_WAIT },
+  );
+  let latest: Event | null = null;
+  for (const ev of evs) {
+    if (!latest || ev.created_at > latest.created_at) latest = ev;
+  }
+  return latest;
+}
+
+/**
+ * Sigue a un usuario (NIP-02): toma tu kind:3 más nuevo, le agrega el tag `p`
+ * del pubkey conservando el resto de contactos, los relays (content) y los
+ * petnames, y republica. Devuelve true si hubo cambio, false si ya lo seguías.
+ *
+ * Importante: se relee el kind:3 vigente justo antes de firmar para no pisar
+ * follows hechos en otros clientes (republicar una lista vieja borraría amigos).
+ */
+export async function followContact(pubkey: string): Promise<boolean> {
+  const signer = await requireSigner();
+  const myPubkey = await signer.getPublicKey();
+  const current = await fetchContactEvent(myPubkey);
+  const tags = current ? current.tags.map((t) => [...t]) : [];
+  if (tags.some((t) => t[0] === "p" && t[1] === pubkey)) return false;
+  tags.push(["p", pubkey]);
+  await publish(
+    await sign({
+      kind: 3,
+      created_at: now(),
+      tags,
+      content: current?.content ?? "",
+    }),
+  );
+  return true;
 }
 
 export async function fetchProfiles(

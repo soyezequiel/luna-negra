@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
@@ -15,6 +15,7 @@ import {
 import {
   publishStatus,
   sendDm,
+  followContact,
   profileName,
   shortId,
   type Status,
@@ -52,12 +53,40 @@ export default function FriendsPage() {
   );
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Follows en curso / recién hechos (para el botón "Seguir" de resultados globales).
+  const [followingPk, setFollowingPk] = useState<string | null>(null);
+  const [followed, setFollowed] = useState<Set<string>>(new Set());
   // Resultados del buscador (null = sin query → lista normal).
   const [search, setSearch] = useState<FriendSearchResults | null>(null);
   const onResults = useCallback(
     (r: FriendSearchResults | null) => setSearch(r),
     [],
   );
+  // Ref al input del buscador: el botón "Añadir amigo" lo enfoca.
+  const searchRef = useRef<HTMLInputElement>(null);
+  function focusSearch() {
+    searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    searchRef.current?.focus();
+  }
+
+  async function follow(recipientPubkey: string, name: string) {
+    if (followingPk) return;
+    setFollowingPk(recipientPubkey);
+    try {
+      await followContact(recipientPubkey);
+      setFollowed((prev) => new Set(prev).add(recipientPubkey));
+      notify({ title: `Ahora seguís a ${name}` });
+      // Refrescar trae el nuevo follow desde los relays a "Tus amigos".
+      void refresh();
+    } catch (e) {
+      notify({
+        title: "No se pudo seguir",
+        body: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setFollowingPk(null);
+    }
+  }
 
   useEffect(() => {
     // Reaccionar al cierre de la pestaña del juego (o al dismiss): el watcher
@@ -157,6 +186,12 @@ export default function FriendsPage() {
             ↻
           </span>
         </button>
+        <button
+          onClick={focusSearch}
+          className="ml-auto rounded-md border border-blue/40 bg-blue/10 px-3 py-1.5 text-sm font-medium text-blue hover:bg-blue/20"
+        >
+          ＋ Añadir amigo
+        </button>
       </div>
 
       <div className="mt-4 flex flex-col gap-2 rounded-lg border border-line bg-panel p-4 sm:flex-row">
@@ -189,7 +224,7 @@ export default function FriendsPage() {
         </div>
       ) : null}
 
-      <FriendSearch friends={friends} onResults={onResults} />
+      <FriendSearch friends={friends} onResults={onResults} inputRef={searchRef} />
 
       {search ? (
         <div className="mt-6 space-y-4">
@@ -241,6 +276,10 @@ export default function FriendsPage() {
                     invited={invited.has(g.pubkey)}
                     inviting={invitingPk === g.pubkey}
                     onInvite={() => inviteToActiveRoom(g.pubkey, globalResultName(g))}
+                    canFollow
+                    followed={followed.has(g.pubkey)}
+                    following={followingPk === g.pubkey}
+                    onFollow={() => follow(g.pubkey, globalResultName(g))}
                   />
                 ))}
               </ul>
@@ -353,6 +392,10 @@ function FriendRow({
   invited,
   inviting,
   onInvite,
+  canFollow,
+  followed,
+  following,
+  onFollow,
 }: {
   pubkey: string;
   npub: string;
@@ -363,6 +406,10 @@ function FriendRow({
   invited: boolean;
   inviting: boolean;
   onInvite: () => void;
+  canFollow?: boolean;
+  followed?: boolean;
+  following?: boolean;
+  onFollow?: () => void;
 }) {
   return (
     <li className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3">
@@ -378,6 +425,15 @@ function FriendRow({
         </div>
         <p className="truncate font-mono text-[11px] text-faint">{npub}</p>
       </div>
+      {canFollow ? (
+        <button
+          onClick={onFollow}
+          disabled={followed || following}
+          className="shrink-0 rounded-md border border-blue/40 bg-blue/10 px-3 py-1.5 text-xs font-medium text-blue hover:bg-blue/20 disabled:opacity-50"
+        >
+          {followed ? "✓ Siguiendo" : following ? "Siguiendo…" : "Seguir"}
+        </button>
+      ) : null}
       {canInvite ? (
         <button
           onClick={onInvite}

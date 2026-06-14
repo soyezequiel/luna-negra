@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type Ref } from "react";
 import {
   searchProfiles,
   profileName,
@@ -33,10 +33,12 @@ export function FriendSearch({
   friends,
   onResults,
   compact,
+  inputRef,
 }: {
   friends: Friend[] | null;
   onResults: (r: FriendSearchResults | null) => void;
   compact?: boolean;
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -107,10 +109,11 @@ export function FriendSearch({
   return (
     <div className={compact ? "relative" : "relative mt-4"}>
       <input
+        ref={inputRef}
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar amigo (nombre, npub o NIP-05)…"
+        placeholder="Buscar amigo o usuario de Nostr (nombre, npub o NIP-05)…"
         className={
           compact
             ? "w-full rounded-md border border-line bg-black/20 px-3 py-1.5 text-xs text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-blue/30"
