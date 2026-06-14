@@ -17,7 +17,12 @@ export async function POST(req: Request) {
 
   // Update parcial: solo tocamos los campos presentes en el body, para que el
   // caché de login (displayName/avatarUrl) no pise un lud16 configurado a mano.
-  const data: { displayName?: string | null; avatarUrl?: string | null; lud16?: string | null } = {};
+  const data: {
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    lud16?: string | null;
+    payoutMethod?: string;
+  } = {};
 
   if ("displayName" in body || "avatarUrl" in body) {
     data.displayName =
@@ -39,6 +44,16 @@ export async function POST(req: Request) {
       );
     }
     data.lud16 = raw ? raw.toLowerCase().slice(0, 255) : null;
+  }
+
+  if ("payoutMethod" in body) {
+    if (body.payoutMethod !== "address" && body.payoutMethod !== "nwc") {
+      return NextResponse.json(
+        { error: "Destino de cobros inválido" },
+        { status: 400 },
+      );
+    }
+    data.payoutMethod = body.payoutMethod;
   }
 
   if (Object.keys(data).length === 0) {

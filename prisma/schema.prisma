@@ -16,9 +16,20 @@ model User {
   id          String   @id @default(cuid())
   npub        String   @unique
   pubkey      String   @unique // hex
+  // Cuentas custodiales (login por email con magic link): el usuario no trae una
+  // identidad Nostr propia, así que Luna Negra le genera el keypair. `email` es
+  // el identificador de login; `nsecEnc` es la clave privada cifrada en reposo
+  // (AES-256-GCM, ver src/lib/crypto-vault.ts) que se le entrega al navegador al
+  // loguear y se puede exportar desde el perfil. Null en cuentas Nostr normales.
+  email       String?  @unique
+  nsecEnc     String? // secret key cifrada (solo cuentas custodiales por email)
   displayName String?
   avatarUrl   String?
   lud16       String? // Lightning Address para cobrar payouts (override del kind:0)
+  // Destino de cobros de premios/payouts: "address" = cascada lud16 (Luna Negra
+  // → kind:0); "nwc" = el wallet NWC del usuario (vive sólo en su navegador), así
+  // que el server fuerza withdraw_pending y el cliente reclama por LNURL-withdraw.
+  payoutMethod String  @default("address")
   createdAt   DateTime @default(now())
   lastSeen    DateTime @default(now())
   // Última vez que lanzó/jugó un juego (ordena la lista de amigos: los que

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/providers/session-provider";
+import { WalletProvider } from "@/providers/wallet-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
 import { GameContextProvider } from "@/providers/game-context";
 import { FriendsDrawerProvider } from "@/providers/friends-drawer";
@@ -34,6 +35,7 @@ export default function RootLayout({
     >
       <body className="relative flex min-h-full flex-col font-sans text-ln-text">
         <SessionProvider>
+          <WalletProvider>
           <NotificationsProvider>
             <GameContextProvider>
               <FriendsDrawerProvider>
@@ -51,6 +53,7 @@ export default function RootLayout({
               </FriendsDrawerProvider>
             </GameContextProvider>
           </NotificationsProvider>
+          </WalletProvider>
         </SessionProvider>
       </body>
     </html>

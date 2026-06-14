@@ -14,11 +14,16 @@ import { WITHDRAW_WINDOW_MS } from "@/lib/escrow-config";
 /**
  * Cascada de destino (R5): lud16 configurado en Luna Negra (perfil) →
  * lud16 del perfil Nostr (kind:0). Si no hay → null (fallback a QR de retiro).
+ *
+ * Si el usuario eligió cobrar a su wallet NWC (`payoutMethod === "nwc"`),
+ * devolvemos null a propósito: el secreto NWC vive sólo en su navegador, así que
+ * forzamos `withdraw_pending` y el cliente reclama el premio por LNURL-withdraw.
  */
 export async function resolveDestination(npub: string): Promise<string | null> {
   const user = await prisma.user
-    .findUnique({ where: { npub }, select: { lud16: true } })
+    .findUnique({ where: { npub }, select: { lud16: true, payoutMethod: true } })
     .catch(() => null);
+  if (user?.payoutMethod === "nwc") return null;
   if (user?.lud16) return user.lud16;
 
   const pk = pubkeyFromNpub(npub);

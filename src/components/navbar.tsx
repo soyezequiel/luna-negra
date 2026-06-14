@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
+import { useWallet } from "@/providers/wallet-provider";
+import { satsLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 
@@ -23,6 +25,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function Navbar() {
   const { user, login, logout, loading, error } = useSession();
+  const { connected, balanceSats } = useWallet();
   const pathname = usePathname() ?? "/";
 
   const navLink = (href: string, label: string) => {
@@ -91,6 +94,16 @@ export function Navbar() {
         <div className="ml-auto flex shrink-0 items-center gap-3 ln:ml-0">
           {loading ? null : user ? (
             <>
+              {connected ? (
+                <Link
+                  href="/profile/editar"
+                  title="Tu saldo Lightning (NWC) · Editar perfil"
+                  className="flex items-center gap-1.5 rounded-full border border-ln-corona/40 bg-ln-corona/10 px-3 py-1.5 font-mono text-[13px] font-semibold text-ln-corona-bright transition-colors hover:border-ln-corona/70"
+                >
+                  <span aria-hidden>⚡</span>
+                  <span>{balanceSats != null ? satsLabel(balanceSats) : "…"}</span>
+                </Link>
+              ) : null}
               <Link
                 href="/profile"
                 className="flex items-center gap-2 text-sm text-ln-soft transition-colors hover:text-white"

@@ -23,6 +23,10 @@ type Props = {
   onPayExtension?: () => void;
   paying?: boolean;
   payError?: string | null;
+  /** Pago con el saldo del wallet NWC del navegador. */
+  onPayNwc?: () => void;
+  payingNwc?: boolean;
+  payNwcError?: string | null;
   /** Modo dev: simular depósito. */
   devMode?: boolean;
   onSimulate?: () => void;
@@ -45,6 +49,9 @@ export function LightningInvoiceModal({
   onPayExtension,
   paying,
   payError,
+  onPayNwc,
+  payingNwc,
+  payNwcError,
   devMode,
   onSimulate,
   onClose,
@@ -160,9 +167,22 @@ export function LightningInvoiceModal({
         {payError ? (
           <p className="mt-2 text-center text-sm text-ln-danger">{payError}</p>
         ) : null}
+        {payNwcError ? (
+          <p className="mt-2 text-center text-sm text-ln-danger">{payNwcError}</p>
+        ) : null}
 
         {/* Acciones */}
         <div className="mt-4 space-y-2">
+          {onPayNwc ? (
+            <Button
+              variant="corona"
+              className="w-full"
+              onClick={onPayNwc}
+              disabled={payingNwc}
+            >
+              {payingNwc ? "Pagando…" : "⚡ Pagar con saldo (NWC)"}
+            </Button>
+          ) : null}
           {onPayExtension ? (
             <Button
               variant="corona"

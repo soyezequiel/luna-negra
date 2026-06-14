@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
+import { useWallet } from "@/providers/wallet-provider";
 import { Button } from "@/components/ui/button";
 import { LightningInvoiceModal } from "@/components/lightning-invoice-modal";
 import { payWithExtension, withdrawWithExtension, WebLNError } from "@/lib/webln";
+import { payInvoiceWithNwc, withdrawWithNwc, NwcError } from "@/lib/nwc-wallet";
 
 type Participant = { npub: string; name: string | null; paid: boolean; refunded: boolean };
 type BetData = {
@@ -36,6 +38,7 @@ function shortNpub(np: string) {
 
 export function BetView({ betId }: { betId: string }) {
   const { user, login, loading } = useSession();
+  const { connected: nwcConnected, refresh: refreshWallet } = useWallet();
   const [bet, setBet] = useState<BetData | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -48,6 +51,10 @@ export function BetView({ betId }: { betId: string }) {
   const [weblnError, setWeblnError] = useState<string | null>(null);
   const [weblnWithdrawing, setWeblnWithdrawing] = useState(false);
   const [weblnWithdrawError, setWeblnWithdrawError] = useState<string | null>(null);
+  const [nwcPaying, setNwcPaying] = useState(false);
+  const [nwcError, setNwcError] = useState<string | null>(null);
+  const [nwcWithdrawing, setNwcWithdrawing] = useState(false);
+  const [nwcWithdrawError, setNwcWithdrawError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [, startLoadTransition] = useTransition();
 
@@ -126,6 +133,37 @@ export function BetView({ betId }: { betId: string }) {
     }
   }
 
+  async function payNwc() {
+    if (!invoice) return;
+    setNwcError(null);
+    setNwcPaying(true);
+    try {
+      await payInvoiceWithNwc(invoice);
+      // El polling de 3s detecta el depósito y actualiza el estado.
+      void refreshWallet();
+    } catch (e) {
+      setNwcError(e instanceof NwcError ? e.message : "No se pudo pagar con el wallet NWC.");
+    } finally {
+      setNwcPaying(false);
+    }
+  }
+
+  async function withdrawNwc() {
+    const url = bet?.me?.withdrawUrl;
+    if (!url) return;
+    setNwcWithdrawError(null);
+    setNwcWithdrawing(true);
+    try {
+      await withdrawWithNwc(url);
+      void refreshWallet();
+      load();
+    } catch (e) {
+      setNwcWithdrawError(e instanceof NwcError ? e.message : "No se pudo cobrar con el wallet NWC.");
+    } finally {
+      setNwcWithdrawing(false);
+    }
+  }
+
   if (loading) return null;
   if (!user) {
     return (
@@ -199,9 +237,24 @@ export function BetView({ betId }: { betId: string }) {
               <p className="mt-1 text-sm text-green">Cobrado ✓</p>
             ) : bet.me.payoutStatus === "withdraw_pending" && bet.me.withdrawUrl ? (
               <div className="mt-3">
+                {nwcConnected ? (
+                  <>
+                    <Button
+                      variant="corona"
+                      className="w-full"
+                      onClick={withdrawNwc}
+                      disabled={nwcWithdrawing}
+                    >
+                      {nwcWithdrawing ? "Cobrando…" : "⚡ Cobrar con saldo (NWC)"}
+                    </Button>
+                    {nwcWithdrawError ? (
+                      <p className="mt-2 text-sm text-[var(--lose)]">{nwcWithdrawError}</p>
+                    ) : null}
+                  </>
+                ) : null}
                 <Button
                   variant="btc"
-                  className="w-full"
+                  className={nwcConnected ? "mt-2 w-full" : "w-full"}
                   onClick={withdrawExtension}
                   disabled={weblnWithdrawing}
                 >
@@ -272,6 +325,9 @@ export function BetView({ betId }: { betId: string }) {
                     onPayExtension={payExtension}
                     paying={weblnPaying}
                     payError={weblnError}
+                    onPayNwc={nwcConnected ? payNwc : undefined}
+                    payingNwc={nwcPaying}
+                    payNwcError={nwcError}
                     devMode={devMode}
                     onSimulate={simulate}
                     onConfirm={() => load()}

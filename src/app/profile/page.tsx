@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
+import { useWallet } from "@/providers/wallet-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { useFriends } from "@/hooks/use-friends";
 import { fetchProfile, profileName, type NostrProfile } from "@/lib/nostr";
@@ -50,6 +51,7 @@ export default function ProfilePage() {
   const { user, login, loading } = useSession();
   const { notify } = useNotify();
   const { friends } = useFriends();
+  const { connected: nwcConnected, balanceSats } = useWallet();
   const [profile, setProfile] = useState<NostrProfile | null>(null);
   const [games, setGames] = useState<LibGame[]>([]);
   const [bets, setBets] = useState<MineBet[]>([]);
@@ -96,7 +98,7 @@ export default function ProfilePage() {
         <h1 className="font-display text-3xl font-extrabold text-white">
           Perfil
         </h1>
-        <p className="mt-2 text-ln-muted">Conectá tu Nostr para ver tu perfil.</p>
+        <p className="mt-2 text-ln-muted">ConectÃ¡ tu Nostr para ver tu perfil.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="luna" onClick={login}>
             Conectar con Nostr
@@ -106,7 +108,7 @@ export default function ProfilePage() {
     );
   }
 
-  const name = profileName(profile) ?? "Anónimo";
+  const name = profileName(profile) ?? "AnÃ³nimo";
   const recentSettled = bets.filter((b) => b.status === "settled").slice(0, 6);
   const friendCount = friends?.length ?? 0;
 
@@ -153,16 +155,21 @@ export default function ProfilePage() {
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-ln-border bg-ln-bg-deep/60 px-2.5 py-1 font-mono text-[11px] text-ln-muted">
-                ⬡ {user.npub.slice(0, 18)}…
+                â¬¡ {user.npub.slice(0, 18)}â€¦
               </span>
               {user.lud16 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 text-[11px] font-medium text-ln-corona">
-                  ⚡ {user.lud16}
+                  âš¡ {user.lud16}
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-aurora/15 px-2.5 py-1 text-[11px] font-medium text-ln-aurora">
                 {stats.won} victorias
               </span>
+              {nwcConnected ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 font-mono text-[11px] font-semibold text-ln-corona-bright">
+                  âš¡ {balanceSats != null ? `${satsLabel(balanceSats)} sats` : "wallet"}
+                </span>
+              ) : null}
             </div>
             {profile?.about ? (
               <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm text-ln-soft">
@@ -171,7 +178,10 @@ export default function ProfilePage() {
             ) : null}
           </div>
 
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link href="/profile/editar" className="btn btn-luna px-4 py-2 text-sm">
+              Editar perfil
+            </Link>
             <button onClick={share} className="btn btn-ghost px-4 py-2 text-sm">
               Compartir
             </button>
@@ -179,9 +189,9 @@ export default function ProfilePage() {
               href={`https://njump.me/${user.npub}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-luna px-4 py-2 text-sm"
+              className="btn btn-ghost px-4 py-2 text-sm"
             >
-              Ver en Nostr ↗
+              Ver en Nostr â†—
             </a>
           </div>
         </div>
@@ -223,7 +233,7 @@ export default function ProfilePage() {
               Actividad reciente
             </h2>
             {recentSettled.length === 0 ? (
-              <p className="text-sm text-ln-faint">Sin actividad todavía.</p>
+              <p className="text-sm text-ln-faint">Sin actividad todavÃ­a.</p>
             ) : (
               <ul className="space-y-2">
                 {recentSettled.map((b) => (
@@ -255,7 +265,7 @@ export default function ProfilePage() {
             </h2>
             {games.length === 0 ? (
               <p className="text-sm text-ln-faint">
-                Tu biblioteca está vacía.{" "}
+                Tu biblioteca estÃ¡ vacÃ­a.{" "}
                 <Link href="/" className="text-ln-luna hover:underline">
                   Ir a la tienda
                 </Link>
@@ -292,96 +302,11 @@ export default function ProfilePage() {
           </section>
         </div>
 
-        {/* Derecha: Lightning Address + permisos Nostr */}
+        {/* Derecha: permisos Nostr (la config de cobros vive en /profile/editar) */}
         <div className="space-y-6">
-          <Lud16Form nostrLud16={profile?.lud16 ?? null} />
           <NostrPermsSection />
         </div>
       </div>
     </div>
-  );
-}
-
-function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
-  const { user, updateUser } = useSession();
-  const [value, setValue] = useState(user?.lud16 ?? "");
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
-    "idle",
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [, startSyncTransition] = useTransition();
-
-  // Sincroniza con el valor de la sesión cuando carga.
-  useEffect(() => {
-    startSyncTransition(() => {
-      setValue(user?.lud16 ?? "");
-    });
-  }, [user?.lud16, startSyncTransition]);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setStatus("saving");
-    setError(null);
-    const trimmed = value.trim();
-    try {
-      const res = await fetch("/api/users/me/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lud16: trimmed }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "No se pudo guardar");
-      // Refleja el valor normalizado (minúsculas, o null si quedó vacío) en la
-      // sesión, para que el contexto no quede desincronizado con la DB.
-      updateUser({ lud16: trimmed ? trimmed.toLowerCase() : null });
-      setStatus("saved");
-    } catch (err) {
-      setStatus("error");
-      setError(err instanceof Error ? err.message : "Error al guardar");
-    }
-  }
-
-  return (
-    <section className="rounded-ln-lg border border-ln-corona/30 bg-ln-card/60 p-5">
-      <h2 className="text-[15px] font-semibold text-ln-text">
-        Lightning Address (cobros)
-      </h2>
-      <p className="mt-1 text-sm text-ln-muted">
-        Dirección donde recibís tus pagos y premios. Si la dejás vacía, usamos la
-        de tu perfil Nostr
-        {nostrLud16 ? (
-          <>
-            {" "}
-            (<span className="font-mono text-ln-text">{nostrLud16}</span>)
-          </>
-        ) : null}
-        ; si tampoco hay, vas a cobrar escaneando un QR.
-      </p>
-
-      <form onSubmit={save} className="mt-4 flex flex-col gap-3">
-        <input
-          type="text"
-          inputMode="email"
-          autoComplete="off"
-          placeholder="usuario@dominio.com"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setStatus("idle");
-          }}
-          className="w-full rounded-ln-md border border-ln-border bg-ln-bg-deep px-3 py-2 text-sm text-ln-text placeholder:text-ln-faint focus:outline-none focus:ring-2 focus:ring-ln-corona/40"
-        />
-        <Button variant="corona" type="submit" disabled={status === "saving"}>
-          {status === "saving" ? "Guardando…" : "Guardar"}
-        </Button>
-      </form>
-
-      {status === "saved" ? (
-        <p className="mt-2 text-sm text-ln-aurora">Guardado ✓</p>
-      ) : null}
-      {status === "error" ? (
-        <p className="mt-2 text-sm text-ln-danger">{error}</p>
-      ) : null}
-    </section>
   );
 }

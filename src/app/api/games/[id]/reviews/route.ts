@@ -25,6 +25,7 @@ export async function GET(
       body: r.body,
       npub: r.user.npub,
       name: r.user.displayName,
+      avatarUrl: r.user.avatarUrl,
     })),
   });
 }

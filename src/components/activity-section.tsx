@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import {
   fetchGameActivity,
   fetchProfiles,
@@ -107,6 +108,11 @@ export function ActivitySection({
           {notes.map((n) => (
             <li key={n.id} className="rounded border border-line bg-panel p-4">
               <div className="flex items-center gap-2 text-xs text-faint">
+                <Avatar
+                  src={profiles[n.pubkey]?.picture}
+                  seed={npubOf(n.pubkey)}
+                  className="h-7 w-7 shrink-0"
+                />
                 <span className="font-mono">
                   {profileName(profiles[n.pubkey], shortId(npubOf(n.pubkey)))}
                 </span>

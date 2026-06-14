@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { publishGameReview, type GameRoot } from "@/lib/nostr-social";
 
 type Review = {
@@ -10,6 +11,7 @@ type Review = {
   body: string;
   npub: string;
   name: string | null;
+  avatarUrl: string | null;
 };
 
 function Stars({ n }: { n: number }) {
@@ -158,6 +160,11 @@ export function ReviewsSection({
           {reviews.map((r) => (
             <li key={r.id} className="rounded border border-line bg-panel p-4">
               <div className="flex items-center gap-2">
+                <Avatar
+                  src={r.avatarUrl}
+                  seed={r.name ?? r.npub}
+                  className="h-7 w-7 shrink-0"
+                />
                 <Stars n={r.rating} />
                 <span className="font-mono text-xs text-faint">
                   {r.name ?? r.npub.slice(0, 12) + "…"}

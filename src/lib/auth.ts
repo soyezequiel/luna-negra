@@ -75,6 +75,28 @@ export async function verifyChallenge(
   }
 }
 
+// --- Magic link de email (token corto que liga un email verificado) ---
+
+export async function signMagicLink(email: string): Promise<string> {
+  return new SignJWT({ email, purpose: "email-magic" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(secret);
+}
+
+export async function verifyMagicLink(
+  token: string,
+): Promise<{ email: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.purpose !== "email-magic") return null;
+    return { email: payload.email as string };
+  } catch {
+    return null;
+  }
+}
+
 // --- Entitlement (token corto para que el juego verifique el acceso) ---
 
 export type EntitlementPayload = {

@@ -4,10 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
+import { useWallet } from "@/providers/wallet-provider";
 import { Button } from "@/components/ui/button";
 import { PlayButton } from "@/components/play-button";
 import { priceLabel } from "@/lib/format";
 import { payWithExtension, WebLNError } from "@/lib/webln";
+import { payInvoiceWithNwc, NwcError } from "@/lib/nwc-wallet";
 
 type Props = {
   gameId: string;
@@ -22,6 +24,7 @@ type Phase = "idle" | "creating" | "pending" | "paid" | "error";
 
 export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Props) {
   const { user, login } = useSession();
+  const { connected: nwcConnected, refresh: refreshWallet } = useWallet();
   const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>("idle");
@@ -34,6 +37,8 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
   const [expired, setExpired] = useState(false);
   const [weblnPaying, setWeblnPaying] = useState(false);
   const [weblnError, setWeblnError] = useState<string | null>(null);
+  const [nwcPaying, setNwcPaying] = useState(false);
+  const [nwcError, setNwcError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -55,6 +60,8 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
     setExpired(false);
     setWeblnError(null);
     setWeblnPaying(false);
+    setNwcError(null);
+    setNwcPaying(false);
   }, [stopPolling]);
 
   const payWithExtensionClick = useCallback(async () => {
@@ -70,6 +77,21 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
       setWeblnPaying(false);
     }
   }, [invoice]);
+
+  const payWithNwcClick = useCallback(async () => {
+    if (!invoice) return;
+    setNwcError(null);
+    setNwcPaying(true);
+    try {
+      await payInvoiceWithNwc(invoice);
+      void refreshWallet();
+      // El éxito lo confirma el polling de estado (status → paid).
+    } catch (e) {
+      setNwcError(e instanceof NwcError ? e.message : "No se pudo pagar con el wallet NWC.");
+    } finally {
+      setNwcPaying(false);
+    }
+  }, [invoice, refreshWallet]);
 
   const startBuy = useCallback(async () => {
     setError(null);
@@ -185,6 +207,21 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
                 alt="QR del invoice"
                 className="mx-auto mt-4 rounded-lg bg-white p-2"
               />
+            ) : null}
+            {nwcConnected ? (
+              <>
+                <Button
+                  variant="corona"
+                  className="mt-4 w-full"
+                  onClick={payWithNwcClick}
+                  disabled={nwcPaying}
+                >
+                  {nwcPaying ? "Pagando…" : "⚡ Pagar con saldo (NWC)"}
+                </Button>
+                {nwcError ? (
+                  <p className="mt-2 text-sm text-[var(--lose)]">{nwcError}</p>
+                ) : null}
+              </>
             ) : null}
             <Button
               variant="btc"

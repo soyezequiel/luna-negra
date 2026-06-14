@@ -13,9 +13,10 @@ import {
   type StoredSigner,
 } from "@/lib/signer";
 
-type Tab = "extension" | "qr" | "bunker" | "local";
+type Tab = "email" | "extension" | "qr" | "bunker" | "local";
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "email", label: "Email" },
   { id: "extension", label: "Extensión" },
   { id: "qr", label: "Escanear QR" },
   { id: "bunker", label: "Bunker" },
@@ -28,10 +29,20 @@ const TABS: { id: Tab; label: string }[] = [
  * (generar o importar nsec). Se abre con `login()` del SessionProvider.
  */
 export function LoginModal() {
-  const { loginModalOpen, closeLoginModal, loginWithSigner } = useSession();
-  const [tab, setTab] = useState<Tab>("extension");
+  const { loginModalOpen, closeLoginModal, loginWithSigner, emailLoginEnabled } =
+    useSession();
+  // La pestaña de email solo se ofrece si el server la habilitó (config completa).
+  const tabs = emailLoginEnabled ? TABS : TABS.filter((t) => t.id !== "email");
+  // `tabChoice` = pestaña elegida por el usuario (null = ninguna todavía). La
+  // pestaña activa se deriva: por defecto email si está disponible, si no extensión.
+  const [tabChoice, setTabChoice] = useState<Tab | null>(null);
+  const tab: Tab = tabChoice ?? (emailLoginEnabled ? "email" : "extension");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Estado del flujo email (magic link).
+  const [emailInput, setEmailInput] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
 
   // Estado del flujo QR (Nostr Connect).
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -115,6 +126,26 @@ export function LoginModal() {
 
   const hasExtension = typeof window !== "undefined" && Boolean(window.nostr);
 
+  async function requestMagicLink() {
+    if (!emailInput.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/email/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "No se pudo enviar el email");
+      setEmailSent(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo enviar el email");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loginExtension() {
     await finish(createNip07Signer(), { method: "nip07" });
   }
@@ -172,6 +203,9 @@ export function LoginModal() {
     setError(null);
     setGenerated(null);
     setNsecInput("");
+    setEmailInput("");
+    setEmailSent(false);
+    setTabChoice(null);
     closeLoginModal();
   }
 
@@ -185,7 +219,7 @@ export function LoginModal() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-ink">Conectar con Nostr</h3>
+          <h3 className="text-lg font-semibold text-ink">Iniciar sesión</h3>
           <button
             onClick={close}
             className="text-faint hover:text-ink"
@@ -196,12 +230,13 @@ export function LoginModal() {
         </div>
 
         <div className="mt-4 flex gap-1 rounded-md border border-line bg-black/20 p-1">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => {
-                setTab(t.id);
+                setTabChoice(t.id);
                 setError(null);
+                setEmailSent(false);
               }}
               className={cn(
                 "flex-1 rounded-sm px-2 py-1.5 text-xs font-medium",
@@ -216,6 +251,59 @@ export function LoginModal() {
         </div>
 
         <div className="mt-5 min-h-[180px]">
+          {tab === "email" ? (
+            <div>
+              {emailSent ? (
+                <div className="text-center">
+                  <p className="text-3xl">📬</p>
+                  <p className="mt-3 text-sm text-ink">Revisá tu correo</p>
+                  <p className="mt-1 text-sm text-muted">
+                    Te enviamos un enlace de acceso a{" "}
+                    <span className="text-ink">{emailInput.trim()}</span>. Es
+                    válido por 15 minutos.
+                  </p>
+                  <button
+                    onClick={() => setEmailSent(false)}
+                    className="mt-4 text-xs text-blue hover:underline"
+                  >
+                    Usar otro correo
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-muted">
+                    ¿No usás Nostr? Ingresá tu email y te mandamos un enlace para
+                    entrar. Te creamos una identidad Nostr automáticamente (podés
+                    exportar tu clave desde el perfil cuando quieras).
+                  </p>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void requestMagicLink();
+                    }}
+                  >
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      placeholder="tu@correo.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="mt-3 w-full rounded-sm border border-line bg-black/20 px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-blue/30"
+                    />
+                    <Button
+                      variant="blue"
+                      type="submit"
+                      className="mt-3 w-full"
+                      disabled={busy || !emailInput.trim()}
+                    >
+                      {busy ? "Enviando…" : "Enviar enlace de acceso"}
+                    </Button>
+                  </form>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {tab === "extension" ? (
             <div>
               <p className="text-sm text-muted">

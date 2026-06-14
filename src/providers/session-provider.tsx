@@ -13,6 +13,7 @@ import { notifyOpenGameWindowsLogout } from "@/lib/room-launch";
 import { clearDmCache } from "@/lib/dm-cache";
 import {
   clearActiveSigner,
+  importNsec,
   restoreSigner,
   setActiveSigner,
   type LunaSigner,
@@ -23,9 +24,15 @@ export type SessionUser = {
   id: string;
   npub: string;
   pubkey: string;
+  /** Email de login en cuentas custodiales (creadas por magic link). */
+  email?: string | null;
+  /** true = cuenta custodial: Luna Negra guarda su nsec (login por email). */
+  custodial?: boolean;
   displayName?: string | null;
   avatarUrl?: string | null;
   lud16?: string | null;
+  /** Destino de cobros de premios: "address" (lud16) | "nwc" (wallet del navegador). */
+  payoutMethod?: string | null;
   isAdmin?: boolean;
 };
 
@@ -33,10 +40,18 @@ type SessionContextValue = {
   user: SessionUser | null;
   loading: boolean;
   error: string | null;
+  /** ¿Está habilitado el login por email? (lo decide el server según la config). */
+  emailLoginEnabled: boolean;
   /** Abre el modal de login (todos los métodos: extensión, QR, bunker, clave). */
   login: () => Promise<void>;
   /** Flujo challenge → firma kind:27235 → verify, con el signer elegido. */
   loginWithSigner: (signer: LunaSigner, stored: StoredSigner) => Promise<void>;
+  /**
+   * Adopta la sesión de una cuenta custodial recién verificada por magic link:
+   * la cookie ya la puso el server, acá solo armamos el signer local con la nsec
+   * entregada para que las funciones sociales (firmar) funcionen.
+   */
+  adoptCustodialSession: (user: SessionUser, nsec: string) => void;
   loginModalOpen: boolean;
   closeLoginModal: () => void;
   logout: () => Promise<void>;
@@ -50,11 +65,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [emailLoginEnabled, setEmailLoginEnabled] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => setUser(d.user))
+      .then((d) => {
+        setUser(d.user);
+        setEmailLoginEnabled(Boolean(d.emailLogin));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
     // Restaurar el signer persistido (la cookie restaura la sesión, pero firmar
@@ -135,6 +154,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const adoptCustodialSession = useCallback(
+    (sessionUser: SessionUser, nsec: string) => {
+      setError(null);
+      const signer = importNsec(nsec);
+      setActiveSigner(signer, { method: "local", nsec });
+      setUser(sessionUser);
+      setLoginModalOpen(false);
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     notifyOpenGameWindowsLogout();
@@ -157,8 +187,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         user,
         loading,
         error,
+        emailLoginEnabled,
         login,
         loginWithSigner,
+        adoptCustodialSession,
         loginModalOpen,
         closeLoginModal,
         logout,
