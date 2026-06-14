@@ -18,7 +18,11 @@ export function isEmailLoginEnabled(): boolean {
   return Boolean(
     process.env.RESEND_API_KEY?.trim() &&
       process.env.EMAIL_FROM?.trim() &&
-      process.env.ORACLE_ENC_KEY?.trim(),
+      process.env.ORACLE_ENC_KEY?.trim() &&
+      // El dominio canónico es obligatorio: el magic link se construye con
+      // `siteUrl()`, que sin esta env cae al Host de la request (inyectable) y
+      // permitiría apuntar el link a un dominio atacante → robo del token.
+      process.env.NEXT_PUBLIC_SITE_URL?.trim(),
   );
 }
 

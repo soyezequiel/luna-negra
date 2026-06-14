@@ -13,6 +13,10 @@ export async function POST(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
   const { id } = await params;
+  const existing = await prisma.game.findUnique({ where: { id } });
+  if (!existing) {
+    return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
+  }
   let game = await prisma.game.update({
     where: { id },
     data: { status: "published" },

@@ -1,6 +1,8 @@
 import { verifyApiKey } from "@/lib/api-keys";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { recordPresence } from "@/lib/social";
+import { npubHasProviderEntitlement } from "@/lib/provider-entitlement";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 // Heartbeat de presencia del juego (cada ~10s). Renueva la presencia del jugador
@@ -21,6 +23,26 @@ export async function POST(req: Request) {
   if (!pubkey) {
     return apiError("INVALID_NPUB", "Falta o es inválido `npub`", 400);
   }
+  const npub = npubOf(pubkey);
+
+  // Throttle por jugador: el heartbeat es ~10s (≈6/min); 20/min deja margen sin
+  // permitir floods de presencia por un proveedor.
+  const rl = await checkRateLimit(`presence:${providerId}:${npub}`, 20, 60_000);
+  if (!rl.success) {
+    return apiError("RATE_LIMITED", "Demasiados intentos", 429, rateLimitHeaders(rl));
+  }
+
+  // El proveedor solo puede reportar presencia de jugadores que realmente tienen
+  // acceso a alguno de sus juegos. Evita que marque a usuarios ajenos como
+  // "in-game" y les falsee el estado NIP-38 que la tienda deriva de la presencia.
+  if (!(await npubHasProviderEntitlement(npub, providerId))) {
+    return apiError(
+      "NOT_A_PLAYER",
+      "El npub no tiene acceso a ningún juego de este proveedor",
+      403,
+    );
+  }
+
   const rawStatus = (body as { status?: unknown })?.status;
   if (rawStatus !== "in-game" && rawStatus !== "online") {
     return apiError("INVALID_STATUS", "`status` debe ser \"in-game\" u \"online\"", 400);
@@ -39,7 +61,8 @@ export async function POST(req: Request) {
     return apiError("STATE_TOO_LARGE", "`state` no puede superar 2KB", 400);
   }
 
-  // Normalizamos el npub desde el pubkey decodificado (defensa contra formato raro).
-  await recordPresence(providerId, npubOf(pubkey), rawStatus, roomId, state);
+  // El npub ya está normalizado desde el pubkey decodificado (defensa contra
+  // formato raro).
+  await recordPresence(providerId, npub, rawStatus, roomId, state);
   return apiOk({ ok: true });
 }

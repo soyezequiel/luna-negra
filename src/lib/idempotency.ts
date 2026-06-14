@@ -13,6 +13,11 @@ export type Idempotent =
       release: () => Promise<void>;
     };
 
+// Tras este lapso, un claim sin respuesta (statusCode null) se considera colgado
+// (el proceso murió antes de commit/release) y otra request puede retomarlo. Sin
+// esto, una key quedaría trabada para siempre devolviendo 409.
+const STALE_CLAIM_MS = 60_000;
+
 /**
  * Reclama una idempotency key dentro de un `scope` (ej. providerId).
  * - `replay`: ya se completó → devolver `statusCode`/`body` guardados.
@@ -37,9 +42,27 @@ export async function beginIdempotent(
         body: JSON.parse(existing.response ?? "null"),
       };
     }
+    // Claim sin respuesta: ¿está vivo o colgado? Si superó el TTL, lo retomamos
+    // (claim atómico por createdAt para no pisarnos con otra request que reintente
+    // a la vez). Si no, sigue en curso.
+    if (
+      existing &&
+      Date.now() - existing.createdAt.getTime() > STALE_CLAIM_MS
+    ) {
+      const takeover = await prisma.idempotencyKey.updateMany({
+        where: { scope, key, statusCode: null, createdAt: existing.createdAt },
+        data: { createdAt: new Date() },
+      });
+      if (takeover.count === 1) return freshHandle(scope, key);
+    }
     return { kind: "in_progress" };
   }
 
+  return freshHandle(scope, key);
+}
+
+/** Handlers de una key reclamada (recién creada o retomada por TTL). */
+function freshHandle(scope: string, key: string): Idempotent {
   return {
     kind: "fresh",
     commit: async (statusCode, body) => {

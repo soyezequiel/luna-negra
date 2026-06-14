@@ -29,10 +29,13 @@ export async function POST(req: Request) {
       typeof body.displayName === "string" && body.displayName.trim()
         ? body.displayName.trim().slice(0, 80)
         : null;
-    data.avatarUrl =
-      typeof body.avatarUrl === "string" && body.avatarUrl.trim()
-        ? body.avatarUrl.trim().slice(0, 500)
-        : null;
+    const rawAvatar =
+      typeof body.avatarUrl === "string" ? body.avatarUrl.trim() : "";
+    // Solo http(s): evita esquemas raros (javascript:, data:) en un campo que se
+    // renderiza como `src`/`href` en la UI.
+    data.avatarUrl = /^https?:\/\//i.test(rawAvatar)
+      ? rawAvatar.slice(0, 500)
+      : null;
   }
 
   if ("lud16" in body) {
