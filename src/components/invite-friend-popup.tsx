@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { useFriends, type Friend } from "@/hooks/use-friends";
 import {
   FriendSearch,
@@ -226,16 +227,7 @@ function InviteRow({
 }) {
   return (
     <li className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
-      {picture ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={picture}
-          alt=""
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div className="h-10 w-10 shrink-0 rounded-full bg-white/10" />
-      )}
+      <Avatar src={picture} seed={name} className="h-10 w-10 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>
         <p className="truncate text-xs text-zinc-500">{npub}</p>

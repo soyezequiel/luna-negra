@@ -6,6 +6,7 @@ import { useFriends } from "@/hooks/use-friends";
 import { profileName, shortId } from "@/lib/nostr-social";
 import { parseInvite } from "@/lib/invite";
 import { hueFromSlug } from "@/lib/format";
+import { Avatar } from "@/components/ui/avatar";
 
 /**
  * Riel "Tus amigos están jugando": fila scroll-x con los contactos que tienen
@@ -44,19 +45,11 @@ export function SocialRail() {
             <div className="flex w-[182px] shrink-0 flex-col gap-2.5 rounded-ln-lg border border-ln-border bg-ln-card/60 p-3 transition-[transform,border-color] duration-150 hover:-translate-y-[3px] hover:border-ln-aurora/50">
               <div className="flex items-center gap-2.5">
                 <span className="relative shrink-0">
-                  {f.profile?.picture ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={f.profile.picture}
-                      alt=""
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <span
-                      className="av-gen block h-10 w-10 rounded-full"
-                      style={{ "--h": hueFromSlug(name) } as CSSProperties}
-                    />
-                  )}
+                  <Avatar
+                    src={f.profile?.picture}
+                    seed={name}
+                    className="h-10 w-10"
+                  />
                   <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-ln-bg bg-ln-aurora" />
                 </span>
                 <span className="min-w-0">

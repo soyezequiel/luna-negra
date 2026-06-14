@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { useFriends } from "@/hooks/use-friends";
 import {
   FriendSearch,
@@ -262,16 +263,11 @@ export default function FriendsPage() {
                 key={f.pubkey}
                 className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3"
               >
-                {f.profile?.picture ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={f.profile.picture}
-                    alt=""
-                    className="h-10 w-10 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-10 w-10 shrink-0 rounded-full bg-panel-3" />
-                )}
+                <Avatar
+                  src={f.profile?.picture}
+                  seed={profileName(f.profile, shortId(f.npub))}
+                  className="h-10 w-10 shrink-0"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium">
@@ -370,16 +366,7 @@ function FriendRow({
 }) {
   return (
     <li className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3">
-      {picture ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={picture}
-          alt=""
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div className="h-10 w-10 shrink-0 rounded-full bg-panel-3" />
-      )}
+      <Avatar src={picture} seed={name} className="h-10 w-10 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium">{name}</span>

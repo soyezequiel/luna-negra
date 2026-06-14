@@ -11,6 +11,7 @@ type Row = {
   priceSats: number;
   provider: { name: string };
 };
+type CatalogRow = Row & { owners: number };
 type Payout = {
   id: string;
   gameTitle: string;
@@ -75,6 +76,7 @@ export default function AdminPage() {
   const { user, login, loading } = useSession();
   const [games, setGames] = useState<Row[] | null>(null);
   const [unannounced, setUnannounced] = useState<Row[]>([]);
+  const [catalog, setCatalog] = useState<CatalogRow[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [bets, setBets] = useState<BetRow[]>([]);
   const [forbidden, setForbidden] = useState(false);
@@ -92,6 +94,7 @@ export default function AdminPage() {
     setForbidden(false);
     setGames(d.games ?? []);
     setUnannounced(d.unannounced ?? []);
+    setCatalog(d.catalog ?? []);
     const p = await fetch("/api/admin/payouts")
       .then((res) => res.json())
       .catch(() => ({ payouts: [] }));
@@ -117,6 +120,30 @@ export default function AdminPage() {
   async function reject(id: string) {
     await fetch(`/api/admin/games/${id}/reject`, { method: "POST" });
     load();
+  }
+
+  async function removeGame(g: CatalogRow) {
+    const warn =
+      g.owners > 0
+        ? `\n\n${g.owners} usuario(s) lo tienen en su biblioteca y lo perderán.`
+        : "";
+    if (
+      !confirm(
+        `¿Borrar "${g.title}" del catálogo? Esta acción es permanente.${warn}`,
+      )
+    )
+      return;
+    setBusy(g.id);
+    try {
+      const r = await fetch(`/api/admin/games/${g.id}`, { method: "DELETE" });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error ?? "No se pudo borrar el juego");
+      }
+      await load();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function announce(id: string) {
@@ -248,6 +275,42 @@ export default function AdminPage() {
           </ul>
         </section>
       ) : null}
+
+      <section className="mt-10">
+        <h2 className="mb-1 font-semibold text-ink">Catálogo publicado</h2>
+        <p className="mb-3 text-xs text-faint">
+          Borrar un juego es permanente: se quita del catálogo y de la
+          biblioteca de quienes lo poseen. Bloqueado si tiene apuestas activas.
+        </p>
+        {catalog.length === 0 ? (
+          <p className="text-muted">No hay juegos publicados.</p>
+        ) : (
+          <ul className="space-y-2">
+            {catalog.map((g) => (
+              <li
+                key={g.id}
+                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{g.title}</p>
+                  <p className="text-xs text-faint">
+                    {g.provider.name} ·{" "}
+                    {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`} ·{" "}
+                    {g.owners} en biblioteca
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() => removeGame(g)}
+                  disabled={busy === g.id}
+                >
+                  {busy === g.id ? "Borrando…" : "Borrar"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="mt-10">
         <h2 className="mb-3 font-semibold text-ink">Payouts a resolver</h2>

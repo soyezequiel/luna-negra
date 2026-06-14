@@ -41,6 +41,7 @@ import {
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { FriendsChatPanel } from "@/components/friends-chat-panel";
 
 /** Si el estado del amigo apunta a una sala unible, devuelve la invitación. */
@@ -359,7 +360,9 @@ export function FriendsSidebar() {
         <>
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-ink">
-              Amigos
+              <Link href="/friends" className="transition-colors hover:text-white">
+                Amigos
+              </Link>
               {onlineCount > 0 ? (
                 <span className="flex items-center gap-1 text-[11px] font-normal text-green">
                   <span className="h-1.5 w-1.5 rounded-full bg-green" />
@@ -518,16 +521,11 @@ export function FriendsSidebar() {
                           title="Abrir chat"
                         >
                           <span className="relative shrink-0">
-                            {f.profile?.picture ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={f.profile.picture}
-                                alt=""
-                                className="h-8 w-8 rounded-full object-cover"
-                              />
-                            ) : (
-                              <span className="block h-8 w-8 rounded-full bg-panel-3" />
-                            )}
+                            <Avatar
+                              src={f.profile?.picture}
+                              seed={name}
+                              className="h-8 w-8"
+                            />
                             <span
                               className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-1"
                               style={{
@@ -625,16 +623,11 @@ export function FriendsSidebar() {
                         className="rounded px-2 py-2 hover:bg-white/5"
                       >
                         <div className="flex items-center gap-2">
-                          {g.profile?.picture ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={g.profile.picture}
-                              alt=""
-                              className="h-8 w-8 shrink-0 rounded-full object-cover"
-                            />
-                          ) : (
-                            <span className="block h-8 w-8 shrink-0 rounded-full bg-panel-3" />
-                          )}
+                          <Avatar
+                            src={g.profile?.picture}
+                            seed={name}
+                            className="h-8 w-8 shrink-0"
+                          />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-medium text-ink">
                               {name}

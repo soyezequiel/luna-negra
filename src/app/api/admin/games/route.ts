@@ -8,7 +8,7 @@ export async function GET() {
   if (!session || !isAdmin(session.pubkey)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
-  const [games, unannounced] = await Promise.all([
+  const [games, unannounced, published] = await Promise.all([
     prisma.game.findMany({
       where: { status: "in_review" },
       include: { provider: true },
@@ -20,6 +20,23 @@ export async function GET() {
       include: { provider: true },
       orderBy: { createdAt: "asc" },
     }),
+    // Catálogo publicado, para poder borrar juegos (con nº de dueños).
+    prisma.game.findMany({
+      where: { status: "published" },
+      include: {
+        provider: true,
+        _count: { select: { purchases: { where: { status: "paid" } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
-  return NextResponse.json({ games, unannounced });
+  const catalog = published.map((g) => ({
+    id: g.id,
+    title: g.title,
+    slug: g.slug,
+    priceSats: g.priceSats,
+    provider: { name: g.provider.name },
+    owners: g._count.purchases,
+  }));
+  return NextResponse.json({ games, unannounced, catalog });
 }

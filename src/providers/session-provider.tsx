@@ -10,6 +10,7 @@ import {
 import { fetchProfile, profileName } from "@/lib/nostr";
 import { getNostrPermsMode, warmUpPermissions } from "@/lib/nostr-social";
 import { notifyOpenGameWindowsLogout } from "@/lib/room-launch";
+import { clearDmCache } from "@/lib/dm-cache";
 import {
   clearActiveSigner,
   restoreSigner,
@@ -138,6 +139,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     await fetch("/api/auth/logout", { method: "POST" });
     notifyOpenGameWindowsLogout();
     clearActiveSigner();
+    // Los DMs descifrados quedan en localStorage: al salir, los purgamos para no
+    // dejar mensajes privados accesibles a la próxima cuenta en este navegador.
+    clearDmCache();
     setUser(null);
   }, []);
 

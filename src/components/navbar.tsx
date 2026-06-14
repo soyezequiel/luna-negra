@@ -6,13 +6,13 @@ import { useSession } from "@/providers/session-provider";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 
-// Orden fijo: Tienda · Biblioteca · Apuestas · Amigos | Proveedor · Admin.
+// Orden fijo: Tienda · Biblioteca · Apuestas | Proveedor · Admin.
+// "Amigos" sale del nav principal (se accede desde el panel derecho de amigos).
 // "Mensajes" sale del nav principal (el chat vive en la barra de amigos).
 const STORE_LINKS = [
   { href: "/", label: "Tienda" },
   { href: "/library", label: "Biblioteca" },
   { href: "/bets", label: "Apuestas" },
-  { href: "/friends", label: "Amigos" },
 ];
 const ROLE_LINKS = [{ href: "/provider", label: "Proveedor" }];
 
