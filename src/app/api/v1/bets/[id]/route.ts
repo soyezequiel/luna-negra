@@ -103,11 +103,27 @@ export async function GET(
     let bolt11: string | null = null;
     let lnurl: string | null = null;
     let payUrl: string | null = null;
+    let depositError: string | null = null;
     if (open && p.depositStatus === "pending") {
-      const inv = await ensureDepositInvoice(bet, p);
-      bolt11 = inv.invoice;
-      lnurl = encodeLnurl(`${base}/api/escrow/lnurlp/${p.id}`);
-      payUrl = `${base}/bets/${bet.id}`;
+      // Best-effort por participante: si generar el invoice falla (p. ej. NWC sin
+      // permiso make-invoice, budget agotado o relay caído), NO tumbamos toda la
+      // respuesta — el resto sigue con sus handles y este participante queda con
+      // null + `depositError`. La respuesta es `no-store`, así que el siguiente poll
+      // reintenta. Logueamos el motivo real (antes un fallo acá daba un 500 opaco y
+      // el consumidor de la API se quedaba sin métodos de pago ni explicación).
+      try {
+        const inv = await ensureDepositInvoice(bet, p);
+        bolt11 = inv.invoice;
+        lnurl = encodeLnurl(`${base}/api/escrow/lnurlp/${p.id}`);
+        payUrl = `${base}/bets/${bet.id}`;
+      } catch (e) {
+        depositError =
+          e instanceof Error ? e.message : "No se pudo generar el invoice de depósito.";
+        console.error(
+          `[bets/${bet.id}] ensureDepositInvoice falló para participante ${p.id}:`,
+          e,
+        );
+      }
     }
     participants.push({
       npub: p.npub,
@@ -118,6 +134,7 @@ export async function GET(
       bolt11,
       lnurl,
       payUrl,
+      depositError,
     });
   }
 
