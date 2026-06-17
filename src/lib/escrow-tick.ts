@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { isInvoicePaid, lightningConfigured } from "@/lib/lightning";
 import { recordDeposit } from "@/lib/ledger";
-import { payParticipant } from "@/lib/escrow-payout";
+import { payParticipant, retryFailedPayout } from "@/lib/escrow-payout";
 import { RESOLVE_WINDOW_MS } from "@/lib/escrow-config";
 import {
   emitDepositReceived,
@@ -112,12 +112,14 @@ export async function runTick(): Promise<{
   ready: number;
   refunded: number;
   forfeited: number;
+  retried: number;
 }> {
   const now = new Date();
   let deposits = 0;
   let ready = 0;
   let refunded = 0;
   let forfeited = 0;
+  let retried = 0;
 
   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
   if (lightningConfigured()) {
@@ -223,5 +225,19 @@ export async function runTick(): Promise<{
     forfeited++;
   }
 
-  return { deposits, ready, refunded, forfeited };
+  // F) Reintentar cobros/reembolsos que quedaron `failed` (ej. wallet del escrow
+  //    offline al liquidar). Sin esto, una apuesta se marca `settled` con el
+  //    ganador sin cobrar y nada lo retoma. Re-emite sobre el asiento existente.
+  if (lightningConfigured()) {
+    const failedPayouts = await prisma.betParticipant.findMany({
+      where: { payoutStatus: "failed" },
+      select: { id: true },
+    });
+    for (const { id } of failedPayouts) {
+      const res = await retryFailedPayout(id).catch(() => "failed" as const);
+      if (res === "paid" || res === "withdraw_pending") retried++;
+    }
+  }
+
+  return { deposits, ready, refunded, forfeited, retried };
 }

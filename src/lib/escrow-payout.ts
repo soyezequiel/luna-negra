@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchProfile } from "@/lib/nostr";
 import { pubkeyFromNpub } from "@/lib/escrow";
 import { recordOutflow } from "@/lib/ledger";
+import { canPayout } from "@/lib/ledger-math";
 import { msatToSats } from "@/lib/money";
 import {
   lightningConfigured,
@@ -119,5 +120,97 @@ export async function payParticipant(args: {
       extra: { participantId: participant.id, amountMsat: amountMsat.toString() },
     });
     await markFailed();
+  }
+}
+
+/**
+ * Reintenta un cobro/reembolso que quedó en `failed` (ej. el wallet del escrow
+ * estaba offline al liquidar). `payParticipant` atrapa el error de pago y deja
+ * `payoutStatus: "failed"` SIN lanzar, así que la apuesta se marca `settled` igual
+ * y nada más lo reintenta: ni el reporte de resultado (idempotente, terminal) ni
+ * el resto del tick. Esta función cierra ese hueco re-emitiendo el pago sobre el
+ * asiento de ledger existente (no crea uno nuevo: `recordOutflow` lo rechazaría
+ * por duplicado). Idempotente y seguro de re-ejecutar: si el pago no salió, los
+ * fondos siguen en el pozo. La dispara `runTick`.
+ *
+ * Devuelve qué pasó, para contabilizar en el tick.
+ */
+export async function retryFailedPayout(
+  participantId: string,
+): Promise<"paid" | "withdraw_pending" | "failed" | "skipped"> {
+  if (!lightningConfigured()) return "skipped";
+
+  const part = await prisma.betParticipant.findUnique({
+    where: { id: participantId },
+    include: { bet: true },
+  });
+  if (!part || part.payoutStatus !== "failed" || !part.payoutMsat) return "skipped";
+
+  // El asiento saliente fallido del participante (payout o refund según terminó
+  // la apuesta). Lo ubicamos por la idempotencyKey canónica `${kind}:${betId}:${userId}`.
+  const entry = await prisma.ledgerEntry.findFirst({
+    where: {
+      idempotencyKey: {
+        in: [`payout:${part.betId}:${part.userId}`, `refund:${part.betId}:${part.userId}`],
+      },
+      status: "failed",
+    },
+  });
+  if (!entry) return "skipped";
+  const kind = entry.kind === "refund" ? "refund" : "payout";
+  const amountMsat = entry.amountMsat;
+
+  // Solvencia: `canPayout` ignora los asientos `failed`, así que esto valida que
+  // haya saldo para re-emitir `amountMsat` sobre los movimientos vigentes.
+  const entries = await prisma.ledgerEntry.findMany({
+    where: { betId: part.betId },
+    select: { kind: true, amountMsat: true, status: true },
+  });
+  if (!canPayout(entries, amountMsat)) return "skipped";
+
+  const dest = await resolveDestination(part.npub);
+
+  // Sin destino → el premio se cobra por QR (LNURL-withdraw). El asiento queda
+  // `pending` (comprometido) hasta que se reclame o expire (forfeit en el tick).
+  if (!dest) {
+    await prisma.ledgerEntry.update({ where: { id: entry.id }, data: { status: "pending" } });
+    await prisma.betParticipant.update({
+      where: { id: part.id },
+      data: {
+        payoutStatus: "withdraw_pending",
+        withdrawDeadline: new Date(Date.now() + WITHDRAW_WINDOW_MS),
+      },
+    });
+    return "withdraw_pending";
+  }
+
+  try {
+    const preimage = await payToLightningAddress(
+      dest,
+      Number(msatToSats(amountMsat)),
+      `Luna Negra ${kind} ${part.betId} (reintento)`,
+    );
+    await prisma.ledgerEntry.update({
+      where: { id: entry.id },
+      data: { status: "settled", paymentHash: preimage },
+    });
+    await prisma.betParticipant.update({
+      where: { id: part.id },
+      data: {
+        payoutStatus: "paid",
+        payoutDestination: dest,
+        settledAt: new Date(),
+        ...(kind === "refund" ? { depositStatus: "refunded" } : {}),
+      },
+    });
+    return "paid";
+  } catch (err) {
+    // Sigue fallando (wallet aún caído, etc.): queda `failed` para el próximo tick.
+    Sentry.captureException(err, {
+      level: "error",
+      tags: { flow: "escrow-payout-retry", kind, betId: part.betId },
+      extra: { participantId: part.id, amountMsat: amountMsat.toString() },
+    });
+    return "failed";
   }
 }
