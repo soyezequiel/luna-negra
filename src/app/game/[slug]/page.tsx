@@ -13,9 +13,15 @@ import { ActivitySection } from "@/components/activity-section";
 import { GameCard } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
 import { GameSocialPanel } from "@/components/game-social-panel";
-import { GameOwnerEditor } from "@/components/game-owner-editor";
-import { priceLabel, hueFromSlug } from "@/lib/format";
-import { categoryLabel } from "@/lib/categories";
+import {
+  EditableTitle,
+  EditableDescription,
+  EditablePrice,
+  EditableCategories,
+  EditableGameUrl,
+  EditableMedia,
+} from "@/components/game-store-edit";
+import { hueFromSlug } from "@/lib/format";
 import { gameGalleryMedia } from "@/lib/game-media";
 
 export const dynamic = "force-dynamic";
@@ -94,50 +100,45 @@ export default async function GamePage({
       </Link>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
-          {game.title}
-        </h1>
+        <EditableTitle gameId={game.id} editable={isOwner} value={game.title}>
+          <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
+            {game.title}
+          </h1>
+        </EditableTitle>
         {mode === "library" ? (
           <span className="rounded-full bg-ln-aurora/15 px-2.5 py-1 text-xs font-semibold text-ln-aurora ring-1 ring-inset ring-ln-aurora/30">
             ✓ En tu biblioteca
           </span>
         ) : null}
-        {game.categories.map((c) => (
-          <Link
-            key={c}
-            href={`/?cat=${c}`}
-            className="rounded-full border border-ln-border px-2.5 py-0.5 text-xs text-ln-muted transition-colors hover:bg-white/5"
-          >
-            {categoryLabel(c)}
-          </Link>
-        ))}
-        {isOwner ? (
-          <GameOwnerEditor
-            gameId={game.id}
-            title={game.title}
-            description={game.description}
-            categories={game.categories}
-            priceSats={game.priceSats}
-            gameUrl={game.gameUrl}
-            coverUrl={game.coverUrl}
-            horizontalCoverUrl={game.horizontalCoverUrl}
-            screenshots={game.screenshots}
-          />
-        ) : null}
+        <EditableCategories
+          gameId={game.id}
+          editable={isOwner}
+          value={game.categories}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 ln:[grid-template-columns:minmax(0,1fr)_340px]">
         {/* Columna izquierda: media + descripción (en móvil va debajo de la compra) */}
         <div className="order-2 min-w-0 ln:order-none">
-          <GameMediaGallery title={game.title} hue={hue} media={media} />
+          <EditableMedia
+            gameId={game.id}
+            editable={isOwner}
+            coverUrl={game.coverUrl}
+            horizontalCoverUrl={game.horizontalCoverUrl}
+            screenshots={game.screenshots}
+          >
+            <GameMediaGallery title={game.title} hue={hue} media={media} />
+          </EditableMedia>
 
           <section className="mt-8">
             <h2 className="mb-3 text-[19px] font-semibold text-ln-text">
               Acerca del juego
             </h2>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ln-muted">
-              {game.description || "Sin descripción."}
-            </p>
+            <EditableDescription
+              gameId={game.id}
+              editable={isOwner}
+              value={game.description}
+            />
             {features.length > 1 ? (
               <ul className="mt-4 grid gap-2 sm:grid-cols-2">
                 {features.map((f, i) => (
@@ -189,13 +190,13 @@ export default async function GamePage({
             </div>
           ) : (
             <div className="rounded-ln-lg border border-ln-corona/40 bg-ln-card p-5 shadow-ln-corona">
-              <div className="mb-3 flex items-baseline justify-between">
+              <div className="mb-3 flex items-baseline justify-between gap-2">
                 <span className="ln-label">Precio</span>
-                <span
-                  className={`font-mono text-2xl font-bold ${game.priceSats === 0 ? "text-ln-aurora-bright" : "text-ln-corona-bright"}`}
-                >
-                  {priceLabel(game.priceSats)}
-                </span>
+                <EditablePrice
+                  gameId={game.id}
+                  editable={isOwner}
+                  value={game.priceSats}
+                />
               </div>
               {owned ? (
                 <div className="space-y-2">
@@ -274,6 +275,9 @@ export default async function GamePage({
               <dt className="text-ln-faint">Plataforma</dt>
               <dd className="text-ln-text">Web · Lightning</dd>
             </div>
+            {isOwner ? (
+              <EditableGameUrl gameId={game.id} value={game.gameUrl} />
+            ) : null}
           </dl>
         </aside>
       </div>
