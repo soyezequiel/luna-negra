@@ -1,4 +1,6 @@
-// Probe read-only del wallet NWC del escrow. No mueve fondos.
+// Probe read-only de los wallets NWC del escrow. No mueve fondos.
+// Prueba el wallet primario (NWC_CONNECTION_STRING) y, si está, el fallback
+// (NWC_CONNECTION_STRING_FALLBACK).
 import { readFileSync } from "node:fs";
 import { NWCClient } from "@getalby/sdk";
 
@@ -13,22 +15,39 @@ function loadEnv() {
   }
 }
 
-loadEnv();
-const url = process.env.NWC_CONNECTION_STRING;
-if (!url) { console.error("NWC_CONNECTION_STRING no está en .env"); process.exit(1); }
-try {
-  const u = new URL(url.replace(/^nostr\+walletconnect:\/\//, "https://"));
-  console.log("relay:", u.searchParams.get("relay"));
-  console.log("wallet pubkey:", u.host);
-} catch {}
-
-const client = new NWCClient({ nostrWalletConnectUrl: url });
-async function step(name, fn) {
+async function step(client, name, fn) {
   const t0 = Date.now();
-  try { console.log(`✅ ${name} (${Date.now() - t0}ms):`, JSON.stringify(await fn())); }
-  catch (e) { console.log(`❌ ${name} (${Date.now() - t0}ms):`, e?.message ?? e); }
+  try { console.log(`  ✅ ${name} (${Date.now() - t0}ms):`, JSON.stringify(await fn(client))); }
+  catch (e) { console.log(`  ❌ ${name} (${Date.now() - t0}ms):`, e?.message ?? e); }
 }
-await step("getInfo", () => client.getInfo());
-await step("getBalance", () => client.getBalance());
-client.close?.();
+
+async function probe(label, url) {
+  console.log(`\n=== ${label} ===`);
+  try {
+    const u = new URL(url.replace(/^nostr\+walletconnect:\/\//, "https://"));
+    console.log("relay:", u.searchParams.get("relay"));
+    console.log("wallet pubkey:", u.host);
+  } catch {}
+
+  const client = new NWCClient({ nostrWalletConnectUrl: url });
+  await step(client, "getInfo", (c) => c.getInfo());
+  await step(client, "getBalance", (c) => c.getBalance());
+  client.close?.();
+}
+
+loadEnv();
+
+const wallets = [
+  ["PRIMARIO (NWC_CONNECTION_STRING)", process.env.NWC_CONNECTION_STRING],
+  ["FALLBACK (NWC_CONNECTION_STRING_FALLBACK)", process.env.NWC_CONNECTION_STRING_FALLBACK],
+].filter(([, url]) => Boolean(url));
+
+if (wallets.length === 0) {
+  console.error("Ningún wallet NWC configurado en .env (NWC_CONNECTION_STRING / NWC_CONNECTION_STRING_FALLBACK)");
+  process.exit(1);
+}
+
+for (const [label, url] of wallets) {
+  await probe(label, url);
+}
 process.exit(0);
