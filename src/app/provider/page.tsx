@@ -10,13 +10,16 @@ import {
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
-import { CATEGORIES } from "@/lib/categories";
 import { cn } from "@/lib/utils";
+import {
+  GameFormFields,
+  emptyForm,
+  inputCls,
+  parseShots,
+  type GameForm,
+} from "@/components/provider/game-form-fields";
 
 import { satsLabel } from "@/lib/format";
-
-const inputCls =
-  "w-full rounded-ln-md border border-ln-border bg-ln-bg-deep px-3 py-2 text-sm text-ln-text outline-none transition-shadow placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/25";
 
 type Provider = {
   id: string;
@@ -44,17 +47,6 @@ type Sale = {
   share: number;
   payoutStatus: string;
 };
-type GameForm = {
-  title: string;
-  description: string;
-  categories: string[];
-  priceSats: string;
-  gameUrl: string;
-  coverUrl: string;
-  horizontalCoverUrl: string;
-  screenshots: string[];
-};
-
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
   in_review: "En revisión",
@@ -66,17 +58,6 @@ const PAYOUT_LABEL: Record<string, string> = {
   paid: "Pagado",
   failed: "Falló",
   skipped: "Sin dirección",
-};
-
-const emptyForm: GameForm = {
-  title: "",
-  description: "",
-  categories: [],
-  priceSats: "0",
-  gameUrl: "",
-  coverUrl: "",
-  horizontalCoverUrl: "",
-  screenshots: [],
 };
 
 function Kpi({
@@ -122,15 +103,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function parseShots(json: string): string[] {
-  try {
-    const v = JSON.parse(json || "[]");
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-
 type ApiKeyRow = {
   id: string;
   name: string;
@@ -154,8 +126,9 @@ export default function ProviderPage() {
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
 
+  const [newForm, setNewForm] = useState<GameForm>({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<GameForm>({ ...emptyForm });
+  const [editForm, setEditForm] = useState<GameForm>({ ...emptyForm });
   const [uploading, setUploading] = useState(false);
   const [, startLoadTransition] = useTransition();
 
@@ -260,7 +233,7 @@ export default function ProviderPage() {
 
   function startEdit(g: Game) {
     setEditingId(g.id);
-    setForm({
+    setEditForm({
       title: g.title,
       description: g.description,
       categories: g.categories ?? [],
@@ -271,29 +244,42 @@ export default function ProviderPage() {
       screenshots: parseShots(g.screenshots),
     });
     setMsg(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setForm({ ...emptyForm });
+    setEditForm({ ...emptyForm });
   }
 
-  async function submitGame(e: FormEvent) {
+  async function createGame(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
-    const payload = { ...form, priceSats: Number(form.priceSats) };
-    const url = editingId
-      ? `/api/provider/games/${editingId}`
-      : "/api/provider/games";
-    const r = await fetch(url, {
-      method: editingId ? "PATCH" : "POST",
+    const payload = { ...newForm, priceSats: Number(newForm.priceSats) };
+    const r = await fetch("/api/provider/games", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "Error");
-    setMsg(editingId ? "Cambios guardados." : "Juego creado (borrador).");
+    setMsg("Juego creado (borrador).");
+    setNewForm({ ...emptyForm });
+    load();
+  }
+
+  async function saveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setMsg(null);
+    const payload = { ...editForm, priceSats: Number(editForm.priceSats) };
+    const r = await fetch(`/api/provider/games/${editingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return setMsg(d.error ?? "Error");
+    setMsg("Cambios guardados.");
     cancelEdit();
     load();
   }
@@ -389,222 +375,18 @@ export default function ProviderPage() {
       {provider ? (
         <>
           <form
-            onSubmit={submitGame}
+            onSubmit={createGame}
             className="mt-8 space-y-3 rounded-xl border border-line bg-panel p-5"
           >
-            <h2 className="font-semibold">
-              {editingId ? "Editar juego" : "Nuevo juego"}
-            </h2>
-            <input
-              className={inputCls}
-              placeholder="Título"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            <h2 className="font-semibold">Nuevo juego</h2>
+            <GameFormFields
+              form={newForm}
+              setForm={setNewForm}
+              uploadFile={uploadFile}
+              uploading={uploading}
             />
-            <textarea
-              className={inputCls}
-              placeholder="Descripción"
-              rows={3}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-            <div>
-              <label className="block text-sm text-muted">Precio (sats)</label>
-              <input
-                className={`${inputCls} mt-1`}
-                type="number"
-                min={0}
-                placeholder="0 = gratis"
-                value={form.priceSats}
-                onChange={(e) =>
-                  setForm({ ...form, priceSats: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-muted">
-                Categorías{" "}
-                <span className="text-ln-faint">(podés elegir varias)</span>
-              </label>
-              <div className="mt-1.5 flex flex-wrap gap-2">
-                {CATEGORIES.map((c) => {
-                  const on = form.categories.includes(c.slug);
-                  return (
-                    <button
-                      key={c.slug}
-                      type="button"
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          categories: on
-                            ? form.categories.filter((s) => s !== c.slug)
-                            : [...form.categories, c.slug],
-                        })
-                      }
-                      className={cn("chip", on && "chip-on")}
-                    >
-                      {c.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <input
-              className={inputCls}
-              placeholder="URL del juego (subdominio)"
-              value={form.gameUrl}
-              onChange={(e) => setForm({ ...form, gameUrl: e.target.value })}
-            />
-
-            {/* Portada vertical */}
-            <div>
-              <label className="block text-sm text-muted">
-                Portada vertical
-              </label>
-              <div className="mt-1 flex items-center gap-3">
-                {form.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={form.coverUrl}
-                    alt=""
-                    className="h-16 w-12 rounded object-cover"
-                  />
-                ) : null}
-                <input
-                  className={inputCls}
-                  placeholder="Pegá una URL de portada…"
-                  value={form.coverUrl}
-                  onChange={(e) =>
-                    setForm({ ...form, coverUrl: e.target.value })
-                  }
-                />
-              </div>
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
-                {uploading ? "Subiendo…" : "📷 Subir portada"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const url = await uploadFile(f);
-                    if (url) setForm((prev) => ({ ...prev, coverUrl: url }));
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-
-            {/* Portada horizontal */}
-            <div>
-              <label className="block text-sm text-muted">
-                Portada horizontal
-              </label>
-              <div className="mt-1 space-y-2">
-                {form.horizontalCoverUrl ? (
-                  <div className="relative aspect-video w-full max-w-sm overflow-hidden rounded border border-line">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={form.horizontalCoverUrl}
-                      alt=""
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  </div>
-                ) : null}
-                <input
-                  className={inputCls}
-                  placeholder="Pega una URL de portada horizontal..."
-                  value={form.horizontalCoverUrl}
-                  onChange={(e) =>
-                    setForm({ ...form, horizontalCoverUrl: e.target.value })
-                  }
-                />
-              </div>
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
-                {uploading ? "Subiendo..." : "Subir portada horizontal"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const url = await uploadFile(f);
-                    if (url)
-                      setForm((prev) => ({
-                        ...prev,
-                        horizontalCoverUrl: url,
-                      }));
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-
-            {/* Capturas */}
-            <div>
-              <label className="block text-sm text-muted">Capturas</label>
-              {form.screenshots.length > 0 ? (
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {form.screenshots.map((src, i) => (
-                    <div key={src} className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt=""
-                        className="h-16 w-16 rounded object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((prev) => ({
-                            ...prev,
-                            screenshots: prev.screenshots.filter(
-                              (_, j) => j !== i,
-                            ),
-                          }))
-                        }
-                        className="absolute -right-1 -top-1 rounded-full bg-black/80 px-1.5 text-xs leading-tight"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
-                {uploading ? "Subiendo…" : "➕ Agregar captura"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const url = await uploadFile(f);
-                    if (url)
-                      setForm((prev) => ({
-                        ...prev,
-                        screenshots: [...prev.screenshots, url],
-                      }));
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-
             {msg ? <p className="text-xs text-btc">{msg}</p> : null}
-            <div className="flex gap-3">
-              <Button type="submit">
-                {editingId ? "Guardar cambios" : "Crear borrador"}
-              </Button>
-              {editingId ? (
-                <Button type="button" variant="ghost" onClick={cancelEdit}>
-                  Cancelar
-                </Button>
-              ) : null}
-            </div>
+            <Button type="submit">Crear borrador</Button>
           </form>
 
           <section className="mt-8">
@@ -613,67 +395,112 @@ export default function ProviderPage() {
               <p className="text-sm text-faint">Todavía no creaste juegos.</p>
             ) : (
               <ul className="space-y-2">
-                {games.map((g) => (
-                  <li
-                    key={g.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-ln-lg border border-ln-border bg-ln-card/60 px-4 py-3"
-                  >
-                    <div>
-                      <p className="flex items-center gap-2 text-sm font-medium text-ln-text">
-                        {g.title}
-                        <StatusBadge status={g.status} />
-                      </p>
-                      <p className="text-xs text-ln-faint">
-                        {g.priceSats === 0 ? (
-                          <span className="text-ln-aurora-bright">Gratis</span>
-                        ) : (
-                          <span className="font-mono text-ln-corona-bright">
-                            {satsLabel(g.priceSats)} sats
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 flex items-center gap-1 text-xs text-faint">
-                        <span>ID:</span>
-                        <code className="break-all font-mono text-muted">
-                          {g.id}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(g.id);
-                            setMsg("ID del juego copiado.");
-                          }}
-                          className="text-blue hover:underline"
-                        >
-                          Copiar
-                        </button>
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="ghost" onClick={() => startEdit(g)}>
-                        Editar
-                      </Button>
-                      {g.status === "draft" ? (
-                        <Button
-                          variant="outline"
-                          onClick={() => action(g.id, "/submit")}
-                        >
-                          Enviar a revisión
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          onClick={() => action(g.id, "/unpublish")}
-                        >
-                          Despublicar
-                        </Button>
+                {games.map((g) => {
+                  const editing = editingId === g.id;
+                  return (
+                    <li
+                      key={g.id}
+                      className={cn(
+                        "rounded-ln-lg border border-ln-border bg-ln-card/60",
+                        editing
+                          ? "p-5 ring-1 ring-ln-luna/30"
+                          : "flex flex-wrap items-center justify-between gap-2 px-4 py-3",
                       )}
-                      <Button variant="ghost" onClick={() => remove(g.id)}>
-                        Borrar
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                    >
+                      {editing ? (
+                        <form onSubmit={saveEdit} className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="flex items-center gap-2 text-sm font-semibold text-ln-text">
+                              Editar “{g.title}”
+                              <StatusBadge status={g.status} />
+                            </h3>
+                          </div>
+                          <GameFormFields
+                            form={editForm}
+                            setForm={setEditForm}
+                            uploadFile={uploadFile}
+                            uploading={uploading}
+                          />
+                          {msg ? (
+                            <p className="text-xs text-btc">{msg}</p>
+                          ) : null}
+                          <div className="flex gap-3">
+                            <Button type="submit">Guardar cambios</Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={cancelEdit}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div>
+                            <p className="flex items-center gap-2 text-sm font-medium text-ln-text">
+                              {g.title}
+                              <StatusBadge status={g.status} />
+                            </p>
+                            <p className="text-xs text-ln-faint">
+                              {g.priceSats === 0 ? (
+                                <span className="text-ln-aurora-bright">
+                                  Gratis
+                                </span>
+                              ) : (
+                                <span className="font-mono text-ln-corona-bright">
+                                  {satsLabel(g.priceSats)} sats
+                                </span>
+                              )}
+                            </p>
+                            <p className="mt-1 flex items-center gap-1 text-xs text-faint">
+                              <span>ID:</span>
+                              <code className="break-all font-mono text-muted">
+                                {g.id}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(g.id);
+                                  setMsg("ID del juego copiado.");
+                                }}
+                                className="text-blue hover:underline"
+                              >
+                                Copiar
+                              </button>
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="ghost"
+                              onClick={() => startEdit(g)}
+                            >
+                              Editar
+                            </Button>
+                            {g.status === "draft" ? (
+                              <Button
+                                variant="outline"
+                                onClick={() => action(g.id, "/submit")}
+                              >
+                                Enviar a revisión
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                onClick={() => action(g.id, "/unpublish")}
+                              >
+                                Despublicar
+                              </Button>
+                            )}
+                            <Button variant="ghost" onClick={() => remove(g.id)}>
+                              Borrar
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
