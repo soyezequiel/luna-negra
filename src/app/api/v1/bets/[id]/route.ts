@@ -33,13 +33,17 @@ async function checkPendingDepositsThrottled(
   participantIds: string[],
 ): Promise<boolean> {
   const now = Date.now();
-  let settledAny = false;
-  for (const id of participantIds) {
-    if (now - (lastDepositCheckAt.get(id) ?? 0) < ONDEMAND_CHECK_MIN_MS) continue;
+  const due = participantIds.filter((id) => {
+    if (now - (lastDepositCheckAt.get(id) ?? 0) < ONDEMAND_CHECK_MIN_MS) return false;
     lastDepositCheckAt.set(id, now);
-    if (await checkAndSettleDeposit(id)) settledAny = true;
-  }
-  return settledAny;
+    return true;
+  });
+  // En paralelo: cada checkAndSettleDeposit hace un lookup_invoice por NWC y es
+  // idempotente (settleDeposit usa idempotencyKey en el ledger y promoteIfAllPaid
+  // un claim optimista), así que correr los participantes a la vez no duplica
+  // depósitos ni dobles transiciones, y el poll responde más rápido.
+  const settled = await Promise.all(due.map((id) => checkAndSettleDeposit(id)));
+  return settled.some(Boolean);
 }
 
 export async function GET(
@@ -96,47 +100,54 @@ export async function GET(
     (bet.depositDeadline == null || bet.depositDeadline > new Date());
   const base = baseUrl(req);
 
-  const participants = [];
-  for (const p of bet.participants) {
-    // Handles de pago: solo se generan/exponen mientras el depósito esté abierto y
-    // el participante no haya pagado; si no, van null (= depósito cerrado).
-    let bolt11: string | null = null;
-    let lnurl: string | null = null;
-    let payUrl: string | null = null;
-    let depositError: string | null = null;
-    if (open && p.depositStatus === "pending") {
-      // Best-effort por participante: si generar el invoice falla (p. ej. NWC sin
-      // permiso make-invoice, budget agotado o relay caído), NO tumbamos toda la
-      // respuesta — el resto sigue con sus handles y este participante queda con
-      // null + `depositError`. La respuesta es `no-store`, así que el siguiente poll
-      // reintenta. Logueamos el motivo real (antes un fallo acá daba un 500 opaco y
-      // el consumidor de la API se quedaba sin métodos de pago ni explicación).
-      try {
-        const inv = await ensureDepositInvoice(bet, p);
-        bolt11 = inv.invoice;
-        lnurl = encodeLnurl(`${base}/api/escrow/lnurlp/${p.id}`);
-        payUrl = `${base}/bets/${bet.id}`;
-      } catch (e) {
-        depositError =
-          e instanceof Error ? e.message : "No se pudo generar el invoice de depósito.";
-        console.error(
-          `[bets/${bet.id}] ensureDepositInvoice falló para participante ${p.id}:`,
-          e,
-        );
+  // Generamos los handles de pago de todos los participantes EN PARALELO: cada
+  // ensureDepositInvoice hace un make_invoice por NWC (~2-4 s sobre el relay) y, en
+  // serie, el primer GET tras crear la apuesta tardaba N×3 s (el host esperaba
+  // ~10 s con varios jugadores). El cliente NWC cacheado correlaciona request/
+  // response por evento, así que los make_invoice concurrentes son seguros.
+  // Promise.all preserva el orden; cada participante falla de forma aislada.
+  const participants = await Promise.all(
+    bet.participants.map(async (p) => {
+      // Handles de pago: solo se generan/exponen mientras el depósito esté abierto y
+      // el participante no haya pagado; si no, van null (= depósito cerrado).
+      let bolt11: string | null = null;
+      let lnurl: string | null = null;
+      let payUrl: string | null = null;
+      let depositError: string | null = null;
+      if (open && p.depositStatus === "pending") {
+        // Best-effort por participante: si generar el invoice falla (p. ej. NWC sin
+        // permiso make-invoice, budget agotado o relay caído), NO tumbamos toda la
+        // respuesta — el resto sigue con sus handles y este participante queda con
+        // null + `depositError`. La respuesta es `no-store`, así que el siguiente poll
+        // reintenta. Logueamos el motivo real (antes un fallo acá daba un 500 opaco y
+        // el consumidor de la API se quedaba sin métodos de pago ni explicación).
+        try {
+          const inv = await ensureDepositInvoice(bet, p);
+          bolt11 = inv.invoice;
+          lnurl = encodeLnurl(`${base}/api/escrow/lnurlp/${p.id}`);
+          payUrl = `${base}/bets/${bet.id}`;
+        } catch (e) {
+          depositError =
+            e instanceof Error ? e.message : "No se pudo generar el invoice de depósito.";
+          console.error(
+            `[bets/${bet.id}] ensureDepositInvoice falló para participante ${p.id}:`,
+            e,
+          );
+        }
       }
-    }
-    participants.push({
-      npub: p.npub,
-      depositStatus: p.depositStatus, // pending | paid | refunded | failed
-      result: p.result, // pending | won | lost | tie
-      payoutStatus: p.payoutStatus,
-      payoutSats: p.payoutMsat != null ? sats(p.payoutMsat) : null,
-      bolt11,
-      lnurl,
-      payUrl,
-      depositError,
-    });
-  }
+      return {
+        npub: p.npub,
+        depositStatus: p.depositStatus, // pending | paid | refunded | failed
+        result: p.result, // pending | won | lost | tie
+        payoutStatus: p.payoutStatus,
+        payoutSats: p.payoutMsat != null ? sats(p.payoutMsat) : null,
+        bolt11,
+        lnurl,
+        payUrl,
+        depositError,
+      };
+    }),
+  );
 
   return apiOk(
     {
