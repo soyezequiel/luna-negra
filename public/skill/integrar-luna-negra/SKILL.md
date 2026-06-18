@@ -134,6 +134,8 @@ Negra lo muestra como "Jugando <tu juego>" en su perfil NIP-38.
   - `status` es la clave reservada (la usa Luna Negra). `state` es una **bolsa
     libre** (objeto plano ≤2 KB): puntaje, vidas, nivel… Cada latido la reemplaza.
   - `200 { ok: true }` · errores `INVALID_NPUB`/`INVALID_STATUS`/`STATE_TOO_LARGE`.
+  - **`403 NOT_A_PLAYER`:** solo podés reportar presencia de un `npub` que tenga
+    acceso a alguno de tus juegos. No podés marcar como "in-game" a usuarios ajenos.
 
 > El juego **no toca Nostr**: solo reporta por REST y Luna Negra deriva la
 > presencia. Nada de `window.opener` ni firmar eventos desde el cliente.
@@ -148,7 +150,8 @@ Para juegos **sin backend propio**, Luna Negra hostea un "tablero común" por sa
 - **`GET /api/v1/rooms/verify`** (Bearer invite) → identidad + contexto de sala:
   `{ valid, npub, pubkey, displayName, avatarUrl, gameId, slug, roomId, host, hostNpub, hostPubkey, expiresAt }`.
 - **`POST /api/v1/rooms/{roomId}/presence`** (Bearer invite) — heartbeat + roster (~2 s).
-  - Body: `{ clientId, score?, leave? }` → `{ members: [{ clientId, npub, host, score, name, avatar }] }`.
+  - Body: `{ clientId, score?, leave?, peek? }` → `{ members: [{ clientId, npub, host, score, name, avatar }], closed }`.
+    `peek: true` lee el roster sin contar como heartbeat; `closed` indica si la sala expiró.
 - **`POST /api/v1/rooms/{roomId}/state`** y **`GET …/state`** (Bearer invite) — estado compartido (TTL ~60 s; cada POST renueva la sala y actúa de heartbeat).
   - POST body: `{ set?, self?, version? }`
     - `set` (objeto ≤8 KB): mezcla en la bolsa **compartida**, *last-write-wins por clave*.
@@ -180,6 +183,7 @@ Desde tu game server (API key) podés invitar amigos a una sala y leer su presen
 - **`GET /api/v1/invites?npub=…`** (API key) — orden de entrada a sala pendiente (polling) → `{ request | null }`.
 - **`GET /api/v1/friends`** (API key) — contactos NIP-02 con presencia en este juego.
   Query: `npub`, `presence=true`, `q=<texto>`. → `{ friends: [{ npub, displayName, avatarUrl, presence, roomId, state, lastSeenMs, isMember, lastPlayedAt, isFollow }] }`.
+  Con `q`, la respuesta agrega `query`; si no hay match en los follows busca en todo Nostr (resultados externos con `isFollow: false`).
 
 ---
 
@@ -216,7 +220,13 @@ POST /api/v1/bets
 // 2) Consultar estado + handles de pago en una llamada
 GET /api/v1/bets/{id}
 // status: pending_deposits | funded | settled | cancelled | expired | refunded
-// participants[i] = { npub, depositStatus, payoutSats, bolt11, lnurl, payUrl } (handles null si cerró)
+// Raíz: { betId, gameId, status, victoryCondition, depositDeadline, resolveDeadline,
+//   stakeSats, potSats (depositado), potTargetSats, depositsReceived, depositsTotal,
+//   feePct, feeBps, feeSats, netPayoutSats, participants, roomId, metadata,
+//   contractEventId, resultEventId }
+// participants[i] = { npub, depositStatus (pending|paid|refunded|failed),
+//   result (pending|won|lost|tie), payoutStatus, payoutSats, bolt11, lnurl, payUrl,
+//   depositError } — handles null si el depósito cerró; depositError != null si falló generar el invoice
 
 // 3a) Resolver con la API key (recomendado, sin tocar Nostr)
 POST /api/v1/bets/{id}/result   { "winners": ["npub1ganador…"] }   // [] = empate → reembolso total

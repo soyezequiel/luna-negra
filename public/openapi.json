@@ -165,7 +165,8 @@
           "payoutSats": { "type": ["integer", "null"] },
           "bolt11": { "type": ["string", "null"], "description": "Invoice Lightning fijo (BOLT11) por el stake" },
           "lnurl": { "type": ["string", "null"], "description": "LNURL-pay (bech32) equivalente" },
-          "payUrl": { "type": ["string", "null"], "description": "Deep-link a la pantalla de pago de Luna Negra" }
+          "payUrl": { "type": ["string", "null"], "description": "Deep-link a la pantalla de pago de Luna Negra" },
+          "depositError": { "type": ["string", "null"], "description": "Motivo si no se pudo generar el invoice de depósito (resto de la respuesta intacto); null si no hubo error" }
         }
       },
       "BetDetail": {
@@ -395,7 +396,8 @@
                 "properties": {
                   "clientId": { "type": "string", "description": "Id propio del cliente (distingue navegadores)" },
                   "score": { "type": "integer" },
-                  "leave": { "type": "boolean", "description": "true para salir de la sala" }
+                  "leave": { "type": "boolean", "description": "true para salir de la sala" },
+                  "peek": { "type": "boolean", "description": "true para leer el roster sin contar como heartbeat" }
                 },
                 "required": ["clientId"]
               }
@@ -413,7 +415,8 @@
                     "members": {
                       "type": "array",
                       "items": { "$ref": "#/components/schemas/PresenceMember" }
-                    }
+                    },
+                    "closed": { "type": "boolean", "description": "true si la sala expiró" }
                   }
                 }
               }
@@ -484,6 +487,10 @@
           },
           "401": {
             "description": "API key inválida",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "403": {
+            "description": "NOT_A_PLAYER: el npub no tiene acceso a ningún juego de este proveedor",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           }
         }
