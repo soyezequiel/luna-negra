@@ -13,6 +13,7 @@ import { ActivitySection } from "@/components/activity-section";
 import { GameCard } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
 import { GameSocialPanel } from "@/components/game-social-panel";
+import { GameOwnerEditor } from "@/components/game-owner-editor";
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
 import { gameGalleryMedia } from "@/lib/game-media";
@@ -35,6 +36,9 @@ export default async function GamePage({
   if (!game || game.status !== "published") notFound();
 
   const session = await getSession();
+  // ¿La cuenta logueada es la proveedora dueña de este juego? → mostrar el lápiz
+  // de edición en la propia ficha de la tienda.
+  const isOwner = Boolean(session) && game.provider.ownerId === session!.sub;
   let owned = false;
   if (session) {
     const p = await prisma.purchase.findUnique({
@@ -107,6 +111,19 @@ export default async function GamePage({
             {categoryLabel(c)}
           </Link>
         ))}
+        {isOwner ? (
+          <GameOwnerEditor
+            gameId={game.id}
+            title={game.title}
+            description={game.description}
+            categories={game.categories}
+            priceSats={game.priceSats}
+            gameUrl={game.gameUrl}
+            coverUrl={game.coverUrl}
+            horizontalCoverUrl={game.horizontalCoverUrl}
+            screenshots={game.screenshots}
+          />
+        ) : null}
       </div>
 
       <div className="mt-6 grid gap-6 ln:[grid-template-columns:minmax(0,1fr)_340px]">
