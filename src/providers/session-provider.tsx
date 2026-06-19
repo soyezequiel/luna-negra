@@ -108,12 +108,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       const pubkey = await signer.getPublicKey();
 
-      const ch = await fetch("/api/auth/challenge", {
+      const chRes = await fetch("/api/auth/challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pubkey }),
-      }).then((r) => r.json());
-      if (!ch.token) throw new Error(ch.error ?? "No se pudo iniciar el login");
+      });
+      // El server puede responder un 500 con body vacío (p. ej. Upstash caído):
+      // no asumimos JSON, así el usuario ve un error legible y no el críptico
+      // "Unexpected end of JSON input".
+      const ch = await chRes
+        .json()
+        .catch(() => ({}) as { token?: string; nonce?: string; error?: string });
+      if (!chRes.ok || !ch.token)
+        throw new Error(ch.error ?? "No se pudo iniciar el login");
 
       const signed = await signer.signEvent({
         kind: 27235,
@@ -127,10 +134,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: ch.token, event: signed }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}) as { user?: SessionUser; error?: string });
       if (!res.ok) throw new Error(data.error ?? "Verificación fallida");
       setActiveSigner(signer, stored);
-      setUser(data.user);
+      setUser(data.user ?? null);
       setLoginModalOpen(false);
 
       // Cachear el perfil Nostr (kind:0) en segundo plano.

@@ -57,13 +57,23 @@ export async function checkRateLimit(
   windowMs: number,
 ): Promise<RateLimitResult> {
   if (redis) {
-    const r = await getLimiter(limit, Math.ceil(windowMs / 1000)).limit(key);
-    return {
-      success: r.success,
-      limit: r.limit,
-      remaining: Math.max(0, r.remaining),
-      reset: Math.max(0, Math.ceil((r.reset - Date.now()) / 1000)),
-    };
+    try {
+      const r = await getLimiter(limit, Math.ceil(windowMs / 1000)).limit(key);
+      return {
+        success: r.success,
+        limit: r.limit,
+        remaining: Math.max(0, r.remaining),
+        reset: Math.max(0, Math.ceil((r.reset - Date.now()) / 1000)),
+      };
+    } catch (e) {
+      // Fail-open: si Upstash está caído, sin credenciales válidas o pasó la
+      // cuota del free tier, `.limit()` lanza. NO dejamos que eso tire un 500
+      // sin body en TODA ruta con rate-limit (rompía el login: el cliente hacía
+      // `res.json()` sobre un cuerpo vacío → "Unexpected end of JSON input").
+      // Caemos al límite en memoria: peor que Redis, pero el login sigue vivo.
+      console.error("rate-limit: Upstash falló, uso límite en memoria", e);
+      return memoryLimit(key, limit, windowMs);
+    }
   }
   return memoryLimit(key, limit, windowMs);
 }
