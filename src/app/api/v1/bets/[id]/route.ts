@@ -5,6 +5,7 @@ import { ensureDepositInvoice } from "@/lib/escrow-deposit";
 import { checkAndSettleDeposit } from "@/lib/escrow-tick";
 import { encodeLnurl } from "@/lib/lnurl";
 import { msatToSats } from "@/lib/money";
+import { BET_FEE_MIN_MSAT } from "@/lib/escrow-config";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 // Estado + economía + handles de pago de una apuesta, en una sola llamada
@@ -91,6 +92,7 @@ export async function GET(
     stakeMsat: bet.stakeMsat,
     participantCount: bet.participants.length,
     feePct: bet.feePct,
+    feeMinMsat: BET_FEE_MIN_MSAT,
   });
   const paidCount = bet.participants.filter((p) => p.depositStatus === "paid").length;
 

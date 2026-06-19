@@ -8,6 +8,7 @@ import { computeEconomics, splitWinnings, publicBetStatus } from "@/lib/escrow-m
 import { isTerminal } from "@/lib/bet-state";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
+import { BET_FEE_MIN_MSAT } from "@/lib/escrow-config";
 import { emitBetSettled, emitBetRefunded } from "@/lib/webhooks";
 
 export type BetWithRelations = Bet & {
@@ -120,6 +121,7 @@ export async function settleBetWithResult(args: {
     stakeMsat: bet.stakeMsat,
     participantCount: bet.participants.length,
     feePct: bet.feePct,
+    feeMinMsat: BET_FEE_MIN_MSAT,
   });
   const { perWinner, dust } = splitWinnings(netMsat, winners.length);
 

@@ -13,19 +13,33 @@ export type Economics = {
   feeBps: number;
 };
 
-/** Calcula pozo/comisión/neto de una apuesta. Determinista. */
+/**
+ * Calcula pozo/comisión/neto de una apuesta. Determinista.
+ *
+ * `feeMinMsat` (opcional) es un piso ABSOLUTO: la comisión efectiva es
+ * `max(pozo×feePct%, feeMinMsat)`, acotada al pozo entero para no dejar el neto
+ * negativo. Sirve para que apuestas chicas no queden en rojo por el routing de
+ * Lightning (ver BET_FEE_MIN_SATS). Cuando el piso aplica, `feeBps` refleja la
+ * tasa EFECTIVA (no `feePct`), para no engañar al cliente.
+ */
 export function computeEconomics(p: {
   stakeMsat: bigint;
   participantCount: number;
   feePct: number;
+  feeMinMsat?: bigint;
 }): Economics {
   const potMsat = p.stakeMsat * BigInt(p.participantCount);
-  const feeMsat = (potMsat * BigInt(p.feePct)) / 100n;
+  const pctMsat = (potMsat * BigInt(p.feePct)) / 100n;
+  const floor = p.feeMinMsat ?? 0n;
+  // max(%, piso), pero nunca más que el pozo (neto ≥ 0).
+  const raw = pctMsat < floor ? floor : pctMsat;
+  const feeMsat = raw > potMsat ? potMsat : raw;
   return {
     potMsat,
     feeMsat,
     netMsat: potMsat - feeMsat,
-    feeBps: p.feePct * 100,
+    // bps efectivos sobre el pozo (coincide con feePct×100 si el piso no aplica).
+    feeBps: potMsat > 0n ? Number((feeMsat * 10000n) / potMsat) : 0,
   };
 }
 

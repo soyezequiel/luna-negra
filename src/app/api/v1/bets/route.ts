@@ -14,6 +14,8 @@ import {
   BET_MIN_SATS,
   BET_MAX_SATS,
   BET_FEE_PCT,
+  BET_FEE_MIN_SATS,
+  BET_FEE_MIN_MSAT,
   DEPOSIT_WINDOW_MS,
 } from "@/lib/escrow-config";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
@@ -103,6 +105,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     stakeSats: Number(msatToSats(v.stakeMsat)),
     victoryCondition: v.victoryCondition,
     feePct: BET_FEE_PCT,
+    feeMinSats: BET_FEE_MIN_SATS,
     providerName: game.provider.name,
   });
   const tags: string[][] = [
@@ -121,6 +124,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     stakeMsat: v.stakeMsat,
     participantCount: v.pubkeys.length,
     feePct: BET_FEE_PCT,
+    feeMinMsat: BET_FEE_MIN_MSAT,
   });
 
   return {

@@ -9,6 +9,14 @@ export const BET_MAX_MSAT = satsToMsat(BET_MAX_SATS);
 // Fee de Luna Negra (lo fija Luna Negra, NO el proveedor).
 export const BET_FEE_PCT = Number(process.env.BET_FEE_PCT ?? 5);
 
+// Comisión mínima ABSOLUTA en sats. En apuestas chicas el % puede quedar por
+// debajo del costo de routing de Lightning al pagar el premio y dejar a la casa
+// en rojo (ej. 5% de un pozo de 12 sats = 0,6 sats < routing). Este piso asegura
+// que cada apuesta liquidada con ganador retenga al menos esto. Se aplica como
+// max(%, piso) y nunca supera el pozo (el neto nunca queda negativo). 0 = sin piso.
+export const BET_FEE_MIN_SATS = Number(process.env.BET_FEE_MIN_SATS ?? 1);
+export const BET_FEE_MIN_MSAT = satsToMsat(BET_FEE_MIN_SATS);
+
 // Plazos.
 export const DEPOSIT_WINDOW_MS = 10 * 60 * 1000; // 10 min
 export const RESOLVE_WINDOW_MS = 15 * 60 * 1000; // 15 min

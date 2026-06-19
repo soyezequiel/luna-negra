@@ -153,15 +153,20 @@ export function buildContractText(p: {
   stakeSats: number;
   victoryCondition: string;
   feePct: number;
+  /** Comisión mínima absoluta en sats (piso anti-routing). 0/omitido = sin piso. */
+  feeMinSats?: number;
   providerName: string;
 }): string {
+  const comision = p.feeMinSats
+    ? `${p.feePct}% (mínimo ${p.feeMinSats} sats)`
+    : `${p.feePct}%`;
   return [
     `🌑 Contrato de apuesta — Luna Negra`,
     ``,
     `Juego: ${p.gameTitle}`,
     `Participantes: ${p.npubs.join(", ")}`,
     `Monto por jugador: ${p.stakeSats} sats`,
-    `Gana: ${p.victoryCondition || "según el juego"} — el ganador se lleva el pozo menos ${p.feePct}% de comisión (empate = se divide).`,
+    `Gana: ${p.victoryCondition || "según el juego"} — el ganador se lleva el pozo menos ${comision} de comisión (empate = se divide).`,
     `Plazos: depósito 10 min · resolución 15 min.`,
     `Si no se completan los depósitos en 10 min, se reembolsa. Si no hay resultado en 15 min, se reembolsa todo.`,
     `Resuelve: ${p.providerName}.`,

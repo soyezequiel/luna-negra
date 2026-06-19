@@ -26,6 +26,44 @@ describe("computeEconomics", () => {
     expect(e.feeMsat).toBe(0n);
     expect(e.netMsat).toBe(30_000n);
   });
+
+  it("piso: en apuestas chicas el % se eleva al mínimo absoluto", () => {
+    // 6 sats × 2 = 12_000 msat. 5% = 600 msat < piso de 1 sat (1_000 msat).
+    const e = computeEconomics({
+      stakeMsat: 6_000n,
+      participantCount: 2,
+      feePct: 5,
+      feeMinMsat: 1_000n,
+    });
+    expect(e.feeMsat).toBe(1_000n);
+    expect(e.netMsat).toBe(11_000n);
+    // bps EFECTIVOS: 1_000/12_000 ≈ 833 (no 500).
+    expect(e.feeBps).toBe(833);
+  });
+
+  it("piso: no aplica cuando el % ya lo supera", () => {
+    // 100 sats × 2 = 200_000 msat. 5% = 10_000 > piso de 1 sat.
+    const e = computeEconomics({
+      stakeMsat: 100_000n,
+      participantCount: 2,
+      feePct: 5,
+      feeMinMsat: 1_000n,
+    });
+    expect(e.feeMsat).toBe(10_000n);
+    expect(e.feeBps).toBe(500);
+  });
+
+  it("piso acotado al pozo: el neto nunca queda negativo", () => {
+    // Pozo 2_000 msat, piso 10 sats (10_000 msat): la comisión se topa al pozo.
+    const e = computeEconomics({
+      stakeMsat: 1_000n,
+      participantCount: 2,
+      feePct: 5,
+      feeMinMsat: 10_000n,
+    });
+    expect(e.feeMsat).toBe(2_000n);
+    expect(e.netMsat).toBe(0n);
+  });
 });
 
 describe("splitWinnings (reparto entre ganadores)", () => {
