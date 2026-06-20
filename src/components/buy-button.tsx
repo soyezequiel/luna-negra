@@ -166,6 +166,35 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
     );
   }
 
+  // Juego gratis: se puede jugar sin cuenta Nostr (identidad de invitado). Si el
+  // usuario está logueado, además puede agregarlo a su biblioteca.
+  if (priceSats === 0 && gameUrl) {
+    return (
+      <div className="space-y-2 [&>button]:w-full">
+        <PlayButton
+          gameId={gameId}
+          gameUrl={gameUrl}
+          title={title}
+          slug={slug}
+          label="▶ Jugar gratis"
+          variant="play"
+        />
+        {user ? (
+          <Button
+            variant="ghost"
+            onClick={startBuy}
+            disabled={phase === "creating"}
+          >
+            {phase === "creating" ? "Agregando…" : "Agregar a la biblioteca"}
+          </Button>
+        ) : null}
+        {phase === "error" && error ? (
+          <p className="text-sm text-[var(--lose)]">{error}</p>
+        ) : null}
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <Button variant="blue" onClick={login}>
