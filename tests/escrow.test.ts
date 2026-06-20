@@ -75,6 +75,48 @@ describe("validateCreateBet", () => {
       }
     });
   });
+
+  describe("apuesta mixta (npubs + invitados)", () => {
+    const mixCfg = { ...cfg, maxSeats: 8 };
+
+    it("acepta npub real + placeholder de invitado, en orden", () => {
+      const r = validateCreateBet(
+        { gameId: "g1", participants: [np1, { guest: true }], stakeSats: 10 },
+        mixCfg,
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.anonymous).toBe(false);
+        expect(r.hasGuests).toBe(true);
+        expect(r.seatCount).toBe(2);
+        // npubs/pubkeys solo contienen los reales; el invitado se mintea en el route.
+        expect(r.npubs).toEqual([np1]);
+        expect(r.seatSpecs.map((s) => s.kind)).toEqual(["npub", "guest"]);
+      }
+    });
+
+    it("apuesta 100% con cuenta no tiene invitados", () => {
+      const r = validateCreateBet({ gameId: "g1", participants: [np1, np2], stakeSats: 10 }, mixCfg);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.hasGuests).toBe(false);
+        expect(r.seatSpecs.map((s) => s.kind)).toEqual(["npub", "npub"]);
+      }
+    });
+
+    it("dos invitados explícitos por participants equivalen a anónima", () => {
+      const r = validateCreateBet(
+        { gameId: "g1", participants: [{ guest: true }, { guest: true }], stakeSats: 10 },
+        mixCfg,
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.hasGuests).toBe(true);
+        expect(r.seatCount).toBe(2);
+        expect(r.npubs).toEqual([]);
+      }
+    });
+  });
 });
 
 describe("computeContractHash", () => {

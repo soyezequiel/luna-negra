@@ -58,28 +58,36 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     return err("NOT_GAME_OWNER", "El juego no es de tu proveedor", 403);
   }
 
-  // Participantes: o bien npubs registrados (apuesta normal), o bien identidades
-  // efímeras generadas por asiento (apuesta anónima, ej. duelo local en un stand).
+  // Participantes EN ORDEN (asiento 1..N): cada asiento es un npub registrado
+  // (jugador con cuenta) o una identidad efímera (invitado). Un pozo puede ser
+  // mixto: parte con cuenta (cobran a su billetera) y parte invitados (cobran por
+  // LNURL-withdraw). Los npubs reales se buscan en lote; los invitados se mintean
+  // y se van consumiendo en el orden en que aparecen en `seatSpecs`.
   let participantSeats: { userId: string; npub: string; pubkey: string }[];
-  if (v.anonymous) {
-    const guests = await createGuestUsers(v.seatCount);
-    participantSeats = guests.map((g) => ({ userId: g.userId, npub: g.npub, pubkey: g.pubkey }));
-  } else {
-    const users = await prisma.user.findMany({
-      where: { pubkey: { in: v.pubkeys } },
-    });
-    if (users.length !== v.pubkeys.length) {
+  {
+    const guestCount = v.seatSpecs.filter((s) => s.kind === "guest").length;
+    const realPubkeys = v.seatSpecs.flatMap((s) => (s.kind === "npub" ? [s.pubkey] : []));
+    const users = realPubkeys.length
+      ? await prisma.user.findMany({ where: { pubkey: { in: realPubkeys } } })
+      : [];
+    if (users.length !== realPubkeys.length) {
       return err(
         "PARTICIPANT_NOT_REGISTERED",
-        "Todos los participantes deben tener cuenta en Luna Negra",
+        "Todos los participantes con npub deben tener cuenta en Luna Negra",
         400,
       );
     }
-    participantSeats = users.map((u) => ({
-      userId: u.id,
-      npub: nip19.npubEncode(u.pubkey),
-      pubkey: u.pubkey,
-    }));
+    const userByPubkey = new Map(users.map((u) => [u.pubkey, u]));
+    const guests = guestCount ? await createGuestUsers(guestCount) : [];
+    let guestIdx = 0;
+    participantSeats = v.seatSpecs.map((seat) => {
+      if (seat.kind === "guest") {
+        const g = guests[guestIdx++];
+        return { userId: g.userId, npub: g.npub, pubkey: g.pubkey };
+      }
+      const u = userByPubkey.get(seat.pubkey)!;
+      return { userId: u.id, npub: nip19.npubEncode(u.pubkey), pubkey: u.pubkey };
+    });
   }
 
   const participantNpubs = participantSeats.map((p) => p.npub);
@@ -157,10 +165,11 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       netPayoutSats: Number(msatToSats(econ.netMsat)),
       roomId: v.roomId,
       metadata: v.metadataJson ? JSON.parse(v.metadataJson) : null,
-      // Apuesta anónima: el proveedor necesita el npub de cada asiento (en orden,
-      // asiento 1..N) para mapear su jugador local → participante y luego reportar
-      // al ganador. En apuestas normales el proveedor ya conoce los npubs.
-      ...(v.anonymous
+      // Cuando hay invitados (apuesta anónima o mixta), el proveedor necesita el
+      // npub de cada asiento (en orden, asiento 1..N) para mapear su jugador local
+      // → participante y luego reportar al ganador. En apuestas 100% con cuenta el
+      // proveedor ya conoce los npubs, así que se omite.
+      ...(v.anonymous || v.hasGuests
         ? { participants: participantNpubs.map((npub, i) => ({ seat: i + 1, npub })) }
         : {}),
     },

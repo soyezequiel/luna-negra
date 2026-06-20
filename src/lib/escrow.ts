@@ -24,6 +24,16 @@ export type CreateBetBody = {
   seats?: unknown;
 };
 
+/**
+ * Especificación de un asiento de la apuesta, EN ORDEN (asiento 1..N). Un asiento
+ * puede ser un npub real (jugador con cuenta) o un invitado efímero que el route
+ * genera al crear la apuesta. Permite pozos MIXTOS: algunos participantes con
+ * cuenta (cobran a su billetera) y otros invitados (cobran por LNURL-withdraw).
+ */
+export type SeatSpec =
+  | { kind: "npub"; npub: string; pubkey: string }
+  | { kind: "guest" };
+
 export type CreateBetValid = {
   ok: true;
   gameId: string;
@@ -36,6 +46,14 @@ export type CreateBetValid = {
   seatCount: number;
   npubs: string[];
   pubkeys: string[];
+  /**
+   * Asientos en orden. El route construye los participantes recorriendo esta
+   * lista: minteando un invitado por cada `{ kind: "guest" }` y buscando el User
+   * por pubkey para cada `{ kind: "npub" }`. `hasGuests` resume si hay ≥1 guest
+   * (sirve para devolver el mapeo seat→npub al proveedor).
+   */
+  seatSpecs: SeatSpec[];
+  hasGuests: boolean;
   stakeMsat: bigint;
   victoryCondition: string;
   roomId: string | null;
@@ -68,12 +86,15 @@ export function validateCreateBet(
 
   // Apuesta anónima: el proveedor pide N asientos en vez de pasar npubs. Las
   // identidades efímeras las genera el route (acá solo validamos la cantidad).
+  // Apuesta normal/mixta: el proveedor pasa `participants`, donde cada entrada es
+  // un npub (jugador con cuenta) o un placeholder `{ guest: true }` (invitado).
   const anonymous = body.anonymous === true;
-  let npubs: string[] = [];
-  let pubkeys: string[] = [];
+  const maxSeats = cfg.maxSeats ?? 8;
+  const npubs: string[] = [];
+  const pubkeys: string[] = [];
+  const seatSpecs: SeatSpec[] = [];
   let seatCount: number;
   if (anonymous) {
-    const maxSeats = cfg.maxSeats ?? 8;
     seatCount = Number(body.seats);
     if (!Number.isInteger(seatCount) || seatCount < 2 || seatCount > maxSeats) {
       return err(
@@ -81,22 +102,34 @@ export function validateCreateBet(
         `Una apuesta anónima necesita entre 2 y ${maxSeats} asientos`,
       );
     }
+    for (let i = 0; i < seatCount; i++) seatSpecs.push({ kind: "guest" });
   } else {
     if (!Array.isArray(body.participants) || body.participants.length < 2) {
       return err("INVALID_PARTICIPANTS", "Se necesitan al menos 2 participantes");
     }
-    for (const np of body.participants) {
-      if (typeof np !== "string") return err("INVALID_NPUB", "npub inválido");
-      const pk = pubkeyFromNpub(np);
-      if (!pk) return err("INVALID_NPUB", `npub inválido: ${np}`);
-      npubs.push(np);
-      pubkeys.push(pk);
+    if (body.participants.length > maxSeats) {
+      return err("INVALID_PARTICIPANTS", `Como máximo ${maxSeats} participantes`);
     }
+    for (const entry of body.participants) {
+      // Placeholder de invitado: el route mintea una identidad efímera por cada uno.
+      if (entry && typeof entry === "object" && (entry as { guest?: unknown }).guest === true) {
+        seatSpecs.push({ kind: "guest" });
+        continue;
+      }
+      if (typeof entry !== "string") return err("INVALID_NPUB", "npub inválido");
+      const pk = pubkeyFromNpub(entry);
+      if (!pk) return err("INVALID_NPUB", `npub inválido: ${entry}`);
+      npubs.push(entry);
+      pubkeys.push(pk);
+      seatSpecs.push({ kind: "npub", npub: entry, pubkey: pk });
+    }
+    // Solo los npubs reales pueden colisionar; los invitados son siempre únicos.
     if (new Set(pubkeys).size !== pubkeys.length) {
       return err("DUPLICATE_PARTICIPANT", "Hay participantes duplicados");
     }
-    seatCount = pubkeys.length;
+    seatCount = seatSpecs.length;
   }
+  const hasGuests = seatSpecs.some((s) => s.kind === "guest");
 
   if (body.roomId !== undefined && typeof body.roomId !== "string") {
     return err("INVALID_ROOM_ID", "roomId debe ser un string");
@@ -116,6 +149,8 @@ export function validateCreateBet(
     seatCount,
     npubs,
     pubkeys,
+    seatSpecs,
+    hasGuests,
     stakeMsat: satsToMsat(stake),
     victoryCondition:
       typeof body.victoryCondition === "string" ? body.victoryCondition : "",
