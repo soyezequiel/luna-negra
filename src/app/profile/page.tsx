@@ -98,7 +98,7 @@ export default function ProfilePage() {
         <h1 className="font-display text-3xl font-extrabold text-white">
           Perfil
         </h1>
-        <p className="mt-2 text-ln-muted">ConectÃ¡ tu Nostr para ver tu perfil.</p>
+        <p className="mt-2 text-ln-muted">Conectá tu Nostr para ver tu perfil.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="luna" onClick={login}>
             Conectar con Nostr
@@ -108,7 +108,7 @@ export default function ProfilePage() {
     );
   }
 
-  const name = profileName(profile) ?? "AnÃ³nimo";
+  const name = profileName(profile) ?? "Anónimo";
   const recentSettled = bets.filter((b) => b.status === "settled").slice(0, 6);
   const friendCount = friends?.length ?? 0;
 
@@ -155,11 +155,11 @@ export default function ProfilePage() {
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-ln-border bg-ln-bg-deep/60 px-2.5 py-1 font-mono text-[11px] text-ln-muted">
-                â¬¡ {user.npub.slice(0, 18)}â€¦
+                ⬡ {user.npub.slice(0, 18)}…
               </span>
               {user.lud16 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 text-[11px] font-medium text-ln-corona">
-                  âš¡ {user.lud16}
+                  ⚡ {user.lud16}
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-aurora/15 px-2.5 py-1 text-[11px] font-medium text-ln-aurora">
@@ -167,7 +167,7 @@ export default function ProfilePage() {
               </span>
               {nwcConnected ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 font-mono text-[11px] font-semibold text-ln-corona-bright">
-                  âš¡ {balanceSats != null ? `${satsLabel(balanceSats)} sats` : "wallet"}
+                  ⚡ {balanceSats != null ? `${satsLabel(balanceSats)} sats` : "wallet"}
                 </span>
               ) : null}
             </div>
@@ -191,7 +191,7 @@ export default function ProfilePage() {
               rel="noopener noreferrer"
               className="btn btn-ghost px-4 py-2 text-sm"
             >
-              Ver en Nostr â†—
+              Ver en Nostr ↗
             </a>
           </div>
         </div>
@@ -233,7 +233,7 @@ export default function ProfilePage() {
               Actividad reciente
             </h2>
             {recentSettled.length === 0 ? (
-              <p className="text-sm text-ln-faint">Sin actividad todavÃ­a.</p>
+              <p className="text-sm text-ln-faint">Sin actividad todavía.</p>
             ) : (
               <ul className="space-y-2">
                 {recentSettled.map((b) => (
@@ -265,7 +265,7 @@ export default function ProfilePage() {
             </h2>
             {games.length === 0 ? (
               <p className="text-sm text-ln-faint">
-                Tu biblioteca estÃ¡ vacÃ­a.{" "}
+                Tu biblioteca está vacía.{" "}
                 <Link href="/" className="text-ln-luna hover:underline">
                   Ir a la tienda
                 </Link>

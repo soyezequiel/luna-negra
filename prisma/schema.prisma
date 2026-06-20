@@ -127,9 +127,9 @@ model GameLaunchRequest {
   @@index([expiresAt])
 }
 
-// PestaÃ±a de juego viva que consulta ordenes pendientes. No alimenta NIP-38 ni
-// la lista social de "jugando"; solo evita abrir otra pestaÃ±a al aceptar una
-// invitaciÃ³n si el juego ya estÃ¡ escuchando.
+// Pestaña de juego viva que consulta ordenes pendientes. No alimenta NIP-38 ni
+// la lista social de "jugando"; solo evita abrir otra pestaña al aceptar una
+// invitación si el juego ya está escuchando.
 model GameLaunchListener {
   id         String   @id @default(cuid())
   providerId String

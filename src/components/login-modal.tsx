@@ -98,7 +98,21 @@ export function LoginModal() {
         });
         if (cancelled) return;
         setQrUri(uri);
-        setQrDataUrl(await QRCode.toDataURL(uri, { margin: 1, width: 240 }));
+        // El QR se dibuja con canvas; navegadores con anti-fingerprinting (Tor
+        // Browser, LibreWolf) lo bloquean y `toDataURL` lanza. Eso NO es un fallo
+        // de conexión: el usuario puede copiar el enlace nostrconnect:// y seguir.
+        // Por eso lo envolvemos aparte y seguimos esperando `established`.
+        try {
+          setQrDataUrl(
+            await QRCode.toDataURL(uri, {
+              margin: 1,
+              width: 240,
+              errorCorrectionLevel: "M",
+            }),
+          );
+        } catch {
+          if (!cancelled) setQrDataUrl(null);
+        }
         const { signer, stored } = await established;
         if (cancelled) {
           void signer.close?.();
@@ -339,8 +353,10 @@ export function LoginModal() {
                   height={240}
                 />
               ) : (
-                <div className="flex h-[240px] w-[240px] items-center justify-center rounded bg-black/20 text-sm text-faint">
-                  Generando QR…
+                <div className="flex h-[240px] w-[240px] items-center justify-center rounded bg-black/20 p-4 text-center text-sm text-faint">
+                  {qrUri
+                    ? "Este navegador bloquea el QR. Copiá el enlace de abajo y pegalo en tu firmante."
+                    : "Generando QR…"}
                 </div>
               )}
               <p className="mt-3 text-center text-sm text-muted">
