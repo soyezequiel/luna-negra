@@ -13,8 +13,25 @@ import {
 } from "nostr-tools/nip46";
 import type { LunaSigner, StoredSigner } from "./signer";
 
-// Relays típicos de bunkers/firmantes remotos (nsec.app usa el primero).
-export const NIP46_RELAYS = ["wss://relay.nsec.app", "wss://relay.damus.io"];
+// Relays donde cliente y firmante se encuentran para el handshake NIP-46.
+// Lideramos con relays grandes y abiertos (damus, nos.lol) que cualquier firmante
+// genérico (Amber, Primal, nsec.app) alcanza y donde puede publicar la respuesta
+// de `connect`. Dejamos relay.nsec.app al final para los usuarios de nsec.app.
+export const NIP46_RELAYS = [
+  "wss://relay.damus.io",
+  "wss://nos.lol",
+  "wss://relay.nsec.app",
+];
+
+// Permisos que pre-solicitamos al firmante en el URI nostrconnect:// para que
+// sepa qué le pedimos y pueda autorizarlos de una (login + firmar eventos +
+// cifrar/descifrar DMs NIP-04). Sin esto algunos firmantes ni muestran el prompt.
+const NIP46_PERMS = [
+  "get_public_key",
+  "sign_event",
+  "nip04_encrypt",
+  "nip04_decrypt",
+];
 
 function wrap(signer: BunkerSigner): LunaSigner {
   return {
@@ -75,6 +92,7 @@ export function startNostrConnect(opts?: {
     clientPubkey: getPublicKey(clientSecretKey),
     relays: NIP46_RELAYS,
     secret: crypto.randomUUID().replace(/-/g, ""),
+    perms: NIP46_PERMS,
     name: "Luna Negra",
     url: typeof window !== "undefined" ? window.location.origin : undefined,
   });
