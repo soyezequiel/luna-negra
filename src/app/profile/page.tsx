@@ -48,7 +48,7 @@ function Kpi({
 }
 
 export default function ProfilePage() {
-  const { user, login, loading } = useSession();
+  const { user, login, logout, loading } = useSession();
   const { notify } = useNotify();
   const { friends } = useFriends();
   const { connected: nwcConnected, balanceSats } = useWallet();
@@ -193,6 +193,13 @@ export default function ProfilePage() {
             >
               Ver en Nostr ↗
             </a>
+            {/* Cierre de sesión accesible en móvil (en escritorio vive en el navbar) */}
+            <button
+              onClick={logout}
+              className="btn btn-ghost px-4 py-2 text-sm ln:hidden"
+            >
+              Salir
+            </button>
           </div>
         </div>
       </section>
