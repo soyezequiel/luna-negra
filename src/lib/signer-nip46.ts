@@ -23,12 +23,21 @@ export const NIP46_RELAYS = [
   "wss://relay.nsec.app",
 ];
 
-// Permisos que pre-solicitamos al firmante en el URI nostrconnect:// para que
-// sepa qué le pedimos y pueda autorizarlos de una (login + firmar eventos +
-// cifrar/descifrar DMs NIP-04). Sin esto algunos firmantes ni muestran el prompt.
+// Kinds que la app llega a firmar — DEBE reflejar SIGN_KINDS en nostr-social.ts:
+// 1=comentarios/reseñas, 3=contactos NIP-02, 4=DM NIP-04, 27235=login,
+// 30315=presencia NIP-38.
+const NIP46_SIGN_KINDS = [1, 3, 4, 27235, 30315];
+
+// Permisos que pre-solicitamos al firmante en el URI nostrconnect://. Clave para
+// firmantes con confianza "media" (Primal): solo pre-autorizan EXACTAMENTE lo
+// declarado, y `sign_event` genérico no les alcanza para firmar un kind puntual
+// como el 27235 del login → se traba. Por eso pedimos el método genérico Y cada
+// kind por separado (Amber/nsec.app entienden ambos; Primal-medium necesita el
+// `sign_event:<kind>`). Con esto el challenge de login se firma sin prompt.
 const NIP46_PERMS = [
   "get_public_key",
   "sign_event",
+  ...NIP46_SIGN_KINDS.map((k) => `sign_event:${k}`),
   "nip04_encrypt",
   "nip04_decrypt",
 ];
