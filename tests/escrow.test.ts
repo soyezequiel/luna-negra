@@ -41,6 +41,40 @@ describe("validateCreateBet", () => {
   it("falta gameId", () => {
     expect(validateCreateBet({ participants: [np1, np2], stakeSats: 10 }, cfg)).toMatchObject({ code: "MISSING_GAME" });
   });
+
+  describe("apuesta anónima (sin npubs)", () => {
+    const anonCfg = { ...cfg, maxSeats: 8 };
+
+    it("válida → marca anonymous y seatCount, sin npubs/pubkeys", () => {
+      const r = validateCreateBet(
+        { gameId: "g1", anonymous: true, seats: 2, stakeSats: 10 },
+        anonCfg,
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.anonymous).toBe(true);
+        expect(r.seatCount).toBe(2);
+        expect(r.npubs).toEqual([]);
+        expect(r.pubkeys).toEqual([]);
+        expect(r.stakeMsat).toBe(10000n);
+      }
+    });
+
+    it("asientos fuera de rango (menos de 2 o más que el tope)", () => {
+      expect(validateCreateBet({ gameId: "g", anonymous: true, seats: 1, stakeSats: 10 }, anonCfg)).toMatchObject({ code: "INVALID_SEATS" });
+      expect(validateCreateBet({ gameId: "g", anonymous: true, seats: 9, stakeSats: 10 }, anonCfg)).toMatchObject({ code: "INVALID_SEATS" });
+      expect(validateCreateBet({ gameId: "g", anonymous: true, seats: 2.5, stakeSats: 10 }, anonCfg)).toMatchObject({ code: "INVALID_SEATS" });
+    });
+
+    it("la apuesta normal sigue marcando anonymous=false", () => {
+      const r = validateCreateBet({ gameId: "g1", participants: [np1, np2], stakeSats: 10 }, cfg);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.anonymous).toBe(false);
+        expect(r.seatCount).toBe(2);
+      }
+    });
+  });
 });
 
 describe("computeContractHash", () => {

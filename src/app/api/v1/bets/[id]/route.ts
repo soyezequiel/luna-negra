@@ -4,6 +4,7 @@ import { computeEconomics, publicBetStatus } from "@/lib/escrow-math";
 import { ensureDepositInvoice } from "@/lib/escrow-deposit";
 import { checkAndSettleDeposit } from "@/lib/escrow-tick";
 import { encodeLnurl } from "@/lib/lnurl";
+import { signWithdrawToken } from "@/lib/auth";
 import { msatToSats } from "@/lib/money";
 import { BET_FEE_MIN_MSAT } from "@/lib/escrow-config";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
@@ -116,6 +117,25 @@ export async function GET(
       let lnurl: string | null = null;
       let payUrl: string | null = null;
       let depositError: string | null = null;
+      // Cobro del ganador sin wallet asociada (ej. apuesta anónima de un duelo
+      // local): si su payout quedó en `withdraw_pending`, exponemos un
+      // LNURL-withdraw firmado para que el juego lo muestre como QR de retiro.
+      // Mismo patrón que el panel web (api/escrow/bets/[id]).
+      let withdrawLnurl: string | null = null;
+      let withdrawUrl: string | null = null;
+      if (
+        p.payoutStatus === "withdraw_pending" &&
+        p.payoutMsat &&
+        p.withdrawDeadline &&
+        p.withdrawDeadline > new Date()
+      ) {
+        const token = await signWithdrawToken(
+          p.id,
+          Math.floor(p.withdrawDeadline.getTime() / 1000),
+        );
+        withdrawUrl = `${base}/api/escrow/lnurlw/${token}`;
+        withdrawLnurl = encodeLnurl(withdrawUrl);
+      }
       if (open && p.depositStatus === "pending") {
         // Best-effort por participante: si generar el invoice falla (p. ej. NWC sin
         // permiso make-invoice, budget agotado o relay caído), NO tumbamos toda la
@@ -146,6 +166,8 @@ export async function GET(
         bolt11,
         lnurl,
         payUrl,
+        withdrawLnurl,
+        withdrawUrl,
         depositError,
       };
     }),

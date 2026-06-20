@@ -18,11 +18,22 @@ export type CreateBetBody = {
   victoryCondition?: unknown;
   roomId?: unknown;
   metadata?: unknown;
+  // Apuesta anónima (sin cuentas): el proveedor pide N asientos en vez de pasar
+  // npubs. Luna Negra genera una identidad efímera por asiento.
+  anonymous?: unknown;
+  seats?: unknown;
 };
 
 export type CreateBetValid = {
   ok: true;
   gameId: string;
+  /**
+   * Apuesta anónima: el proveedor no pasó npubs, sino la cantidad de asientos.
+   * En ese caso `npubs`/`pubkeys` vienen vacíos y el route genera una identidad
+   * efímera por asiento. `seatCount` es la cantidad de jugadores.
+   */
+  anonymous: boolean;
+  seatCount: number;
   npubs: string[];
   pubkeys: string[];
   stakeMsat: bigint;
@@ -36,7 +47,7 @@ export type CreateBetError = { ok: false; code: string; error: string };
 /** Validación PURA del request de crear apuesta (testeable sin DB). */
 export function validateCreateBet(
   body: CreateBetBody,
-  cfg: { minSats: number; maxSats: number },
+  cfg: { minSats: number; maxSats: number; maxSeats?: number },
 ): CreateBetValid | CreateBetError {
   const err = (code: string, error: string): CreateBetError => ({
     ok: false,
@@ -54,20 +65,37 @@ export function validateCreateBet(
       `El monto debe ser un entero entre ${cfg.minSats} y ${cfg.maxSats} sats`,
     );
   }
-  if (!Array.isArray(body.participants) || body.participants.length < 2) {
-    return err("INVALID_PARTICIPANTS", "Se necesitan al menos 2 participantes");
-  }
-  const npubs: string[] = [];
-  const pubkeys: string[] = [];
-  for (const np of body.participants) {
-    if (typeof np !== "string") return err("INVALID_NPUB", "npub inválido");
-    const pk = pubkeyFromNpub(np);
-    if (!pk) return err("INVALID_NPUB", `npub inválido: ${np}`);
-    npubs.push(np);
-    pubkeys.push(pk);
-  }
-  if (new Set(pubkeys).size !== pubkeys.length) {
-    return err("DUPLICATE_PARTICIPANT", "Hay participantes duplicados");
+
+  // Apuesta anónima: el proveedor pide N asientos en vez de pasar npubs. Las
+  // identidades efímeras las genera el route (acá solo validamos la cantidad).
+  const anonymous = body.anonymous === true;
+  let npubs: string[] = [];
+  let pubkeys: string[] = [];
+  let seatCount: number;
+  if (anonymous) {
+    const maxSeats = cfg.maxSeats ?? 8;
+    seatCount = Number(body.seats);
+    if (!Number.isInteger(seatCount) || seatCount < 2 || seatCount > maxSeats) {
+      return err(
+        "INVALID_SEATS",
+        `Una apuesta anónima necesita entre 2 y ${maxSeats} asientos`,
+      );
+    }
+  } else {
+    if (!Array.isArray(body.participants) || body.participants.length < 2) {
+      return err("INVALID_PARTICIPANTS", "Se necesitan al menos 2 participantes");
+    }
+    for (const np of body.participants) {
+      if (typeof np !== "string") return err("INVALID_NPUB", "npub inválido");
+      const pk = pubkeyFromNpub(np);
+      if (!pk) return err("INVALID_NPUB", `npub inválido: ${np}`);
+      npubs.push(np);
+      pubkeys.push(pk);
+    }
+    if (new Set(pubkeys).size !== pubkeys.length) {
+      return err("DUPLICATE_PARTICIPANT", "Hay participantes duplicados");
+    }
+    seatCount = pubkeys.length;
   }
 
   if (body.roomId !== undefined && typeof body.roomId !== "string") {
@@ -84,6 +112,8 @@ export function validateCreateBet(
   return {
     ok: true,
     gameId: body.gameId,
+    anonymous,
+    seatCount,
     npubs,
     pubkeys,
     stakeMsat: satsToMsat(stake),

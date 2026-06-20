@@ -13,11 +13,13 @@ import { msatToSats } from "@/lib/money";
 import {
   BET_MIN_SATS,
   BET_MAX_SATS,
+  BET_MAX_ANONYMOUS_SEATS,
   BET_FEE_PCT,
   BET_FEE_MIN_SATS,
   BET_FEE_MIN_MSAT,
   DEPOSIT_WINDOW_MS,
 } from "@/lib/escrow-config";
+import { createGuestUsers } from "@/lib/guest-users";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiError, corsPreflight, CORS } from "@/lib/api";
 import { beginIdempotent } from "@/lib/idempotency";
@@ -43,6 +45,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
   const v = validateCreateBet(body as object, {
     minSats: BET_MIN_SATS,
     maxSats: BET_MAX_SATS,
+    maxSeats: BET_MAX_ANONYMOUS_SEATS,
   });
   if (!v.ok) return err(v.code, v.error, 400);
 
@@ -55,18 +58,31 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     return err("NOT_GAME_OWNER", "El juego no es de tu proveedor", 403);
   }
 
-  const users = await prisma.user.findMany({
-    where: { pubkey: { in: v.pubkeys } },
-  });
-  if (users.length !== v.pubkeys.length) {
-    return err(
-      "PARTICIPANT_NOT_REGISTERED",
-      "Todos los participantes deben tener cuenta en Luna Negra",
-      400,
-    );
+  // Participantes: o bien npubs registrados (apuesta normal), o bien identidades
+  // efímeras generadas por asiento (apuesta anónima, ej. duelo local en un stand).
+  let participantSeats: { userId: string; npub: string; pubkey: string }[];
+  if (v.anonymous) {
+    const guests = await createGuestUsers(v.seatCount);
+    participantSeats = guests.map((g) => ({ userId: g.userId, npub: g.npub, pubkey: g.pubkey }));
+  } else {
+    const users = await prisma.user.findMany({
+      where: { pubkey: { in: v.pubkeys } },
+    });
+    if (users.length !== v.pubkeys.length) {
+      return err(
+        "PARTICIPANT_NOT_REGISTERED",
+        "Todos los participantes deben tener cuenta en Luna Negra",
+        400,
+      );
+    }
+    participantSeats = users.map((u) => ({
+      userId: u.id,
+      npub: nip19.npubEncode(u.pubkey),
+      pubkey: u.pubkey,
+    }));
   }
 
-  const participantNpubs = users.map((u) => nip19.npubEncode(u.pubkey));
+  const participantNpubs = participantSeats.map((p) => p.npub);
   const depositDeadline = new Date(Date.now() + DEPOSIT_WINDOW_MS);
   const bet = await prisma.bet.create({
     data: {
@@ -80,9 +96,9 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       metadataJson: v.metadataJson,
       depositDeadline,
       participants: {
-        create: users.map((u) => ({
-          userId: u.id,
-          npub: nip19.npubEncode(u.pubkey),
+        create: participantSeats.map((p) => ({
+          userId: p.userId,
+          npub: p.npub,
         })),
       },
     },
@@ -101,7 +117,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
   const content = buildContractText({
     betId: bet.id,
     gameTitle: game.title,
-    npubs: v.npubs,
+    npubs: participantNpubs,
     stakeSats: Number(msatToSats(v.stakeMsat)),
     victoryCondition: v.victoryCondition,
     feePct: BET_FEE_PCT,
@@ -112,7 +128,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     ["t", "lunanegra:bet"],
     ["bet", bet.id],
     ["terms", contractHash],
-    ...v.pubkeys.map((pk) => ["p", pk]),
+    ...participantSeats.map((p) => ["p", p.pubkey]),
   ];
   const contractEventId = await publishContract(content, tags);
   await prisma.bet.update({
@@ -122,7 +138,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
 
   const econ = computeEconomics({
     stakeMsat: v.stakeMsat,
-    participantCount: v.pubkeys.length,
+    participantCount: v.seatCount,
     feePct: BET_FEE_PCT,
     feeMinMsat: BET_FEE_MIN_MSAT,
   });
@@ -141,6 +157,12 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       netPayoutSats: Number(msatToSats(econ.netMsat)),
       roomId: v.roomId,
       metadata: v.metadataJson ? JSON.parse(v.metadataJson) : null,
+      // Apuesta anónima: el proveedor necesita el npub de cada asiento (en orden,
+      // asiento 1..N) para mapear su jugador local → participante y luego reportar
+      // al ganador. En apuestas normales el proveedor ya conoce los npubs.
+      ...(v.anonymous
+        ? { participants: participantNpubs.map((npub, i) => ({ seat: i + 1, npub })) }
+        : {}),
     },
   };
 }

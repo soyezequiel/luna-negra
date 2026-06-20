@@ -17,6 +17,12 @@ export const BET_FEE_PCT = Number(process.env.BET_FEE_PCT ?? 5);
 export const BET_FEE_MIN_SATS = Number(process.env.BET_FEE_MIN_SATS ?? 1);
 export const BET_FEE_MIN_MSAT = satsToMsat(BET_FEE_MIN_SATS);
 
+// Apuestas anónimas (sin cuentas Nostr): un juego puede crear una apuesta para N
+// "asientos" anónimos (ej. un duelo 1v1 en la misma compu, en un stand). Luna
+// Negra genera una identidad efímera por asiento y el ganador cobra por
+// LNURL-withdraw (no tiene wallet asociada). Tope para evitar abuso.
+export const BET_MAX_ANONYMOUS_SEATS = Number(process.env.BET_MAX_ANONYMOUS_SEATS ?? 8);
+
 // Plazos.
 export const DEPOSIT_WINDOW_MS = 10 * 60 * 1000; // 10 min
 export const RESOLVE_WINDOW_MS = 15 * 60 * 1000; // 15 min
