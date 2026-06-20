@@ -16,6 +16,8 @@ import {
   verifyBetSession,
   signInvite,
   verifyInvite,
+  signWithdrawToken,
+  verifyWithdrawToken,
 } from "@/lib/auth";
 
 describe("sesión JWT", () => {
@@ -99,5 +101,24 @@ describe("invite (multijugador)", () => {
   it("un entitlement no se acepta como invite", async () => {
     const t = await signEntitlement({ npub: "n", pubkey: "p", gameId: "g", slug: "s" });
     expect(await verifyInvite(t)).toBeNull();
+  });
+});
+
+describe("withdraw token", () => {
+  it("es estable entre consultas para el mismo retiro", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-06-20T12:00:00Z"));
+      const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+      const first = await signWithdrawToken("participant-1", expiresAt);
+
+      vi.advanceTimersByTime(5000);
+      const second = await signWithdrawToken("participant-1", expiresAt);
+
+      expect(second).toBe(first);
+      expect(await verifyWithdrawToken(first)).toBe("participant-1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

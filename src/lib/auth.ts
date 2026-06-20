@@ -272,9 +272,12 @@ export async function signWithdrawToken(
   participantId: string,
   expEpochSeconds: number,
 ): Promise<string> {
+  // El token identifica un retiro concreto hasta su deadline. No agregamos `iat`:
+  // si el GET de la apuesta se consulta varias veces debe devolver exactamente el
+  // mismo LNURL. Un token distinto en cada poll hace que los clientes regeneren el
+  // QR continuamente y el usuario lo vea desaparecer/reaparecer al intentar cobrar.
   return new SignJWT({ pid: participantId, purpose: "withdraw" })
     .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
     .setExpirationTime(expEpochSeconds)
     .sign(secret);
 }
