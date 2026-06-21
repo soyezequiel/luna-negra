@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { notifyGameSubmitted } from "@/lib/discord";
+import { siteUrl } from "@/lib/site-url";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
@@ -28,5 +30,16 @@ export async function POST(
     where: { id },
     data: { status: "in_review" },
   });
+
+  // Aviso al equipo por Discord (best-effort: no rompe el submit si falla).
+  await notifyGameSubmitted({
+    title: updated.title,
+    providerName: provider.name,
+    priceSats: updated.priceSats,
+    description: updated.description,
+    categories: updated.categories,
+    adminUrl: `${siteUrl(req)}/admin`,
+  });
+
   return NextResponse.json({ game: updated });
 }
