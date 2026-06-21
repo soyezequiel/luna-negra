@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ownedGame } from "@/lib/provider";
 import { normalizeCategories } from "@/lib/categories";
+import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
 
 export async function PATCH(
   req: Request,
@@ -23,7 +24,7 @@ export async function PATCH(
   if (typeof body.title === "string" && body.title.trim())
     data.title = body.title.trim();
   if (typeof body.description === "string")
-    data.description = body.description.trim();
+    data.description = sanitizeDescriptionHtml(body.description.trim());
   if (body.categories !== undefined)
     data.categories = normalizeCategories(body.categories);
   if (body.priceSats !== undefined)

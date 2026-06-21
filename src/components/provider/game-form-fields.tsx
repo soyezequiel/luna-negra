@@ -56,15 +56,37 @@ export function GameFormFields({
         value={form.title}
         onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
       />
-      <textarea
-        className={inputCls}
-        placeholder="Descripción"
-        rows={3}
-        value={form.description}
-        onChange={(e) =>
-          setForm((prev) => ({ ...prev, description: e.target.value }))
-        }
-      />
+      <div>
+        <textarea
+          className={`${inputCls} font-mono text-xs`}
+          placeholder="Descripción — texto plano o HTML enriquecido (encabezados, listas, imágenes, tablas, vídeos de YouTube/Vimeo…)"
+          rows={5}
+          value={form.description}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, description: e.target.value }))
+          }
+        />
+        <div className="mt-1.5 flex items-center gap-3">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
+            📄 Subir .html
+            <input
+              type="file"
+              accept=".html,.htm,text/html"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const text = await f.text();
+                setForm((prev) => ({ ...prev, description: text }));
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <span className="text-[11px] text-ln-faint">
+            El HTML se sanea al guardar; scripts y estilos peligrosos se eliminan.
+          </span>
+        </div>
+      </div>
       <div>
         <label className="block text-sm text-muted">Precio (sats)</label>
         <input

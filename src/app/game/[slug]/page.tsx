@@ -23,6 +23,10 @@ import {
 } from "@/components/game-store-edit";
 import { hueFromSlug } from "@/lib/format";
 import { gameGalleryMedia } from "@/lib/game-media";
+import {
+  sanitizeDescriptionHtml,
+  descriptionLooksLikeHtml,
+} from "@/lib/sanitize-description";
 
 export const dynamic = "force-dynamic";
 
@@ -70,11 +74,20 @@ export default async function GamePage({
     game.nostrEventId && game.nostrPubkey
       ? { id: game.nostrEventId, pubkey: game.nostrPubkey }
       : null;
-  const features = game.description
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, 6);
+  // La descripción puede ser HTML enriquecido (ficha estilo Steam) o texto
+  // plano. Si es HTML lo saneamos y lo renderizamos tal cual; si es texto
+  // plano mantenemos la lista de "características" (una por línea).
+  const isHtmlDescription = descriptionLooksLikeHtml(game.description);
+  const descriptionHtml = isHtmlDescription
+    ? sanitizeDescriptionHtml(game.description)
+    : "";
+  const features = isHtmlDescription
+    ? []
+    : game.description
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 6);
   const supportsRooms = Boolean(game.gameUrl);
 
   // Más juegos web (que compartan alguna categoría, excluyendo este).
@@ -138,6 +151,8 @@ export default async function GamePage({
               gameId={game.id}
               editable={isOwner}
               value={game.description}
+              isHtml={isHtmlDescription}
+              html={descriptionHtml}
             />
             {features.length > 1 ? (
               <ul className="mt-4 grid gap-2 sm:grid-cols-2">

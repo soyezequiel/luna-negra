@@ -165,10 +165,17 @@ export function EditableDescription({
   gameId,
   editable,
   value,
+  isHtml,
+  html,
 }: {
   gameId: string;
   editable: boolean;
+  /** Descripción cruda (texto plano o HTML sin sanear) para editar. */
   value: string;
+  /** ¿`value` es HTML enriquecido (vs. texto plano)? */
+  isHtml: boolean;
+  /** HTML ya saneado en el server, listo para render. "" si es texto plano. */
+  html: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -184,11 +191,18 @@ export function EditableDescription({
       >
         <textarea
           autoFocus
-          rows={6}
-          className={inputCls}
+          rows={10}
+          className={`${inputCls} font-mono text-xs`}
+          placeholder="Texto plano o HTML enriquecido (encabezados, listas, imágenes, tablas, vídeos de YouTube/Vimeo…)"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
+        <div className="mt-1.5 flex items-center gap-3">
+          <UploadHtmlButton onLoad={setDraft} />
+          <span className="text-[11px] text-ln-faint">
+            El HTML se sanea al guardar; scripts y estilos peligrosos se eliminan.
+          </span>
+        </div>
         <EditBar saving={saving} error={error} onCancel={() => setEditing(false)} />
       </form>
     );
@@ -196,15 +210,42 @@ export function EditableDescription({
 
   return (
     <div className="group relative">
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-ln-muted">
-        {value || "Sin descripción."}
-      </p>
+      {isHtml ? (
+        <div
+          className="ln-prose"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ln-muted">
+          {value || "Sin descripción."}
+        </p>
+      )}
       {editable ? (
         <div className="mt-2">
           <PencilButton onClick={() => { setDraft(value); setEditing(true); }} label="Editar descripción" />
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Botón para cargar un archivo .html dentro del textarea de descripción. */
+function UploadHtmlButton({ onLoad }: { onLoad: (html: string) => void }) {
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
+      📄 Subir .html
+      <input
+        type="file"
+        accept=".html,.htm,text/html"
+        className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          onLoad(await f.text());
+          e.target.value = "";
+        }}
+      />
+    </label>
   );
 }
 
