@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { nip19 } from "nostr-tools";
+
+// npub válido (bech32) para el camino con API key, que valida el formato.
+const VALID_NPUB = nip19.npubEncode("11".repeat(32));
 
 // Estado en memoria que simula Leaderboard + Score (best-per-player).
 const store = vi.hoisted(() => ({
   ent: null as { npub: string; pubkey: string; gameId: string; slug: string } | null,
+  providerId: null as string | null, // proveedor resuelto desde la API key
+  games: new Map<string, { id: string; providerId: string }>(), // gameId → dueño
   boards: new Map<string, { id: string; gameId: string; name: string }>(), // key gameId:name
   scores: new Map<string, { leaderboardId: string; npub: string; score: number; updatedAt: Date }>(), // key boardId:npub
   users: [] as Array<{ npub: string; displayName: string | null }>,
@@ -10,11 +16,23 @@ const store = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  verifyEntitlement: vi.fn(async (token: string) => (token ? store.ent : null)),
+  // Solo los entitlements de prueba ("ent-tok") resuelven; la API key (ln_sk_…)
+  // no es un JWT válido y cae al camino de verifyApiKey.
+  verifyEntitlement: vi.fn(async (token: string) => (token === "ent-tok" ? store.ent : null)),
+}));
+
+vi.mock("@/lib/api-keys", () => ({
+  verifyApiKey: vi.fn(async (req: Request) => {
+    const auth = req.headers.get("authorization") ?? "";
+    return auth.includes("ln_sk_") ? store.providerId : null;
+  }),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    game: {
+      findUnique: vi.fn(async ({ where: { id } }: any) => store.games.get(id) ?? null),
+    },
     leaderboard: {
       upsert: vi.fn(async ({ where: { gameId_name }, create }: any) => {
         const key = `${gameId_name.gameId}:${gameId_name.name}`;
@@ -85,8 +103,23 @@ async function read(name: string, query = "", token = "ent-tok") {
   return { status: res.status, json: await res.json() };
 }
 
+async function submitWithKey(name: string, body: unknown, key = "ln_sk_test") {
+  const { POST } = await import("@/app/api/v1/leaderboards/[name]/scores/route");
+  const res = await POST(
+    new Request(`http://local/api/v1/leaderboards/${name}/scores`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ name }) },
+  );
+  return { status: res.status, json: await res.json() };
+}
+
 beforeEach(() => {
   store.ent = { npub: "npub-a", pubkey: "a", gameId: "game1", slug: "tetris" };
+  store.providerId = "prov-1";
+  store.games = new Map([["game1", { id: "game1", providerId: "prov-1" }]]);
   store.boards.clear();
   store.scores.clear();
   store.users = [];
@@ -136,6 +169,59 @@ describe("POST scores (se queda el mejor)", () => {
     store.ent = { npub: "npub-c", pubkey: "c", gameId: "game1", slug: "t" };
     const c = await submit("clasico", { score: 100 });
     expect(c.json.rank).toBe(2); // 1 jugador con score mayor → puesto 2
+  });
+});
+
+describe("POST scores con API key (server-to-server)", () => {
+  it("records a score on behalf of an npub when the game belongs to the provider", async () => {
+    const { status, json } = await submitWithKey("victorias", {
+      gameId: "game1",
+      npub: VALID_NPUB,
+      score: 7,
+    });
+    expect(status).toBe(200);
+    expect(json).toEqual({ score: 7, rank: 1, improved: true });
+  });
+
+  it("rejects an unknown game", async () => {
+    const { status, json } = await submitWithKey("victorias", {
+      gameId: "ghost",
+      npub: VALID_NPUB,
+      score: 7,
+    });
+    expect(status).toBe(404);
+    expect(json.error.code).toBe("GAME_NOT_FOUND");
+  });
+
+  it("rejects a game owned by another provider", async () => {
+    store.games.set("game1", { id: "game1", providerId: "otro-prov" });
+    const { status, json } = await submitWithKey("victorias", {
+      gameId: "game1",
+      npub: VALID_NPUB,
+      score: 7,
+    });
+    expect(status).toBe(403);
+    expect(json.error.code).toBe("NOT_GAME_OWNER");
+  });
+
+  it("requires gameId and a valid npub", async () => {
+    const noGame = await submitWithKey("victorias", { npub: VALID_NPUB, score: 7 });
+    expect(noGame.status).toBe(400);
+    expect(noGame.json.error.code).toBe("MISSING_GAME_ID");
+
+    const badNpub = await submitWithKey("victorias", { gameId: "game1", npub: "nope", score: 7 });
+    expect(badNpub.status).toBe(400);
+    expect(badNpub.json.error.code).toBe("INVALID_NPUB");
+  });
+
+  it("rejects an invalid API key", async () => {
+    const { status, json } = await submitWithKey("victorias", {
+      gameId: "game1",
+      npub: VALID_NPUB,
+      score: 7,
+    }, "not-a-key");
+    expect(status).toBe(401);
+    expect(json.error.code).toBe("INVALID_TOKEN");
   });
 });
 
