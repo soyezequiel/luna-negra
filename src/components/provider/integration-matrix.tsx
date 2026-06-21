@@ -87,11 +87,11 @@ function FeatureTile({
   const s = LEVEL_STYLE[level];
   return (
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/40 p-3" title={feature.desc}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ln-text">
-            <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", s.dot)} />
-            <span className="truncate">{feature.title}</span>
+      <div className="flex items-start gap-1.5">
+        <span className={cn("mt-[5px] inline-block h-2 w-2 shrink-0 rounded-full", s.dot)} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold leading-snug text-ln-text">
+            {feature.title}
           </p>
           <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wide text-ln-faint">
             {feature.section}
@@ -99,12 +99,15 @@ function FeatureTile({
             {feature.required ? " · mínimo" : ""}
           </p>
         </div>
-        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-semibold", s.chip)}>
+      </div>
+
+      <div className="mt-2.5">
+        <span className={cn("inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold", s.chip)}>
           {s.label}
         </span>
       </div>
 
-      <p className="mt-2 text-[11px] text-ln-muted">
+      <p className="mt-1.5 text-[11px] text-ln-muted">
         {ping ? `Visto ${timeAgo(ping.lastSeenAt)}` : "Nunca recibido"}
       </p>
 
