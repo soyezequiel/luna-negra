@@ -44,7 +44,7 @@ export type RoomStateResult =
   | { ok: false; code: string; message: string; status: number };
 
 type AuthResult =
-  | { ok: true; npub: string }
+  | { ok: true; npub: string; gameId: string }
   | { ok: false; code: string; message: string; status: number };
 
 /** Valida el invite token y que sea de ESTA sala. La identidad sale del token. */
@@ -56,7 +56,7 @@ export async function authRoomMember(
   if (!inv || inv.roomId !== roomId) {
     return { ok: false, code: "INVALID_TOKEN", message: "Invitación inválida para esta sala", status: 401 };
   }
-  return { ok: true, npub: inv.npub };
+  return { ok: true, npub: inv.npub, gameId: inv.gameId };
 }
 
 function parseBag(json: string | null | undefined): Record<string, unknown> {

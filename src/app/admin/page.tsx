@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import {
+  IntegrationMatrix,
+  type IntegrationView,
+  type ProbeResult,
+} from "@/components/provider/integration-matrix";
 
 type Row = {
   id: string;
@@ -79,6 +84,7 @@ export default function AdminPage() {
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [bets, setBets] = useState<BetRow[]>([]);
+  const [integrations, setIntegrations] = useState<IntegrationView[]>([]);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [, startLoadTransition] = useTransition();
@@ -103,7 +109,24 @@ export default function AdminPage() {
       .then((res) => res.json())
       .catch(() => ({ bets: [] }));
     setBets(b.bets ?? []);
+    const i = await fetch("/api/admin/integracion")
+      .then((res) => res.json())
+      .catch(() => ({ views: [] }));
+    setIntegrations(i.views ?? []);
   }, []);
+
+  const probeProvider = useCallback(
+    async (providerId: string): Promise<ProbeResult[]> => {
+      const d = await fetch(
+        `/api/admin/integracion/probe?providerId=${encodeURIComponent(providerId)}`,
+        { method: "POST" },
+      )
+        .then((res) => res.json())
+        .catch(() => ({ results: [] }));
+      return d?.results ?? [];
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -374,6 +397,39 @@ export default function AdminPage() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="mb-1 font-semibold text-ink">Integración de juegos</h2>
+        <p className="mb-4 text-xs text-faint">
+          Qué interfaces de Luna Negra (§1–§8) tiene cableada cada juego, según el
+          tráfico real recibido. Verde = con tráfico reciente; naranja = visto hace
+          tiempo o configurado sin uso; gris = no integrado.
+        </p>
+        {integrations.length === 0 ? (
+          <p className="text-muted">No hay proveedores.</p>
+        ) : (
+          <div className="space-y-6">
+            {integrations.map((view) => (
+              <div key={view.provider.id}>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink">
+                    {view.provider.name}
+                    <span className="ml-2 text-xs font-normal text-faint">
+                      {view.games.length} juego(s) · {view.provider.apiKeys} API key(s)
+                      {view.provider.webhookConfigured ? " · webhook ✓" : ""}
+                    </span>
+                  </p>
+                </div>
+                <IntegrationMatrix
+                  view={view}
+                  compact
+                  onProbe={() => probeProvider(view.provider.id)}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </section>
     </div>

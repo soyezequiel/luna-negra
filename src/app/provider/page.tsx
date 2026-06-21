@@ -122,6 +122,8 @@ export default function ProviderPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [origin, setOrigin] = useState("");
+  const [envGameId, setEnvGameId] = useState("");
 
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
@@ -131,6 +133,15 @@ export default function ProviderPage() {
   const [editForm, setEditForm] = useState<GameForm>({ ...emptyForm });
   const [uploading, setUploading] = useState(false);
   const [, startLoadTransition] = useTransition();
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    setMsg(label);
+  }
 
   const load = useCallback(async () => {
     const [d, s, k] = await Promise.all([
@@ -324,6 +335,14 @@ export default function ProviderPage() {
     .reduce((n, s) => n + s.share, 0);
   const publishedCount = games.filter((g) => g.status === "published").length;
 
+  const selectedGameId = envGameId || games[0]?.id || "";
+  const envText = [
+    `LUNA_NEGRA_BASE=${origin || "https://tu-deploy"}`,
+    `LUNA_NEGRA_API_KEY=${createdKey ?? "ln_sk_…"}`,
+    `LUNA_NEGRA_WEBHOOK_SECRET=${webhookSecret ?? "whsec_…"}`,
+    `LUNA_NEGRA_GAME_ID=${selectedGameId || "game_…"}`,
+  ].join("\n");
+
   return (
     <div className="mx-auto max-w-[920px] px-[22px] py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -335,9 +354,14 @@ export default function ProviderPage() {
             Gestioná tus juegos, cobros, API keys y webhooks.
           </p>
         </div>
-        <Link href="/dev" className="btn btn-ghost shrink-0 self-start">
-          Abrir guía /dev
-        </Link>
+        <div className="flex shrink-0 gap-2 self-start">
+          <Link href="/provider/integracion" className="btn btn-ghost">
+            Integración
+          </Link>
+          <Link href="/dev" className="btn btn-ghost">
+            Abrir guía /dev
+          </Link>
+        </div>
       </div>
       {msg ? <p className="mt-2 text-sm text-ln-luna">{msg}</p> : null}
 
@@ -374,6 +398,64 @@ export default function ProviderPage() {
 
       {provider ? (
         <>
+          <section className="mt-8 rounded-xl border border-ln-luna/30 bg-ln-card/60 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-ink">Variables de entorno</h2>
+              <button
+                type="button"
+                onClick={() => copy(envText, "Variables de entorno copiadas.")}
+                className="text-xs text-blue hover:underline"
+              >
+                Copiar todo
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-faint">
+              Todo lo que tu game server necesita, junto. Pegalo en el archivo{" "}
+              <code>.env</code> de tu servidor. La API key solo se ve al crearla
+              (abajo, en{" "}
+              <a href="#api-keys" className="text-blue hover:underline">
+                Claves de API
+              </a>
+              ); el resto lo podés copiar cuando quieras.
+            </p>
+
+            {games.length > 1 ? (
+              <label className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                Juego para <code>LUNA_NEGRA_GAME_ID</code>:
+                <select
+                  className={cn(inputCls, "max-w-xs")}
+                  value={selectedGameId}
+                  onChange={(e) => setEnvGameId(e.target.value)}
+                >
+                  {games.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <pre className="mt-3 overflow-x-auto rounded-lg bg-black/40 px-3 py-3 font-mono text-xs text-ink">{envText}</pre>
+
+            <ul className="mt-2 space-y-1 text-[11px] leading-relaxed text-faint">
+              <li>
+                <code>LUNA_NEGRA_BASE</code> — URL de la tienda.
+              </li>
+              <li>
+                <code>LUNA_NEGRA_API_KEY</code> — clave secreta de tu servidor
+                (<code>ln_sk_…</code>). Solo en el server, nunca en el navegador.
+              </li>
+              <li>
+                <code>LUNA_NEGRA_WEBHOOK_SECRET</code> — firma HMAC de los
+                webhooks (<code>whsec_…</code>).
+              </li>
+              <li>
+                <code>LUNA_NEGRA_GAME_ID</code> — id del juego que integrás.
+              </li>
+            </ul>
+          </section>
+
           <form
             onSubmit={createGame}
             className="mt-8 space-y-3 rounded-xl border border-line bg-panel p-5"
@@ -537,7 +619,7 @@ export default function ProviderPage() {
             )}
           </section>
 
-          <section className="mt-8">
+          <section id="api-keys" className="mt-8 scroll-mt-20">
             <h2 className="mb-1 font-semibold">Claves de API</h2>
             <p className="mb-3 text-xs text-faint">
               Para que tu game server cree apuestas (Bearer). Ver{" "}

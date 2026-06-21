@@ -1,5 +1,6 @@
 import { verifyEntitlement } from "@/lib/auth";
 import { readLeaderboard } from "@/lib/leaderboard";
+import { recordIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Leer un marcador. Auth: Authorization: Bearer <entitlement> (lnToken del juego).
@@ -27,5 +28,6 @@ export async function GET(
   const npub = url.searchParams.get("npub")?.trim() || null;
 
   const { entries } = await readLeaderboard(ent.gameId, name, { window, view, npub });
+  void recordIntegration("leaderboards", { gameId: ent.gameId });
   return apiOk({ entries }, { "Cache-Control": "no-store" });
 }

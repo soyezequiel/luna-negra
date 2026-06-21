@@ -1,5 +1,6 @@
 import { verifyInvite } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Introspección del invite token de sala multijugador.
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
     select: { displayName: true, avatarUrl: true },
   });
 
+  void recordIntegration("rooms", { gameId: inv.gameId });
   return apiOk({
     valid: true,
     npub: inv.npub,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { verifyApiKey } from "@/lib/api-keys";
+import { recordIntegration } from "@/lib/integration-telemetry";
 import {
   validateCreateBet,
   buildContractText,
@@ -150,6 +151,8 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     feePct: BET_FEE_PCT,
     feeMinMsat: BET_FEE_MIN_MSAT,
   });
+
+  void recordIntegration("bets", { providerId, gameId: game.id });
 
   return {
     status: 201,

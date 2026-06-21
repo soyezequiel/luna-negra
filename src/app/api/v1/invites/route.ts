@@ -1,6 +1,7 @@
 import { verifyApiKey } from "@/lib/api-keys";
 import { prisma } from "@/lib/prisma";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
+import { recordIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { siteUrl } from "@/lib/site-url";
@@ -78,6 +79,7 @@ export async function GET(req: Request) {
   const npub = npubOf(pubkey);
   await recordGameLaunchListener({ providerId, npub });
   const request = await consumeGameLaunchRequest({ providerId, npub });
+  void recordIntegration("social", { providerId });
   return apiOk({ request });
 }
 
@@ -164,5 +166,6 @@ export async function POST(req: Request) {
         gameId: typeof body.gameId === "string" ? body.gameId.trim() : "",
       })
     : false;
+  void recordIntegration("social", { providerId });
   return apiOk({ delivered: !!known, launchQueued });
 }

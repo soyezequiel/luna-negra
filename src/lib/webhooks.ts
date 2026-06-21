@@ -2,6 +2,7 @@ import type { Bet } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { msatToSats } from "@/lib/money";
+import { recordIntegration } from "@/lib/integration-telemetry";
 
 // Webhooks salientes: notifican al proveedor (compra, apuesta, payout).
 // Firmados con HMAC-SHA256 usando el secreto del proveedor. Entrega vía QStash
@@ -134,6 +135,10 @@ async function deliver(
       // Sin QStash (dev): entrega directa best-effort.
       await fetch(provider.webhookUrl, { method: "POST", headers, body });
     }
+    // La entrega se cursó (directo o encolado en QStash): el proveedor tiene el
+    // webhook cableado. Best-effort, no usamos after() porque deliver() también
+    // corre desde el cron de escrow (fuera de un request).
+    void recordIntegration("webhooks", { providerId });
   } catch {
     /* best-effort: un webhook fallido no rompe el flujo principal */
   }
