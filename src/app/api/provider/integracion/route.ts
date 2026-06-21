@@ -37,7 +37,10 @@ export async function GET() {
     {
       id: provider.id,
       name: provider.name,
-      webhookConfigured: !!provider.webhookUrl,
+      // Exigimos URL Y secreto: deliver() (lib/webhooks) early-returns sin el
+      // secreto, así que una URL sin secreto NO entrega nada — "Configurado" sería
+      // engañoso.
+      webhookConfigured: !!provider.webhookUrl && !!provider.webhookSecret,
       apiKeys,
     },
     games,

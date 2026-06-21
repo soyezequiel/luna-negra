@@ -22,6 +22,7 @@ export async function GET() {
       id: true,
       name: true,
       webhookUrl: true,
+      webhookSecret: true,
       _count: { select: { apiKeys: { where: { revokedAt: null } } } },
       games: {
         orderBy: { createdAt: "desc" },
@@ -40,7 +41,7 @@ export async function GET() {
         {
           id: p.id,
           name: p.name,
-          webhookConfigured: !!p.webhookUrl,
+          webhookConfigured: !!p.webhookUrl && !!p.webhookSecret,
           apiKeys: p._count.apiKeys,
         },
         p.games,

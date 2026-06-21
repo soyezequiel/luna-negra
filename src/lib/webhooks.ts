@@ -2,7 +2,7 @@ import type { Bet } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { msatToSats } from "@/lib/money";
-import { trackIntegration } from "@/lib/integration-telemetry";
+import { recordIntegration } from "@/lib/integration-telemetry";
 
 // Webhooks salientes: notifican al proveedor (compra, apuesta, payout).
 // Firmados con HMAC-SHA256 usando el secreto del proveedor. Entrega vía QStash
@@ -136,9 +136,13 @@ async function deliver(
       await fetch(provider.webhookUrl, { method: "POST", headers, body });
     }
     // La entrega se cursó (directo o encolado en QStash): el proveedor tiene el
-    // webhook cableado. trackIntegration agenda con after() en un request y cae a
-    // void cuando deliver() corre desde el cron de escrow (fuera de un request).
-    trackIntegration("webhooks", { providerId });
+    // webhook cableado. Registramos la telemetría DIRECTO (await), no vía
+    // trackIntegration: deliver() nunca corre en un request plano — o está dentro
+    // de un after() (settle) o del cron (tick). En ambos, el after()-first de
+    // trackIntegration es poco fiable (cae al void que dejaba el ping sin escribir
+    // → el panel quedaba "Nunca recibido" pese a entregarse). Awaitear acá mantiene
+    // viva la invocación hasta que el INSERT termina.
+    await recordIntegration("webhooks", { providerId });
   } catch {
     /* best-effort: un webhook fallido no rompe el flujo principal */
   }
