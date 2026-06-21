@@ -515,7 +515,7 @@ export function EditableMedia({
             <div className="mt-1 flex items-center gap-3">
               {cover ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={cover} alt="" className="h-16 w-12 rounded object-cover" />
+                <img src={cover} alt="" referrerPolicy="no-referrer" className="h-16 w-12 rounded object-cover" />
               ) : null}
               <input
                 className={inputCls}
@@ -537,7 +537,7 @@ export function EditableMedia({
               {horizontal ? (
                 <div className="relative aspect-video w-full max-w-sm overflow-hidden rounded border border-ln-border">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={horizontal} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                  <img src={horizontal} alt="" referrerPolicy="no-referrer" className="absolute inset-0 h-full w-full object-cover" />
                 </div>
               ) : null}
               <input
@@ -561,7 +561,7 @@ export function EditableMedia({
                 {shots.map((src, i) => (
                   <div key={src} className="relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt="" className="h-16 w-16 rounded object-cover" />
+                    <img src={src} alt="" referrerPolicy="no-referrer" className="h-16 w-16 rounded object-cover" />
                     <button
                       type="button"
                       onClick={() => setShots((prev) => prev.filter((_, j) => j !== i))}

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { ownedGame } from "@/lib/provider";
 import { normalizeCategories } from "@/lib/categories";
 import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
+import { normalizeImageUrl } from "@/lib/game-media";
 
 export async function PATCH(
   req: Request,
@@ -32,12 +33,14 @@ export async function PATCH(
   if (typeof body.gameUrl === "string")
     data.gameUrl = body.gameUrl.trim() || null;
   if (typeof body.coverUrl === "string")
-    data.coverUrl = body.coverUrl.trim() || null;
+    data.coverUrl = normalizeImageUrl(body.coverUrl) || null;
   if (typeof body.horizontalCoverUrl === "string")
-    data.horizontalCoverUrl = body.horizontalCoverUrl.trim() || null;
+    data.horizontalCoverUrl = normalizeImageUrl(body.horizontalCoverUrl) || null;
   if (Array.isArray(body.screenshots))
     data.screenshots = JSON.stringify(
-      body.screenshots.filter((s: unknown) => typeof s === "string"),
+      body.screenshots
+        .filter((s: unknown) => typeof s === "string")
+        .map((s: string) => normalizeImageUrl(s)),
     );
 
   const game = await prisma.game.update({ where: { id }, data });

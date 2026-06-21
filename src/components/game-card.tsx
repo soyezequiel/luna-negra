@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
+import { normalizeImageUrl } from "@/lib/game-media";
 
 export type GameCardData = {
   slug: string;
@@ -25,8 +26,9 @@ export function GameCard({ game }: { game: GameCardData }) {
         {game.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={game.coverUrl}
+            src={normalizeImageUrl(game.coverUrl)}
             alt={game.title}
+            referrerPolicy="no-referrer"
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (

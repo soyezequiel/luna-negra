@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { uniqueGameSlug } from "@/lib/slug";
 import { normalizeCategories } from "@/lib/categories";
 import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
+import { normalizeImageUrl } from "@/lib/game-media";
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -42,17 +43,18 @@ export async function POST(req: Request) {
           ? body.gameUrl.trim()
           : null,
       coverUrl:
-        typeof body.coverUrl === "string" && body.coverUrl.trim()
-          ? body.coverUrl.trim()
+        typeof body.coverUrl === "string"
+          ? normalizeImageUrl(body.coverUrl) || null
           : null,
       horizontalCoverUrl:
-        typeof body.horizontalCoverUrl === "string" &&
-        body.horizontalCoverUrl.trim()
-          ? body.horizontalCoverUrl.trim()
+        typeof body.horizontalCoverUrl === "string"
+          ? normalizeImageUrl(body.horizontalCoverUrl) || null
           : null,
       screenshots: Array.isArray(body.screenshots)
         ? JSON.stringify(
-            body.screenshots.filter((s: unknown) => typeof s === "string"),
+            body.screenshots
+              .filter((s: unknown) => typeof s === "string")
+              .map((s: string) => normalizeImageUrl(s)),
           )
         : "[]",
       status: "draft",

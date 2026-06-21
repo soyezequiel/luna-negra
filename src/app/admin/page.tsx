@@ -167,6 +167,7 @@ function ReviewDetail({ g }: { g: ReviewGame }) {
               <img
                 src={g.coverUrl}
                 alt="Portada vertical"
+                referrerPolicy="no-referrer"
                 className="h-32 w-auto rounded border border-line object-cover"
               />
             ) : null}
@@ -175,6 +176,7 @@ function ReviewDetail({ g }: { g: ReviewGame }) {
               <img
                 src={g.horizontalCoverUrl}
                 alt="Portada horizontal"
+                referrerPolicy="no-referrer"
                 className="h-32 w-auto rounded border border-line object-cover"
               />
             ) : null}
@@ -184,6 +186,7 @@ function ReviewDetail({ g }: { g: ReviewGame }) {
                 key={i}
                 src={url}
                 alt={`Captura ${i + 1}`}
+                referrerPolicy="no-referrer"
                 className="h-32 w-auto rounded border border-line object-cover"
               />
             ))}

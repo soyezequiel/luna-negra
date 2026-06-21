@@ -38,6 +38,7 @@ export function GameMediaGallery({ title, hue, media }: GameMediaGalleryProps) {
           <img
             src={active.src}
             alt={label}
+            referrerPolicy="no-referrer"
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
@@ -89,6 +90,7 @@ export function GameMediaGallery({ title, hue, media }: GameMediaGalleryProps) {
               <img
                 src={item.src}
                 alt=""
+                referrerPolicy="no-referrer"
                 className="absolute inset-0 h-full w-full object-cover"
               />
             </button>

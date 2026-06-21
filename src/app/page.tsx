@@ -6,6 +6,7 @@ import { GameCard } from "@/components/game-card";
 import { SocialRail } from "@/components/social-rail";
 import { CATEGORIES, normalizeCategory, categoryLabel } from "@/lib/categories";
 import { hueFromSlug, priceLabel } from "@/lib/format";
+import { normalizeImageUrl } from "@/lib/game-media";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -84,8 +85,9 @@ export default async function StorePage({
           {hero.horizontalCoverUrl || hero.coverUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={hero.horizontalCoverUrl ?? hero.coverUrl ?? ""}
+              src={normalizeImageUrl(hero.horizontalCoverUrl ?? hero.coverUrl ?? "")}
               alt=""
+              referrerPolicy="no-referrer"
               className="absolute inset-0 h-full w-full object-cover"
             />
           ) : null}

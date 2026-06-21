@@ -7,6 +7,7 @@ import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { PlayButton } from "@/components/play-button";
 import { hueFromSlug } from "@/lib/format";
+import { normalizeImageUrl } from "@/lib/game-media";
 
 type LibraryGame = {
   id: string;
@@ -31,8 +32,9 @@ function Cover({
       {game.coverUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={game.coverUrl}
+          src={normalizeImageUrl(game.coverUrl)}
           alt={game.title}
+          referrerPolicy="no-referrer"
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (

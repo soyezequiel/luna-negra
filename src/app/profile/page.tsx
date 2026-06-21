@@ -10,6 +10,7 @@ import { useFriends } from "@/hooks/use-friends";
 import { fetchProfile, profileName, type NostrProfile } from "@/lib/nostr";
 import { Button } from "@/components/ui/button";
 import { satsLabel, hueFromSlug } from "@/lib/format";
+import { normalizeImageUrl } from "@/lib/game-media";
 import { ACTIVE_BET_STATUSES } from "@/lib/bet-ui";
 import { NostrPermsSection } from "@/components/nostr-perms-section";
 
@@ -289,8 +290,9 @@ export default function ProfilePage() {
                       {g.coverUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={g.coverUrl}
+                          src={normalizeImageUrl(g.coverUrl)}
                           alt={g.title}
+                          referrerPolicy="no-referrer"
                           className="absolute inset-0 h-full w-full object-cover"
                         />
                       ) : (

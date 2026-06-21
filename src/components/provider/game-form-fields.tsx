@@ -145,6 +145,7 @@ export function GameFormFields({
             <img
               src={form.coverUrl}
               alt=""
+              referrerPolicy="no-referrer"
               className="h-16 w-12 rounded object-cover"
             />
           ) : null}
@@ -184,6 +185,7 @@ export function GameFormFields({
               <img
                 src={form.horizontalCoverUrl}
                 alt=""
+                referrerPolicy="no-referrer"
                 className="absolute inset-0 h-full w-full object-cover"
               />
             </div>
@@ -229,6 +231,7 @@ export function GameFormFields({
                 <img
                   src={src}
                   alt=""
+                  referrerPolicy="no-referrer"
                   className="h-16 w-16 rounded object-cover"
                 />
                 <button
