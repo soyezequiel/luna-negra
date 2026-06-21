@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { categoryLabel } from "@/lib/categories";
 import {
   IntegrationMatrix,
   type IntegrationView,
@@ -15,6 +16,18 @@ type Row = {
   slug: string;
   priceSats: number;
   provider: { name: string };
+};
+// Juego en revisión: la API ya devuelve el objeto Game completo. Lo tipamos
+// entero para poder mostrar todos los datos antes de aprobar/rechazar.
+type ReviewGame = Row & {
+  description: string;
+  categories: string[];
+  revenueShare: number;
+  gameUrl: string | null;
+  coverUrl: string | null;
+  horizontalCoverUrl: string | null;
+  screenshots: string; // JSON array de URLs
+  createdAt: string;
 };
 type CatalogRow = Row & { owners: number };
 type Payout = {
@@ -40,6 +53,15 @@ const PAYOUT_LABEL: Record<string, string> = {
   failed: "Falló",
   skipped: "Sin dirección",
 };
+
+function parseShots(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 const BET_STATUS: Record<string, string> = {
   pending_deposits: "Esperando depósitos",
@@ -77,9 +99,105 @@ function Kpi({
   );
 }
 
+function ReviewDetail({ g }: { g: ReviewGame }) {
+  const shots = parseShots(g.screenshots);
+  return (
+    <div className="mt-3 space-y-4 border-t border-line pt-3 text-xs">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+        <div>
+          <dt className="text-faint">Precio</dt>
+          <dd className="text-ink">
+            {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-faint">Revenue share</dt>
+          <dd className="text-ink">{g.revenueShare}% al proveedor</dd>
+        </div>
+        <div>
+          <dt className="text-faint">Slug</dt>
+          <dd className="font-mono text-ink">{g.slug}</dd>
+        </div>
+        <div>
+          <dt className="text-faint">Categorías</dt>
+          <dd className="text-ink">
+            {g.categories.length
+              ? g.categories.map(categoryLabel).join(", ")
+              : "Sin categoría"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-faint">Creado</dt>
+          <dd className="text-ink">
+            {new Date(g.createdAt).toLocaleString("es-AR")}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-faint">URL del juego</dt>
+          <dd className="truncate text-ink">
+            {g.gameUrl ? (
+              <a
+                href={g.gameUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue underline"
+              >
+                {g.gameUrl}
+              </a>
+            ) : (
+              "—"
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      <div>
+        <p className="text-faint">Descripción</p>
+        <p className="mt-1 whitespace-pre-wrap text-ink">
+          {g.description?.trim() ? g.description : "—"}
+        </p>
+      </div>
+
+      {(g.coverUrl || g.horizontalCoverUrl || shots.length > 0) && (
+        <div className="space-y-2">
+          <p className="text-faint">Imágenes</p>
+          <div className="flex flex-wrap gap-2">
+            {g.coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={g.coverUrl}
+                alt="Portada vertical"
+                className="h-32 w-auto rounded border border-line object-cover"
+              />
+            ) : null}
+            {g.horizontalCoverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={g.horizontalCoverUrl}
+                alt="Portada horizontal"
+                className="h-32 w-auto rounded border border-line object-cover"
+              />
+            ) : null}
+            {shots.map((url, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={url}
+                alt={`Captura ${i + 1}`}
+                className="h-32 w-auto rounded border border-line object-cover"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, login, loading } = useSession();
-  const [games, setGames] = useState<Row[] | null>(null);
+  const [games, setGames] = useState<ReviewGame[] | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [unannounced, setUnannounced] = useState<Row[]>([]);
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
@@ -249,26 +367,42 @@ export default function AdminPage() {
           <p className="text-muted">No hay juegos en revisión.</p>
         ) : (
           <ul className="space-y-2">
-            {games.map((g) => (
-              <li
-                key={g.id}
-                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{g.title}</p>
-                  <p className="text-xs text-faint">
-                    {g.provider.name} ·{" "}
-                    {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => approve(g.id)}>Aprobar</Button>
-                  <Button variant="ghost" onClick={() => reject(g.id)}>
-                    Rechazar
-                  </Button>
-                </div>
-              </li>
-            ))}
+            {games.map((g) => {
+              const open = expanded === g.id;
+              return (
+                <li
+                  key={g.id}
+                  className="rounded-lg border border-line bg-panel px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(open ? null : g.id)}
+                      className="min-w-0 flex-1 text-left"
+                      aria-expanded={open}
+                    >
+                      <p className="text-sm font-medium">
+                        <span className="mr-1.5 inline-block text-faint">
+                          {open ? "▾" : "▸"}
+                        </span>
+                        {g.title}
+                      </p>
+                      <p className="text-xs text-faint">
+                        {g.provider.name} ·{" "}
+                        {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
+                      </p>
+                    </button>
+                    <div className="flex shrink-0 gap-2">
+                      <Button onClick={() => approve(g.id)}>Aprobar</Button>
+                      <Button variant="ghost" onClick={() => reject(g.id)}>
+                        Rechazar
+                      </Button>
+                    </div>
+                  </div>
+                  {open ? <ReviewDetail g={g} /> : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
