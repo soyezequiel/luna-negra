@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { verifyEntitlement } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheProfile } from "@/lib/profile-cache";
-import { recordIntegration } from "@/lib/integration-telemetry";
+import { trackIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Login SSO: el juego se abre desde Luna Negra con `?lnToken=<token>` (que es el
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   if (user && (!user.displayName || !user.avatarUrl)) {
     after(() => cacheProfile(ent.pubkey).then(() => undefined));
   }
-  void recordIntegration("sso", { gameId: ent.gameId });
+  trackIntegration("sso", { gameId: ent.gameId });
 
   return apiOk({
     npub: ent.npub,

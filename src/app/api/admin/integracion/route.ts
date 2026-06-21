@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import {
-  readProviderPings,
+  readIntegrationEvidence,
   buildIntegrationView,
   type IntegrationView,
 } from "@/lib/integration-telemetry";
@@ -32,7 +32,10 @@ export async function GET() {
 
   const views: IntegrationView[] = await Promise.all(
     providers.map(async (p) => {
-      const byGame = await readProviderPings(p.id);
+      const byGame = await readIntegrationEvidence(
+        p.id,
+        p.games.map((g) => g.id),
+      );
       return buildIntegrationView(
         {
           id: p.id,

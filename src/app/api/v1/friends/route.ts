@@ -1,7 +1,7 @@
 import { verifyApiKey } from "@/lib/api-keys";
 import { pubkeyFromNpub, profileName, searchProfiles } from "@/lib/nostr-social";
 import { listFriends, type FriendEntry } from "@/lib/social";
-import { recordIntegration } from "@/lib/integration-telemetry";
+import { trackIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 // Lista de amigos (contactos NIP-02) del jugador, con su presencia en ESTE juego.
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
   const q = url.searchParams.get("q")?.trim() ?? "";
 
   const friends = await listFriends(pubkey, providerId, withPresence);
-  void recordIntegration("social", { providerId });
+  trackIntegration("social", { providerId });
 
   if (!q) return apiOk({ friends });
 

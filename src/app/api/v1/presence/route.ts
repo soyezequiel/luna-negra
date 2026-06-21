@@ -1,7 +1,7 @@
 import { verifyApiKey } from "@/lib/api-keys";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { recordPresence } from "@/lib/social";
-import { recordIntegration } from "@/lib/integration-telemetry";
+import { trackIntegration } from "@/lib/integration-telemetry";
 import { npubHasProviderEntitlement } from "@/lib/provider-entitlement";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
@@ -65,6 +65,6 @@ export async function POST(req: Request) {
   // El npub ya está normalizado desde el pubkey decodificado (defensa contra
   // formato raro).
   await recordPresence(providerId, npub, rawStatus, roomId, state);
-  void recordIntegration("presence", { providerId });
+  trackIntegration("presence", { providerId });
   return apiOk({ ok: true });
 }

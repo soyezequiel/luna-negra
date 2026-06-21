@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { authRoomMember, readRoomState, writeRoomState, type RoomStateView } from "@/lib/room-state";
-import { recordIntegration } from "@/lib/integration-telemetry";
+import { trackIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight, bearerToken, CORS } from "@/lib/api";
 
 // Estado compartido de una sala (tablero común + estado por jugador), para juegos
@@ -24,7 +24,7 @@ export async function GET(
   const { roomId } = await params;
   const auth = await authRoomMember(bearerToken(req), roomId);
   if (!auth.ok) return apiError(auth.code, auth.message, auth.status);
-  void recordIntegration("rooms", { gameId: auth.gameId });
+  trackIntegration("rooms", { gameId: auth.gameId });
 
   const view = await readRoomState(roomId);
   const etag = etagFor(view);
@@ -42,7 +42,7 @@ export async function POST(
   const { roomId } = await params;
   const auth = await authRoomMember(bearerToken(req), roomId);
   if (!auth.ok) return apiError(auth.code, auth.message, auth.status);
-  void recordIntegration("rooms", { gameId: auth.gameId });
+  trackIntegration("rooms", { gameId: auth.gameId });
 
   const body = await req.json().catch(() => ({}));
   const result = await writeRoomState(roomId, auth.npub, {

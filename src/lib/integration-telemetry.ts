@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   INTEGRATION_FEATURES,
@@ -83,6 +84,30 @@ export async function recordIntegration(
   }
 }
 
+/**
+ * Versión "fire-and-schedule" para route handlers: agenda el registro con
+ * `after()` (next/server) para que el runtime serverless mantenga viva la
+ * invocación hasta que la escritura termine. Un `void recordIntegration(...)`
+ * suelto NO es fiable en serverless: cuando el handler devuelve la Response, la
+ * función se puede congelar/matar antes de que la promesa flotante complete su
+ * INSERT — por eso la tabla quedaba vacía aunque el juego sí llamara a los
+ * endpoints. `after()` usa waitUntil por debajo y evita esa pérdida.
+ *
+ * Fuera de un request scope (tests, cron del sender de webhooks) `after()` tira,
+ * así que caemos a `void`: ahí no hay Response que cierre la función, el proceso
+ * sigue vivo y la promesa flotante completa igual. Best-effort en ambos casos.
+ */
+export function trackIntegration(
+  feature: IntegrationFeature,
+  target: Target,
+): void {
+  try {
+    after(() => recordIntegration(feature, target));
+  } catch {
+    void recordIntegration(feature, target);
+  }
+}
+
 export type PingInfo = {
   count: number;
   firstSeenAt: string;
@@ -112,6 +137,219 @@ export async function readProviderPings(
     });
   }
   return byGame;
+}
+
+// ── Evidencia derivada de los datos de dominio ──────────────────────────────
+//
+// La telemetría (IntegrationPing) solo registra tráfico DESDE que se instrumentó.
+// Un juego que ya estaba integrado antes (o cuyas escrituras se perdían por el
+// bug del `void`) aparecía como "No integrado" aunque claramente lo usa. Para
+// reflejar la realidad, derivamos evidencia de las tablas de dominio que solo
+// existen si el juego ejerció la interfaz: compras, marcadores, salas, apuestas,
+// presencia e invitaciones. Se fusiona con la telemetría (lo más reciente gana).
+//
+// §1 SSO no deja rastro persistente (el canje de token es efímero), así que lo
+// inferimos: si el juego tiene marcadores/salas/apuestas, obtuvo la identidad del
+// jugador, y eso solo se consigue por el flujo de sesión/entitlement (§1).
+
+function isoMax(a: string, b: string): string {
+  return a > b ? a : b;
+}
+function isoMin(a: string, b: string): string {
+  return a < b ? a : b;
+}
+
+function mergePing(a: PingInfo | null, b: PingInfo | null): PingInfo | null {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    count: a.count + b.count,
+    firstSeenAt: isoMin(a.firstSeenAt, b.firstSeenAt),
+    lastSeenAt: isoMax(a.lastSeenAt, b.lastSeenAt),
+  };
+}
+
+function addEvidence(
+  byGame: Map<string, Map<string, PingInfo>>,
+  gameId: string,
+  feature: IntegrationFeature,
+  info: PingInfo,
+): void {
+  let m = byGame.get(gameId);
+  if (!m) {
+    m = new Map();
+    byGame.set(gameId, m);
+  }
+  m.set(feature, mergePing(m.get(feature) ?? null, info) as PingInfo);
+}
+
+const iso = (d: Date) => d.toISOString();
+
+async function deriveDomainEvidence(
+  providerId: string,
+  gameIds: string[],
+): Promise<Map<string, Map<string, PingInfo>>> {
+  const byGame = new Map<string, Map<string, PingInfo>>();
+  const inGames = { gameId: { in: gameIds } };
+
+  const [purchases, rooms, bets, leaderboards, presence, invites] =
+    await Promise.all([
+      gameIds.length
+        ? prisma.purchase.groupBy({
+            by: ["gameId"],
+            where: { ...inGames, status: "paid" },
+            _count: { _all: true },
+            _min: { createdAt: true },
+            _max: { createdAt: true },
+          })
+        : [],
+      gameIds.length
+        ? prisma.room.groupBy({
+            by: ["gameId"],
+            where: inGames,
+            _count: { _all: true },
+            _min: { createdAt: true },
+            _max: { createdAt: true },
+          })
+        : [],
+      gameIds.length
+        ? prisma.bet.groupBy({
+            by: ["gameId"],
+            where: inGames,
+            _count: { _all: true },
+            _min: { createdAt: true },
+            _max: { createdAt: true },
+          })
+        : [],
+      gameIds.length
+        ? prisma.leaderboard.findMany({
+            where: inGames,
+            select: {
+              gameId: true,
+              createdAt: true,
+              scores: { select: { createdAt: true, updatedAt: true } },
+            },
+          })
+        : [],
+      // Presencia e invitaciones son a nivel proveedor (gameId="") y efímeras:
+      // su ausencia NO prueba "no integrado", pero su presencia sí prueba uso.
+      prisma.gamePresence.aggregate({
+        where: { providerId },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.gameInvite.aggregate({
+        where: { providerId },
+        _count: { _all: true },
+        _max: { createdAt: true },
+      }),
+    ]);
+
+  for (const p of purchases) {
+    if (!p._max.createdAt || !p._min.createdAt) continue;
+    addEvidence(byGame, p.gameId, "purchase", {
+      count: p._count._all,
+      firstSeenAt: iso(p._min.createdAt),
+      lastSeenAt: iso(p._max.createdAt),
+    });
+  }
+  for (const r of rooms) {
+    if (!r._max.createdAt || !r._min.createdAt) continue;
+    addEvidence(byGame, r.gameId, "rooms", {
+      count: r._count._all,
+      firstSeenAt: iso(r._min.createdAt),
+      lastSeenAt: iso(r._max.createdAt),
+    });
+  }
+  for (const b of bets) {
+    if (!b._max.createdAt || !b._min.createdAt) continue;
+    addEvidence(byGame, b.gameId, "bets", {
+      count: b._count._all,
+      firstSeenAt: iso(b._min.createdAt),
+      lastSeenAt: iso(b._max.createdAt),
+    });
+  }
+  for (const lb of leaderboards) {
+    // El marcador existe = el juego golpeó el endpoint §6 al menos una vez.
+    let info: PingInfo = {
+      count: 1,
+      firstSeenAt: iso(lb.createdAt),
+      lastSeenAt: iso(lb.createdAt),
+    };
+    for (const s of lb.scores) {
+      info = mergePing(info, {
+        count: 1,
+        firstSeenAt: iso(s.createdAt),
+        lastSeenAt: iso(s.updatedAt),
+      }) as PingInfo;
+    }
+    addEvidence(byGame, lb.gameId, "leaderboards", info);
+  }
+  if (presence._count._all > 0 && presence._max.updatedAt) {
+    addEvidence(byGame, "", "presence", {
+      count: presence._count._all,
+      firstSeenAt: iso(presence._max.updatedAt),
+      lastSeenAt: iso(presence._max.updatedAt),
+    });
+  }
+  if (invites._count._all > 0 && invites._max.createdAt) {
+    addEvidence(byGame, "", "social", {
+      count: invites._count._all,
+      firstSeenAt: iso(invites._max.createdAt),
+      lastSeenAt: iso(invites._max.createdAt),
+    });
+  }
+
+  // §1 SSO inferido: si el juego registró actividad con identidad de jugador
+  // (marcadores/salas/apuestas), pasó por el canje de sesión/entitlement.
+  for (const [gameId, m] of byGame) {
+    if (gameId === "") continue;
+    let sso: PingInfo | null = null;
+    for (const f of ["leaderboards", "rooms", "bets"] as const) {
+      sso = mergePing(sso, m.get(f) ?? null);
+    }
+    if (sso) m.set("sso", mergePing(m.get("sso") ?? null, sso) as PingInfo);
+  }
+
+  return byGame;
+}
+
+/** Une dos índices (telemetría + dominio) en uno, fusionando por feature. */
+function mergeByGame(
+  a: Map<string, Map<string, PingInfo>>,
+  b: Map<string, Map<string, PingInfo>>,
+): Map<string, Map<string, PingInfo>> {
+  const out = new Map<string, Map<string, PingInfo>>();
+  for (const src of [a, b]) {
+    for (const [gameId, feats] of src) {
+      let m = out.get(gameId);
+      if (!m) {
+        m = new Map();
+        out.set(gameId, m);
+      }
+      for (const [feature, info] of feats) {
+        m.set(feature, mergePing(m.get(feature) ?? null, info) as PingInfo);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Lectura completa de evidencia de integración de un proveedor: telemetría
+ * observada (IntegrationPing) FUSIONADA con la evidencia derivada de los datos de
+ * dominio. Es lo que deben usar las rutas de lectura (proveedor + admin) para no
+ * mostrar falsos "No integrado".
+ */
+export async function readIntegrationEvidence(
+  providerId: string,
+  gameIds: string[],
+): Promise<Map<string, Map<string, PingInfo>>> {
+  const [pings, domain] = await Promise.all([
+    readProviderPings(providerId),
+    deriveDomainEvidence(providerId, gameIds),
+  ]);
+  return mergeByGame(pings, domain);
 }
 
 export type GameRef = { id: string; title: string; slug: string; status: string };

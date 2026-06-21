@@ -1,5 +1,5 @@
 import { verifyEntitlement } from "@/lib/auth";
-import { recordIntegration } from "@/lib/integration-telemetry";
+import { trackIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Introspección del token de acceso (entitlement) emitido por Luna Negra.
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     // Token bien formado pero inválido/expirado → respuesta de introspección.
     return apiOk({ valid: false });
   }
-  void recordIntegration("purchase", { gameId: ent.gameId });
+  trackIntegration("purchase", { gameId: ent.gameId });
   return apiOk({
     valid: true,
     npub: ent.npub,

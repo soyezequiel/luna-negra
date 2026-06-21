@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
-  readProviderPings,
+  readIntegrationEvidence,
   buildIntegrationView,
 } from "@/lib/integration-telemetry";
 
@@ -20,13 +20,16 @@ export async function GET() {
     return NextResponse.json({ view: null });
   }
 
-  const [games, byGame, apiKeys] = await Promise.all([
-    prisma.game.findMany({
-      where: { providerId: provider.id },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, slug: true, status: true },
-    }),
-    readProviderPings(provider.id),
+  const games = await prisma.game.findMany({
+    where: { providerId: provider.id },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, title: true, slug: true, status: true },
+  });
+  const [byGame, apiKeys] = await Promise.all([
+    readIntegrationEvidence(
+      provider.id,
+      games.map((g) => g.id),
+    ),
     prisma.apiKey.count({ where: { providerId: provider.id, revokedAt: null } }),
   ]);
 

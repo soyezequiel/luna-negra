@@ -1,6 +1,6 @@
 import { verifyEntitlement } from "@/lib/auth";
 import { submitScore } from "@/lib/leaderboard";
-import { recordIntegration } from "@/lib/integration-telemetry";
+import { trackIntegration } from "@/lib/integration-telemetry";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Subir un puntaje al marcador. Auth: Authorization: Bearer <entitlement>.
@@ -28,7 +28,7 @@ export async function POST(
   if (!result.ok) {
     return apiError(result.code, result.message, result.status);
   }
-  void recordIntegration("leaderboards", { gameId: ent.gameId });
+  trackIntegration("leaderboards", { gameId: ent.gameId });
   return apiOk(
     { score: result.score, rank: result.rank, improved: result.improved },
     { "Cache-Control": "no-store" },
