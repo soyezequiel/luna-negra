@@ -64,5 +64,44 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
 
+  # Backups automáticos del Postgres (la laptop es la única copia de los datos).
+  # Hace pg_dump comprimido a ./backups cada BACKUP_INTERVAL_HOURS y conserva las
+  # BACKUP_KEEP más nuevas. 💡 Copiá ./backups a otro disco/nube periódicamente:
+  # si se muere este disco, esto NO te salva por sí solo.
+  backup:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.docker
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-luna}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-luna}
+      PGDATABASE: ${POSTGRES_DB:-luna}
+    volumes:
+      - ./backups:/backups
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        INTERVAL_HOURS="$${BACKUP_INTERVAL_HOURS:-6}"
+        KEEP="$${BACKUP_KEEP:-28}"
+        echo "Backups cada $${INTERVAL_HOURS}h, conservando $${KEEP} copias en /backups."
+        while true; do
+          ts=$$(date +%Y%m%d_%H%M%S)
+          f="/backups/luna_$${ts}.sql.gz"
+          echo "→ $$(date) backup $${f}"
+          if pg_dump --no-owner --no-privileges | gzip > "$${f}"; then
+            echo "  OK ($$(du -h "$${f}" | cut -f1))"
+          else
+            echo "  ✗ falló"; rm -f "$${f}"
+          fi
+          ls -1t /backups/luna_*.sql.gz 2>/dev/null | tail -n +$$((KEEP + 1)) | while read -r old; do rm -f "$$old"; done
+          sleep $$((INTERVAL_HOURS * 3600))
+        done
+
 volumes:
   pgdata:

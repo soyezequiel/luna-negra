@@ -35,6 +35,10 @@ yarn-error.log*
 !.env.example
 !.env.docker.example
 
+# backups del Postgres del self-host (no versionar dumps)
+/backups/*
+!/backups/.gitkeep
+
 # prisma (sqlite local dev db)
 /prisma/*.db
 /prisma/*.db-journal
