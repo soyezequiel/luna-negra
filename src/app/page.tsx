@@ -7,6 +7,7 @@ import { SocialRail } from "@/components/social-rail";
 import { CATEGORIES, normalizeCategory, categoryLabel } from "@/lib/categories";
 import { hueFromSlug, priceLabel } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
+import { scoreGamesByIntegration } from "@/lib/integration-telemetry";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -29,15 +30,22 @@ export default async function StorePage({
     ...(cat ? { categories: { has: cat } } : {}),
   };
 
-  const [games, total] = await Promise.all([
-    prisma.game.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-    }),
-    prisma.game.count({ where }),
-  ]);
+  // Traemos todos los juegos que matchean (no solo la página) porque el orden por
+  // integración no es una columna: se calcula combinando telemetría + dominio. El
+  // catálogo del MVP es chico, así que rankear y paginar en memoria es aceptable.
+  const allGames = await prisma.game.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+  });
+  const total = allGames.length;
+
+  // Prioridad: más interfaces de Luna Negra integradas → más arriba. Empate por
+  // más reciente (el orderBy de arriba ya deja los nuevos primero, sort estable).
+  const scores = await scoreGamesByIntegration(allGames);
+  const ranked = [...allGames].sort(
+    (a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0),
+  );
+  const games = ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -206,6 +214,7 @@ export default async function StorePage({
                     coverUrl: g.coverUrl,
                     priceSats: g.priceSats,
                     categories: g.categories,
+                    integration: scores.get(g.id) ?? 0,
                   }}
                 />
               ))}

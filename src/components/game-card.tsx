@@ -11,6 +11,8 @@ export type GameCardData = {
   priceSats: number;
   categories?: string[];
   multiplayer?: boolean;
+  // Número de interfaces de Luna Negra (§1–§8) integradas; >0 muestra el sello.
+  integration?: number;
 };
 
 export function GameCard({ game }: { game: GameCardData }) {
@@ -46,6 +48,13 @@ export function GameCard({ game }: { game: GameCardData }) {
         {game.multiplayer ? (
           <span className="absolute right-2 top-2 rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
             ⚇ Multi
+          </span>
+        ) : game.integration && game.integration > 0 ? (
+          <span
+            className="absolute right-2 top-2 rounded-full bg-ln-luna/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-luna backdrop-blur-sm"
+            title={`Integrado con Luna Negra · ${game.integration}/8 interfaces`}
+          >
+            ✦ Integrado
           </span>
         ) : null}
 

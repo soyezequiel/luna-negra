@@ -352,6 +352,108 @@ export async function readIntegrationEvidence(
   return mergeByGame(pings, domain);
 }
 
+export type StoreGameRef = { id: string; providerId: string };
+
+/**
+ * Puntaje de integración por juego, para ordenar la tienda ("mientras más
+ * integración, más arriba"). Es el número de interfaces distintas (§1–§8) que el
+ * juego tiene cableadas, combinando telemetría observada (IntegrationPing) con la
+ * evidencia derivada del dominio (compras, salas, apuestas, marcadores), igual que
+ * el panel de integración. Las features a nivel proveedor (presencia, social,
+ * webhooks) cuentan para TODOS los juegos de ese proveedor.
+ *
+ * A diferencia de readIntegrationEvidence (por proveedor), esto hace un número
+ * fijo de consultas agregadas sobre TODOS los juegos a la vez, así no escala con
+ * la cantidad de proveedores aunque se llame en cada render de la portada.
+ * Devuelve un Map gameId→score (0–8); los juegos sin evidencia quedan en 0.
+ */
+export async function scoreGamesByIntegration(
+  games: StoreGameRef[],
+): Promise<Map<string, number>> {
+  const score = new Map<string, number>();
+  for (const g of games) score.set(g.id, 0);
+  if (games.length === 0) return score;
+
+  const gameIds = games.map((g) => g.id);
+  const providerIds = [...new Set(games.map((g) => g.providerId))];
+
+  // Features distintas atribuidas a un juego, y a un proveedor (aplican a todos
+  // sus juegos). Se usan Sets para contar interfaces únicas, no llamadas.
+  const gameFeatures = new Map<string, Set<string>>();
+  const providerFeatures = new Map<string, Set<string>>();
+  const addGame = (gameId: string, f: string) => {
+    let s = gameFeatures.get(gameId);
+    if (!s) gameFeatures.set(gameId, (s = new Set()));
+    s.add(f);
+  };
+  const addProvider = (providerId: string, f: string) => {
+    let s = providerFeatures.get(providerId);
+    if (!s) providerFeatures.set(providerId, (s = new Set()));
+    s.add(f);
+  };
+
+  const inGames = { gameId: { in: gameIds } };
+  const inProviders = { providerId: { in: providerIds } };
+  const [
+    gamePings,
+    providerPings,
+    purchases,
+    rooms,
+    bets,
+    leaderboards,
+    presence,
+    invites,
+  ] = await Promise.all([
+    // Telemetría atribuida a un juego (gameId != "") y a un proveedor (gameId = "").
+    prisma.integrationPing.groupBy({ by: ["gameId", "feature"], where: inGames }),
+    prisma.integrationPing.groupBy({
+      by: ["providerId", "feature"],
+      where: { ...inProviders, gameId: "" },
+    }),
+    // Evidencia de dominio: su existencia prueba que se ejerció la interfaz.
+    prisma.purchase.groupBy({
+      by: ["gameId"],
+      where: { ...inGames, status: "paid" },
+      _count: { _all: true },
+    }),
+    prisma.room.groupBy({ by: ["gameId"], where: inGames, _count: { _all: true } }),
+    prisma.bet.groupBy({ by: ["gameId"], where: inGames, _count: { _all: true } }),
+    prisma.leaderboard.findMany({ where: inGames, select: { gameId: true } }),
+    prisma.gamePresence.groupBy({
+      by: ["providerId"],
+      where: inProviders,
+      _count: { _all: true },
+    }),
+    prisma.gameInvite.groupBy({
+      by: ["providerId"],
+      where: inProviders,
+      _count: { _all: true },
+    }),
+  ]);
+
+  for (const p of gamePings) if (p.gameId) addGame(p.gameId, p.feature);
+  for (const p of providerPings) addProvider(p.providerId, p.feature);
+  for (const p of purchases) addGame(p.gameId, "purchase");
+  for (const r of rooms) addGame(r.gameId, "rooms");
+  for (const b of bets) addGame(b.gameId, "bets");
+  for (const lb of leaderboards) addGame(lb.gameId, "leaderboards");
+  for (const pr of presence) addProvider(pr.providerId, "presence");
+  for (const inv of invites) addProvider(inv.providerId, "social");
+
+  // §1 SSO inferido: actividad con identidad de jugador (marcadores/salas/
+  // apuestas) solo se consigue tras canjear la sesión/entitlement (§1).
+  for (const s of gameFeatures.values()) {
+    if (s.has("leaderboards") || s.has("rooms") || s.has("bets")) s.add("sso");
+  }
+
+  for (const g of games) {
+    const all = new Set<string>(gameFeatures.get(g.id));
+    for (const f of providerFeatures.get(g.providerId) ?? []) all.add(f);
+    score.set(g.id, all.size);
+  }
+  return score;
+}
+
 export type GameRef = { id: string; title: string; slug: string; status: string };
 
 export type IntegrationView = {
