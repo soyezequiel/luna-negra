@@ -27,9 +27,10 @@ services:
       timeout: 5s
       retries: 12
     # Exponé la DB a tu host solo si querés conectarte con Prisma Studio/pgAdmin.
+    # Se publica en 5433 (no 5432) para no chocar con un Postgres local.
     # Comentá esta sección si no lo necesitás.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
 
   app:
     build:

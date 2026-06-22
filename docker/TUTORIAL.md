@@ -90,8 +90,34 @@ Elegí uno:
 
 ### Camino A — Túnel con tu dominio (recomendado, URL estable)
 
-Necesitás una cuenta de Cloudflare con un **dominio agregado** (el plan gratis
-sirve).
+Necesitás una cuenta de Cloudflare con un **dominio agregado**. Si **no tenés
+dominio**, primero hacé el Paso 3.0; si ya tenés uno en Cloudflare, saltá al 3.1.
+
+#### Paso 3.0 — Conseguir un dominio barato y conectarlo a Cloudflare
+
+Un dominio cuesta poco (≈ 1–10 USD/año) y te da una URL estable y limpia para
+siempre. Es lo que falta para no depender de URLs que cambian.
+
+1. **Comprá el dominio** en un registrador barato:
+   - [Porkbun](https://porkbun.com) o [Namecheap](https://www.namecheap.com).
+   - TLDs baratos: `.xyz`, `.click`, `.site`, `.online` suelen estar ~1–3 USD el
+     primer año.
+   - 💡 Mirá el **precio de renovación**, no solo el del primer año (a veces el
+     año 1 es regalado y después sube).
+2. **Agregá el dominio a Cloudflare** (gratis):
+   1. Entrá a **[dash.cloudflare.com](https://dash.cloudflare.com)** → **Add a
+      domain** (o "Add a site").
+   2. Escribí tu dominio → elegí el plan **Free** → **Continue**.
+   3. Cloudflare te muestra **2 nameservers** (algo como `xxx.ns.cloudflare.com`).
+      Copialos.
+   4. Volvé al registrador (Porkbun/Namecheap) → en la config del dominio,
+      buscá **Nameservers** y reemplazá los que están por los **2 de Cloudflare**.
+   5. Guardá. La propagación tarda de minutos a unas horas; Cloudflare te avisa
+      (y te manda un mail) cuando el dominio queda **"Active"**.
+3. Cuando esté **Active**, seguí con el Paso 3.1. (No hace falta crear registros
+   DNS a mano: el túnel los crea solo al agregar el Public Hostname.)
+
+#### Paso 3.1 — Crear el túnel
 
 1. Entrá a **[Cloudflare Zero Trust](https://one.dash.cloudflare.com/)**.
 2. Menú izquierdo: **Networks → Tunnels** → botón **Create a tunnel**.
@@ -223,11 +249,12 @@ docker compose --env-file .env.docker up -d --build
 
 ### Ver/editar la base de datos
 
-La DB está publicada solo en tu máquina (`127.0.0.1:5432`). Con Prisma Studio:
+La DB está publicada solo en tu máquina (`127.0.0.1:5433`, en 5433 para no chocar
+con un Postgres local). Con Prisma Studio:
 
 ```bash
 # Reemplazá <pass> por tu POSTGRES_PASSWORD
-DATABASE_URL="postgresql://luna:<pass>@localhost:5432/luna" npx prisma studio
+DATABASE_URL="postgresql://luna:<pass>@localhost:5433/luna" npx prisma studio
 ```
 
 ---
