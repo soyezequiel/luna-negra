@@ -7,8 +7,18 @@ Guía corta para el día a día. **La laptop Ubuntu es el server**; vos la manej
 - Llave SSH (en la PC): `~/.ssh/luna_laptop`
 - Sitio público: `https://luna.naranja.fit`
 
-> Todos los comandos de abajo se corren **en la PC de escritorio**, en una terminal
-> (Git Bash o PowerShell). El `ssh ...` se mete en la laptop y ejecuta ahí.
+> ## ⚠️ ¿Desde dónde corro esto?
+> **Todos los comandos con `ssh luna` se corren EN LA PC DE ESCRITORIO** (Git Bash o
+> PowerShell). El `ssh` se mete solo en la laptop y ejecuta ahí. La llave privada
+> vive en la PC, **no** en la laptop.
+>
+> 👉 Si ya estás **en la terminal de la laptop**, NO uses `ssh` (te conectarías a vos
+> misma y no vas a tener la llave). Ahí manejás Docker directo:
+> ```bash
+> cd ~/luna-negra && docker compose --env-file .env.docker ps
+> ```
+> Es decir: a los comandos de abajo, sacales el `ssh luna '...'` y corré lo de
+> adentro tal cual, ya parada en `~/luna-negra`.
 
 ---
 
@@ -48,13 +58,23 @@ Tiene que verse `app`, `postgres` (healthy), `cloudflared` y `backup` en estado 
 
 ## 3. Actualizar el server tras cambios en el código  ⭐
 
-Esto es lo que más vas a usar. **Parado en la carpeta del proyecto en la PC**
-(`F:\proyectos\Tienda juegos PC Nostr`), corré este comando **en una sola línea**
-(funciona igual en Git Bash y PowerShell):
+Esto es lo que más vas a usar. Hay un **script** que hace todo (empaqueta tu código,
+lo manda a la laptop y reconstruye). Desde la **PC**, parado en la carpeta del
+proyecto (`F:\proyectos\Tienda juegos PC Nostr`):
 
-```bash
-tar czf - --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=./.claude --exclude=./.env . | ssh luna 'tar xzf - -C ~/luna-negra && cd ~/luna-negra && docker compose --env-file .env.docker up -d --build'
+**PowerShell:**
+```powershell
+powershell -ExecutionPolicy Bypass -File docker\deploy.ps1
 ```
+
+**Git Bash:**
+```bash
+sh docker/deploy.sh
+```
+
+> ⚠️ NO uses un `tar ... | ssh ...` (con pipe) en PowerShell: PowerShell corrompe
+> los datos binarios del pipe y el build falla con `gzip: not in gzip format`. Por
+> eso usamos el script (manda un archivo con `scp`, sin pipe).
 
 Qué hace, en criollo:
 1. Empaqueta tu código (sin las carpetas pesadas).
