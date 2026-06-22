@@ -13,14 +13,16 @@ name: luna-negra
 
 services:
   postgres:
-    image: postgres:16-bookworm
+    image: postgres:18-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-luna}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luna}
       POSTGRES_DB: ${POSTGRES_DB:-luna}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PG18: el volumen va en /var/lib/postgresql (la imagen guarda los datos en
+      # un subdir por versión). En PG16 era /var/lib/postgresql/data.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-luna} -d ${POSTGRES_DB:-luna}"]
       interval: 5s
@@ -69,7 +71,7 @@ services:
   # BACKUP_KEEP más nuevas. 💡 Copiá ./backups a otro disco/nube periódicamente:
   # si se muere este disco, esto NO te salva por sí solo.
   backup:
-    image: postgres:16-bookworm
+    image: postgres:18-bookworm
     restart: unless-stopped
     depends_on:
       postgres:

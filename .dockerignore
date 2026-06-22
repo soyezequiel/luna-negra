@@ -14,6 +14,7 @@ coverage
 prisma/dev.db
 prisma/dev.db-journal
 backups
+blob-backup
 README.md
 docs
 .claude

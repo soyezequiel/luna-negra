@@ -39,6 +39,9 @@ yarn-error.log*
 /backups/*
 !/backups/.gitkeep
 
+# respaldo de imágenes del Vercel Blob (no versionar binarios)
+/blob-backup/
+
 # prisma (sqlite local dev db)
 /prisma/*.db
 /prisma/*.db-journal
