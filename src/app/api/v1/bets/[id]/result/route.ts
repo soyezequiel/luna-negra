@@ -40,17 +40,30 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: betId } = await params;
-  const body = await req.json().catch(() => ({}));
+  // Cualquier excepción inesperada (decrypt del oráculo, DB, firma…) se traduce a
+  // un error con la forma estándar `{ error: { code, message } }`. Sin esto, Next
+  // devuelve un 500 desnudo sin cuerpo y el cliente sólo ve "respondió 500." sin
+  // pista de la causa ni código accionable.
+  try {
+    const body = await req.json().catch(() => ({}));
 
-  // ── Camino 1: API key (Luna Negra firma con el oráculo gestionado) ──
-  // Se elige si NO viene un evento firmado y hay un header Authorization.
-  const hasEvent = body?.event && typeof body.event === "object";
-  if (!hasEvent && req.headers.get("authorization")) {
-    return handleApiKey(req, betId, body);
+    // ── Camino 1: API key (Luna Negra firma con el oráculo gestionado) ──
+    // Se elige si NO viene un evento firmado y hay un header Authorization.
+    const hasEvent = body?.event && typeof body.event === "object";
+    if (!hasEvent && req.headers.get("authorization")) {
+      return await handleApiKey(req, betId, body);
+    }
+
+    // ── Camino 2: evento Nostr firmado por el proveedor ──
+    return await handleSignedEvent(betId, body);
+  } catch (err) {
+    console.error(`[bet-result] error inesperado liquidando ${betId}:`, err);
+    return apiError(
+      "SETTLE_ERROR",
+      err instanceof Error ? err.message : "Error inesperado al liquidar la apuesta",
+      500,
+    );
   }
-
-  // ── Camino 2: evento Nostr firmado por el proveedor ──
-  return handleSignedEvent(betId, body);
 }
 
 // ───────────────────────────── API key ─────────────────────────────
@@ -91,15 +104,25 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
     return apiError("FORBIDDEN", "La API key no es del proveedor de esta apuesta", 403);
   }
 
-  // Firmar con el oráculo gestionado del proveedor.
-  let sk = await getOracleSecret(providerId);
-  if (!sk) {
-    try {
+  // Firmar con el oráculo gestionado del proveedor. `getOracleSecret` puede
+  // LANZAR (no sólo devolver null) si `ORACLE_ENC_KEY` falta/cambió o el blob
+  // cifrado no autentica (AES-GCM). Ese throw hay que atraparlo acá: si se escapa,
+  // sale como 500 desnudo y el host ve "respondió 500." sin saber que el problema
+  // es la clave maestra. Lo convertimos en un error claro y accionable.
+  let sk: Uint8Array | null = null;
+  try {
+    sk = await getOracleSecret(providerId);
+    if (!sk) {
       await ensureOracleKey(providerId);
       sk = await getOracleSecret(providerId);
-    } catch {
-      sk = null;
     }
+  } catch (err) {
+    console.error(`[bet-result] no se pudo acceder a la clave de oráculo de ${providerId}:`, err);
+    return apiError(
+      "ORACLE_KEY_ERROR",
+      "No se pudo acceder a la clave de oráculo del proveedor (revisá ORACLE_ENC_KEY en el servidor)",
+      500,
+    );
   }
   if (!sk) {
     return apiError(

@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import type { Event } from "nostr-tools";
 import type { Bet, BetParticipant, Provider, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -67,6 +68,44 @@ export async function settleBetWithResult(args: {
       status: 409,
     };
   }
+
+  try {
+    return await runSettlement({ bet, betId, winnerNpubs, resultEvent });
+  } catch (err) {
+    // Algo falló DESPUÉS de reclamar `settling`. Sin esto la apuesta quedaría
+    // atascada en `settling` para siempre: no es terminal, pero el claim
+    // `ready → settling` ya no vuelve a ganar la carrera, así que cada reintento
+    // (manual o por tick) devolvería NOT_READY sin fin. Revertimos a `ready` para
+    // reabrir la carrera. Pagos y fee son idempotentes vía la idempotencyKey del
+    // ledger, así que re-liquidar no duplica plata.
+    await prisma.bet
+      .updateMany({ where: { id: betId, status: "settling" }, data: { status: "ready" } })
+      .catch(() => {});
+    Sentry.captureException(err, {
+      level: "error",
+      tags: { flow: "escrow-settle", betId },
+    });
+    console.error(`[escrow] falló la liquidación de ${betId}; revertido a ready:`, err);
+    return {
+      ok: false,
+      code: "SETTLE_FAILED",
+      message:
+        err instanceof Error
+          ? err.message
+          : "Falló la liquidación; reintentá el cobro",
+      status: 503,
+    };
+  }
+}
+
+/** Cuerpo de la liquidación, ya reclamado `settling`. Si lanza, el caller revierte a `ready`. */
+async function runSettlement(args: {
+  bet: BetWithRelations;
+  betId: string;
+  winnerNpubs: string[];
+  resultEvent: Event;
+}): Promise<SettleResult> {
+  const { bet, betId, winnerNpubs, resultEvent } = args;
 
   // Integridad: los términos vivos deben coincidir con el contrato firmado.
   if (bet.contractHash) {
