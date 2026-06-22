@@ -22,7 +22,24 @@ export async function ensureDepositInvoice(
 ): Promise<DepositInvoice> {
   const devMode = !lightningConfigured();
 
-  if (part.depositInvoice && part.depositPaymentHash) {
+  // Salvaguarda: en producción NUNCA generamos un bolt11 simulado. Sin un wallet
+  // NWC configurado, el modo dev devolvía un invoice falso (`lnbc-dev-…`) que el
+  // juego mostraba como QR escaneable pero ninguna billetera podía pagar (y la
+  // extensión WebLN lo rechazaba, así que "el botón de pago no hacía nada").
+  // Mejor fallar fuerte y visible: el v1/route lo captura y expone `depositError`,
+  // y el operador ve que falta `NWC_CONNECTION_STRING` en vez de un QR roto mudo.
+  if (devMode && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Lightning no está configurado (falta NWC_CONNECTION_STRING). " +
+        "No se puede generar el invoice de depósito en producción.",
+    );
+  }
+
+  // Reusamos el invoice guardado salvo que sea un placeholder de modo dev
+  // (`lnbc-dev-…`) y ahora SÍ tengamos wallet: en ese caso quedó un QR inválido
+  // guardado de cuando no había Lightning, así que lo regeneramos como real.
+  const storedIsDevPlaceholder = part.depositInvoice?.startsWith("lnbc-dev-") ?? false;
+  if (part.depositInvoice && part.depositPaymentHash && (devMode || !storedIsDevPlaceholder)) {
     return { invoice: part.depositInvoice, paymentHash: part.depositPaymentHash, devMode };
   }
 
