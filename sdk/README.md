@@ -16,7 +16,7 @@ Copiá `index.ts` a tu proyecto (o instalá el paquete cuando esté publicado).
 import { createClient } from "@lunanegra/sdk";
 
 const luna = createClient({
-  baseUrl: "https://luna-negra-three.vercel.app",
+  baseUrl: "https://luna.naranja.fit",
 });
 
 // Acceso pago (token que viene en ?lnToken= al abrir el juego)

@@ -34,7 +34,8 @@ dice quién es el jugador y le ofrece estos servicios por HTTP.
 2. **Averigua la URL del deploy de Luna Negra** (la base URL). En esta guía
    aparece como `__LUNA_NEGRA_BASE__`. Si el instalador la rellenó, ya está la
    real; si ves el placeholder, **pregunta al usuario** cuál es su deploy
-   (p. ej. `https://luna-negra-xxxx.vercel.app`) y úsala en todo el código.
+   (el oficial es `https://luna.naranja.fit`; un self-host puede tener otro
+   dominio) y úsala en todo el código.
 3. **Identifica el stack del juego.** Web (JS en navegador), servidor (Node, Go,
    Python…), o motor (Unity/Godot). Las llamadas son HTTP estándar: adapta los
    ejemplos `fetch` a su lenguaje.

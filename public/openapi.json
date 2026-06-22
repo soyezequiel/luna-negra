@@ -8,7 +8,7 @@
   "servers": [
     {
       "url": "https://{host}",
-      "variables": { "host": { "default": "luna-negra-three.vercel.app" } }
+      "variables": { "host": { "default": "luna.naranja.fit" } }
     }
   ],
   "components": {

@@ -28,7 +28,7 @@ export function verifyWebhook(
 }
 
 export type LunaNegraOptions = {
-  /** Base URL de Luna Negra, ej. "https://luna-negra-three.vercel.app" */
+  /** Base URL de Luna Negra, ej. "https://luna.naranja.fit" */
   baseUrl: string;
   /** Issuer esperado (claim `iss`). Default: "luna-negra". */
   issuer?: string;
