@@ -42,6 +42,9 @@ yarn-error.log*
 # respaldo de imágenes del Vercel Blob (no versionar binarios)
 /blob-backup/
 
+# imágenes subidas en self-host (volumen Docker; no versionar binarios)
+/uploads/
+
 # prisma (sqlite local dev db)
 /prisma/*.db
 /prisma/*.db-journal

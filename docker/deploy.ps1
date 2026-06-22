@@ -7,7 +7,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $pkg  = Join-Path $env:TEMP 'luna-update.tgz'
 
 Write-Host '-> Empaquetando codigo...'
-tar.exe czf $pkg -C $root --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=./.claude --exclude=./.env .
+tar.exe czf $pkg -C $root --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=./uploads --exclude=./blob-backup --exclude=./.claude --exclude=./.env --exclude=./.env.docker .
 
 Write-Host '-> Enviando a la laptop...'
 scp $pkg luna:luna-update.tgz

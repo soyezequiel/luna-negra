@@ -8,7 +8,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 pkg="$(mktemp -t luna-update.XXXXXX.tgz 2>/dev/null || echo /tmp/luna-update.tgz)"
 
 echo "-> Empaquetando código..."
-tar czf "$pkg" -C "$root" --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=./.claude --exclude=./.env .
+tar czf "$pkg" -C "$root" --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=./uploads --exclude=./blob-backup --exclude=./.claude --exclude=./.env --exclude=./.env.docker .
 
 echo "-> Enviando a la laptop..."
 scp "$pkg" luna:luna-update.tgz

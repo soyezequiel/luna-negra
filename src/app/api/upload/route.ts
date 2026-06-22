@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { randomBytes } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { getSession } from "@/lib/auth";
-import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
+// Carpeta donde se guardan las imágenes subidas. En self-host (Docker) es un
+// volumen persistente montado en /app/uploads (ver docker-compose.yml). En dev
+// local cae en <cwd>/uploads (gitignored). Se sirven en /uploads/<archivo>
+// (ver src/app/uploads/[...path]/route.ts).
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+
 // Tope de tamaño: evita abusar el endpoint como hosting de archivos grandes y
-// limita el costo/DoS en Vercel Blob. Portadas/capturas de juego entran de sobra.
+// limita el costo/DoS. Portadas/capturas de juego entran de sobra.
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB
 
 // Solo imágenes. No confiamos en el content-type declarado: lo cruzamos con la
 // firma real del archivo (magic bytes) para que no se pueda subir HTML/SVG/JS
-// disfrazado de imagen a un blob público.
+// disfrazado de imagen a una URL pública.
 const ALLOWED = new Set([
   "image/png",
   "image/jpeg",
@@ -19,6 +27,15 @@ const ALLOWED = new Set([
   "image/gif",
   "image/avif",
 ]);
+
+// MIME detectado → extensión del archivo en disco.
+const EXT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif",
+};
 
 /** Detecta el tipo real por magic bytes. Devuelve el MIME o null si no es imagen. */
 function sniffImageType(buf: Buffer): string | null {
@@ -51,7 +68,7 @@ function sniffImageType(buf: Buffer): string | null {
   return null;
 }
 
-// Sube una imagen a Vercel Blob y devuelve su URL pública.
+// Guarda una imagen en el disco del server y devuelve su URL pública.
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) {
@@ -73,9 +90,14 @@ export async function POST(req: Request) {
   }
 
   const rawName = new URL(req.url).searchParams.get("filename") || "";
-  // Nos quedamos solo con la extensión declarada para diagnóstico; el nombre real
-  // lo define Vercel Blob con sufijo aleatorio, así que no hay riesgo de traversal.
-  const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80) || `img-${Date.now()}`;
+  // Solo usamos el nombre declarado para un prefijo legible; la extensión real la
+  // define el MIME detectado y agregamos un sufijo aleatorio, así que no hay
+  // riesgo de traversal ni de colisión.
+  const baseName =
+    rawName
+      .replace(/\.[^./\\]*$/, "") // saca la extensión declarada
+      .replace(/[^a-zA-Z0-9._-]/g, "")
+      .slice(0, 60) || "img";
 
   let bytes: Buffer;
   try {
@@ -99,16 +121,20 @@ export async function POST(req: Request) {
     );
   }
 
+  const filename = `${baseName}-${randomBytes(8).toString("hex")}.${EXT_BY_MIME[detected]}`;
+
   try {
-    const blob = await put(`luna-negra/${safeName}`, bytes, {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: detected,
-    });
-    return NextResponse.json({ url: blob.url });
+    await mkdir(UPLOADS_DIR, { recursive: true });
+    await writeFile(path.join(UPLOADS_DIR, filename), bytes);
   } catch (e) {
     // El detalle real solo al log del server; al cliente, mensaje genérico.
-    console.error("Blob upload error:", e instanceof Error ? e.message : String(e));
+    console.error("Upload write error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "No se pudo subir la imagen" }, { status: 502 });
   }
+
+  // URL absoluta usando el dominio público (la misma env que usan los anuncios
+  // Nostr). Si no está seteada, cae a una ruta relativa (sirve igual con <img>).
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/+$/, "");
+  const url = `${site}/uploads/${filename}`;
+  return NextResponse.json({ url });
 }

@@ -50,6 +50,13 @@ services:
       # SIEMPRE apunta al Postgres de este compose (no a Neon).
       DATABASE_URL: postgresql://${POSTGRES_USER:-luna}:${POSTGRES_PASSWORD:-luna}@postgres:5432/${POSTGRES_DB:-luna}?sslmode=disable
       DIRECT_URL: postgresql://${POSTGRES_USER:-luna}:${POSTGRES_PASSWORD:-luna}@postgres:5432/${POSTGRES_DB:-luna}?sslmode=disable
+      # Imágenes subidas (portadas/capturas): se guardan en este volumen y se
+      # sirven en /uploads/<archivo>. Self-host, sin Vercel Blob.
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      # Persistente: sobrevive a rebuilds del contenedor. 💡 Incluí ./uploads en
+      # tus backups off-site (es la única copia de las imágenes, igual que la DB).
+      - ./uploads:/app/uploads
     # Acceso local directo (además del túnel). Útil para probar en LAN.
     ports:
       - "3000:3000"
