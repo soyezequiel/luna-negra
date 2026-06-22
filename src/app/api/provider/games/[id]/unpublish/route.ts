@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ownedGame } from "@/lib/provider";
+import { revalidateCatalog } from "@/lib/store-catalog";
 
 // Vuelve el juego a borrador (lo saca de la tienda / de revisión).
 export async function POST(
@@ -21,5 +22,6 @@ export async function POST(
     where: { id },
     data: { status: "draft" },
   });
+  revalidateCatalog();
   return NextResponse.json({ game });
 }

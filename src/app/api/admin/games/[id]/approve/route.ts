@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { announceGame } from "@/lib/announce-game";
+import { revalidateCatalog } from "@/lib/store-catalog";
 
 export async function POST(
   req: Request,
@@ -23,5 +24,7 @@ export async function POST(
   });
   // Anuncio raíz en Nostr (idempotente): solo si todavía no lo tiene.
   game = await announceGame(game, req);
+  // Refresca el catálogo cacheado (Home + ficha) al instante.
+  revalidateCatalog();
   return NextResponse.json({ game });
 }

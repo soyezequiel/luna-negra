@@ -5,6 +5,7 @@ import { ownedGame } from "@/lib/provider";
 import { normalizeCategories } from "@/lib/categories";
 import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
 import { normalizeImageUrl } from "@/lib/game-media";
+import { revalidateCatalog } from "@/lib/store-catalog";
 
 export async function PATCH(
   req: Request,
@@ -44,6 +45,8 @@ export async function PATCH(
     );
 
   const game = await prisma.game.update({ where: { id }, data });
+  // El proveedor editó su ficha publicada → refrescar caché del catálogo.
+  revalidateCatalog();
   return NextResponse.json({ game });
 }
 
@@ -70,5 +73,6 @@ export async function DELETE(
   }
   await prisma.review.deleteMany({ where: { gameId: id } });
   await prisma.game.delete({ where: { id } });
+  revalidateCatalog();
   return NextResponse.json({ ok: true });
 }

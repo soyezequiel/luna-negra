@@ -1,13 +1,12 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
 import { GameCard } from "@/components/game-card";
 import { SocialRail } from "@/components/social-rail";
 import { CATEGORIES, normalizeCategory, categoryLabel } from "@/lib/categories";
 import { hueFromSlug, priceLabel } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
-import { scoreGamesByIntegration } from "@/lib/integration-telemetry";
+import { getPublishedCatalog } from "@/lib/store-catalog";
+import { StoreUnavailable } from "@/components/store-unavailable";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -24,27 +23,27 @@ export default async function StorePage({
   const cat = normalizeCategory(sp.cat);
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const where: Prisma.GameWhereInput = {
-    status: "published",
-    ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
-    ...(cat ? { categories: { has: cat } } : {}),
-  };
-
-  // Traemos todos los juegos que matchean (no solo la página) porque el orden por
-  // integración no es una columna: se calcula combinando telemetría + dominio. El
-  // catálogo del MVP es chico, así que rankear y paginar en memoria es aceptable.
-  const allGames = await prisma.game.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-  });
-  const total = allGames.length;
+  // Catálogo publicado servido desde el Data Cache (ver store-catalog.ts): ya viene
+  // ordenado por más reciente y con el score de integración por juego. Filtramos,
+  // rankeamos y paginamos en memoria para no tocar Neon en cada render del Home.
+  let catalog: Awaited<ReturnType<typeof getPublishedCatalog>>;
+  try {
+    catalog = await getPublishedCatalog();
+  } catch (err) {
+    console.error("[home] no se pudo cargar el catálogo", err);
+    return <StoreUnavailable />;
+  }
+  const ql = q.toLowerCase();
+  const matched = catalog.filter(
+    (g) =>
+      (!q || g.title.toLowerCase().includes(ql)) &&
+      (!cat || g.categories.includes(cat)),
+  );
+  const total = matched.length;
 
   // Prioridad: más interfaces de Luna Negra integradas → más arriba. Empate por
-  // más reciente (el orderBy de arriba ya deja los nuevos primero, sort estable).
-  const scores = await scoreGamesByIntegration(allGames);
-  const ranked = [...allGames].sort(
-    (a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0),
-  );
+  // más reciente (el catálogo ya viene ordenado por nuevo primero, sort estable).
+  const ranked = [...matched].sort((a, b) => b.integration - a.integration);
   const games = ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -214,7 +213,7 @@ export default async function StorePage({
                     coverUrl: g.coverUrl,
                     priceSats: g.priceSats,
                     categories: g.categories,
-                    integration: scores.get(g.id) ?? 0,
+                    integration: g.integration,
                   }}
                 />
               ))}

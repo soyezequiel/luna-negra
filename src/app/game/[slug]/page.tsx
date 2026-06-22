@@ -23,6 +23,8 @@ import {
 } from "@/components/game-store-edit";
 import { hueFromSlug } from "@/lib/format";
 import { gameGalleryMedia } from "@/lib/game-media";
+import { getPublishedGameBySlug, getRelatedGames } from "@/lib/store-catalog";
+import { StoreUnavailable } from "@/components/store-unavailable";
 import {
   sanitizeDescriptionHtml,
   descriptionLooksLikeHtml,
@@ -39,11 +41,16 @@ export default async function GamePage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const game = await prisma.game.findUnique({
-    where: { slug },
-    include: { provider: true },
-  });
-  if (!game || game.status !== "published") notFound();
+  // Lectura cacheada (no depende de la sesión): para visitas anónimas/bots la
+  // ficha no toca Neon. La compra/entitlement sí es por usuario (más abajo).
+  let game: Awaited<ReturnType<typeof getPublishedGameBySlug>>;
+  try {
+    game = await getPublishedGameBySlug(slug);
+  } catch (err) {
+    console.error("[game] no se pudo cargar la ficha", err);
+    return <StoreUnavailable />;
+  }
+  if (!game) notFound();
 
   const session = await getSession();
   // ¿La cuenta logueada es la proveedora dueña de este juego? → mostrar el lápiz
@@ -90,18 +97,14 @@ export default async function GamePage({
         .slice(0, 6);
   const supportsRooms = Boolean(game.gameUrl);
 
-  // Más juegos web (que compartan alguna categoría, excluyendo este).
-  const related = await prisma.game.findMany({
-    where: {
-      status: "published",
-      id: { not: game.id },
-      ...(game.categories.length > 0
-        ? { categories: { hasSome: game.categories } }
-        : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: 4,
-  });
+  // Más juegos web (que compartan alguna categoría, excluyendo este). Cacheado;
+  // si Neon falla acá no tiramos la ficha entera, solo omitimos la sección.
+  let related: Awaited<ReturnType<typeof getRelatedGames>> = [];
+  try {
+    related = await getRelatedGames(game.id, game.categories);
+  } catch (err) {
+    console.error("[game] no se pudieron cargar los relacionados", err);
+  }
 
   return (
     <div className="mx-auto max-w-[1240px] px-[22px] py-8">
@@ -283,7 +286,7 @@ export default async function GamePage({
             <div className="flex justify-between py-1.5">
               <dt className="text-ln-faint">Lanzamiento</dt>
               <dd className="text-ln-text">
-                {game.createdAt.toLocaleDateString("es-AR")}
+                {new Date(game.createdAt).toLocaleDateString("es-AR")}
               </dd>
             </div>
             <div className="flex justify-between py-1.5">
