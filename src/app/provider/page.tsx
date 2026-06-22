@@ -135,6 +135,9 @@ export default function ProviderPage() {
   const [, startLoadTransition] = useTransition();
 
   useEffect(() => {
+    // Se lee tras montar (no en el initializer) para no provocar un mismatch de
+    // hidratación: el server no conoce window.location.origin.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrigin(window.location.origin);
   }, []);
 

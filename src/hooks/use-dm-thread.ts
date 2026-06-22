@@ -89,6 +89,8 @@ export function useDmThread(counterpart: string | null) {
   }, [user, counterpart]);
 
   useEffect(() => {
+    // Carga inicial del hilo al montar / cambiar de contacto.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

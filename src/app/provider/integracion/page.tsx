@@ -42,6 +42,8 @@ export default function ProviderIntegrationPage() {
   }, []);
 
   useEffect(() => {
+    // Carga inicial de datos al montar / cambiar de usuario.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (user) void load();
   }, [user, load]);
 

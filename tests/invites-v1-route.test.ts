@@ -37,6 +37,15 @@ vi.mock("@/lib/game-launch-requests", () => ({
   consumeGameLaunchRequest: mocks.consumeGameLaunchRequest,
 }));
 
+// El route endurece POST con anti-spoofing (el invitador debe ser jugador del
+// proveedor) y una allowlist de hosts para `inviteUrl`. Aquí los damos por
+// válidos: lo que se prueba es la lógica de encolado de la orden de entrada.
+vi.mock("@/lib/provider-entitlement", () => ({
+  npubHasLivePresence: vi.fn(async () => true),
+  npubHasProviderEntitlement: vi.fn(async () => false),
+  providerGameHosts: vi.fn(async () => new Set(["tetris.example"])),
+}));
+
 async function postInvite(body: unknown) {
   const { POST } = await import("@/app/api/v1/invites/route");
   const res = await POST(new Request("http://local/api/v1/invites", {

@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // En los tests los mocks de Prisma/respuestas son objetos parciales; tiparlos
+  // estrictamente no aporta y mete ruido. Permitimos `any` solo aquí.
+  {
+    files: ["tests/**"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -37,6 +37,13 @@ vi.mock("@/lib/slug", () => ({
   uniqueGameSlug: mocks.uniqueGameSlug,
 }));
 
+// El PATCH refresca el caché del catálogo con revalidateTag, que requiere el
+// store de generación estática de Next (ausente en un test unitario). Lo
+// stubbeamos: lo que se prueba es la persistencia de la ficha, no el caché.
+vi.mock("@/lib/store-catalog", () => ({
+  revalidateCatalog: vi.fn(),
+}));
+
 async function postProviderGame(body: unknown) {
   const { POST } = await import("@/app/api/provider/games/route");
   const res = await POST(
