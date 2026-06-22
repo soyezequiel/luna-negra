@@ -1,0 +1,67 @@
+name: luna-negra
+
+# Self-hosting de Luna Negra: tu compu hace de servidor.
+#   App (Next 16) + Postgres + Cloudflare Tunnel, todo en Docker.
+#
+# Levantar (Windows o Linux, mismo comando):
+#   1) cp .env.docker.example .env.docker   (en Windows: copy)
+#   2) completá .env.docker (al menos JWT_SECRET y TUNNEL_TOKEN)
+#   3) docker compose --env-file .env.docker up -d --build
+#
+# Sin IP pública: cloudflared abre un túnel SALIENTE; no hay que abrir puertos.
+# Ver docker/README.md para crear el túnel y mapear el hostname → http://app:3000.
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-luna}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luna}
+      POSTGRES_DB: ${POSTGRES_DB:-luna}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-luna} -d ${POSTGRES_DB:-luna}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # Exponé la DB a tu host solo si querés conectarte con Prisma Studio/pgAdmin.
+    # Comentá esta sección si no lo necesitás.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Variables del .env.docker (JWT_SECRET, opcionales como RESEND_API_KEY, etc.).
+    env_file:
+      - .env.docker
+    environment:
+      # Estas DOS pisan cualquier DATABASE_URL/DIRECT_URL del .env.docker: la app
+      # SIEMPRE apunta al Postgres de este compose (no a Neon).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-luna}:${POSTGRES_PASSWORD:-luna}@postgres:5432/${POSTGRES_DB:-luna}?sslmode=disable
+      DIRECT_URL: postgresql://${POSTGRES_USER:-luna}:${POSTGRES_PASSWORD:-luna}@postgres:5432/${POSTGRES_DB:-luna}?sslmode=disable
+    # Acceso local directo (además del túnel). Útil para probar en LAN.
+    ports:
+      - "3000:3000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Túnel con nombre (dominio estable). Requiere TUNNEL_TOKEN en .env.docker.
+    # Para un "quick tunnel" efímero sin cuenta, usá el override:
+    #   docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.quicktunnel.yml up -d --build
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+
+volumes:
+  pgdata:

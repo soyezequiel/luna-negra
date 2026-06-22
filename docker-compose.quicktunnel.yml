@@ -1,0 +1,12 @@
+# Override para usar un "quick tunnel" de Cloudflare: URL pública efímera
+# (https://algo-aleatorio.trycloudflare.com) SIN cuenta ni dominio ni token.
+# Ideal para probar rápido. La URL cambia en cada arranque y la imprime el log:
+#   docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.quicktunnel.yml up -d --build
+#   docker compose logs -f cloudflared    # buscá la URL trycloudflare.com
+
+services:
+  cloudflared:
+    command: tunnel --no-autoupdate --url http://app:3000
+    environment:
+      # En modo quick tunnel no se usa token.
+      TUNNEL_TOKEN: ""

@@ -1,0 +1,18 @@
+# No copiar al contexto de build (más rápido y evita filtrar secretos).
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.docker.example
+npm-debug.log*
+*.log
+.vscode
+.idea
+coverage
+prisma/dev.db
+prisma/dev.db-journal
+README.md
+docs
+.claude
