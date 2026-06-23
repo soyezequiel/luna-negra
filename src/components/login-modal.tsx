@@ -24,6 +24,28 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 /**
+ * Avisa al server (que reenvía a Discord) cuando el login por Nostr Connect
+ * falla, con el timeline de diagnóstico. Best-effort: si el reporte falla, se
+ * ignora en silencio para no encadenar errores en el flujo de login.
+ */
+function reportLoginFailure(error: string, lines: string[]) {
+  try {
+    void fetch("/api/debug/login-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        error,
+        lines,
+        ua: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      }),
+    }).catch(() => {});
+  } catch {
+    /* noop */
+  }
+}
+
+/**
  * Modal de login con los 4 métodos (estilo figus): extensión NIP-07, Nostr
  * Connect por QR (Amber / nsec.app), bunker:// o NIP-05, y clave local
  * (generar o importar nsec). Se abre con `login()` del SessionProvider.
@@ -31,18 +53,25 @@ const TABS: { id: Tab; label: string }[] = [
 export function LoginModal() {
   const { loginModalOpen, closeLoginModal, loginWithSigner, emailLoginEnabled } =
     useSession();
-  // La pestaña de email solo se ofrece si el server la habilitó (config completa).
-  const tabs = emailLoginEnabled ? TABS : TABS.filter((t) => t.id !== "email");
-  // `tabChoice` = pestaña elegida por el usuario (null = ninguna todavía). La
-  // pestaña activa se deriva: por defecto email si está disponible, si no extensión.
-  const [tabChoice, setTabChoice] = useState<Tab | null>(null);
-  const tab: Tab = tabChoice ?? (emailLoginEnabled ? "email" : "extension");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // En celular, escanear el QR con el mismo teléfono es incómodo: mejor abrir el
   // enlace nostrconnect:// directo y que el SO lo derive a la app de firma
   // instalada (Amber, Primal, nsec.app…). Se detecta tras montar para no romper SSR.
   const [isMobile, setIsMobile] = useState(false);
+  // Pestañas visibles: "email" solo si el server lo habilitó; "extension" se
+  // oculta en celular (las extensiones NIP-07 no existen en navegadores móviles).
+  const tabs = TABS.filter((t) => {
+    if (t.id === "email") return emailLoginEnabled;
+    if (t.id === "extension") return !isMobile;
+    return true;
+  });
+  // `tabChoice` = pestaña elegida por el usuario (null = ninguna todavía). La
+  // pestaña activa se deriva: email si está disponible; en celular, QR (no hay
+  // extensión); en escritorio, extensión.
+  const [tabChoice, setTabChoice] = useState<Tab | null>(null);
+  const tab: Tab =
+    tabChoice ?? (emailLoginEnabled ? "email" : isMobile ? "qr" : "extension");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Estado del flujo email (magic link).
   const [emailInput, setEmailInput] = useState("");
@@ -52,8 +81,13 @@ export function LoginModal() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrUri, setQrUri] = useState<string | null>(null);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
-  // Líneas de diagnóstico del handshake NIP-46 (visibles en el celular).
-  const [qrDebug, setQrDebug] = useState<string[]>([]);
+  // En celular el QR arranca oculto (el método cómodo es "Abrir en mi app"); el
+  // usuario lo revela si quiere escanear con otro dispositivo. En escritorio
+  // siempre se muestra.
+  const [revealQr, setRevealQr] = useState(false);
+  // Timeline de diagnóstico del handshake NIP-46. No se muestra al usuario: se
+  // junta acá y, si el flujo falla, se manda a Discord para que el dev lo vea.
+  const qrDebug = useRef<string[]>([]);
   const qrAbort = useRef<AbortController | null>(null);
 
   // Inputs.
@@ -103,7 +137,7 @@ export function LoginModal() {
       setQrDataUrl(null);
       setQrUri(null);
       setAuthUrl(null);
-      setQrDebug([]);
+      qrDebug.current = [];
       try {
         const { startNostrConnect } = await import("@/lib/signer-nip46");
         const { uri, established } = startNostrConnect({
@@ -111,10 +145,8 @@ export function LoginModal() {
             if (!cancelled) setAuthUrl(url);
           },
           onDebug: (line) => {
-            if (!cancelled) {
-              const ts = new Date().toLocaleTimeString();
-              setQrDebug((prev) => [...prev, `${ts}  ${line}`]);
-            }
+            const ts = new Date().toLocaleTimeString();
+            qrDebug.current.push(`${ts}  ${line}`);
           },
           signal: ctrl.signal,
         });
@@ -142,12 +174,15 @@ export function LoginModal() {
         }
         await finish(signer, stored);
       } catch (e) {
+        // `cancelled` = el usuario cerró el modal / cambió de pestaña: no es un
+        // fallo real, no reportamos. Solo avisamos a Discord en errores genuinos.
         if (!cancelled) {
-          setError(
+          const msg =
             e instanceof Error && e.message
               ? e.message
-              : "No se pudo conectar con el firmante remoto",
-          );
+              : "No se pudo conectar con el firmante remoto";
+          setError(msg);
+          reportLoginFailure(msg, qrDebug.current);
         }
       }
     })();
@@ -237,7 +272,8 @@ export function LoginModal() {
   function close() {
     qrAbort.current?.abort();
     setError(null);
-    setQrDebug([]);
+    qrDebug.current = [];
+    setRevealQr(false);
     setGenerated(null);
     setNsecInput("");
     setEmailInput("");
@@ -274,6 +310,7 @@ export function LoginModal() {
                 setTabChoice(t.id);
                 setError(null);
                 setEmailSent(false);
+                setRevealQr(false);
               }}
               className={cn(
                 "flex-1 rounded-sm px-2 py-1.5 text-xs font-medium",
@@ -369,7 +406,8 @@ export function LoginModal() {
               {/* En celular, abrir el enlace directo en la app de firma instalada
                   (Primal, Amber, nsec.app…) es mucho más cómodo que escanear el
                   QR con el mismo teléfono. Usamos un <a> con el esquema custom
-                  para que cuente como gesto del usuario y el SO ofrezca la app. */}
+                  para que cuente como gesto del usuario y el SO ofrezca la app.
+                  El QR queda oculto detrás de un botón "Mostrar QR". */}
               {isMobile && qrUri ? (
                 <div className="w-full">
                   <a
@@ -383,40 +421,59 @@ export function LoginModal() {
                     <span className="text-muted">Amber</span> u otra app de firma
                     instalada, y aprobás la conexión ahí.
                   </p>
-                  <div className="my-4 flex items-center gap-3 text-xs text-faint">
-                    <span className="h-px flex-1 bg-line" />o escaneá el QR
-                    <span className="h-px flex-1 bg-line" />
-                  </div>
+                  {!revealQr ? (
+                    <button
+                      onClick={() => setRevealQr(true)}
+                      className="mt-4 w-full text-center text-xs text-blue hover:underline"
+                    >
+                      ¿Escaneás con otro dispositivo? Mostrar código QR
+                    </button>
+                  ) : (
+                    <div className="my-4 flex items-center gap-3 text-xs text-faint">
+                      <span className="h-px flex-1 bg-line" />o escaneá el QR
+                      <span className="h-px flex-1 bg-line" />
+                    </div>
+                  )}
                 </div>
               ) : null}
-              {qrDataUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={qrDataUrl}
-                  alt="Código QR de Nostr Connect"
-                  className="rounded bg-white p-1"
-                  width={240}
-                  height={240}
-                />
-              ) : (
-                <div className="flex h-[240px] w-[240px] items-center justify-center rounded bg-black/20 p-4 text-center text-sm text-faint">
-                  {qrUri
-                    ? "Este navegador bloquea el QR. Copiá el enlace de abajo y pegalo en tu firmante."
-                    : "Generando QR…"}
-                </div>
-              )}
-              <p className="mt-3 text-center text-sm text-muted">
-                Escaneá con <span className="text-ink">Amber</span> o{" "}
-                <span className="text-ink">nsec.app</span> y aprobá la conexión.
-              </p>
-              {qrUri ? (
-                <button
-                  onClick={() => navigator.clipboard.writeText(qrUri).catch(() => {})}
-                  className="mt-1 text-xs text-blue hover:underline"
-                >
-                  Copiar enlace nostrconnect://
-                </button>
+
+              {/* El QR (y su texto) solo se renderiza en escritorio o cuando el
+                  usuario lo pidió en celular. */}
+              {!isMobile || revealQr ? (
+                <>
+                  {qrDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={qrDataUrl}
+                      alt="Código QR de Nostr Connect"
+                      className="rounded bg-white p-1"
+                      width={240}
+                      height={240}
+                    />
+                  ) : (
+                    <div className="flex h-[240px] w-[240px] items-center justify-center rounded bg-black/20 p-4 text-center text-sm text-faint">
+                      {qrUri
+                        ? "Este navegador bloquea el QR. Copiá el enlace de abajo y pegalo en tu firmante."
+                        : "Generando QR…"}
+                    </div>
+                  )}
+                  <p className="mt-3 text-center text-sm text-muted">
+                    Escaneá con <span className="text-ink">Amber</span> o{" "}
+                    <span className="text-ink">nsec.app</span> y aprobá la conexión.
+                  </p>
+                  {qrUri ? (
+                    <button
+                      onClick={() =>
+                        navigator.clipboard.writeText(qrUri).catch(() => {})
+                      }
+                      className="mt-1 text-xs text-blue hover:underline"
+                    >
+                      Copiar enlace nostrconnect://
+                    </button>
+                  ) : null}
+                </>
               ) : null}
+
               {authUrl ? (
                 <a
                   href={authUrl}
@@ -428,20 +485,6 @@ export function LoginModal() {
                 </a>
               ) : null}
               <p className="mt-2 text-xs text-faint">Esperando conexión…</p>
-              {qrDebug.length > 0 ? (
-                <div className="mt-3 w-full">
-                  <p className="text-[10px] uppercase tracking-wide text-faint">
-                    Diagnóstico
-                  </p>
-                  <div className="mt-1 max-h-32 overflow-auto rounded-sm border border-line bg-black/30 p-2 text-left font-mono text-[10px] leading-relaxed text-muted">
-                    {qrDebug.map((line, i) => (
-                      <div key={i} className="break-all">
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
           ) : null}
 
