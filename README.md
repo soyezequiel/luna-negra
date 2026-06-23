@@ -1,7 +1,7 @@
 # Luna Negra 🌑
 
 Una tienda de juegos para jugar **desde el navegador**, sin instalar nada, donde pagás
-y cobrás en **Bitcoin** (sats) por la red **Lightning**. Pensada para que un argentino
+y cobrás en **Bitcoin** (sats) por la red **Lightning**. Pensada para que
 pueda comprar un juego, dejarle una propina a quien lo hizo o apostar una partida con
 un amigo **sin tarjeta, sin banco y sin pasar por el dólar**.
 
