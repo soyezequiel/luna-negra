@@ -1,19 +1,14 @@
 # Luna Negra 🌑
 
+**¿Qué pasaría si hubiera un Steam nativo en Nostr y Bitcoin/Lightning?** Acá está —y
+mejor— porque Luna Negra está pensada para **juegos nativos web** (el futuro va por ahí).
+
 Una tienda de juegos para jugar **desde el navegador**, sin instalar nada, donde pagás
-y cobrás en **Bitcoin** (sats) por la red **Lightning**. Pensada para que
+y cobrás en **Bitcoin** (sats) por la red **Lightning**. Pensada para que cualquiera
 pueda comprar un juego, dejarle una propina a quien lo hizo o apostar una partida con
 un amigo **sin tarjeta, sin banco y sin pasar por el dólar**.
 
-<<<<<<< HEAD
 > Demo en vivo: **[luna.naranja.fit](https://luna.naranja.fit)**
-=======
-
-¿Que pasaria si hubiera un Steam nativo en nostr y Bitcoin/Lightning? No lo pienses más, aqui esta y es aun mejor, ya que Luna negra está pensado para juegos nativos web (el futuro es por ahí). Tienda de juegos 100% web estilo Steam, con pagos en Bitcoin/Lightning vía Nostr. Sin instalar nada: se juega desde el navegador.
-
-
-> Plan completo del MVP en [`PLAN.md`](./PLAN.md).
->>>>>>> 1eaaca292b0a90645573be558b54a348dca207db
 
 ---
 
