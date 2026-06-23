@@ -276,7 +276,9 @@ export default function ProviderPage() {
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "Error");
-    setMsg("Juego creado (borrador).");
+    setMsg(
+      "Juego creado como borrador. Envialo a revisión (botón abajo) para que se apruebe y se publique.",
+    );
     setNewForm({ ...emptyForm });
     load();
   }
@@ -298,8 +300,14 @@ export default function ProviderPage() {
     load();
   }
 
-  async function action(id: string, path: string, method = "POST") {
+  async function action(
+    id: string,
+    path: string,
+    okMsg?: string,
+    method = "POST",
+  ) {
     await fetch(`/api/provider/games/${id}${path}`, { method });
+    if (okMsg) setMsg(okMsg);
     load();
   }
 
@@ -464,6 +472,11 @@ export default function ProviderPage() {
             className="mt-8 space-y-3 rounded-xl border border-line bg-panel p-5"
           >
             <h2 className="font-semibold">Nuevo juego</h2>
+            <p className="text-xs text-ln-faint">
+              Se crea como <strong>borrador</strong> (no visible en la tienda).
+              Después tenés que <strong>enviarlo a revisión</strong>: un admin lo
+              aprueba y recién ahí se publica.
+            </p>
             <GameFormFields
               form={newForm}
               setForm={setNewForm}
@@ -554,6 +567,12 @@ export default function ProviderPage() {
                                 Copiar
                               </button>
                             </p>
+                            {g.status === "draft" ? (
+                              <p className="mt-1 text-xs text-ln-corona">
+                                Todavía no es visible en la tienda — envialo a
+                                revisión.
+                              </p>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button
@@ -565,14 +584,26 @@ export default function ProviderPage() {
                             {g.status === "draft" ? (
                               <Button
                                 variant="outline"
-                                onClick={() => action(g.id, "/submit")}
+                                onClick={() =>
+                                  action(
+                                    g.id,
+                                    "/submit",
+                                    "Enviado a revisión. Te avisamos cuando se apruebe.",
+                                  )
+                                }
                               >
                                 Enviar a revisión
                               </Button>
                             ) : (
                               <Button
                                 variant="outline"
-                                onClick={() => action(g.id, "/unpublish")}
+                                onClick={() =>
+                                  action(
+                                    g.id,
+                                    "/unpublish",
+                                    "Juego despublicado.",
+                                  )
+                                }
                               >
                                 Despublicar
                               </Button>
