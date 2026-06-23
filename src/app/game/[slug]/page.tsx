@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
+import { TipButton } from "@/components/tip-button";
 import { PlayButton } from "@/components/play-button";
 import { GameBets } from "@/components/game-bets";
 import { MultiplayerPanel } from "@/components/multiplayer-panel";
@@ -248,6 +249,12 @@ export default async function GamePage({
               )}
             </div>
           )}
+
+          {/* Propina opcional al dev (juegos gratis): el sat va 100% al proveedor,
+              sin custodia ni comisión de la tienda. */}
+          {game.priceSats === 0 ? (
+            <TipButton gameId={game.id} providerName={game.provider.name} />
+          ) : null}
 
           {/* Panel social "Jugá con amigos" (juegos con salas y comprables) */}
           {supportsRooms && canPlay ? <GameSocialPanel /> : null}
