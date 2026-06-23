@@ -146,9 +146,49 @@ export async function signEntitlement(
     .sign(privateKey);
 }
 
-export async function verifyEntitlement(
+// Motivo legible de un rechazo de entitlement, para que el juego lo muestre en su puerta
+// de login en vez de un 401 mudo. `code` es estable (apto para clientes); `message` humano.
+export type EntitlementFailure = { code: string; message: string };
+
+// Traduce el `code` de jose a un motivo accionable. Los códigos relevantes:
+//   ERR_JWT_EXPIRED                      → el token venció (exp 5m): reabrir desde Luna.
+//   ERR_JWS_SIGNATURE_VERIFICATION_FAILED→ firmado con otra LN_SIGNING_JWK: el juego apunta
+//                                          a otra instancia de Luna que no minteó el token.
+//   ERR_JWT_CLAIM_VALIDATION_FAILED      → iss/aud no coinciden.
+function describeEntitlementError(e: unknown): EntitlementFailure {
+  const code =
+    (e as { code?: string })?.code ?? (e as { name?: string })?.name ?? "UNKNOWN";
+  switch (code) {
+    case "ERR_JWT_EXPIRED":
+      return {
+        code,
+        message:
+          "El token de acceso venció (dura 5 minutos). Reabrí el juego desde Luna Negra.",
+      };
+    case "ERR_JWS_SIGNATURE_VERIFICATION_FAILED":
+      return {
+        code,
+        message:
+          "La firma del token no coincide: el juego podría estar apuntando a otra instancia de Luna Negra (revisar LUNA_NEGRA_BASE_URL).",
+      };
+    case "ERR_JWT_CLAIM_VALIDATION_FAILED":
+      return {
+        code,
+        message: "El emisor o la audiencia del token no coinciden.",
+      };
+    default:
+      return { code, message: "Token inválido o expirado." };
+  }
+}
+
+// Variante que SÍ devuelve el motivo del rechazo (la ruta lo manda al cliente). El log queda
+// acá: es lo único que distingue "token viejo" de "deploy mal apuntado" en los logs del server.
+export async function verifyEntitlementDetailed(
   token: string,
-): Promise<EntitlementPayload | null> {
+): Promise<
+  | { ok: true; payload: EntitlementPayload }
+  | { ok: false; error: EntitlementFailure }
+> {
   try {
     const { publicKey } = await getSigningKeys();
     const { payload } = await jwtVerify(token, publicKey, {
@@ -159,26 +199,35 @@ export async function verifyEntitlement(
       console.warn("[auth] verifyEntitlement rechazó: scope inválido", {
         scope: payload.scope,
       });
-      return null;
+      return {
+        ok: false,
+        error: { code: "INVALID_SCOPE", message: "El token no es un entitlement de juego." },
+      };
     }
     return {
-      npub: payload.npub as string,
-      pubkey: payload.pubkey as string,
-      gameId: payload.gameId as string,
-      slug: payload.slug as string,
+      ok: true,
+      payload: {
+        npub: payload.npub as string,
+        pubkey: payload.pubkey as string,
+        gameId: payload.gameId as string,
+        slug: payload.slug as string,
+      },
     };
   } catch (e) {
-    // jose tira errores con `code` específico: JWTExpired (token vencido, exp 5m),
-    // JWSSignatureVerificationFailed (firmado con otra LN_SIGNING_JWK), o
-    // JWTClaimValidationFailed (iss/aud no coinciden). El 401 de la ruta es mudo;
-    // este log es lo único que distingue "token viejo" de "deploy mal apuntado".
-    const err = e as { code?: string; name?: string; message?: string };
+    const error = describeEntitlementError(e);
     console.warn("[auth] verifyEntitlement rechazó el token", {
-      code: err.code ?? err.name ?? "unknown",
-      message: err.message,
+      code: error.code,
+      message: (e as { message?: string })?.message,
     });
-    return null;
+    return { ok: false, error };
   }
+}
+
+export async function verifyEntitlement(
+  token: string,
+): Promise<EntitlementPayload | null> {
+  const result = await verifyEntitlementDetailed(token);
+  return result.ok ? result.payload : null;
 }
 
 // --- Invite (token para unirse a la sala multijugador de un juego) ---

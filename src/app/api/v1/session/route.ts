@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { verifyEntitlement } from "@/lib/auth";
+import { verifyEntitlementDetailed } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheProfile } from "@/lib/profile-cache";
 import { trackIntegration } from "@/lib/integration-telemetry";
@@ -22,10 +22,13 @@ export async function GET(req: Request) {
       400,
     );
   }
-  const ent = await verifyEntitlement(token);
-  if (!ent) {
-    return apiError("INVALID_TOKEN", "Token inválido o expirado", 401);
+  const result = await verifyEntitlementDetailed(token);
+  if (!result.ok) {
+    // Motivo REAL (vencido / firma / emisor) en vez de un 401 genérico, para que la puerta
+    // de login del juego pueda decirle al jugador por qué falló.
+    return apiError(result.error.code, result.error.message, 401);
   }
+  const ent = result.payload;
 
   // Nombre/avatar (kind:0 cacheado); si falta, refrescar en background.
   const user = await prisma.user.findUnique({
