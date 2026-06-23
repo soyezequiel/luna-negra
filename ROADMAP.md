@@ -13,7 +13,7 @@ ordenado por prioridad. Esfuerzo: **S** (horas) · **M** (1-2 días) · **L** (v
 Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use.
 
 - **A1 · Gestión de juegos del proveedor** ✅ (hecho): editar, **despublicar** y borrar; editar precio/descripción/URL después de crear.
-- **A2 · Subida de imágenes** ✅ (hecho): portada + screenshots con **Vercel Blob** (con fallback a pegar URL). Requiere activar Blob en Vercel.
+- **A2 · Subida de imágenes** ✅ (hecho): portada + screenshots a un **volumen self-host** (`/app/uploads`, servidas en `/uploads`), con fallback a pegar URL. Ya no se usa Vercel Blob.
 - **A3 · Payout robusto** ✅ (hecho): **reintento** de payouts en `failed` + panel en `/admin` + sección de ventas en `/provider`.
 - **A4 · Cachear perfil** ✅ (hecho): guarda `displayName`/`avatar` (kind:0) al login → nombre real en navbar, reseñas, amigos.
 - **A5 · Tienda navegable** ✅ (hecho): **búsqueda** + **paginación** + **categorías** (campo `Game.category`, lista curada en `src/lib/categories.ts`, chips de filtro en la tienda y badge en el detalle). Tags libres quedan como extensión opcional.
@@ -22,16 +22,17 @@ Lo que ya existe pero le faltan piezas para que un proveedor/jugador real lo use
 > **Fase A completa** 🎉
 
 ## Fase B — Listo para público (robustez y operación)
-- **B1 · Rate-limit real** ✅ (hecho): Upstash Redis con fallback a memoria (`checkRateLimit`). Falta setear las env vars de Upstash en Vercel para activarlo.
+- **B1 · Rate-limit real** ✅ (hecho): Upstash Redis con fallback a memoria (`checkRateLimit`). Opcional: setear las env vars de Upstash en `.env.docker` para activarlo (en una sola instancia self-host, la memoria alcanza).
 - **B2 · Monitoreo de errores** ✅ (hecho): **Sentry** integrado (`@sentry/nextjs`) con instrumentación server/edge/cliente, `onRequestError`, saneo de secretos (`src/lib/sentry-scrub.ts`) y captura explícita en los flujos de dinero (payout de compra y de escrow). Queda inerte sin DSN. Falta solo crear el proyecto en sentry.io y setear `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN` (opcional: `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` para source maps).
-- **B3 · Dominio propio** ✅ (documentado en DEPLOY.md): acción en el dashboard de Vercel.
+- **B3 · Dominio propio** ✅ (documentado en DEPLOY.md / `docker/`): se sirve por Cloudflare Tunnel con HTTPS automático.
 - **B4 · Términos y privacidad** ✅ (hecho): `/terms` y `/privacy` + links en el footer.
 - **B5 · Tests automatizados** ✅ (hecho): Vitest, 13 tests (auth/JWT, format, admin). `npm test`.
-- **B6 · Backups/PITR** ✅ (documentado en DEPLOY.md): acción en el dashboard de Neon.
+- **B6 · Backups** ✅: el self-host corre un contenedor `backup` que respalda Postgres; incluí también `./uploads` (ver DEPLOY.md / `docker/`).
 
 ## Fase C — Feature estrella: apuestas / escrow ⭐
-La razón de ser de Luna Negra. La más delicada. **Necesita un servicio always-on**
-(Railway/Fly.io) aparte de Vercel para vigilar pagos y timeouts.
+La razón de ser de Luna Negra. La más delicada. Necesita **vigilar pagos y timeouts**
+de forma recurrente; hoy se resuelve con el tick de QStash pegándole a `/api/escrow/tick`
+(el self-host en Docker ya es un proceso always-on).
 
 - **C0 · Diseño + `swr-review`** ✅ (hecho): revisión completa en [`docs/review/`](docs/review/) (idea→requisitos→arquitectura→diseño→datos→API→seguridad). **Plan de implementación: [`docs/apuestas-plan.md`](docs/apuestas-plan.md)** (M0–M7). Gates antes de escalar: oráculo 3ros, legal, custodia.
 > **C1–C4 implementados (código) ✅** — ver [`docs/apuestas-plan.md`](docs/apuestas-plan.md) (M0–M7). Falta deploy/infra + prueba real. C5 (disputas/oráculo 3ros) sigue siendo gate.
@@ -53,15 +54,15 @@ La razón de ser de Luna Negra. La más delicada. **Necesita un servicio always-
 - Infra: el lobby lo hostea el proveedor; si Luna Negra hace señalización, necesita always-on.
 
 ## Fase E — Inclusión y cuentas
-- **E1 · Email + Magic Link** (M): para usuarios no-técnicos.
+- **E1 · Email + Magic Link** (M): para usuarios no-técnicos. ⚠️ Hay código (`/api/auth/email`, cuentas custodiales) pero **no está operativo** — el login por email no funciona; falta repararlo.
 - **E2 · Custodia de claves Nostr** (L): NIP-46 (bunker) o signer server-side, compatible con NIP-07 (nos2x) que ya está.
 - **E3 · Chat NIP-17** (M): reemplazar NIP-04 (que expone metadata).
 
 ---
 
 ## Implicaciones de infraestructura
-- **Vercel alcanza** para A, B, D1-D3 y la mayor parte de E.
-- **C (apuestas)** y señalización de **D** necesitan un **worker always-on** (Railway / Fly.io / VPS) además de Vercel.
+- El **self-host con Docker + Cloudflare Tunnel** (ver `DEPLOY.md` / `docker/`) cubre A, B, D y la mayor parte de E, y al ser un proceso always-on también sostiene el watcher de **C (apuestas)**.
+- El **lobby multijugador** de **D** lo hostea el proveedor; si Luna Negra hiciera señalización propia, también se apoya en el mismo proceso always-on.
 
 ## Próximo sprint sugerido
 **A1 + A3 + A4** (gestión de juegos + payout robusto + nombres reales): es lo que más

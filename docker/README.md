@@ -4,8 +4,8 @@ Levanta **toda la tienda** (Next 16 + Postgres) en Docker y la expone a internet
 con **Cloudflare Tunnel**, sin IP pública ni abrir puertos del router. Mismo
 comando en Windows y Linux.
 
-Es un *fallback*: si Neon/Vercel no están disponibles, corrés esto y la tienda
-sigue en línea desde tu máquina.
+Este es el **modo de producción** de Luna Negra: la app y la base corren en tu
+máquina (o en un servidor) y se publican por el túnel.
 
 > 👉 ¿Primera vez? Seguí el **[TUTORIAL paso a paso](TUTORIAL.md)** (de cero a
 > online). Este README es la referencia más corta.
@@ -126,20 +126,15 @@ con `docker compose down -v`.
 
 ---
 
-## Cómo encaja con el deploy principal
+## Base de datos
 
-La app es la misma; solo cambia de dónde sale la base de datos:
-
-- **Producción**: Vercel + Neon (vía `.env`).
-- **Fallback self-host**: este compose, con Postgres local (vía `.env.docker`).
-
-El `docker-compose.yml` fuerza `DATABASE_URL`/`DIRECT_URL` al Postgres del compose,
-así que aunque tu `.env` apunte a Neon, el contenedor nunca lo usa.
+El `docker-compose.yml` fuerza `DATABASE_URL`/`DIRECT_URL` al **Postgres del compose**
+(contenedor `postgres`, datos en el volumen `pgdata`). No depende de ninguna DB externa.
 
 ### Notas
 
 - **`NEXT_PUBLIC_SITE_URL`**: se lee en el server en runtime (ok para los anuncios
   Nostr). Si necesitaras que quede *horneada* en el bundle del cliente, habría que
-  pasarla como build-arg; para el fallback no hace falta.
-- **Lightning/pagos, login por email, Sentry, etc.**: son opcionales. Si querés
-  esas features en el fallback, completá sus variables en `.env.docker`.
+  pasarla como build-arg.
+- **Lightning/pagos, apuestas, Sentry, etc.**: son opcionales. Completá sus variables
+  en `.env.docker` para activarlas (ver [`DEPLOY.md`](../DEPLOY.md)).

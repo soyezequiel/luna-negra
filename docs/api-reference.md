@@ -68,7 +68,7 @@ Endpoints con límite devuelven cabeceras `RateLimit-Limit/Remaining/Reset` y, e
 
 ## 3. Autenticación / sesión (first-party)
 
-Login estilo NIP-98: el cliente pide un challenge, firma un evento Nostr (kind 27235) con su extensión (NIP-07) y lo canjea por una cookie de sesión JWT. Lógica en `src/lib/auth.ts`.
+Login estilo NIP-98: el cliente pide un challenge, firma un evento Nostr (kind 27235) con su **extensión (NIP-07)** o con un **firmador remoto en el celu (NIP-46)** emparejado por QR, y lo canjea por una cookie de sesión JWT. Lógica en `src/lib/auth.ts`. (Existe además `/api/auth/email` para magic link custodial, pero **no está operativo**.)
 
 ### `POST /api/auth/challenge`
 Emite un challenge firmado para el flujo de login. **Rate limit:** 30/min por IP.
@@ -166,8 +166,9 @@ Resuelve qué pubkeys son usuarios de Luna Negra (para la lista de amigos). Hast
 - **200:** `{ "known": [{ "pubkey", "npub", "displayName", "lastPlayedAt", "games": [{ "slug", "title" }] }] }`
 
 ### `POST /api/upload`
-Sube una imagen a Vercel Blob. Body = bytes crudos; `?filename=` opcional. Runtime Node.
-- **200:** `{ "url": "<blob url>" }` · **400** archivo vacío · **502** error de Blob
+Sube una imagen al volumen self-host (`/app/uploads`, servida en `/uploads/<archivo>`).
+Body = bytes crudos; `?filename=` opcional. Runtime Node.
+- **200:** `{ "url": "/uploads/<archivo>" }` · **400** archivo vacío · **502** error al guardar
 
 ---
 

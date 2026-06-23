@@ -48,7 +48,7 @@ Por cada apuesta resuelta, revisá en `prisma studio` la tabla `LedgerEntry`:
 - **Estado trabado** (no pasa a ready / no reembolsa): revisá que el **tick de QStash** siga dando 200; mirá `Bet.status` en la DB.
 - **Payout/reembolso `failed`**: `/admin → Payouts a resolver` → **Reintentar**. Causa típica: lud16 inválida o sin saldo/budget.
 - **Depósito no detectado**: el tick hace `lookup_invoice`; verificá que el invoice se pagó de verdad y que el NWC ve el pago.
-- **Logs**: Vercel → Logs (errores de `/api/escrow/*`).
+- **Logs**: `docker compose logs -f app` (errores de `/api/escrow/*`).
 
 ---
 

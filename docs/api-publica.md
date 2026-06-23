@@ -18,7 +18,7 @@
 
 | Aspecto | Decisión |
 |---|---|
-| Base URL | `https://<LUNA_NEGRA>` (tu deploy) |
+| Base URL | `https://<LUNA_NEGRA>` (tu deploy; la instancia pública es `https://luna.naranja.fit`) |
 | Autenticación | siempre `Authorization: Bearer <token-o-api-key>` |
 | Errores | `{ "error": { "code", "message" } }` + status HTTP correcto |
 | CORS | habilitado en todos los endpoints públicos |

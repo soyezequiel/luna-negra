@@ -3,6 +3,12 @@
 Estado: **revisión completa** (faltan opcionales: performance, cost, dx, testing, visualizer)
 Última actualización: 2026-06-03
 
+> ⚠️ **Snapshot histórico (3 jun 2026).** Estos artefactos reflejan las decisiones del
+> momento de la revisión. La infraestructura cambió después: el hosting pasó de
+> **Vercel + Neon** a **self-host con Docker + Cloudflare Tunnel** (ver
+> [`DEPLOY.md`](../../DEPLOY.md)). Donde estos documentos digan "Vercel"/"Neon", leelo
+> como "la app/Postgres del self-host". El resto del análisis sigue vigente.
+
 ## Artefactos generados
 
 | Archivo | Generado por | Fecha | Descripción |

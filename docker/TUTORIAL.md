@@ -1,4 +1,4 @@
-# Tutorial: servir Luna Negra desde tu compu (fallback con Docker)
+# Tutorial: servir Luna Negra desde tu compu (producción con Docker)
 
 Guía de cero a "mi tienda está online" usando **Docker + Cloudflare Tunnel**.
 No necesitás IP pública ni abrir puertos del router. Funciona igual en **Windows**
@@ -272,17 +272,16 @@ DATABASE_URL="postgresql://luna:<pass>@localhost:5433/luna" npx prisma studio
 
 ---
 
-## Cómo apagar el fallback y volver a Neon/Vercel
+## Apagar y prender
 
-Esto es solo un respaldo. Cuando Neon vuelva:
+```bash
+docker compose down                          # apaga (los datos quedan en el volumen pgdata)
+docker compose --env-file .env.docker up -d  # vuelve a prender
+```
 
-1. `docker compose down` (apaga el fallback; los datos quedan en el volumen).
-2. Tu deploy normal en Vercel sigue usando Neon vía `.env` — no tocaste nada de eso.
-
-> Ojo: los datos creados mientras corriste el fallback viven en **el Postgres
-> local** (volumen `pgdata`), no en Neon. Si generaste datos importantes acá y
-> querés llevarlos a Neon, hay que exportarlos/importarlos aparte (decime y te
-> armo el `pg_dump` → `pg_restore`).
+> Los datos viven en el volumen `pgdata` y las imágenes subidas en `./uploads`.
+> Sobreviven a `down`/`up`; solo se borran con `docker compose down -v`. Acordate de
+> incluir ambos en tus backups.
 
 ---
 

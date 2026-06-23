@@ -106,7 +106,7 @@ Abrí http://localhost:3000.
 ## Cómo está hecho
 
 - **Web + API:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4.
-- **Identidad:** Nostr — login firmando un desafío (NIP-07 / NIP-46) o email custodial.
+- **Identidad:** Nostr — login firmando un desafío con extensión (NIP-07) o con el celu (NIP-46).
 - **Pagos:** Lightning vía NWC (Alby Hub). Compras con reparto 70/30; propinas y
   apuestas en sats. Nada sale a moneda fiat.
 - **Social** (amigos, chat, presencia, actividad): vive en **relays Nostr** públicos,
