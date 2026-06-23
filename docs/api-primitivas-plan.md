@@ -193,7 +193,7 @@ Store de puntajes con nombre, genérico y por proveedor/juego.
   máquina de estados interna del tick, solo la **forma de salida**.
 - **Despliegue acoplado:** al no haber retrocompat, Luna Negra y Tetris deben subir
   juntos. Ventana corta de incompatibilidad aceptable (pre-launch, mismo dueño).
-- **Caché/CDN:** confirmar de dónde viene el cacheo de ~3 min (Vercel/headers) antes de
+- **Caché/CDN:** confirmar de dónde viene el cacheo de ~3 min (Cloudflare/headers) antes de
   declararlo resuelto con `no-store`.
 
 ## Orden sugerido (ROI para dev solo)
