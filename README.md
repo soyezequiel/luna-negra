@@ -51,14 +51,13 @@ Es como una mini-Steam, pero:
 
 ---
 
-## Cómo entrás (3 formas)
+## Cómo entrás (2 formas)
 
 1. **Con una extensión Nostr** en el navegador — la opción para gente técnica
    ([nos2x](https://github.com/fiatjaf/nos2x) o [Alby](https://getalby.com/)).
 2. **Con el celu, escaneando un QR** — usás una app firmadora de Nostr
    (Amber, Primal, etc.) y aprobás el ingreso desde el teléfono.
-3. **Con tu email** — te llega un link mágico y listo. Luna Negra te crea y te
-   guarda la identidad Nostr por detrás; después podés exportarla cuando quieras.
+
 
 ---
 
