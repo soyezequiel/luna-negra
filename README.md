@@ -24,7 +24,7 @@ Es como una mini-Steam, pero:
 - **Tu identidad es tuya.** El login usa **Nostr**, un sistema abierto donde la cuenta
   es una clave que controlás vos, no un mail y una contraseña en un servidor ajeno.
   
-### ¿Por qué puede interesarte si estás en Argentina?
+### ¿Por qué puede interesarte?
 
 - Comprás y cobrás en **Bitcoin** sin depender del homebanking ni de límites de tarjeta.
 - Un desarrollador local puede **vender su juego al mundo** y recibir sats al instante,
