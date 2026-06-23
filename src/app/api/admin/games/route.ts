@@ -35,6 +35,7 @@ export async function GET() {
     title: g.title,
     slug: g.slug,
     priceSats: g.priceSats,
+    revenueShare: g.revenueShare,
     provider: { name: g.provider.name },
     owners: g._count.purchases,
   }));

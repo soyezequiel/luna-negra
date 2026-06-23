@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { categoryLabel } from "@/lib/categories";
@@ -29,7 +35,7 @@ type ReviewGame = Row & {
   screenshots: string; // JSON array de URLs
   createdAt: string;
 };
-type CatalogRow = Row & { owners: number };
+type CatalogRow = Row & { owners: number; revenueShare: number };
 type Payout = {
   id: string;
   gameTitle: string;
@@ -46,6 +52,13 @@ type BetRow = {
   stakeSats: number;
   paid: number;
   total: number;
+};
+type EconomySettings = {
+  storeFeePct: number;
+  providerRevenueShare: number;
+  betFeePct: number;
+  updatedAt: string | null;
+  configured: boolean;
 };
 
 const PAYOUT_LABEL: Record<string, string> = {
@@ -99,7 +112,107 @@ function Kpi({
   );
 }
 
-function ReviewDetail({ g }: { g: ReviewGame }) {
+function storeFeeFromRevenueShare(revenueShare: number): number {
+  return 100 - revenueShare;
+}
+
+function RevenueShareControl({
+  gameId,
+  revenueShare,
+  onSaved,
+  compact = false,
+}: {
+  gameId: string;
+  revenueShare: number;
+  onSaved: () => void | Promise<void>;
+  compact?: boolean;
+}) {
+  const storeFeePct = storeFeeFromRevenueShare(revenueShare);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(storeFeePct));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/games/${gameId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeFeePct: draft }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(d.error ?? "No se pudo guardar");
+        return;
+      }
+      setEditing(false);
+      await onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <span>
+          Luna Negra {storeFeePct}% · proveedor {revenueShare}%
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(String(storeFeePct));
+            setError(null);
+            setEditing(true);
+          }}
+          className="rounded border border-line px-2 py-0.5 text-[11px] text-muted transition hover:bg-white/5 hover:text-ink"
+        >
+          Editar
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className={compact ? "block max-w-[260px]" : "block"}>
+      <span className="flex flex-wrap items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          required
+          className="w-20 rounded border border-line bg-bg px-2 py-1 text-xs text-ink outline-none focus:ring-2 focus:ring-blue/30"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <span className="text-xs text-faint">% Luna Negra</span>
+        <Button type="button" size="sm" onClick={save} disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setEditing(false)}
+          disabled={saving}
+        >
+          Cancelar
+        </Button>
+      </span>
+      {error ? <span className="mt-1 block text-[11px] text-[var(--lose)]">{error}</span> : null}
+    </span>
+  );
+}
+
+function ReviewDetail({
+  g,
+  onSaved,
+}: {
+  g: ReviewGame;
+  onSaved: () => void | Promise<void>;
+}) {
   const shots = parseShots(g.screenshots);
   return (
     <div className="mt-3 space-y-4 border-t border-line pt-3 text-xs">
@@ -112,7 +225,13 @@ function ReviewDetail({ g }: { g: ReviewGame }) {
         </div>
         <div>
           <dt className="text-faint">Revenue share</dt>
-          <dd className="text-ink">{g.revenueShare}% al proveedor</dd>
+          <dd className="text-ink">
+            <RevenueShareControl
+              gameId={g.id}
+              revenueShare={g.revenueShare}
+              onSaved={onSaved}
+            />
+          </dd>
         </div>
         <div>
           <dt className="text-faint">Slug</dt>
@@ -206,6 +325,12 @@ export default function AdminPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [bets, setBets] = useState<BetRow[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationView[]>([]);
+  const [economy, setEconomy] = useState<EconomySettings | null>(null);
+  const [economyDraft, setEconomyDraft] = useState({
+    storeFeePct: "",
+    betFeePct: "",
+  });
+  const [economyMsg, setEconomyMsg] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [, startLoadTransition] = useTransition();
@@ -234,6 +359,16 @@ export default function AdminPage() {
       .then((res) => res.json())
       .catch(() => ({ views: [] }));
     setIntegrations(i.views ?? []);
+    const e = await fetch("/api/admin/economy")
+      .then((res) => res.json())
+      .catch(() => ({ settings: null }));
+    if (e.settings) {
+      setEconomy(e.settings);
+      setEconomyDraft({
+        storeFeePct: String(e.settings.storeFeePct),
+        betFeePct: String(e.settings.betFeePct),
+      });
+    }
   }, []);
 
   const probeProvider = useCallback(
@@ -259,6 +394,35 @@ export default function AdminPage() {
   async function approve(id: string) {
     await fetch(`/api/admin/games/${id}/approve`, { method: "POST" });
     load();
+  }
+
+  async function saveEconomy(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy("economy");
+    setEconomyMsg(null);
+    try {
+      const r = await fetch("/api/admin/economy", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storeFeePct: economyDraft.storeFeePct,
+          betFeePct: economyDraft.betFeePct,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setEconomyMsg(d.error ?? "No se pudieron guardar los porcentajes");
+        return;
+      }
+      setEconomy(d.settings);
+      setEconomyDraft({
+        storeFeePct: String(d.settings.storeFeePct),
+        betFeePct: String(d.settings.betFeePct),
+      });
+      setEconomyMsg("Porcentajes guardados.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function reject(id: string) {
@@ -362,6 +526,90 @@ export default function AdminPage() {
         <Kpi label="Apuestas" value={String(bets.length)} sub="en total" accent="var(--win)" />
       </div>
 
+      <section className="mt-8 rounded-lg border border-line bg-panel p-5">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="font-semibold text-ink">Porcentajes de Luna Negra</h2>
+            <p className="mt-1 text-xs text-faint">
+              La tienda usa el reparto por juego; las apuestas nuevas copian la
+              comision actual al contrato firmado.
+            </p>
+          </div>
+          {economy?.updatedAt ? (
+            <p className="text-[11px] text-faint">
+              Actualizado {new Date(economy.updatedAt).toLocaleString("es-AR")}
+            </p>
+          ) : null}
+        </div>
+
+        {economy ? (
+          <form onSubmit={saveEconomy} className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium text-muted">
+                Comision tienda
+              </span>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  className="w-24 rounded border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
+                  value={economyDraft.storeFeePct}
+                  onChange={(ev) =>
+                    setEconomyDraft((prev) => ({
+                      ...prev,
+                      storeFeePct: ev.target.value,
+                    }))
+                  }
+                />
+                <span className="text-sm text-muted">% Luna Negra</span>
+              </div>
+              <span className="mt-1 block text-[11px] text-faint">
+                Proveedor {100 - (Number(economyDraft.storeFeePct) || 0)}% en juegos nuevos.
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-medium text-muted">
+                Comision apuestas
+              </span>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  className="w-24 rounded border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
+                  value={economyDraft.betFeePct}
+                  onChange={(ev) =>
+                    setEconomyDraft((prev) => ({
+                      ...prev,
+                      betFeePct: ev.target.value,
+                    }))
+                  }
+                />
+                <span className="text-sm text-muted">% del pozo</span>
+              </div>
+              <span className="mt-1 block text-[11px] text-faint">
+                Se aplica a apuestas creadas desde ahora.
+              </span>
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+              <Button type="submit" disabled={busy === "economy"}>
+                {busy === "economy" ? "Guardando..." : "Guardar porcentajes"}
+              </Button>
+              {economyMsg ? (
+                <span className="text-xs text-btc">{economyMsg}</span>
+              ) : null}
+            </div>
+          </form>
+        ) : (
+          <p className="mt-4 text-sm text-faint">Cargando porcentajes...</p>
+        )}
+      </section>
+
       <section className="mt-8">
         <h2 className="mb-3 font-semibold text-ink">Juegos en revisión</h2>
         {games === null ? (
@@ -402,7 +650,7 @@ export default function AdminPage() {
                       </Button>
                     </div>
                   </div>
-                  {open ? <ReviewDetail g={g} /> : null}
+                  {open ? <ReviewDetail g={g} onSaved={load} /> : null}
                 </li>
               );
             })}
@@ -449,15 +697,23 @@ export default function AdminPage() {
             {catalog.map((g) => (
               <li
                 key={g.id}
-                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-panel px-4 py-3"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium">{g.title}</p>
                   <p className="text-xs text-faint">
                     {g.provider.name} ·{" "}
                     {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`} ·{" "}
                     {g.owners} en biblioteca
                   </p>
+                  <div className="mt-1 text-xs text-faint">
+                    <RevenueShareControl
+                      gameId={g.id}
+                      revenueShare={g.revenueShare}
+                      onSaved={load}
+                      compact
+                    />
+                  </div>
                 </div>
                 <Button
                   variant="ghost"

@@ -9,13 +9,13 @@ import {
   computeContractHash,
 } from "@/lib/escrow";
 import { computeEconomics } from "@/lib/escrow-math";
+import { getEconomySettings } from "@/lib/economy-settings";
 import { publishContract } from "@/lib/nostr-server";
 import { msatToSats } from "@/lib/money";
 import {
   BET_MIN_SATS,
   BET_MAX_SATS,
   BET_MAX_ANONYMOUS_SEATS,
-  BET_FEE_PCT,
   BET_FEE_MIN_SATS,
   BET_FEE_MIN_MSAT,
   DEPOSIT_WINDOW_MS,
@@ -93,13 +93,15 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
 
   const participantNpubs = participantSeats.map((p) => p.npub);
   const depositDeadline = new Date(Date.now() + DEPOSIT_WINDOW_MS);
+  const economy = await getEconomySettings();
+  const feePct = economy.betFeePct;
   const bet = await prisma.bet.create({
     data: {
       gameId: game.id,
       providerId: game.providerId,
       status: "pending_deposits",
       stakeMsat: v.stakeMsat,
-      feePct: BET_FEE_PCT,
+      feePct,
       victoryCondition: v.victoryCondition,
       roomId: v.roomId,
       metadataJson: v.metadataJson,
@@ -117,7 +119,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     betId: bet.id,
     gameId: game.id,
     stakeMsat: v.stakeMsat,
-    feePct: BET_FEE_PCT,
+    feePct,
     victoryCondition: v.victoryCondition,
     npubs: participantNpubs,
   });
@@ -129,7 +131,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     npubs: participantNpubs,
     stakeSats: Number(msatToSats(v.stakeMsat)),
     victoryCondition: v.victoryCondition,
-    feePct: BET_FEE_PCT,
+    feePct,
     feeMinSats: BET_FEE_MIN_SATS,
     providerName: game.provider.name,
   });
@@ -148,7 +150,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
   const econ = computeEconomics({
     stakeMsat: v.stakeMsat,
     participantCount: v.seatCount,
-    feePct: BET_FEE_PCT,
+    feePct,
     feeMinMsat: BET_FEE_MIN_MSAT,
   });
 
@@ -162,7 +164,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       depositDeadline: depositDeadline.toISOString(),
       stakeSats: Number(msatToSats(v.stakeMsat)),
       potTargetSats: Number(msatToSats(econ.potMsat)),
-      feePct: BET_FEE_PCT,
+      feePct,
       feeBps: econ.feeBps,
       feeSats: Number(msatToSats(econ.feeMsat)),
       netPayoutSats: Number(msatToSats(econ.netMsat)),

@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
+import { getSession } from "@/lib/auth";
+import {
+  normalizePercent,
+  providerShareFromStoreFee,
+} from "@/lib/economy-settings";
+import { prisma } from "@/lib/prisma";
+import { revalidateCatalog } from "@/lib/store-catalog";
 
-// Estados de apuesta con dinero "en vuelo" (escrow retenido o liquidando). Si el
-// juego tiene alguna apuesta así, NO se borra: perderíamos el rastro del dinero
-// en custodia. Hay que resolver/reembolsar esas apuestas primero.
+// Estados de apuesta con dinero en vuelo. Si el juego tiene alguna apuesta asi,
+// no se borra: perderiamos el rastro del dinero en custodia.
 const ACTIVE_BET_STATES = [
   "created",
   "pending_deposits",
@@ -14,10 +18,49 @@ const ACTIVE_BET_STATES = [
   "refunding",
 ];
 
-// Borra un juego del catálogo, incluso si usuarios ya lo tienen en su biblioteca.
-// Limpia en cascada todo lo que cuelga del juego (el schema no define
-// onDelete: Cascade para estas relaciones): compras (entitlements/biblioteca),
-// reseñas, salas, marcadores y apuestas ya finalizadas con su ledger.
+// Ajusta el reparto de ventas de un juego puntual. La UI lo expresa como
+// "% Luna Negra"; internamente el juego guarda el % del proveedor.
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession();
+  if (!session || !isAdmin(session.pubkey)) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  const { id } = await params;
+  const body = await req.json().catch(() => ({}));
+
+  let storeFeePct: number;
+  try {
+    storeFeePct = normalizePercent(
+      body.storeFeePct,
+      "La comision de tienda",
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Porcentaje invalido" },
+      { status: 400 },
+    );
+  }
+
+  const existing = await prisma.game.findUnique({ where: { id } });
+  if (!existing) {
+    return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
+  }
+
+  const game = await prisma.game.update({
+    where: { id },
+    data: { revenueShare: providerShareFromStoreFee(storeFeePct) },
+    include: { provider: true },
+  });
+  revalidateCatalog();
+  return NextResponse.json({ game });
+}
+
+// Borra un juego del catalogo, incluso si usuarios ya lo tienen en su biblioteca.
+// Limpia en cascada todo lo que cuelga del juego; no toca juegos con apuestas
+// activas o dinero en custodia.
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -33,7 +76,6 @@ export async function DELETE(
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
   }
 
-  // Guardia: no borrar si hay apuestas con dinero en custodia.
   const activeBets = await prisma.bet.count({
     where: { gameId: id, status: { in: ACTIVE_BET_STATES } },
   });
@@ -41,14 +83,13 @@ export async function DELETE(
     return NextResponse.json(
       {
         error:
-          "El juego tiene apuestas activas con escrow retenido. Resolvé o reembolsá esas apuestas antes de borrarlo.",
+          "El juego tiene apuestas activas con escrow retenido. Resuelve o reembolsa esas apuestas antes de borrarlo.",
       },
       { status: 409 },
     );
   }
 
   await prisma.$transaction(async (tx) => {
-    // Apuestas (ya finalizadas) y sus dependientes.
     const bets = await tx.bet.findMany({
       where: { gameId: id },
       select: { id: true },
@@ -60,10 +101,7 @@ export async function DELETE(
       await tx.bet.deleteMany({ where: { id: { in: betIds } } });
     }
 
-    // Marcadores (Score cae en cascada vía onDelete: Cascade en Leaderboard).
     await tx.leaderboard.deleteMany({ where: { gameId: id } });
-
-    // Salas, reseñas y compras (biblioteca/entitlements).
     await tx.room.deleteMany({ where: { gameId: id } });
     await tx.review.deleteMany({ where: { gameId: id } });
     await tx.purchase.deleteMany({ where: { gameId: id } });

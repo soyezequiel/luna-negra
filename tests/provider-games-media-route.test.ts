@@ -26,6 +26,9 @@ vi.mock("@/lib/prisma", () => ({
       create: mocks.gameCreate,
       update: mocks.gameUpdate,
     },
+    platformSettings: {
+      findUnique: vi.fn(async () => null),
+    },
   },
 }));
 
@@ -96,6 +99,7 @@ describe("provider game media routes", () => {
       data: expect.objectContaining({
         coverUrl: "https://cdn.example/vertical.jpg",
         horizontalCoverUrl: "https://cdn.example/horizontal.jpg",
+        revenueShare: 70,
         screenshots: JSON.stringify(["shot.png"]),
       }),
     });

@@ -76,6 +76,17 @@ model Provider {
 // Alimenta el panel "Integración" (proveedor y admin) para ver, de forma visual,
 // qué interfaces de Luna Negra tiene cableadas cada juego y cuándo se usó cada
 // una por última vez. No guarda payloads: solo el contador y los timestamps.
+model PlatformSettings {
+  id          String   @id @default("global")
+  // % que retiene Luna Negra en ventas de juegos. El % del proveedor se guarda
+  // por juego como `Game.revenueShare = 100 - storeFeePct`.
+  storeFeePct Int      @default(30)
+  // % que retiene Luna Negra al liquidar apuestas con ganador. Cada apuesta
+  // guarda una copia en `Bet.feePct` para que el contrato firmado sea inmutable.
+  betFeePct   Int      @default(5)
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
 model IntegrationPing {
   id          String   @id @default(cuid())
   providerId  String

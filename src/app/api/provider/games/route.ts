@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { uniqueGameSlug } from "@/lib/slug";
 import { normalizeCategories } from "@/lib/categories";
+import { getEconomySettings } from "@/lib/economy-settings";
 import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
 import { normalizeImageUrl } from "@/lib/game-media";
 
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Falta el título" }, { status: 400 });
   }
 
+  const economy = await getEconomySettings();
   const game = await prisma.game.create({
     data: {
       providerId: provider.id,
@@ -58,6 +60,7 @@ export async function POST(req: Request) {
           )
         : "[]",
       status: "draft",
+      revenueShare: economy.providerRevenueShare,
     },
   });
 
