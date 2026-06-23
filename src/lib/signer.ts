@@ -47,7 +47,15 @@ export type StoredSigner =
   | {
       method: "nip46";
       clientNsec: string;
-      bunker: { relays: string[]; pubkey: string; secret: string | null };
+      bunker: {
+        relays: string[];
+        pubkey: string;
+        secret: string | null;
+        // Cifrado detectado en el handshake (NIP-44 vs NIP-04). Si falta, es una
+        // sesión vieja anterior a la detección → se restaura con el cliente
+        // legacy (BunkerSigner, solo NIP-44).
+        encryption?: "nip44" | "nip04";
+      };
     };
 
 function readStoredSigner(): StoredSigner | null {

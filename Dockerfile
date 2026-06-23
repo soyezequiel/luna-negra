@@ -31,6 +31,12 @@ ENV NODE_ENV=production \
     DATABASE_URL="postgresql://build:build@localhost:5432/build" \
     DIRECT_URL="postgresql://build:build@localhost:5432/build" \
     JWT_SECRET="build-only-placeholder-secret"
+# Identificador de build para el version-poll del cliente (ver src/lib/build-id.ts).
+# Las vars NEXT_PUBLIC_* se inlinean en build-time, así que tiene que estar presente
+# ACÁ (no en runtime). Lo inyecta docker/deploy.* con el SHA de git + timestamp; si
+# falta, la app cae al timestamp de arranque del proceso.
+ARG NEXT_PUBLIC_BUILD_ID=""
+ENV NEXT_PUBLIC_BUILD_ID=$NEXT_PUBLIC_BUILD_ID
 RUN npx prisma generate
 RUN npx next build
 

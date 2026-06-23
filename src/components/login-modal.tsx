@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   createNip07Signer,
@@ -22,6 +21,20 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "bunker", label: "Bunker" },
   { id: "local", label: "Clave local" },
 ];
+
+// Clases de presentación del rediseño "Eclipse" (tokens ln-*). Solo estilo: no
+// alteran ningún handler ni la lógica de firmantes.
+//  · primario → gradiente Luna con glow (acción: Conectar / Continuar / Enviar)
+//  · secundario → superficie translúcida con borde (Generar / Copiar)
+//  · input → fondo hundido ln-bg-deep con focus-ring Luna
+const primaryBtn =
+  "rounded-xl px-4 py-3 text-center font-semibold text-[#1a1430] bg-[linear-gradient(120deg,#c2b5ff,#9d8cff)] shadow-[0_14px_36px_-12px_rgba(157,140,255,.6)] transition hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/50 disabled:pointer-events-none disabled:opacity-50";
+const secondaryBtn =
+  "rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center font-semibold text-ln-soft transition hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40 disabled:pointer-events-none disabled:opacity-50";
+const inputCls =
+  "w-full rounded-[11px] border border-white/10 bg-ln-bg-deep px-3.5 py-3 text-sm text-ln-text placeholder:text-ln-faint outline-none transition focus:border-ln-luna/55 focus:ring-2 focus:ring-ln-luna/15";
+const linkCls =
+  "rounded text-ln-luna-bright transition hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40";
 
 /**
  * Avisa al server (que reenvía a Discord) cuando el login por Nostr Connect
@@ -284,28 +297,39 @@ export function LoginModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={close}
     >
       <div
-        className="w-full max-w-md rounded-lg border border-line-2 bg-panel-2 p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Iniciar sesión"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-[22px] border border-white/10 bg-ln-panel/70 p-7 shadow-[0_40px_100px_-30px_rgba(0,0,0,.9)] backdrop-blur animate-ln-rise motion-reduce:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-ink">Iniciar sesión</h3>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-display text-2xl font-bold tracking-[-.02em] text-ln-text">
+              Iniciar sesión
+            </h3>
+            <p className="mt-0.5 text-[13px] text-ln-muted">
+              Entrá con tu identidad Nostr.
+            </p>
+          </div>
           <button
             onClick={close}
-            className="text-faint hover:text-ink"
+            className="-mr-1 -mt-1 rounded-lg p-1.5 text-ln-faint transition hover:text-ln-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40"
             aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
 
-        <div className="mt-4 flex gap-1 rounded-md border border-line bg-black/20 p-1">
+        <div className="mt-5 flex gap-1 rounded-xl border border-white/[0.06] bg-ln-bg-deep p-1">
           {tabs.map((t) => (
             <button
               key={t.id}
+              aria-pressed={tab === t.id}
               onClick={() => {
                 setTabChoice(t.id);
                 setError(null);
@@ -313,10 +337,10 @@ export function LoginModal() {
                 setRevealQr(false);
               }}
               className={cn(
-                "flex-1 rounded-sm px-2 py-1.5 text-xs font-medium",
+                "flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40",
                 tab === t.id
-                  ? "bg-blue/20 text-blue"
-                  : "text-muted hover:text-ink",
+                  ? "bg-ln-luna/15 text-ln-luna-bright shadow-[inset_0_0_0_1px_rgba(157,140,255,.25)]"
+                  : "text-ln-muted hover:text-ln-text",
               )}
             >
               {t.label}
@@ -324,28 +348,28 @@ export function LoginModal() {
           ))}
         </div>
 
-        <div className="mt-5 min-h-[180px]">
+        <div className="mt-5 min-h-[196px]">
           {tab === "email" ? (
             <div>
               {emailSent ? (
                 <div className="text-center">
                   <p className="text-3xl">📬</p>
-                  <p className="mt-3 text-sm text-ink">Revisá tu correo</p>
-                  <p className="mt-1 text-sm text-muted">
+                  <p className="mt-3 text-sm text-ln-text">Revisá tu correo</p>
+                  <p className="mt-1 text-sm text-ln-muted">
                     Te enviamos un enlace de acceso a{" "}
-                    <span className="text-ink">{emailInput.trim()}</span>. Es
+                    <span className="text-ln-text">{emailInput.trim()}</span>. Es
                     válido por 15 minutos.
                   </p>
                   <button
                     onClick={() => setEmailSent(false)}
-                    className="mt-4 text-xs text-blue hover:underline"
+                    className={cn("mt-4 text-xs", linkCls)}
                   >
                     Usar otro correo
                   </button>
                 </div>
               ) : (
                 <div>
-                  <p className="text-sm text-muted">
+                  <p className="text-sm text-ln-muted">
                     ¿No usás Nostr? Ingresá tu email y te mandamos un enlace para
                     entrar. Te creamos una identidad Nostr automáticamente (podés
                     exportar tu clave desde el perfil cuando quieras).
@@ -362,16 +386,15 @@ export function LoginModal() {
                       placeholder="tu@correo.com"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
-                      className="mt-3 w-full rounded-sm border border-line bg-black/20 px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-blue/30"
+                      className={cn("mt-3", inputCls)}
                     />
-                    <Button
-                      variant="blue"
+                    <button
                       type="submit"
-                      className="mt-3 w-full"
+                      className={cn(primaryBtn, "mt-3 w-full")}
                       disabled={busy || !emailInput.trim()}
                     >
                       {busy ? "Enviando…" : "Enviar enlace de acceso"}
-                    </Button>
+                    </button>
                   </form>
                 </div>
               )}
@@ -380,20 +403,19 @@ export function LoginModal() {
 
           {tab === "extension" ? (
             <div>
-              <p className="text-sm text-muted">
+              <p className="text-sm text-ln-muted">
                 Usá tu extensión del navegador (nos2x, Alby). Solo se piden los
                 permisos del login; el resto, recién cuando los uses.
               </p>
-              <Button
-                variant="blue"
-                className="mt-4 w-full"
+              <button
+                className={cn(primaryBtn, "mt-4 w-full")}
                 onClick={loginExtension}
                 disabled={busy || !hasExtension}
               >
                 {busy ? "Conectando…" : "Conectar con la extensión"}
-              </Button>
+              </button>
               {!hasExtension ? (
-                <p className="mt-2 text-xs text-faint">
+                <p className="mt-2 text-xs text-ln-faint">
                   No se encontró una extensión Nostr. Instalá nos2x o Alby, o
                   usá otro método.
                 </p>
@@ -412,26 +434,29 @@ export function LoginModal() {
                 <div className="w-full">
                   <a
                     href={qrUri}
-                    className="flex w-full items-center justify-center rounded-md bg-blue/20 px-4 py-3 text-sm font-semibold text-blue"
+                    className={cn(
+                      primaryBtn,
+                      "flex w-full items-center justify-center gap-2 no-underline",
+                    )}
                   >
-                    Abrir en mi app de Nostr
+                    <span aria-hidden>⚡</span> Abrir en mi app de Nostr
                   </a>
-                  <p className="mt-2 text-center text-xs text-faint">
-                    Se abre <span className="text-muted">Primal</span>,{" "}
-                    <span className="text-muted">Amber</span> u otra app de firma
-                    instalada, y aprobás la conexión ahí.
+                  <p className="mt-2 text-center text-xs text-ln-faint">
+                    Se abre <span className="text-ln-muted">Primal</span>,{" "}
+                    <span className="text-ln-muted">Amber</span> u otra app de
+                    firma instalada, y aprobás la conexión ahí.
                   </p>
                   {!revealQr ? (
                     <button
                       onClick={() => setRevealQr(true)}
-                      className="mt-4 w-full text-center text-xs text-blue hover:underline"
+                      className={cn("mt-4 w-full text-center text-xs", linkCls)}
                     >
                       ¿Escaneás con otro dispositivo? Mostrar código QR
                     </button>
                   ) : (
-                    <div className="my-4 flex items-center gap-3 text-xs text-faint">
-                      <span className="h-px flex-1 bg-line" />o escaneá el QR
-                      <span className="h-px flex-1 bg-line" />
+                    <div className="my-4 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[.16em] text-ln-faint">
+                      <span className="h-px flex-1 bg-white/10" />o escaneá el QR
+                      <span className="h-px flex-1 bg-white/10" />
                     </div>
                   )}
                 </div>
@@ -442,31 +467,37 @@ export function LoginModal() {
               {!isMobile || revealQr ? (
                 <>
                   {qrDataUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={qrDataUrl}
-                      alt="Código QR de Nostr Connect"
-                      className="rounded bg-white p-1"
-                      width={240}
-                      height={240}
-                    />
+                    <div className="rounded-2xl bg-white p-3.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={qrDataUrl}
+                        alt="Código QR de Nostr Connect"
+                        className="block h-[208px] w-[208px]"
+                        width={208}
+                        height={208}
+                      />
+                    </div>
                   ) : (
-                    <div className="flex h-[240px] w-[240px] items-center justify-center rounded bg-black/20 p-4 text-center text-sm text-faint">
+                    <div className="flex h-[239px] w-[239px] items-center justify-center rounded-2xl border border-white/10 bg-ln-bg-deep p-5 text-center text-sm text-ln-faint">
                       {qrUri
                         ? "Este navegador bloquea el QR. Copiá el enlace de abajo y pegalo en tu firmante."
                         : "Generando QR…"}
                     </div>
                   )}
-                  <p className="mt-3 text-center text-sm text-muted">
-                    Escaneá con <span className="text-ink">Amber</span> o{" "}
-                    <span className="text-ink">nsec.app</span> y aprobá la conexión.
+                  <p className="mt-3 text-center text-sm text-ln-muted">
+                    Escaneá con <span className="text-ln-text">Amber</span> o{" "}
+                    <span className="text-ln-text">nsec.app</span> y aprobá la
+                    conexión.
                   </p>
                   {qrUri ? (
                     <button
                       onClick={() =>
                         navigator.clipboard.writeText(qrUri).catch(() => {})
                       }
-                      className="mt-1 text-xs text-blue hover:underline"
+                      className={cn(
+                        "mt-1 font-mono text-[10px] uppercase tracking-[.16em]",
+                        linkCls,
+                      )}
                     >
                       Copiar enlace nostrconnect://
                     </button>
@@ -479,21 +510,30 @@ export function LoginModal() {
                   href={authUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 text-xs text-blue hover:underline"
+                  className={cn("mt-2 text-xs", linkCls)}
                 >
                   Tu firmante pide autorización: abrir enlace ↗
                 </a>
               ) : null}
-              <p className="mt-2 text-xs text-faint">Esperando conexión…</p>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ln-aurora opacity-70" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-ln-aurora" />
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[.16em] text-ln-aurora-bright">
+                  Esperando conexión…
+                </span>
+              </div>
             </div>
           ) : null}
 
           {tab === "bunker" ? (
             <div>
-              <p className="text-sm text-muted">
-                Pegá la URL <span className="font-mono text-ink">bunker://…</span>{" "}
-                de tu firmante remoto, o tu identificador NIP-05 (
-                <span className="font-mono text-ink">usuario@dominio</span>).
+              <p className="text-sm text-ln-muted">
+                Pegá la URL{" "}
+                <span className="font-mono text-ln-text">bunker://…</span> de tu
+                firmante remoto, o tu identificador NIP-05 (
+                <span className="font-mono text-ln-text">usuario@dominio</span>).
               </p>
               <input
                 type="text"
@@ -501,22 +541,21 @@ export function LoginModal() {
                 placeholder="bunker://… o usuario@dominio"
                 value={bunkerInput}
                 onChange={(e) => setBunkerInput(e.target.value)}
-                className="mt-3 w-full rounded-sm border border-line bg-black/20 px-3 py-2 font-mono text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-blue/30"
+                className={cn("mt-3 font-mono", inputCls)}
               />
-              <Button
-                variant="blue"
-                className="mt-3 w-full"
+              <button
+                className={cn(primaryBtn, "mt-3 w-full")}
                 onClick={loginBunker}
                 disabled={busy || !bunkerInput.trim()}
               >
                 {busy ? "Conectando…" : "Conectar"}
-              </Button>
+              </button>
               {authUrl ? (
                 <a
                   href={authUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 block text-xs text-blue hover:underline"
+                  className={cn("mt-2 block text-xs", linkCls)}
                 >
                   Tu firmante pide autorización: abrir enlace ↗
                 </a>
@@ -528,48 +567,49 @@ export function LoginModal() {
             <div>
               {generated ? (
                 <div>
-                  <p className="text-sm text-muted">
+                  <p className="text-sm text-ln-muted">
                     Tu clave nueva. Guardala en un lugar seguro:{" "}
-                    <span className="text-ink">
+                    <span className="text-ln-text">
                       se muestra una sola vez y es la única forma de recuperar tu
                       cuenta.
                     </span>
                   </p>
-                  <div className="mt-3 break-all rounded-sm border border-line bg-black/20 p-3 font-mono text-xs text-ink">
+                  <div className="mt-3 break-all rounded-[11px] border border-ln-corona/35 bg-ln-bg-deep p-3 font-mono text-xs text-ln-corona-bright">
                     {generated.nsec}
                   </div>
                   <div className="mt-3 flex gap-2">
-                    <Button variant="ghost" className="flex-1" onClick={copyGenerated}>
+                    <button
+                      className={cn(secondaryBtn, "flex-1")}
+                      onClick={copyGenerated}
+                    >
                       {copied ? "Copiado ✓" : "Copiar"}
-                    </Button>
-                    <Button
-                      variant="blue"
-                      className="flex-1"
+                    </button>
+                    <button
+                      className={cn(primaryBtn, "flex-1")}
                       onClick={loginGenerated}
                       disabled={busy}
                     >
                       {busy ? "Conectando…" : "Continuar"}
-                    </Button>
+                    </button>
                   </div>
                 </div>
               ) : (
                 <div>
-                  <p className="text-sm text-muted">
+                  <p className="text-sm text-ln-muted">
                     Generá una clave nueva o importá tu{" "}
-                    <span className="font-mono text-ink">nsec</span>.
+                    <span className="font-mono text-ln-text">nsec</span>.
                   </p>
-                  <p className="mt-2 text-xs text-[var(--lose)]">
+                  <p className="mt-2 rounded-[11px] border border-ln-danger/[0.28] bg-ln-danger/[0.08] px-3 py-2 text-xs text-[#e8a99a]">
                     ⚠ La clave queda guardada en este navegador (sin cifrar). No
                     uses tu identidad principal en una computadora compartida.
                   </p>
-                  <Button
-                    variant="ghost"
-                    className="mt-3 w-full"
+                  <button
+                    className={cn(secondaryBtn, "mt-3 w-full")}
                     onClick={generateKey}
                     disabled={busy}
                   >
                     Generar clave nueva
-                  </Button>
+                  </button>
                   <div className="mt-3 flex gap-2">
                     <input
                       type="password"
@@ -577,15 +617,15 @@ export function LoginModal() {
                       placeholder="nsec1…"
                       value={nsecInput}
                       onChange={(e) => setNsecInput(e.target.value)}
-                      className="min-w-0 flex-1 rounded-sm border border-line bg-black/20 px-3 py-2 font-mono text-sm text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-blue/30"
+                      className={cn("min-w-0 flex-1 font-mono", inputCls)}
                     />
-                    <Button
-                      variant="blue"
+                    <button
+                      className={cn(primaryBtn, "shrink-0")}
                       onClick={loginImported}
                       disabled={busy || !nsecInput.trim()}
                     >
                       Importar
-                    </Button>
+                    </button>
                   </div>
                 </div>
               )}
@@ -594,7 +634,7 @@ export function LoginModal() {
         </div>
 
         {error ? (
-          <p className="mt-3 text-sm text-[var(--lose)]">{error}</p>
+          <p className="mt-3 text-sm text-ln-danger">{error}</p>
         ) : null}
       </div>
     </div>

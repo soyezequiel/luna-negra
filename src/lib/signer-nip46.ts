@@ -1,17 +1,21 @@
 /**
- * Conexión con firmantes remotos NIP-46 (Nostr Connect): Amber, nsec.app, etc.
- * Separado de `signer.ts` para cargarlo con `import()` dinámico solo cuando se
- * usa (el BunkerSigner abre su propio pool de relays).
+ * Conexión con firmantes remotos NIP-46 (Nostr Connect): Amber, Primal,
+ * nsec.app, etc.
+ *
+ * El flujo por QR / "abrir en la app" usa `Nip46Client` (cliente propio con
+ * detección de cifrado NIP-44/NIP-04, ver `nip46-client.ts`), porque el
+ * `BunkerSigner` de nostr-tools solo habla NIP-44 y se traba contra Amber/Primal
+ * que usan NIP-04. El flujo `bunker://` pegado a mano sigue usando BunkerSigner.
  */
 
-import { generateSecretKey, getPublicKey, nip04, nip19, nip44 } from "nostr-tools";
-import { SimplePool } from "nostr-tools/pool";
+import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import {
   BunkerSigner,
   createNostrConnectURI,
   parseBunkerInput,
   type BunkerPointer,
 } from "nostr-tools/nip46";
+import { Nip46Client } from "./nip46-client";
 import type { LunaSigner, StoredSigner } from "./signer";
 
 // Relays donde cliente y firmante se encuentran para el handshake NIP-46.
@@ -23,6 +27,9 @@ export const NIP46_RELAYS = [
   "wss://nos.lol",
   "wss://relay.nsec.app",
 ];
+
+// El QR expira a los 5 minutos sin respuesta (igual que lacrypta-dev).
+const QR_TIMEOUT_MS = 5 * 60_000;
 
 // Kinds que la app llega a firmar — DEBE reflejar SIGN_KINDS en nostr-social.ts:
 // 1=comentarios/reseñas, 3=contactos NIP-02, 4=DM NIP-04, 27235=login,
@@ -43,7 +50,10 @@ const NIP46_PERMS = [
   "nip04_decrypt",
 ];
 
-function wrap(signer: BunkerSigner): LunaSigner {
+// ─── Wrappers a LunaSigner ────────────────────────────────────────────────
+
+/** Envuelve el BunkerSigner de nostr-tools (flujo bunker:// y sesiones legacy). */
+function wrapBunker(signer: BunkerSigner): LunaSigner {
   return {
     method: "nip46",
     getPublicKey: () => signer.getPublicKey(),
@@ -54,7 +64,40 @@ function wrap(signer: BunkerSigner): LunaSigner {
   };
 }
 
-/** Para persistir la sesión: la clave efímera del cliente + el bunker pointer. */
+/**
+ * Envuelve nuestro `Nip46Client`. `ensureConnected` se llama antes de cada RPC:
+ * en el flujo QR es noop (recién hicimos el handshake); al restaurar una sesión
+ * dispara un `connect` best-effort (algunos firmantes lo necesitan).
+ */
+function wrapClient(
+  client: Nip46Client,
+  ensureConnected: () => Promise<void> = async () => {},
+): LunaSigner {
+  return {
+    method: "nip46",
+    getPublicKey: async () => {
+      await ensureConnected();
+      return client.getPublicKey();
+    },
+    signEvent: async (e) => {
+      await ensureConnected();
+      return client.signEvent(e);
+    },
+    nip04Encrypt: async (peer, plaintext) => {
+      await ensureConnected();
+      return client.nip04Encrypt(peer, plaintext);
+    },
+    nip04Decrypt: async (peer, ciphertext) => {
+      await ensureConnected();
+      return client.nip04Decrypt(peer, ciphertext);
+    },
+    close: () => client.close(),
+  };
+}
+
+// ─── Persistencia ─────────────────────────────────────────────────────────
+
+/** Sesión legacy (BunkerSigner): bunker pointer sin cifrado detectado. */
 export function storedNip46(
   clientSecretKey: Uint8Array,
   bp: BunkerPointer,
@@ -65,6 +108,25 @@ export function storedNip46(
     bunker: { relays: bp.relays, pubkey: bp.pubkey, secret: bp.secret },
   };
 }
+
+/** Sesión del flujo QR: incluye el cifrado detectado para restaurar igual. */
+function storedFromClient(
+  clientSecret: Uint8Array,
+  client: Nip46Client,
+): StoredSigner {
+  return {
+    method: "nip46",
+    clientNsec: nip19.nsecEncode(clientSecret),
+    bunker: {
+      relays: client.relays,
+      pubkey: client.bunkerPubkey,
+      secret: client.secret,
+      encryption: client.encryptionVersion,
+    },
+  };
+}
+
+// ─── Flujos de conexión ───────────────────────────────────────────────────
 
 /**
  * Conecta con un bunker a partir de un `bunker://...` o un identificador
@@ -82,34 +144,25 @@ export async function connectBunker(
   const clientSecretKey = generateSecretKey();
   const bunker = BunkerSigner.fromBunker(clientSecretKey, bp, { onauth });
   await bunker.connect();
-  return { signer: wrap(bunker), stored: storedNip46(clientSecretKey, bp) };
+  return { signer: wrapBunker(bunker), stored: storedNip46(clientSecretKey, bp) };
 }
 
 /**
- * Inicia el flujo Nostr Connect por QR: genera el URI `nostrconnect://` para
- * escanear con Amber/nsec.app y devuelve la promesa que resuelve cuando el
- * firmante remoto se conecta.
+ * Inicia el flujo Nostr Connect por QR / "abrir en la app": genera el URI
+ * `nostrconnect://` y devuelve la promesa que resuelve cuando el firmante remoto
+ * acepta la conexión. Usa `Nip46Client` (detección NIP-44/NIP-04).
  */
-// kind 24133 = NIP-46 Nostr Connect.
-const NOSTR_CONNECT_KIND = 24133;
-
-/** Nombre corto de un relay para los logs de diagnóstico. */
-function rname(url: string): string {
-  return url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
-}
-
 export function startNostrConnect(opts?: {
   onauth?: (url: string) => void;
   signal?: AbortSignal;
-  /** Diagnóstico: recibe líneas de estado del handshake (relays, eventos, descifrado). */
+  /** Diagnóstico: líneas de estado del handshake (relays, eventos, cifrado). */
   onDebug?: (line: string) => void;
 }): {
   uri: string;
   established: Promise<{ signer: LunaSigner; stored: StoredSigner }>;
 } {
-  const dbg = opts?.onDebug ?? (() => {});
-  const clientSecretKey = generateSecretKey();
-  const clientPubkey = getPublicKey(clientSecretKey);
+  const clientSecret = generateSecretKey();
+  const clientPubkey = getPublicKey(clientSecret);
   const secret = crypto.randomUUID().replace(/-/g, "");
   const uri = createNostrConnectURI({
     clientPubkey,
@@ -119,115 +172,73 @@ export function startNostrConnect(opts?: {
     name: "Luna Negra",
     url: typeof window !== "undefined" ? window.location.origin : undefined,
   });
-  // Pool propio con reconexión: clave para el login en CELULAR. Al abrir el
-  // firmante (Primal/Amber) por deep link, el navegador pasa a segundo plano y
-  // el SO cierra el WebSocket. Sin reconexión, `fromURI` cierra la suscripción y
-  // RECHAZA la promesa ("subscription closed before connection was established")
-  // antes de que el firmante publique su respuesta → al volver, la sesión nunca
-  // entra. Con `enableReconnect`, la caída del socket reconecta sin matar el
-  // flujo, así la respuesta `connect` se recibe al regresar al navegador.
-  const pool = new SimplePool({ enableReconnect: true });
-  // El callback se dispara una vez por suscripción; deduplicamos por relay para
-  // no llenar el panel con líneas repetidas.
-  const seenRelays = new Set<string>();
-  pool.onRelayConnectionSuccess = (url: string) => {
-    if (seenRelays.has(url)) return;
-    seenRelays.add(url);
-    dbg(`relay conectado: ${rname(url)}`);
-  };
-  pool.onRelayConnectionFailure = (url: string) => dbg(`relay FALLÓ: ${rname(url)}`);
 
-  // Observador de diagnóstico EN PARALELO al flujo de nostr-tools. nostr-tools
-  // suscribe con `limit:0` (solo eventos en vivo); nosotros usamos `since` para
-  // tambien captar el evento si el relay lo retuvo, y reportamos qué llega y si
-  // se puede descifrar (NIP-44 vs NIP-04) y si el secreto coincide. Es temporal:
-  // sirve para entender por qué Primal "aprueba y no pasa nada".
-  const sinceSec = Math.floor(Date.now() / 1000) - 300;
-  const observer = pool.subscribe(
-    NIP46_RELAYS,
-    { kinds: [NOSTR_CONNECT_KIND], "#p": [clientPubkey], since: sinceSec },
-    {
-      onevent: (event: { pubkey: string; content: string }) => {
-        const from = event.pubkey.slice(0, 8);
-        let decoded: string | null = null;
-        let how = "";
-        try {
-          const ck = nip44.getConversationKey(clientSecretKey, event.pubkey);
-          decoded = nip44.decrypt(event.content, ck);
-          how = "NIP-44";
-        } catch {
-          try {
-            decoded = nip04.decrypt(clientSecretKey, event.pubkey, event.content);
-            how = "NIP-04 (¡el firmante usa cifrado viejo!)";
-          } catch {
-            decoded = null;
-          }
-        }
-        if (!decoded) {
-          dbg(`evento de ${from}: NO se pudo descifrar (ni NIP-44 ni NIP-04)`);
-          return;
-        }
-        let result = "";
-        try {
-          result = JSON.parse(decoded).result ?? "";
-        } catch {
-          result = decoded.slice(0, 24);
-        }
-        const matchTxt = result === secret ? "secreto OK ✓" : `secreto NO coincide (got "${String(result).slice(0, 12)}…")`;
-        dbg(`evento de ${from} descifrado con ${how}; ${matchTxt}`);
-      },
-    },
-  );
-  const stopObserver = () => {
-    try {
-      void observer.close?.();
-    } catch {
-      /* noop */
-    }
-  };
-
-  // Si se cancela (cerrar modal / cambiar de pestaña) liberamos el pool para que
-  // no quede reconectando en segundo plano para siempre.
-  opts?.signal?.addEventListener(
-    "abort",
-    () => {
-      stopObserver();
-      pool.destroy();
-    },
-    { once: true },
-  );
-  dbg("esperando respuesta del firmante…");
-  const established = BunkerSigner.fromURI(
-    clientSecretKey,
-    uri,
-    { onauth: opts?.onauth, pool },
-    opts?.signal ?? 120_000,
-  ).then((bunker) => {
-    stopObserver();
-    dbg("¡conectado! iniciando sesión…");
-    const signer = wrap(bunker);
-    const close = signer.close;
-    // Al cerrar la sesión, además de cerrar el firmante, destruimos el pool.
-    signer.close = async () => {
-      try {
-        await close?.();
-      } finally {
-        pool.destroy();
+  const established = Nip46Client.fromURI({
+    clientSecret,
+    relays: NIP46_RELAYS,
+    secret,
+    timeoutMs: QR_TIMEOUT_MS,
+    abortSignal: opts?.signal,
+    onAuthUrl: opts?.onauth,
+    onDiag: opts?.onDebug,
+  })
+    .then((client) => ({
+      signer: wrapClient(client),
+      stored: storedFromClient(clientSecret, client),
+    }))
+    .catch((e: unknown) => {
+      // Mensaje amistoso para el timeout interno del cliente.
+      if (e instanceof Error && e.message === "__qr_timeout__") {
+        throw new Error(
+          "El código expiró (5 minutos sin respuesta del firmante). Probá de nuevo.",
+        );
       }
-    };
-    return { signer, stored: storedNip46(clientSecretKey, bunker.bp) };
-  });
+      throw e;
+    });
+
   return { uri, established };
 }
 
-/** Reconecta un bunker persistido (al restaurar la sesión). */
+/** Reconecta una sesión NIP-46 persistida (al restaurar la app). */
 export async function restoreBunkerSigner(
   clientNsec: string,
-  bunker: { relays: string[]; pubkey: string; secret: string | null },
+  bunker: {
+    relays: string[];
+    pubkey: string;
+    secret: string | null;
+    encryption?: "nip44" | "nip04";
+  },
 ): Promise<LunaSigner> {
   const decoded = nip19.decode(clientNsec);
   if (decoded.type !== "nsec") throw new Error("clave de cliente inválida");
+
+  // Sesiones del flujo QR (con cifrado detectado) → cliente propio dual.
+  if (bunker.encryption) {
+    const client = Nip46Client.fromStored({
+      clientSecret: decoded.data,
+      bunkerPubkey: bunker.pubkey,
+      relays: bunker.relays,
+      secret: bunker.secret,
+      encryption: bunker.encryption,
+    });
+    // `connect` best-effort: algunos firmantes tratan cada carga como sesión
+    // nueva y lo necesitan antes de firmar. No bloqueamos la UI más de 5s.
+    let connectPromise: Promise<void> | null = null;
+    const ensureConnected = () => {
+      if (!connectPromise) {
+        connectPromise = Promise.race([
+          client.connect().catch(() => {}),
+          new Promise<void>((r) => setTimeout(r, 5000)),
+        ]).then(() => {});
+      }
+      return connectPromise;
+    };
+    ensureConnected();
+    return wrapClient(client, ensureConnected);
+  }
+
+  // Sesiones legacy (bunker:// o anteriores a la detección) → BunkerSigner.
   const signer = BunkerSigner.fromBunker(decoded.data, bunker);
   await signer.connect();
-  return wrap(signer);
+  return wrapBunker(signer);
 }

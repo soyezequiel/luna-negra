@@ -11,6 +11,8 @@ import { Footer } from "@/components/footer";
 import { FriendsSidebar } from "@/components/friends-sidebar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { LoginModal } from "@/components/login-modal";
+import { FreshGuard } from "@/components/fresh-guard";
+import { BUILD_ID } from "@/lib/build-id";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -34,6 +36,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
     >
       <body className="relative flex min-h-full flex-col font-sans text-ln-text">
+        <FreshGuard version={BUILD_ID} />
         <SessionProvider>
           <WalletProvider>
           <NotificationsProvider>

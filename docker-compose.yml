@@ -38,6 +38,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Identificador de build para el version-poll (ver src/lib/build-id.ts).
+        # Lo setea docker/deploy.*; si está vacío, la app usa el timestamp de
+        # arranque del proceso (igual cambia en cada deploy porque reinicia).
+        NEXT_PUBLIC_BUILD_ID: ${NEXT_PUBLIC_BUILD_ID:-}
     restart: unless-stopped
     depends_on:
       postgres:
