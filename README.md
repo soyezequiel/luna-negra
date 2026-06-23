@@ -25,11 +25,10 @@ Es como una mini-Steam, pero:
 - **La plata son sats** (la unidad chica de Bitcoin). Pagás escaneando un QR con
   cualquier billetera Lightning. Una compra se confirma en segundos.
 - **No hay intermediario financiero.** No cargás tarjeta ni datos bancarios. La plata
-  va de tu billetera a la del desarrollador.
+  va de tu billetera a la del desarrollador y a luna negra por el servicio que proporciona.
 - **Tu identidad es tuya.** El login usa **Nostr**, un sistema abierto donde la cuenta
   es una clave que controlás vos, no un mail y una contraseña en un servidor ajeno.
-  (Igual, si todo esto te suena chino, también podés entrar con tu email; ver abajo.)
-
+  
 ### ¿Por qué puede interesarte si estás en Argentina?
 
 - Comprás y cobrás en **Bitcoin** sin depender del homebanking ni de límites de tarjeta.
