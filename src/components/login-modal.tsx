@@ -39,6 +39,10 @@ export function LoginModal() {
   const tab: Tab = tabChoice ?? (emailLoginEnabled ? "email" : "extension");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // En celular, escanear el QR con el mismo teléfono es incómodo: mejor abrir el
+  // enlace nostrconnect:// directo y que el SO lo derive a la app de firma
+  // instalada (Amber, Primal, nsec.app…). Se detecta tras montar para no romper SSR.
+  const [isMobile, setIsMobile] = useState(false);
 
   // Estado del flujo email (magic link).
   const [emailInput, setEmailInput] = useState("");
@@ -48,6 +52,8 @@ export function LoginModal() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrUri, setQrUri] = useState<string | null>(null);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
+  // Líneas de diagnóstico del handshake NIP-46 (visibles en el celular).
+  const [qrDebug, setQrDebug] = useState<string[]>([]);
   const qrAbort = useRef<AbortController | null>(null);
 
   // Inputs.
@@ -75,6 +81,15 @@ export function LoginModal() {
     [loginWithSigner],
   );
 
+  // Detección de móvil (táctil + viewport angosto) para ofrecer el botón de
+  // "abrir en la app" en lugar de solo el QR.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    const narrow = window.innerWidth <= 880;
+    setIsMobile(coarse && narrow);
+  }, []);
+
   // El flujo QR arranca al entrar a esa pestaña y se cancela al salir/cerrar.
   useEffect(() => {
     if (!loginModalOpen || tab !== "qr") return;
@@ -88,11 +103,18 @@ export function LoginModal() {
       setQrDataUrl(null);
       setQrUri(null);
       setAuthUrl(null);
+      setQrDebug([]);
       try {
         const { startNostrConnect } = await import("@/lib/signer-nip46");
         const { uri, established } = startNostrConnect({
           onauth: (url) => {
             if (!cancelled) setAuthUrl(url);
+          },
+          onDebug: (line) => {
+            if (!cancelled) {
+              const ts = new Date().toLocaleTimeString();
+              setQrDebug((prev) => [...prev, `${ts}  ${line}`]);
+            }
           },
           signal: ctrl.signal,
         });
@@ -215,6 +237,7 @@ export function LoginModal() {
   function close() {
     qrAbort.current?.abort();
     setError(null);
+    setQrDebug([]);
     setGenerated(null);
     setNsecInput("");
     setEmailInput("");
@@ -343,6 +366,29 @@ export function LoginModal() {
 
           {tab === "qr" ? (
             <div className="flex flex-col items-center">
+              {/* En celular, abrir el enlace directo en la app de firma instalada
+                  (Primal, Amber, nsec.app…) es mucho más cómodo que escanear el
+                  QR con el mismo teléfono. Usamos un <a> con el esquema custom
+                  para que cuente como gesto del usuario y el SO ofrezca la app. */}
+              {isMobile && qrUri ? (
+                <div className="w-full">
+                  <a
+                    href={qrUri}
+                    className="flex w-full items-center justify-center rounded-md bg-blue/20 px-4 py-3 text-sm font-semibold text-blue"
+                  >
+                    Abrir en mi app de Nostr
+                  </a>
+                  <p className="mt-2 text-center text-xs text-faint">
+                    Se abre <span className="text-muted">Primal</span>,{" "}
+                    <span className="text-muted">Amber</span> u otra app de firma
+                    instalada, y aprobás la conexión ahí.
+                  </p>
+                  <div className="my-4 flex items-center gap-3 text-xs text-faint">
+                    <span className="h-px flex-1 bg-line" />o escaneá el QR
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                </div>
+              ) : null}
               {qrDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -382,6 +428,20 @@ export function LoginModal() {
                 </a>
               ) : null}
               <p className="mt-2 text-xs text-faint">Esperando conexión…</p>
+              {qrDebug.length > 0 ? (
+                <div className="mt-3 w-full">
+                  <p className="text-[10px] uppercase tracking-wide text-faint">
+                    Diagnóstico
+                  </p>
+                  <div className="mt-1 max-h-32 overflow-auto rounded-sm border border-line bg-black/30 p-2 text-left font-mono text-[10px] leading-relaxed text-muted">
+                    {qrDebug.map((line, i) => (
+                      <div key={i} className="break-all">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

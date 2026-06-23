@@ -4,7 +4,8 @@
  * usa (el BunkerSigner abre su propio pool de relays).
  */
 
-import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
+import { generateSecretKey, getPublicKey, nip04, nip19, nip44 } from "nostr-tools";
+import { SimplePool } from "nostr-tools/pool";
 import {
   BunkerSigner,
   createNostrConnectURI,
@@ -89,31 +90,133 @@ export async function connectBunker(
  * escanear con Amber/nsec.app y devuelve la promesa que resuelve cuando el
  * firmante remoto se conecta.
  */
+// kind 24133 = NIP-46 Nostr Connect.
+const NOSTR_CONNECT_KIND = 24133;
+
+/** Nombre corto de un relay para los logs de diagnóstico. */
+function rname(url: string): string {
+  return url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
+}
+
 export function startNostrConnect(opts?: {
   onauth?: (url: string) => void;
   signal?: AbortSignal;
+  /** Diagnóstico: recibe líneas de estado del handshake (relays, eventos, descifrado). */
+  onDebug?: (line: string) => void;
 }): {
   uri: string;
   established: Promise<{ signer: LunaSigner; stored: StoredSigner }>;
 } {
+  const dbg = opts?.onDebug ?? (() => {});
   const clientSecretKey = generateSecretKey();
+  const clientPubkey = getPublicKey(clientSecretKey);
+  const secret = crypto.randomUUID().replace(/-/g, "");
   const uri = createNostrConnectURI({
-    clientPubkey: getPublicKey(clientSecretKey),
+    clientPubkey,
     relays: NIP46_RELAYS,
-    secret: crypto.randomUUID().replace(/-/g, ""),
+    secret,
     perms: NIP46_PERMS,
     name: "Luna Negra",
     url: typeof window !== "undefined" ? window.location.origin : undefined,
   });
+  // Pool propio con reconexión: clave para el login en CELULAR. Al abrir el
+  // firmante (Primal/Amber) por deep link, el navegador pasa a segundo plano y
+  // el SO cierra el WebSocket. Sin reconexión, `fromURI` cierra la suscripción y
+  // RECHAZA la promesa ("subscription closed before connection was established")
+  // antes de que el firmante publique su respuesta → al volver, la sesión nunca
+  // entra. Con `enableReconnect`, la caída del socket reconecta sin matar el
+  // flujo, así la respuesta `connect` se recibe al regresar al navegador.
+  const pool = new SimplePool({ enableReconnect: true });
+  // El callback se dispara una vez por suscripción; deduplicamos por relay para
+  // no llenar el panel con líneas repetidas.
+  const seenRelays = new Set<string>();
+  pool.onRelayConnectionSuccess = (url: string) => {
+    if (seenRelays.has(url)) return;
+    seenRelays.add(url);
+    dbg(`relay conectado: ${rname(url)}`);
+  };
+  pool.onRelayConnectionFailure = (url: string) => dbg(`relay FALLÓ: ${rname(url)}`);
+
+  // Observador de diagnóstico EN PARALELO al flujo de nostr-tools. nostr-tools
+  // suscribe con `limit:0` (solo eventos en vivo); nosotros usamos `since` para
+  // tambien captar el evento si el relay lo retuvo, y reportamos qué llega y si
+  // se puede descifrar (NIP-44 vs NIP-04) y si el secreto coincide. Es temporal:
+  // sirve para entender por qué Primal "aprueba y no pasa nada".
+  const sinceSec = Math.floor(Date.now() / 1000) - 300;
+  const observer = pool.subscribe(
+    NIP46_RELAYS,
+    { kinds: [NOSTR_CONNECT_KIND], "#p": [clientPubkey], since: sinceSec },
+    {
+      onevent: (event: { pubkey: string; content: string }) => {
+        const from = event.pubkey.slice(0, 8);
+        let decoded: string | null = null;
+        let how = "";
+        try {
+          const ck = nip44.getConversationKey(clientSecretKey, event.pubkey);
+          decoded = nip44.decrypt(event.content, ck);
+          how = "NIP-44";
+        } catch {
+          try {
+            decoded = nip04.decrypt(clientSecretKey, event.pubkey, event.content);
+            how = "NIP-04 (¡el firmante usa cifrado viejo!)";
+          } catch {
+            decoded = null;
+          }
+        }
+        if (!decoded) {
+          dbg(`evento de ${from}: NO se pudo descifrar (ni NIP-44 ni NIP-04)`);
+          return;
+        }
+        let result = "";
+        try {
+          result = JSON.parse(decoded).result ?? "";
+        } catch {
+          result = decoded.slice(0, 24);
+        }
+        const matchTxt = result === secret ? "secreto OK ✓" : `secreto NO coincide (got "${String(result).slice(0, 12)}…")`;
+        dbg(`evento de ${from} descifrado con ${how}; ${matchTxt}`);
+      },
+    },
+  );
+  const stopObserver = () => {
+    try {
+      void observer.close?.();
+    } catch {
+      /* noop */
+    }
+  };
+
+  // Si se cancela (cerrar modal / cambiar de pestaña) liberamos el pool para que
+  // no quede reconectando en segundo plano para siempre.
+  opts?.signal?.addEventListener(
+    "abort",
+    () => {
+      stopObserver();
+      pool.destroy();
+    },
+    { once: true },
+  );
+  dbg("esperando respuesta del firmante…");
   const established = BunkerSigner.fromURI(
     clientSecretKey,
     uri,
-    { onauth: opts?.onauth },
+    { onauth: opts?.onauth, pool },
     opts?.signal ?? 120_000,
-  ).then((bunker) => ({
-    signer: wrap(bunker),
-    stored: storedNip46(clientSecretKey, bunker.bp),
-  }));
+  ).then((bunker) => {
+    stopObserver();
+    dbg("¡conectado! iniciando sesión…");
+    const signer = wrap(bunker);
+    const close = signer.close;
+    // Al cerrar la sesión, además de cerrar el firmante, destruimos el pool.
+    signer.close = async () => {
+      try {
+        await close?.();
+      } finally {
+        pool.destroy();
+      }
+    };
+    return { signer, stored: storedNip46(clientSecretKey, bunker.bp) };
+  });
   return { uri, established };
 }
 
