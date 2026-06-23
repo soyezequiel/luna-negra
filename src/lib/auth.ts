@@ -155,14 +155,28 @@ export async function verifyEntitlement(
       issuer: TOKEN_ISSUER,
       audience: TOKEN_AUDIENCE,
     });
-    if (payload.scope !== "entitlement") return null;
+    if (payload.scope !== "entitlement") {
+      console.warn("[auth] verifyEntitlement rechazó: scope inválido", {
+        scope: payload.scope,
+      });
+      return null;
+    }
     return {
       npub: payload.npub as string,
       pubkey: payload.pubkey as string,
       gameId: payload.gameId as string,
       slug: payload.slug as string,
     };
-  } catch {
+  } catch (e) {
+    // jose tira errores con `code` específico: JWTExpired (token vencido, exp 5m),
+    // JWSSignatureVerificationFailed (firmado con otra LN_SIGNING_JWK), o
+    // JWTClaimValidationFailed (iss/aud no coinciden). El 401 de la ruta es mudo;
+    // este log es lo único que distingue "token viejo" de "deploy mal apuntado".
+    const err = e as { code?: string; name?: string; message?: string };
+    console.warn("[auth] verifyEntitlement rechazó el token", {
+      code: err.code ?? err.name ?? "unknown",
+      message: err.message,
+    });
     return null;
   }
 }
