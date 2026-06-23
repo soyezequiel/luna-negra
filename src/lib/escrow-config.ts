@@ -27,3 +27,10 @@ export const BET_MAX_ANONYMOUS_SEATS = Number(process.env.BET_MAX_ANONYMOUS_SEAT
 export const DEPOSIT_WINDOW_MS = 10 * 60 * 1000; // 10 min
 export const RESOLVE_WINDOW_MS = 15 * 60 * 1000; // 15 min
 export const WITHDRAW_WINDOW_MS = 60 * 60 * 1000; // 60 min
+
+// Cadencia del tick de escrow corriendo IN-PROCESS (self-host, sin QStash). El
+// scheduler vive en src/instrumentation.ts. 0 = desactivado (ej. si en su lugar
+// se usa un cron externo que pega a /api/escrow/tick). Ver docs/qstash-setup.md.
+export const ESCROW_TICK_INTERVAL_MS = Number(
+  process.env.ESCROW_TICK_INTERVAL_MS ?? 60_000,
+); // 60 s
