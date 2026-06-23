@@ -3,10 +3,11 @@
 import { useFriendsDrawer } from "@/providers/friends-drawer";
 
 /**
- * Panel social de la ficha de juego: "Jugá con amigos". El flujo real de crear
- * sala + invitar vive en la barra de amigos (que ya muestra el botón "Invitar a
- * jugar" por amigo cuando esta ficha registró el juego en el contexto). Acá solo
- * lo señalizamos: en móvil abrimos el drawer; en desktop apuntamos al aside.
+ * Panel social de la ficha de juego: "Jugá con amigos". El flujo real de abrir
+ * el juego (que crea la sala) + invitar vive en la barra de amigos (que ya
+ * muestra "Jugar con amigos" y el botón "Invitar a jugar" por amigo cuando esta
+ * ficha registró el juego en el contexto). Acá solo lo señalizamos: en móvil
+ * abrimos el drawer; en desktop apuntamos al aside.
  */
 export function GameSocialPanel() {
   const { setOpen } = useFriendsDrawer();
@@ -17,8 +18,8 @@ export function GameSocialPanel() {
         Jugá con amigos
       </p>
       <p className="mt-1 text-[13px] leading-relaxed text-ln-soft">
-        Creá una sala e invitá a tus contactos de Nostr. Cuando entren, abrís el
-        juego para todos.
+        Abrí el juego para crear la sala y después invitá a tus contactos de
+        Nostr. Cuando entren, jugás con todos.
       </p>
       <button
         onClick={() => setOpen(true)}

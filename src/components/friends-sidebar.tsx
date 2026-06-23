@@ -57,10 +57,10 @@ type RosterMember = { clientId: string; npub: string; host: boolean };
  * pantallas anchas). Cuando el usuario tiene abierta la página de un juego que
  * puede jugar, cada amigo muestra un botón para invitarlo a jugar ese juego.
  *
- * Flujo: invitar **no** abre el juego — solo crea la sala (una vez) y manda el
- * DM. El host invita a quien quiera y, cuando sus amigos hayan entrado, toca
- * "Abrir juego" para entrar a la misma sala ya poblada. Mientras tanto, se
- * sondea la presencia para mostrar cuántos amigos entraron.
+ * Flujo: el host primero abre el juego con "Jugar con amigos" — eso crea la
+ * sala (una vez) y lanza la pestaña del juego. Recién con el juego abierto se
+ * habilitan los botones "Invitar a jugar", que mandan el DM a esa sala. Mientras
+ * tanto, se sondea la presencia para mostrar cuántos amigos entraron.
  */
 export function FriendsSidebar() {
   const { user, login, loading } = useSession();
@@ -166,31 +166,21 @@ export function FriendsSidebar() {
       ? roster.members
       : null;
 
-  // Crea la sala (una vez) y manda el DM. NO abre el juego: el host lo abre
-  // después con "Abrir juego", cuando los invitados ya entraron.
+  // Manda el DM de invitación a la sala activa. Requiere el juego abierto: la
+  // sala se crea al abrirlo (openGameRoom), no acá. Sin sala, mandamos al host
+  // a abrir el juego primero.
   async function inviteToGame(recipientPubkey: string, name: string) {
     if (!currentGame || invitingPk) return;
+    const room = roomForGame;
+    if (!room) {
+      notify({
+        title: "Abrí el juego para invitar",
+        body: "Tocá «Jugar con amigos» para crear la sala y después invitá.",
+      });
+      return;
+    }
     setInvitingPk(recipientPubkey);
     try {
-      let room: ActiveRoom | null = roomForGame;
-
-      if (!room) {
-        const r = await fetch(`/api/games/${currentGame.gameId}/rooms`, {
-          method: "POST",
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.error ?? "No se pudo crear la sala");
-        room = {
-          slug: currentGame.slug,
-          roomId: d.roomId,
-          title: currentGame.title,
-          gameUrl: currentGame.gameUrl,
-          hostToken: d.token,
-        };
-        setActiveRoom(room);
-        setActiveRoomState(room);
-      }
-
       await sendDm(
         recipientPubkey,
         buildInviteMessage({
@@ -212,21 +202,38 @@ export function FriendsSidebar() {
     }
   }
 
-  // Abre el juego entrando a la sala ya creada (con quien haya entrado).
-  async function openGame() {
-    const room = roomForGame;
-    if (!room) return;
+  // Abre el juego: crea la sala la primera vez (host) y lanza la pestaña del
+  // juego. Recién con el juego abierto se habilita invitar a los amigos. Si la
+  // sala ya existe, reutiliza la pestaña/entra con quien haya entrado.
+  async function openGameRoom() {
+    if (!currentGame) return;
+    const slug = currentGame.slug;
     // Reutilizamos la pestaña del juego si existe; si no, preabrimos una dentro
     // del click para esquivar el bloqueo de popups.
-    const win = preopenGameWindowIfNeeded(room.slug);
+    const win = preopenGameWindowIfNeeded(slug);
     try {
+      let room: ActiveRoom | null = roomForGame;
+      // Primera vez: creamos la sala y la persistimos como sala activa.
+      if (!room) {
+        const r = await fetch(`/api/games/${currentGame.gameId}/rooms`, {
+          method: "POST",
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error ?? "No se pudo crear la sala");
+        room = {
+          slug,
+          roomId: d.roomId,
+          title: currentGame.title,
+          gameUrl: currentGame.gameUrl,
+          hostToken: d.token,
+        };
+        setActiveRoom(room);
+        setActiveRoomState(room);
+      }
       let token = room.hostToken;
       // Sala sin token guardado (creada en otra sesión/versión): minteamos uno
       // para esta misma sala uniéndonos como miembro.
       if (!token) {
-        if (!currentGame) {
-          throw new Error("Abrí la página del juego para entrar a la sala");
-        }
         const r = await fetch(
           `/api/games/${currentGame.gameId}/rooms/${encodeURIComponent(
             room.roomId,
@@ -238,7 +245,7 @@ export function FriendsSidebar() {
         token = d.token;
       }
       if (!token) throw new Error("No se pudo obtener el acceso a la sala");
-      const gameUrl = room.gameUrl ?? currentGame?.gameUrl;
+      const gameUrl = room.gameUrl ?? currentGame.gameUrl;
       if (!gameUrl) throw new Error("No se encontró el juego de esta sala");
       const result = launchGameRoom({
         gameUrl,
@@ -320,6 +327,11 @@ export function FriendsSidebar() {
         ? "Enviando…"
         : "Invitar a jugar";
 
+  // Invitar requiere el juego abierto (sala activa). Sin sala, los botones
+  // quedan deshabilitados y el host abre el juego desde el panel de arriba.
+  const inviteDisabledFor = (pk: string) =>
+    invited.has(pk) || invitingPk === pk || !roomForGame;
+
   const onlineCount = (friends ?? []).filter((f) => f.status).length;
 
   return (
@@ -349,9 +361,7 @@ export function FriendsSidebar() {
           online={chatWith.online}
           canInvite={canInvite}
           inviteLabel={inviteLabelFor(chatWith.pubkey)}
-          inviteDisabled={
-            invited.has(chatWith.pubkey) || invitingPk === chatWith.pubkey
-          }
+          inviteDisabled={inviteDisabledFor(chatWith.pubkey)}
           onInvite={() => inviteToGame(chatWith.pubkey, chatWith.name)}
           onJoinRoom={joinRoom}
           onBack={() => setChatWith(null)}
@@ -415,25 +425,35 @@ export function FriendsSidebar() {
                     variant="play"
                     size="sm"
                     className="w-full"
-                    onClick={openGame}
+                    onClick={openGameRoom}
                   >
-                    ▶ Abrir juego
+                    ▶ Volver al juego
                     {inRoom && inRoom.length > 0
                       ? ` · ${inRoom.length} en la sala`
                       : ""}
                   </Button>
                   <p className="mt-1.5 text-[11px] text-green/80">
                     {inRoom && inRoom.length > 0
-                      ? "Tus amigos ya entraron. Abrí el juego cuando quieras."
-                      : "Invitaste a tus amigos. Esperando que entren…"}
+                      ? "Tus amigos ya entraron. Volvé al juego cuando quieras."
+                      : "Sala abierta. Invitá a tus amigos desde la lista."}
                   </p>
                 </>
               ) : (
-                <p className="text-xs text-green">
-                  🎮 Invitá amigos a jugar{" "}
-                  <span className="font-medium">{currentGame!.title}</span>.
-                  Cuando hayan entrado, abrí el juego.
-                </p>
+                <>
+                  <Button
+                    variant="play"
+                    size="sm"
+                    className="w-full"
+                    onClick={openGameRoom}
+                  >
+                    ▶ Jugar con amigos
+                  </Button>
+                  <p className="mt-1.5 text-[11px] text-green/80">
+                    Abrí{" "}
+                    <span className="font-medium">{currentGame!.title}</span>{" "}
+                    para crear la sala y después invitá a tus amigos.
+                  </p>
+                </>
               )}
             </div>
           ) : null}
@@ -589,9 +609,7 @@ export function FriendsSidebar() {
                       {canInvite ? (
                         <button
                           onClick={() => inviteToGame(f.pubkey, name)}
-                          disabled={
-                            invited.has(f.pubkey) || invitingPk === f.pubkey
-                          }
+                          disabled={inviteDisabledFor(f.pubkey)}
                           className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                         >
                           {inviteLabelFor(f.pubkey)}
@@ -646,9 +664,7 @@ export function FriendsSidebar() {
                         {canInvite ? (
                           <button
                             onClick={() => inviteToGame(g.pubkey, name)}
-                            disabled={
-                              invited.has(g.pubkey) || invitingPk === g.pubkey
-                            }
+                            disabled={inviteDisabledFor(g.pubkey)}
                             className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                           >
                             {inviteLabelFor(g.pubkey)}
