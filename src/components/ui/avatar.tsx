@@ -38,6 +38,8 @@ export function Avatar({
     <img
       src={src}
       alt=""
+      loading="lazy"
+      decoding="async"
       onError={() => setFailed(true)}
       className={cn("rounded-full object-cover", className)}
     />

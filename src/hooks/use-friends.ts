@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSession } from "@/providers/session-provider";
 import {
   clampContacts,
@@ -96,18 +103,26 @@ function sortFriends(list: Friend[]): Friend[] {
   );
 }
 
+export type FriendsValue = {
+  friends: Friend[] | null;
+  refresh: () => Promise<void>;
+  refreshing: boolean;
+};
+
 /**
  * Carga la lista de amigos (contactos Nostr del usuario) enriquecida con perfil,
  * estado NIP-38, si son miembros de Luna Negra y sus juegos. Usa caché local
  * para pintar al instante y refresca desde los relays en segundo plano.
  * `refresh` re-consulta a demanda (botón ↻); además se refresca solo al volver
  * el foco a la pestaña (throttle de 60s).
+ *
+ * IMPORTANTE: este hook dispara una tormenta de consultas a relays (contactos +
+ * ~150 perfiles + estados + /api/users/known). Por eso NO se usa directo en cada
+ * componente: lo corre UNA sola vez `FriendsProvider` y el resto lo consume vía
+ * `useFriends()`. Llamarlo en dos componentes a la vez (p. ej. la barra lateral
+ * y el riel del home) duplicaba toda la descarga y saturaba el navegador.
  */
-export function useFriends(): {
-  friends: Friend[] | null;
-  refresh: () => Promise<void>;
-  refreshing: boolean;
-} {
+export function useFriendsData(): FriendsValue {
   const { user } = useSession();
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -226,4 +241,25 @@ export function useFriends(): {
   }, [load]);
 
   return { friends, refresh: load, refreshing };
+}
+
+// Estado compartido: lo provee `FriendsProvider` (montado una vez en el layout)
+// y lo consumen todos los componentes vía `useFriends()`. Sin esto, cada
+// consumidor disparaba su propia carga de relays en paralelo.
+const FRIENDS_FALLBACK: FriendsValue = {
+  friends: null,
+  refresh: async () => {},
+  refreshing: false,
+};
+
+export const FriendsContext = createContext<FriendsValue | null>(null);
+
+/**
+ * Lee la lista de amigos compartida. Devuelve el mismo objeto para todos los
+ * consumidores: la descarga desde los relays ocurre una sola vez en
+ * `FriendsProvider`. Fuera del provider cae a un valor vacío (no rompe el render
+ * ni dispara consultas).
+ */
+export function useFriends(): FriendsValue {
+  return useContext(FriendsContext) ?? FRIENDS_FALLBACK;
 }

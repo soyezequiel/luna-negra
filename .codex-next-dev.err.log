@@ -712,3 +712,228 @@ Please make sure to provide valid database credentials for the database server a
   errorCode: undefined,
   retryable: undefined
 }
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[escrow-tick] falló: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany()` invocation in
+F:\proyectos\Tienda juegos PC Nostr\.next\dev\server\chunks\[root-of-the-server]__0r0a56w._.js:1886:164
+
+  1883 let retried = 0;
+  1884 // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  1885 if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$lightning$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["lightningConfigured"])()) {
+→ 1886     const pend = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$instrumentation$5d$__$28$ecmascript$29$__["prisma"].bet.findMany(
+Authentication failed against database server, the provided database credentials for `(not available)` are not valid.
+
+Please make sure to provide valid database credentials for the database server at the configured address.
+    at <unknown> (src\lib\escrow-tick.ts:126:35)
+    at async runTick (src\lib\escrow-tick.ts:126:18)
+    at async Timeout.tick [as _onTimeout] (src\instrumentation.ts:36:7)
+  124 |   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  125 |   if (lightningConfigured()) {
+> 126 |     const pend = await prisma.bet.findMany({
+      |                                   ^
+  127 |       where: { status: "pending_deposits" },
+  128 |       include: { participants: true },
+  129 |     }); {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}

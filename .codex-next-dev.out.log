@@ -13,3 +13,6 @@
  GET / 200 in 4.0s (next.js: 124ms, application-code: 3.8s)
  GET /?cat=casino 200 in 4.0s (next.js: 503ms, application-code: 3.5s)
  GET / 200 in 3.3s (next.js: 6ms, application-code: 3.3s)
+✓ Compiled in 100ms
+✓ Compiled in 82ms
+✓ Compiled in 180ms

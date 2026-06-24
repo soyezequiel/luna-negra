@@ -6,6 +6,7 @@ import { WalletProvider } from "@/providers/wallet-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
 import { GameContextProvider } from "@/providers/game-context";
 import { FriendsDrawerProvider } from "@/providers/friends-drawer";
+import { FriendsProvider } from "@/providers/friends-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { FriendsSidebar } from "@/components/friends-sidebar";
@@ -42,6 +43,7 @@ export default function RootLayout({
           <NotificationsProvider>
             <GameContextProvider>
               <FriendsDrawerProvider>
+                <FriendsProvider>
                 <Navbar />
                 {/* Reservamos espacio a la derecha para la barra de amigos/chat
                     fija (≥880px). En móvil el aside es un drawer y dejamos un
@@ -53,6 +55,7 @@ export default function RootLayout({
                 <FriendsSidebar />
                 <MobileTabBar />
                 <LoginModal />
+                </FriendsProvider>
               </FriendsDrawerProvider>
             </GameContextProvider>
           </NotificationsProvider>
