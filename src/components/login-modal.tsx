@@ -134,7 +134,9 @@ export function LoginModal() {
     if (typeof window === "undefined") return;
     const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
     const narrow = window.innerWidth <= 880;
-    setIsMobile(coarse && narrow);
+    // Microtarea para no llamar setState sincrónicamente dentro del efecto
+    // (evita el cascading render y mantiene el primer render SSR-safe en false).
+    void Promise.resolve().then(() => setIsMobile(coarse && narrow));
   }, []);
 
   // El flujo QR arranca al entrar a esa pestaña y se cancela al salir/cerrar.

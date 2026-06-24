@@ -19,7 +19,7 @@ import {
   type GameForm,
 } from "@/components/provider/game-form-fields";
 
-import { satsLabel } from "@/lib/format";
+import { hueFromSlug, satsLabel } from "@/lib/format";
 
 type Provider = {
   id: string;
@@ -60,6 +60,14 @@ const PAYOUT_LABEL: Record<string, string> = {
   skipped: "Sin dirección",
 };
 
+type Tab = "games" | "sales" | "integration" | "profile";
+
+/** Portada generada por color (fallback cuando no hay coverUrl). */
+function coverBg(seed: string): string {
+  const h = hueFromSlug(seed);
+  return `radial-gradient(130% 100% at 20% 8%, hsl(${h} 70% 34% / .95), transparent 60%), radial-gradient(130% 120% at 85% 95%, hsl(${(h + 50) % 360} 78% 26% / .95), transparent 65%), linear-gradient(160deg, hsl(${h} 52% 22%), hsl(${(h + 28) % 360} 58% 11%))`;
+}
+
 function Kpi({
   label,
   value,
@@ -73,7 +81,7 @@ function Kpi({
 }) {
   return (
     <div
-      className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 pl-5"
+      className="relative overflow-hidden rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 pl-5"
       style={{ borderLeft: `3px solid ${accent}` }}
     >
       <p className="ln-label">{label}</p>
@@ -103,6 +111,45 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function TabNav({
+  tab,
+  setTab,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+}) {
+  const items: { id: Tab; label: string }[] = [
+    { id: "games", label: "Juegos" },
+    { id: "sales", label: "Ventas" },
+    { id: "integration", label: "Integración" },
+    { id: "profile", label: "Perfil" },
+  ];
+  return (
+    <div className="flex w-fit gap-1 rounded-full border border-ln-border bg-ln-card/55 p-1.5">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          onClick={() => setTab(it.id)}
+          className={cn(
+            "rounded-full px-5 py-2 text-[13.5px] font-semibold transition-colors",
+            tab === it.id
+              ? "text-[#1a1430]"
+              : "text-ln-muted hover:text-ln-text",
+          )}
+          style={
+            tab === it.id
+              ? { backgroundImage: "linear-gradient(120deg,#c2b5ff,#9d8cff)" }
+              : undefined
+          }
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type ApiKeyRow = {
   id: string;
   name: string;
@@ -124,6 +171,9 @@ export default function ProviderPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
   const [envGameId, setEnvGameId] = useState("");
+
+  const [tab, setTab] = useState<Tab>("games");
+  const [showNewGame, setShowNewGame] = useState(false);
 
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
@@ -280,6 +330,7 @@ export default function ProviderPage() {
       "Juego creado como borrador. Envialo a revisión (botón abajo) para que se apruebe y se publique.",
     );
     setNewForm({ ...emptyForm });
+    setShowNewGame(false);
     load();
   }
 
@@ -354,62 +405,294 @@ export default function ProviderPage() {
     `LUNA_NEGRA_GAME_ID=${selectedGameId || "game_…"}`,
   ].join("\n");
 
+  // Sin perfil aún: pantalla enfocada en crearlo (sin pestañas ni KPIs).
+  if (!provider) {
+    return (
+      <div className="mx-auto max-w-[920px] px-[22px] py-8">
+        <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
+          Panel de proveedor
+        </h1>
+        <p className="mt-1 text-sm text-ln-muted">
+          Creá tu perfil para empezar a publicar juegos y cobrar con Lightning.
+        </p>
+        {msg ? <p className="mt-2 text-sm text-ln-luna">{msg}</p> : null}
+        <form
+          onSubmit={saveProvider}
+          className="mt-6 max-w-lg space-y-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5"
+        >
+          <h2 className="font-semibold text-ink">Creá tu perfil de proveedor</h2>
+          <input
+            className={inputCls}
+            placeholder="Nombre del estudio"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className={inputCls}
+            placeholder="Lightning Address para el payout (ej. vos@getalby.com)"
+            value={ln}
+            onChange={(e) => setLn(e.target.value)}
+          />
+          <Button type="submit">Crear perfil</Button>
+        </form>
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-[920px] px-[22px] py-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mx-auto max-w-[1040px] px-[22px] py-8">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
+          <p className="ln-label mb-2">Estudio · {provider.name}</p>
           <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
             Panel de proveedor
           </h1>
-          <p className="mt-1 text-sm text-ln-muted">
-            Gestioná tus juegos, cobros, API keys y webhooks.
-          </p>
         </div>
-        <div className="flex shrink-0 gap-2 self-start">
+        <div className="flex shrink-0 gap-2 self-start sm:self-end">
           <Link href="/provider/integracion" className="btn btn-ghost">
             Integración
           </Link>
           <Link href="/dev" className="btn btn-ghost">
-            Abrir guía /dev
+            Guía /dev
           </Link>
         </div>
       </div>
-      {msg ? <p className="mt-2 text-sm text-ln-luna">{msg}</p> : null}
 
-      {provider ? (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label="Ingresos pagados" value={satsLabel(paidSats)} sub="sats" accent="var(--btc)" />
-          <Kpi label="Pendiente de cobro" value={satsLabel(pendingSats)} sub="sats" accent="var(--btc)" />
-          <Kpi label="Juegos publicados" value={String(publishedCount)} sub={`${games.length} en total`} accent="var(--blue)" />
-          <Kpi label="Ventas" value={String(sales.length)} sub="transacciones" accent="var(--win)" />
-        </div>
+      {/* KPIs */}
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi label="Ingresos pagados" value={satsLabel(paidSats)} sub="sats" accent="var(--btc)" />
+        <Kpi label="Pendiente de cobro" value={satsLabel(pendingSats)} sub="sats" accent="var(--btc)" />
+        <Kpi label="Juegos publicados" value={String(publishedCount)} sub={`${games.length} en total`} accent="var(--blue)" />
+        <Kpi label="Ventas" value={String(sales.length)} sub="transacciones" accent="var(--win)" />
+      </div>
+
+      {/* Tabs */}
+      <div className="mt-8">
+        <TabNav tab={tab} setTab={setTab} />
+      </div>
+
+      {msg ? <p className="mt-3 text-sm text-ln-luna">{msg}</p> : null}
+
+      {/* ===== JUEGOS ===== */}
+      {tab === "games" ? (
+        <section className="mt-6 animate-ln-rise">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-[19px] font-bold">Tus juegos</h2>
+            <Button
+              variant={showNewGame ? "ghost" : "luna"}
+              size="sm"
+              onClick={() => setShowNewGame((v) => !v)}
+            >
+              {showNewGame ? "Cancelar" : "+ Nuevo juego"}
+            </Button>
+          </div>
+
+          {showNewGame ? (
+            <form
+              onSubmit={createGame}
+              className="mb-5 space-y-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5"
+            >
+              <h3 className="font-semibold">Nuevo juego</h3>
+              <p className="text-xs text-ln-faint">
+                Se crea como <strong>borrador</strong> (no visible en la tienda).
+                Después tenés que <strong>enviarlo a revisión</strong>: un admin
+                lo aprueba y recién ahí se publica.
+              </p>
+              <GameFormFields
+                form={newForm}
+                setForm={setNewForm}
+                uploadFile={uploadFile}
+                uploading={uploading}
+              />
+              <Button type="submit">Crear borrador</Button>
+            </form>
+          ) : null}
+
+          {games.length === 0 ? (
+            <p className="text-sm text-faint">Todavía no creaste juegos.</p>
+          ) : editingId ? (
+            (() => {
+              const g = games.find((x) => x.id === editingId);
+              if (!g) return null;
+              return (
+                <form
+                  onSubmit={saveEdit}
+                  className="space-y-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5 ring-1 ring-ln-luna/30"
+                >
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-ln-text">
+                    Editar “{g.title}”
+                    <StatusBadge status={g.status} />
+                  </h3>
+                  <GameFormFields
+                    form={editForm}
+                    setForm={setEditForm}
+                    uploadFile={uploadFile}
+                    uploading={uploading}
+                  />
+                  <div className="flex gap-3">
+                    <Button type="submit">Guardar cambios</Button>
+                    <Button type="button" variant="ghost" onClick={cancelEdit}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </form>
+              );
+            })()
+          ) : (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {games.map((g) => (
+                <div
+                  key={g.id}
+                  className="flex gap-3.5 rounded-ln-lg border border-ln-border bg-ln-card/60 p-3.5"
+                >
+                  <div className="relative h-[90px] w-[72px] shrink-0 overflow-hidden rounded-ln-md">
+                    {g.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={g.coverUrl}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="absolute inset-0"
+                        style={{ background: coverBg(g.slug || g.id) }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[14.5px] font-medium text-ln-text">
+                        {g.title}
+                      </span>
+                      <StatusBadge status={g.status} />
+                    </div>
+                    <p className="mt-1.5 font-mono text-[12.5px]">
+                      {g.priceSats === 0 ? (
+                        <span className="text-ln-aurora-bright">Gratis</span>
+                      ) : (
+                        <span className="text-ln-corona-bright">
+                          {satsLabel(g.priceSats)} sats
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-1 flex items-center gap-1 truncate font-mono text-[11px] text-ln-faint">
+                      <code className="truncate">{g.id}</code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(g.id);
+                          setMsg("ID del juego copiado.");
+                        }}
+                        className="shrink-0 text-blue hover:underline"
+                      >
+                        Copiar
+                      </button>
+                    </p>
+                    {g.status === "draft" ? (
+                      <p className="mt-1 text-[11px] text-ln-corona">
+                        Todavía no es visible — envialo a revisión.
+                      </p>
+                    ) : null}
+                    <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(g)}>
+                        Editar
+                      </Button>
+                      {g.status === "draft" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            action(
+                              g.id,
+                              "/submit",
+                              "Enviado a revisión. Te avisamos cuando se apruebe.",
+                            )
+                          }
+                        >
+                          Enviar a revisión
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            action(g.id, "/unpublish", "Juego despublicado.")
+                          }
+                        >
+                          Despublicar
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => remove(g.id)}>
+                        Borrar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setShowNewGame(true)}
+                className="flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-ln-lg border border-dashed border-ln-luna/35 bg-ln-luna/[.04] text-[14px] font-semibold text-ln-luna transition-colors hover:bg-ln-luna/10"
+              >
+                <span className="text-[22px] leading-none">+</span>
+                Crear un nuevo juego
+              </button>
+            </div>
+          )}
+        </section>
       ) : null}
 
-      <form
-        onSubmit={saveProvider}
-        className="mt-6 space-y-3 rounded-lg border border-line bg-panel p-5"
-      >
-        <h2 className="font-semibold text-ink">
-          {provider ? "Tu perfil" : "Creá tu perfil de proveedor"}
-        </h2>
-        <input
-          className={inputCls}
-          placeholder="Nombre del estudio"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          className={inputCls}
-          placeholder="Lightning Address para el payout (ej. vos@getalby.com)"
-          value={ln}
-          onChange={(e) => setLn(e.target.value)}
-        />
-        <Button type="submit">{provider ? "Guardar" : "Crear perfil"}</Button>
-      </form>
+      {/* ===== VENTAS ===== */}
+      {tab === "sales" ? (
+        <section className="mt-6 animate-ln-rise">
+          <h2 className="mb-4 font-display text-[19px] font-bold">Ventas recientes</h2>
+          {sales.length === 0 ? (
+            <p className="text-sm text-faint">Todavía no hay ventas.</p>
+          ) : (
+            <div className="overflow-hidden rounded-ln-lg border border-ln-border bg-ln-card/60">
+              <div className="grid grid-cols-[1fr_auto_auto] gap-4 border-b border-ln-border px-[18px] py-3">
+                <span className="ln-label">Juego</span>
+                <span className="ln-label">Tu parte</span>
+                <span className="ln-label text-right">Estado</span>
+              </div>
+              {sales.map((s) => (
+                <div
+                  key={s.id}
+                  className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-ln-border/60 px-[18px] py-3 text-sm last:border-0"
+                >
+                  <span className="text-ln-text">{s.gameTitle}</span>
+                  <span className="font-mono text-[13px] text-ln-corona-bright">
+                    {satsLabel(s.share)} sats
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-[90px] text-right text-[12px] font-semibold",
+                      s.payoutStatus === "paid"
+                        ? "text-green"
+                        : s.payoutStatus === "failed"
+                          ? "text-[var(--lose)]"
+                          : s.payoutStatus === "skipped"
+                            ? "text-ln-muted"
+                            : "text-btc",
+                    )}
+                  >
+                    {PAYOUT_LABEL[s.payoutStatus] ?? s.payoutStatus}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
-      {provider ? (
-        <>
-          <section className="mt-8 rounded-xl border border-ln-luna/30 bg-ln-card/60 p-5">
+      {/* ===== INTEGRACIÓN ===== */}
+      {tab === "integration" ? (
+        <section className="mt-6 grid animate-ln-rise items-start gap-3.5 lg:grid-cols-2">
+          {/* env vars */}
+          <div className="rounded-ln-lg border border-ln-luna/30 bg-ln-card/60 p-5 lg:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold text-ink">Variables de entorno</h2>
               <button
@@ -423,11 +706,8 @@ export default function ProviderPage() {
             <p className="mt-1 text-xs text-faint">
               Todo lo que tu game server necesita, junto. Pegalo en el archivo{" "}
               <code>.env</code> de tu servidor. La API key solo se ve al crearla
-              (abajo, en{" "}
-              <a href="#api-keys" className="text-blue hover:underline">
-                Claves de API
-              </a>
-              ); el resto lo podés copiar cuando quieras.
+              (en <strong>Claves de API</strong>, abajo); el resto lo podés
+              copiar cuando quieras.
             </p>
 
             {games.length > 1 ? (
@@ -447,215 +727,13 @@ export default function ProviderPage() {
               </label>
             ) : null}
 
-            <pre className="mt-3 overflow-x-auto rounded-lg bg-black/40 px-3 py-3 font-mono text-xs text-ink">{envText}</pre>
+            <pre className="mt-3 overflow-x-auto rounded-ln-md bg-black/40 px-3 py-3 font-mono text-xs text-ink">{envText}</pre>
+          </div>
 
-            <ul className="mt-2 space-y-1 text-[11px] leading-relaxed text-faint">
-              <li>
-                <code>LUNA_NEGRA_BASE</code> — URL de la tienda.
-              </li>
-              <li>
-                <code>LUNA_NEGRA_API_KEY</code> — clave secreta de tu servidor
-                (<code>ln_sk_…</code>). Solo en el server, nunca en el navegador.
-              </li>
-              <li>
-                <code>LUNA_NEGRA_WEBHOOK_SECRET</code> — firma HMAC de los
-                webhooks (<code>whsec_…</code>).
-              </li>
-              <li>
-                <code>LUNA_NEGRA_GAME_ID</code> — id del juego que integrás.
-              </li>
-            </ul>
-          </section>
-
-          <form
-            onSubmit={createGame}
-            className="mt-8 space-y-3 rounded-xl border border-line bg-panel p-5"
-          >
-            <h2 className="font-semibold">Nuevo juego</h2>
-            <p className="text-xs text-ln-faint">
-              Se crea como <strong>borrador</strong> (no visible en la tienda).
-              Después tenés que <strong>enviarlo a revisión</strong>: un admin lo
-              aprueba y recién ahí se publica.
-            </p>
-            <GameFormFields
-              form={newForm}
-              setForm={setNewForm}
-              uploadFile={uploadFile}
-              uploading={uploading}
-            />
-            {msg ? <p className="text-xs text-btc">{msg}</p> : null}
-            <Button type="submit">Crear borrador</Button>
-          </form>
-
-          <section className="mt-8">
-            <h2 className="mb-3 font-semibold">Tus juegos</h2>
-            {games.length === 0 ? (
-              <p className="text-sm text-faint">Todavía no creaste juegos.</p>
-            ) : (
-              <ul className="space-y-2">
-                {games.map((g) => {
-                  const editing = editingId === g.id;
-                  return (
-                    <li
-                      key={g.id}
-                      className={cn(
-                        "rounded-ln-lg border border-ln-border bg-ln-card/60",
-                        editing
-                          ? "p-5 ring-1 ring-ln-luna/30"
-                          : "flex flex-wrap items-center justify-between gap-2 px-4 py-3",
-                      )}
-                    >
-                      {editing ? (
-                        <form onSubmit={saveEdit} className="space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="flex items-center gap-2 text-sm font-semibold text-ln-text">
-                              Editar “{g.title}”
-                              <StatusBadge status={g.status} />
-                            </h3>
-                          </div>
-                          <GameFormFields
-                            form={editForm}
-                            setForm={setEditForm}
-                            uploadFile={uploadFile}
-                            uploading={uploading}
-                          />
-                          {msg ? (
-                            <p className="text-xs text-btc">{msg}</p>
-                          ) : null}
-                          <div className="flex gap-3">
-                            <Button type="submit">Guardar cambios</Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={cancelEdit}
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        </form>
-                      ) : (
-                        <>
-                          <div>
-                            <p className="flex items-center gap-2 text-sm font-medium text-ln-text">
-                              {g.title}
-                              <StatusBadge status={g.status} />
-                            </p>
-                            <p className="text-xs text-ln-faint">
-                              {g.priceSats === 0 ? (
-                                <span className="text-ln-aurora-bright">
-                                  Gratis
-                                </span>
-                              ) : (
-                                <span className="font-mono text-ln-corona-bright">
-                                  {satsLabel(g.priceSats)} sats
-                                </span>
-                              )}
-                            </p>
-                            <p className="mt-1 flex items-center gap-1 text-xs text-faint">
-                              <span>ID:</span>
-                              <code className="break-all font-mono text-muted">
-                                {g.id}
-                              </code>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(g.id);
-                                  setMsg("ID del juego copiado.");
-                                }}
-                                className="text-blue hover:underline"
-                              >
-                                Copiar
-                              </button>
-                            </p>
-                            {g.status === "draft" ? (
-                              <p className="mt-1 text-xs text-ln-corona">
-                                Todavía no es visible en la tienda — envialo a
-                                revisión.
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="ghost"
-                              onClick={() => startEdit(g)}
-                            >
-                              Editar
-                            </Button>
-                            {g.status === "draft" ? (
-                              <Button
-                                variant="outline"
-                                onClick={() =>
-                                  action(
-                                    g.id,
-                                    "/submit",
-                                    "Enviado a revisión. Te avisamos cuando se apruebe.",
-                                  )
-                                }
-                              >
-                                Enviar a revisión
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                onClick={() =>
-                                  action(
-                                    g.id,
-                                    "/unpublish",
-                                    "Juego despublicado.",
-                                  )
-                                }
-                              >
-                                Despublicar
-                              </Button>
-                            )}
-                            <Button variant="ghost" onClick={() => remove(g.id)}>
-                              Borrar
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section className="mt-8">
-            <h2 className="mb-3 font-semibold">Ventas</h2>
-            {sales.length === 0 ? (
-              <p className="text-sm text-faint">Todavía no hay ventas.</p>
-            ) : (
-              <ul className="space-y-2">
-                {sales.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-2 text-sm"
-                  >
-                    <span>{s.gameTitle}</span>
-                    <span className="text-muted">
-                      {s.share} sats ·{" "}
-                      <span
-                        className={
-                          s.payoutStatus === "paid"
-                            ? "text-green"
-                            : s.payoutStatus === "failed"
-                              ? "text-[var(--lose)]"
-                              : "text-btc"
-                        }
-                      >
-                        {PAYOUT_LABEL[s.payoutStatus] ?? s.payoutStatus}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section id="api-keys" className="mt-8 scroll-mt-20">
-            <h2 className="mb-1 font-semibold">Claves de API</h2>
-            <p className="mb-3 text-xs text-faint">
+          {/* api keys */}
+          <div id="api-keys" className="scroll-mt-20 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
+            <h2 className="font-semibold">Claves de API</h2>
+            <p className="mb-3 mt-1 text-xs text-faint">
               Para que tu game server cree apuestas (Bearer). Ver{" "}
               <a href="/developers" className="text-blue hover:underline">
                 /developers
@@ -664,7 +742,7 @@ export default function ProviderPage() {
             </p>
 
             {createdKey ? (
-              <div className="mb-3 rounded-lg border border-green/30 bg-green/10 p-4">
+              <div className="mb-3 rounded-ln-md border border-green/30 bg-green/10 p-4">
                 <p className="text-sm text-green">
                   Copiá tu clave ahora — no se vuelve a mostrar:
                 </p>
@@ -697,7 +775,7 @@ export default function ProviderPage() {
                 onChange={(e) => setKeyName(e.target.value)}
               />
               <Button type="button" variant="outline" onClick={createKey}>
-                Crear clave
+                Crear
               </Button>
             </div>
 
@@ -706,7 +784,7 @@ export default function ProviderPage() {
                 {apiKeys.map((k) => (
                   <li
                     key={k.id}
-                    className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-2 text-sm"
+                    className="flex items-center justify-between rounded-ln-md border border-ln-border px-4 py-2 text-sm"
                   >
                     <div>
                       <span className="font-medium">{k.name}</span>{" "}
@@ -715,18 +793,19 @@ export default function ProviderPage() {
                         {k.lastUsedAt ? "usada" : "sin usar"}
                       </span>
                     </div>
-                    <Button variant="ghost" onClick={() => revokeKey(k.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)}>
                       Revocar
                     </Button>
                   </li>
                 ))}
               </ul>
             ) : null}
-          </section>
+          </div>
 
-          <section className="mt-8">
-            <h2 className="mb-1 font-semibold">Webhooks</h2>
-            <p className="mb-3 text-xs text-faint">
+          {/* webhooks */}
+          <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
+            <h2 className="font-semibold">Webhooks</h2>
+            <p className="mb-3 mt-1 text-xs text-faint">
               Luna Negra notifica a esta URL los eventos{" "}
               <code>purchase.completed</code>, <code>bet.settled</code> y{" "}
               <code>payout.sent</code> (firmados con HMAC).
@@ -743,7 +822,7 @@ export default function ProviderPage() {
               </Button>
             </div>
             {webhookSecret ? (
-              <div className="mt-3 rounded-lg border border-line bg-panel p-3">
+              <div className="mt-3 rounded-ln-md border border-ln-border bg-ln-bg-deep/60 p-3">
                 <p className="text-xs text-muted">
                   Secreto de firma (verificá la cabecera{" "}
                   <code>X-LunaNegra-Signature</code>):
@@ -759,8 +838,42 @@ export default function ProviderPage() {
                 </button>
               </div>
             ) : null}
-          </section>
-        </>
+          </div>
+        </section>
+      ) : null}
+
+      {/* ===== PERFIL ===== */}
+      {tab === "profile" ? (
+        <section className="mt-6 animate-ln-rise">
+          <form
+            onSubmit={saveProvider}
+            className="max-w-lg space-y-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5"
+          >
+            <h2 className="font-semibold text-ink">Tu perfil</h2>
+            <p className="text-xs text-ln-faint">
+              Tu nombre público y la dirección donde recibís los pagos.
+            </p>
+            <div>
+              <label className="ln-label">Nombre del estudio</label>
+              <input
+                className={`${inputCls} mt-1.5`}
+                placeholder="Nombre del estudio"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="ln-label">Lightning Address</label>
+              <input
+                className={`${inputCls} mt-1.5 font-mono`}
+                placeholder="vos@getalby.com"
+                value={ln}
+                onChange={(e) => setLn(e.target.value)}
+              />
+            </div>
+            <Button type="submit">Guardar</Button>
+          </form>
+        </section>
       ) : null}
     </div>
   );
