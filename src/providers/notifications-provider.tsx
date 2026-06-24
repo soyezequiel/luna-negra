@@ -305,17 +305,49 @@ export function NotificationsProvider({
       };
     }
 
-    const es = new EventSource("/api/invites/stream");
-    es.onmessage = (e) => {
-      try {
-        void handleGameInvite(JSON.parse(e.data) as GameInvite);
-      } catch {
-        /* heartbeat / línea no-JSON: ignorar */
+    // Diferimos abrir el stream hasta que la página termine de cargar y el hilo
+    // quede ocioso. Una conexión SSE abierta durante la carga inicial mantiene
+    // girando el indicador de carga del navegador (el "favicon cargando" que
+    // notó la usuaria), aunque la página ya esté usable. Las invitaciones no son
+    // urgentes al milisegundo, así que esperar al idle no se nota.
+    let es: EventSource | null = null;
+    let cancelled = false;
+    let cancelSchedule: (() => void) | null = null;
+
+    const open = () => {
+      if (cancelled) return;
+      es = new EventSource("/api/invites/stream");
+      es.onmessage = (e) => {
+        try {
+          void handleGameInvite(JSON.parse(e.data) as GameInvite);
+        } catch {
+          /* heartbeat / línea no-JSON: ignorar */
+        }
+      };
+      // No cerramos en onerror: EventSource reintenta solo (p. ej. cuando la
+      // función serverless llega a su límite de duración y corta el stream).
+    };
+
+    const schedule = () => {
+      if (cancelled) return;
+      if (typeof requestIdleCallback === "function") {
+        const id = requestIdleCallback(open, { timeout: 3000 });
+        cancelSchedule = () => cancelIdleCallback(id);
+      } else {
+        const id = window.setTimeout(open, 1200);
+        cancelSchedule = () => clearTimeout(id);
       }
     };
-    // No cerramos en onerror: EventSource reintenta solo (p. ej. cuando la
-    // función serverless llega a su límite de duración y corta el stream).
-    return () => es.close();
+
+    if (document.readyState === "complete") schedule();
+    else window.addEventListener("load", schedule, { once: true });
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("load", schedule);
+      cancelSchedule?.();
+      es?.close();
+    };
   }, [user, handleGameInvite]);
 
   return (
