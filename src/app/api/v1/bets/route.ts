@@ -64,6 +64,14 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
   // mixto: parte con cuenta (cobran a su billetera) y parte invitados (cobran por
   // LNURL-withdraw). Los npubs reales se buscan en lote; los invitados se mintean
   // y se van consumiendo en el orden en que aparecen en `seatSpecs`.
+  // ¿Degradar npubs no registrados a invitados en vez de rechazar el pozo entero? El
+  // proveedor lo opta-in con `unknownNpubsAsGuests`. Caso real (TETRA): en una sala
+  // grande basta que UN jugador arrastre una sesión vieja (cuenta borrada / DB reseteada)
+  // para que su npub ya no exista en `User` → sin esto, se cae toda la apuesta. Con el
+  // flag, ese asiento pasa a identidad efímera y cobra por LNURL-withdraw como un invitado.
+  const unknownAsGuest =
+    (body as { unknownNpubsAsGuests?: unknown }).unknownNpubsAsGuests === true;
+  let downgradedCount = 0;
   let participantSeats: { userId: string; npub: string; pubkey: string }[];
   {
     const guestCount = v.seatSpecs.filter((s) => s.kind === "guest").length;
@@ -71,22 +79,32 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     const users = realPubkeys.length
       ? await prisma.user.findMany({ where: { pubkey: { in: realPubkeys } } })
       : [];
-    if (users.length !== realPubkeys.length) {
+    const userByPubkey = new Map(users.map((u) => [u.pubkey, u]));
+    const unknownPubkeys = realPubkeys.filter((pk) => !userByPubkey.has(pk));
+    if (unknownPubkeys.length && !unknownAsGuest) {
       return err(
         "PARTICIPANT_NOT_REGISTERED",
         "Todos los participantes con npub deben tener cuenta en Luna Negra",
         400,
       );
     }
-    const userByPubkey = new Map(users.map((u) => [u.pubkey, u]));
-    const guests = guestCount ? await createGuestUsers(guestCount) : [];
+    downgradedCount = unknownPubkeys.length;
+    // Un invitado por cada asiento { guest: true } + uno por cada npub desconocido degradado.
+    const guests = guestCount + downgradedCount
+      ? await createGuestUsers(guestCount + downgradedCount)
+      : [];
     let guestIdx = 0;
     participantSeats = v.seatSpecs.map((seat) => {
       if (seat.kind === "guest") {
         const g = guests[guestIdx++];
         return { userId: g.userId, npub: g.npub, pubkey: g.pubkey };
       }
-      const u = userByPubkey.get(seat.pubkey)!;
+      const u = userByPubkey.get(seat.pubkey);
+      if (!u) {
+        // npub no registrado → identidad efímera de invitado (cobra por LNURL-withdraw).
+        const g = guests[guestIdx++];
+        return { userId: g.userId, npub: g.npub, pubkey: g.pubkey };
+      }
       return { userId: u.id, npub: nip19.npubEncode(u.pubkey), pubkey: u.pubkey };
     });
   }
@@ -174,7 +192,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       // npub de cada asiento (en orden, asiento 1..N) para mapear su jugador local
       // → participante y luego reportar al ganador. En apuestas 100% con cuenta el
       // proveedor ya conoce los npubs, así que se omite.
-      ...(v.anonymous || v.hasGuests
+      ...(v.anonymous || v.hasGuests || downgradedCount > 0
         ? { participants: participantNpubs.map((npub, i) => ({ seat: i + 1, npub })) }
         : {}),
     },
