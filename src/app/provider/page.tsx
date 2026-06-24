@@ -18,6 +18,7 @@ import {
   parseShots,
   type GameForm,
 } from "@/components/provider/game-form-fields";
+import { normalizeCategories } from "@/lib/categories";
 
 import { hueFromSlug, satsLabel } from "@/lib/format";
 
@@ -300,7 +301,7 @@ export default function ProviderPage() {
     setEditForm({
       title: g.title,
       description: g.description,
-      categories: g.categories ?? [],
+      categories: normalizeCategories(g.categories),
       priceSats: String(g.priceSats),
       gameUrl: g.gameUrl ?? "",
       coverUrl: g.coverUrl ?? "",

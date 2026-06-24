@@ -12,8 +12,10 @@ y no necesita UI de multi-selección. Los **tags libres** quedan como extensión
 - `Game.category String?` en `prisma/schema.prisma` (nullable → los juegos
   existentes quedan sin categoría).
 - Lista curada en `src/lib/categories.ts` (slug + label): `accion`, `aventura`,
-  `puzzle`, `estrategia`, `arcade`, `casino`, `multijugador`, `otros`. Sirve para
-  validar en el backend y renderizar los filtros.
+  `puzzle`, `estrategia`, `arcade`, `timba`, `multijugador`, `rol`, `deportes`,
+  `carreras`, `simulacion`, `terror`, `plataformas`, `supervivencia`, `shooter`,
+  `cartas`, `ritmo`, `otros`. Sirve para validar en el backend y renderizar los
+  filtros.
 - Migración: `npx prisma migrate dev --name game_category`
   → `ALTER TABLE "Game" ADD COLUMN "category" TEXT` (mismo patrón que `lud16`).
 - *(Tags opcional más adelante:* `tags String @default("[]")` como JSON-string,

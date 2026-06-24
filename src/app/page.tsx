@@ -2,7 +2,12 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { GameCard } from "@/components/game-card";
 import { SocialRail } from "@/components/social-rail";
-import { CATEGORIES, normalizeCategory, categoryLabel } from "@/lib/categories";
+import {
+  CATEGORIES,
+  normalizeCategories,
+  normalizeCategory,
+  categoryLabel,
+} from "@/lib/categories";
 import { hueFromSlug, priceLabel } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { getPublishedCatalog } from "@/lib/store-catalog";
@@ -37,7 +42,7 @@ export default async function StorePage({
   const matched = catalog.filter(
     (g) =>
       (!q || g.title.toLowerCase().includes(ql)) &&
-      (!cat || g.categories.includes(cat)),
+      (!cat || normalizeCategories(g.categories).includes(cat)),
   );
   const total = matched.length;
 

@@ -9,10 +9,24 @@ export const CATEGORIES: Category[] = [
   { slug: "puzzle", label: "Puzzle" },
   { slug: "estrategia", label: "Estrategia" },
   { slug: "arcade", label: "Arcade" },
-  { slug: "casino", label: "Casino" },
+  { slug: "timba", label: "Timba" },
   { slug: "multijugador", label: "Multijugador" },
+  { slug: "rol", label: "Rol" },
+  { slug: "deportes", label: "Deportes" },
+  { slug: "carreras", label: "Carreras" },
+  { slug: "simulacion", label: "Simulación" },
+  { slug: "terror", label: "Terror" },
+  { slug: "plataformas", label: "Plataformas" },
+  { slug: "supervivencia", label: "Supervivencia" },
+  { slug: "shooter", label: "Shooter" },
+  { slug: "cartas", label: "Cartas" },
+  { slug: "ritmo", label: "Ritmo" },
   { slug: "otros", label: "Otros" },
 ];
+
+const CATEGORY_ALIASES: Record<string, string> = {
+  casino: "timba",
+};
 
 const SLUGS = new Set(CATEGORIES.map((c) => c.slug));
 
@@ -20,7 +34,8 @@ const SLUGS = new Set(CATEGORIES.map((c) => c.slug));
 export function normalizeCategory(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const v = value.trim().toLowerCase();
-  return SLUGS.has(v) ? v : null;
+  const slug = CATEGORY_ALIASES[v] ?? v;
+  return SLUGS.has(slug) ? slug : null;
 }
 
 /**
@@ -38,8 +53,21 @@ export function normalizeCategories(value: unknown): string[] {
   return out;
 }
 
+/** Slugs canónicos + aliases heredados para consultas contra datos no migrados. */
+export function categoryQuerySlugs(value: unknown): string[] {
+  const canonical = normalizeCategories(value);
+  const out = [...canonical];
+  for (const [legacy, replacement] of Object.entries(CATEGORY_ALIASES)) {
+    if (canonical.includes(replacement) && !out.includes(legacy)) {
+      out.push(legacy);
+    }
+  }
+  return out;
+}
+
 /** Label legible para un slug (o "Sin categoría" si no hay/no existe). */
 export function categoryLabel(slug: string | null | undefined): string {
   if (!slug) return "Sin categoría";
-  return CATEGORIES.find((c) => c.slug === slug)?.label ?? slug;
+  const normalized = normalizeCategory(slug);
+  return CATEGORIES.find((c) => c.slug === normalized)?.label ?? slug;
 }

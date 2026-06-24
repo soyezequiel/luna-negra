@@ -1,0 +1,15 @@
+
+> luna-negra@0.1.0 dev
+> next dev -p 3000
+
+▲ Next.js 16.2.7 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.3.19:3000
+- Environments: .env
+✓ Ready in 735ms
+- Experiments (use with caution):
+  · clientTraceMetadata
+
+ GET / 200 in 4.0s (next.js: 124ms, application-code: 3.8s)
+ GET /?cat=casino 200 in 4.0s (next.js: 503ms, application-code: 3.5s)
+ GET / 200 in 3.3s (next.js: 6ms, application-code: 3.3s)

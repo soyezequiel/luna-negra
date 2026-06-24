@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { inputCls } from "@/components/provider/game-form-fields";
-import { CATEGORIES, categoryLabel } from "@/lib/categories";
+import { CATEGORIES, categoryLabel, normalizeCategories } from "@/lib/categories";
 import { priceLabel } from "@/lib/format";
 import { parseScreenshotUrls } from "@/lib/game-media";
 import { cn } from "@/lib/utils";
@@ -324,11 +324,12 @@ export function EditableCategories({
   editable: boolean;
   value: string[];
 }) {
+  const normalizedValue = normalizeCategories(value);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string[]>(value);
+  const [draft, setDraft] = useState<string[]>(normalizedValue);
   const { save, saving, error } = usePatchGame(gameId);
 
-  const chips = value.map((c) => (
+  const chips = normalizedValue.map((c) => (
     <Link
       key={c}
       href={`/?cat=${c}`}
@@ -344,7 +345,7 @@ export function EditableCategories({
     return (
       <>
         {chips}
-        <PencilButton onClick={() => { setDraft(value); setEditing(true); }} label="Editar categorías" />
+        <PencilButton onClick={() => { setDraft(normalizedValue); setEditing(true); }} label="Editar categorías" />
       </>
     );
   }

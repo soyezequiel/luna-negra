@@ -1,5 +1,6 @@
 import { unstable_cache, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { categoryQuerySlugs, normalizeCategories } from "@/lib/categories";
 import { scoreGamesByIntegration } from "@/lib/integration-telemetry";
 
 // Tag único de todo lo que dependa del catálogo publicado (Home + ficha + relacionados).
@@ -62,7 +63,7 @@ async function loadCatalog(): Promise<CatalogGame[]> {
     slug: g.slug,
     title: g.title,
     description: g.description,
-    categories: g.categories,
+    categories: normalizeCategories(g.categories),
     priceSats: g.priceSats,
     coverUrl: g.coverUrl,
     horizontalCoverUrl: g.horizontalCoverUrl,
@@ -92,7 +93,7 @@ export const getPublishedGameBySlug = unstable_cache(
       include: { provider: true },
     });
     if (!game || game.status !== "published") return null;
-    return game;
+    return { ...game, categories: normalizeCategories(game.categories) };
   },
   ["store-game-by-slug"],
   { revalidate: REVALIDATE_SECONDS, tags: [CATALOG_TAG] },
@@ -100,12 +101,13 @@ export const getPublishedGameBySlug = unstable_cache(
 
 export const getRelatedGames = unstable_cache(
   async (gameId: string, categories: string[]) => {
+    const queryCategories = categoryQuerySlugs(categories);
     return prisma.game.findMany({
       where: {
         status: "published",
         id: { not: gameId },
-        ...(categories.length > 0
-          ? { categories: { hasSome: categories } }
+        ...(queryCategories.length > 0
+          ? { categories: { hasSome: queryCategories } }
           : {}),
       },
       orderBy: { createdAt: "desc" },
