@@ -16,6 +16,7 @@ import { ActivitySection } from "@/components/activity-section";
 import { GameCard } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
 import { GameSocialPanel } from "@/components/game-social-panel";
+import { ShareNostrButton } from "@/components/share-nostr-button";
 import {
   EditableTitle,
   EditableDescription,
@@ -25,8 +26,13 @@ import {
   EditableMedia,
 } from "@/components/game-store-edit";
 import { hueFromSlug } from "@/lib/format";
-import { gameGalleryMedia, normalizeImageUrl } from "@/lib/game-media";
+import {
+  gameGalleryMedia,
+  normalizeImageUrl,
+  parseScreenshotUrls,
+} from "@/lib/game-media";
 import { getPublishedGameBySlug, getRelatedGames } from "@/lib/store-catalog";
+import { SITE_URL } from "@/lib/site";
 import { StoreUnavailable } from "@/components/store-unavailable";
 import {
   sanitizeDescriptionHtml,
@@ -34,9 +40,6 @@ import {
 } from "@/lib/sanitize-description";
 
 export const dynamic = "force-dynamic";
-
-// Base pública del sitio (para resolver og:image relativos a una URL absoluta).
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://luna.naranja.fit";
 
 // Texto plano para la descripción del preview: saca etiquetas HTML, colapsa
 // espacios y recorta. La descripción puede venir como HTML enriquecido o texto.
@@ -167,6 +170,31 @@ export default async function GamePage({
         .filter(Boolean)
         .slice(0, 6);
   const supportsRooms = Boolean(game.gameUrl);
+
+  // Media para adjuntar al compartir en Nostr: carátula(s) + capturas, en URL
+  // ABSOLUTA (las notas las consumen clientes externos, una ruta /uploads
+  // relativa no resolvería). Carátula primero (es la que va seleccionada por
+  // defecto). Deduplicado y acotado a 4.
+  const shareImages = (() => {
+    const candidates = [
+      game.horizontalCoverUrl,
+      game.coverUrl,
+      ...parseScreenshotUrls(game.screenshots),
+    ];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of candidates) {
+      const n = normalizeImageUrl(raw);
+      if (!n) continue;
+      const abs = /^https?:\/\//i.test(n)
+        ? n
+        : `${SITE_URL}${n.startsWith("/") ? "" : "/"}${n}`;
+      if (seen.has(abs)) continue;
+      seen.add(abs);
+      out.push(abs);
+    }
+    return out.slice(0, 4);
+  })();
 
   // Más juegos web (que compartan alguna categoría, excluyendo este). Cacheado;
   // si Neon falla acá no tiramos la ficha entera, solo omitimos la sección.
@@ -343,14 +371,31 @@ export default async function GamePage({
             </div>
           )}
 
-          {/* Zap opcional al dev (juegos gratis con anuncio en Nostr): propina
-              NIP-57 firmada con la identidad del usuario, el sat va 100% al dev.
-              Debajo, el top de zappers (sale de los recibos 9735 verificados). */}
+          {/* Acciones sociales compactas: compartir en Nostr (nota firmada por
+              el usuario con el link a la tienda) y, en juegos gratis con anuncio
+              en Nostr, el zap al dev (propina NIP-57, el sat va 100% al dev).
+              Van en una sola fila para no comer espacio en la columna sticky. */}
+          <div className="flex flex-wrap gap-2">
+            <ShareNostrButton
+              slug={game.slug}
+              title={game.title}
+              shareUrl={`${SITE_URL}/game/${game.slug}`}
+              images={shareImages}
+              root={root}
+              className="min-w-[140px] flex-1"
+            />
+            {game.priceSats === 0 && game.nostrEventId ? (
+              <ZapButton
+                gameId={game.id}
+                providerName={game.provider.name}
+                className="min-w-[140px] flex-1"
+              />
+            ) : null}
+          </div>
+
+          {/* Top de zappers del juego (sale de los recibos 9735 verificados). */}
           {game.priceSats === 0 && game.nostrEventId ? (
-            <>
-              <ZapButton gameId={game.id} providerName={game.provider.name} />
-              <ZapLeaderboard scope="game" gameId={game.id} />
-            </>
+            <ZapLeaderboard scope="game" gameId={game.id} />
           ) : null}
 
           {/* Panel social "Jugá con amigos" (juegos con salas y comprables) */}

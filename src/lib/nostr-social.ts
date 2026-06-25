@@ -122,6 +122,52 @@ async function publish(ev: Event): Promise<void> {
   await Promise.allSettled(pool().publish(RELAYS, ev));
 }
 
+/**
+ * Edita y publica el perfil del usuario (kind:0, metadata reemplazable).
+ *
+ * Parte del kind:0 más reciente del usuario para NO pisar campos que tenga
+ * seteados en otros clientes (banner, website, nip05, etc.): solo toca las
+ * claves del `patch`. Una clave con valor vacío/nulo se ELIMINA del perfil
+ * (así "borrar la foto" funciona). Firma con el signer activo (extensión,
+ * bunker NIP-46 o clave local) y publica a todos los relays. Devuelve el
+ * metadata final ya mergeado.
+ */
+export async function publishProfile(
+  pubkey: string,
+  patch: Partial<Profile>,
+): Promise<Profile> {
+  let base: Record<string, unknown> = {};
+  try {
+    const evs = await pool().querySync(
+      RELAYS,
+      { kinds: [0], authors: [pubkey] },
+      { maxWait: MAX_WAIT },
+    );
+    if (evs.length) {
+      const newest = evs.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+      const parsed = JSON.parse(newest.content);
+      if (parsed && typeof parsed === "object") base = parsed;
+    }
+  } catch {
+    /* sin perfil previo o JSON inválido: arrancamos de cero */
+  }
+
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value == null || value === "") delete merged[key];
+    else merged[key] = value;
+  }
+
+  const ev = await sign({
+    kind: 0,
+    created_at: now(),
+    tags: [],
+    content: JSON.stringify(merged),
+  });
+  await publish(ev);
+  return merged as Profile;
+}
+
 // Kinds que Luna Negra firma con la extensión: 1 (notas), 3 (follows NIP-02),
 // 4 (DM), 27235 (login NIP-98), 30315 (presencia NIP-38).
 const SIGN_KINDS = [1, 3, 4, 27235, 30315];
@@ -637,6 +683,48 @@ export async function publishGameReview(
       content: text ? `${header}\n\n${text}` : header,
     }),
   );
+}
+
+/**
+ * Comparte un juego en Nostr como nota propia (kind:1) firmada por el usuario.
+ * A diferencia de `publishGameNote`/`publishGameReview`, NO es una respuesta al
+ * hilo del juego: es una nota suelta que aparece en el feed de los seguidores
+ * del usuario. Con el link a la tienda (que ya emite preview social con la
+ * carátula) es difusión orgánica que trae visitas a Luna Negra.
+ *
+ * Tags: `t` (slug, para poder listarlas por juego) + `r` (link). Si el juego
+ * tiene artículo NIP-23 se agrega un `a` de tipo "mention" para enganchar la
+ * nota con la coordenada estable (sin convertirla en reply). Devuelve el id del
+ * evento publicado (para enlazar a un visor como njump).
+ */
+export async function publishGameShare(
+  slug: string,
+  content: string,
+  gameUrl: string,
+  images: string[] = [],
+  root?: GameRoot | null,
+): Promise<string> {
+  const text = content.trim();
+  const tags: string[][] = [["t", gameTag(slug)], ["r", gameUrl]];
+  if (root?.coord) tags.push(["a", root.coord, "", "mention"]);
+  // El link va siempre en el contenido: alimenta el preview social y lo ven los
+  // clientes que no renderizan el tag `r`.
+  const lines = [text.includes(gameUrl) ? text : `${text}\n\n${gameUrl}`];
+  // Imágenes adjuntas: la URL en el contenido (los clientes la renderizan inline)
+  // + un tag `imeta` (NIP-92) para que las traten como media, no como link suelto.
+  for (const img of images) {
+    if (!img) continue;
+    lines.push(img);
+    tags.push(["imeta", `url ${img}`]);
+  }
+  const ev = await sign({
+    kind: 1,
+    created_at: now(),
+    tags,
+    content: lines.join("\n"),
+  });
+  await publish(ev);
+  return ev.id;
 }
 
 // Re-export para el cliente: el texto sin el pie de contexto (ver game-note.ts).

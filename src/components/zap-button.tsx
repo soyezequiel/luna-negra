@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
 import { useWallet } from "@/providers/wallet-provider";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { payWithExtension, WebLNError } from "@/lib/webln";
 import { payInvoiceWithNwc, NwcError } from "@/lib/nwc-wallet";
 import { getActiveSigner, restoreSigner, type UnsignedEvent } from "@/lib/signer";
@@ -12,6 +13,8 @@ import { getActiveSigner, restoreSigner, type UnsignedEvent } from "@/lib/signer
 type Props = {
   gameId: string;
   providerName: string;
+  /** Clases extra para el botón disparador (p. ej. flex-1 en una fila compacta). */
+  className?: string;
 };
 
 type Phase = "idle" | "picking" | "creating" | "pending" | "done" | "error";
@@ -26,7 +29,7 @@ const PRESETS = [100, 500, 2000] as const;
  * wallet del dev (invoice) y lo paga con NWC/extensión/QR. El recibo (9735) que
  * emite el wallet del dev alimenta el top de zappers (puede tardar un tick).
  */
-export function ZapButton({ gameId, providerName }: Props) {
+export function ZapButton({ gameId, providerName, className }: Props) {
   const { user, login } = useSession();
   const { connected: nwcConnected, refresh: refreshWallet } = useWallet();
 
@@ -157,22 +160,25 @@ export function ZapButton({ gameId, providerName }: Props) {
   // --- Render ---
 
   return (
-    <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
-      <p className="text-sm font-semibold text-ln-text">¿Te gustó el juego?</p>
-      <p className="mt-1 text-[13px] text-ln-muted">
-        Dejale un zap a {providerName} ⚡ (queda público en Nostr)
-      </p>
+    <>
       {user ? (
         <Button
           variant="btc"
-          className="mt-3 w-full"
+          size="sm"
+          className={cn("w-full", className)}
           onClick={() => setPhase("picking")}
+          title={`Dejale un zap a ${providerName} (queda público en Nostr)`}
         >
-          Dejar un zap
+          ⚡ Dejar un zap
         </Button>
       ) : (
-        <Button variant="blue" className="mt-3 w-full" onClick={login}>
-          Conectar para zapear
+        <Button
+          variant="btc"
+          size="sm"
+          className={cn("w-full", className)}
+          onClick={login}
+        >
+          ⚡ Dejar un zap
         </Button>
       )}
 
@@ -325,6 +331,6 @@ export function ZapButton({ gameId, providerName }: Props) {
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

@@ -15,6 +15,7 @@ import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { LoginModal } from "@/components/login-modal";
 import { FreshGuard } from "@/components/fresh-guard";
 import { BUILD_ID } from "@/lib/build-id";
+import { SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -25,8 +26,40 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "Luna Negra",
-  description: "Tienda de juegos web con pagos Lightning/Nostr",
+  metadataBase: new URL(SITE_URL),
+  // `template` aplica a las páginas hijas (p. ej. la ficha pone su propio
+  // título); `default` es el de la home.
+  title: {
+    default: SITE_NAME,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_TAGLINE,
+  applicationName: SITE_NAME,
+  keywords: [
+    "juegos",
+    "tienda de juegos",
+    "Nostr",
+    "Lightning",
+    "Bitcoin",
+    "sats",
+    "zaps",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    url: SITE_URL,
+    title: SITE_NAME,
+    description: SITE_TAGLINE,
+    locale: "es_AR",
+    // La imagen la genera app/opengraph-image.tsx (1200×630); Next la inyecta
+    // automáticamente, no hace falta listarla acá.
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_TAGLINE,
+  },
 };
 
 export default function RootLayout({

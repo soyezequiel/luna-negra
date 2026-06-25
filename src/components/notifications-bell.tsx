@@ -64,18 +64,25 @@ export function NotificationsBell() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-[70] w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-ln-lg border border-ln-border-strong bg-ln-card shadow-ln-modal">
-          <div className="flex items-center justify-between border-b border-ln-border px-3.5 py-2.5">
-            <span className="text-sm font-semibold text-ln-text">Notificaciones</span>
-            <Link
-              href="/notifications"
-              onClick={() => setOpen(false)}
-              className="text-xs text-ln-muted hover:text-white"
-            >
-              Ver todas
-            </Link>
-          </div>
-          <div className="max-h-[60vh] overflow-y-auto">
+        <>
+          {/* Fondo para cerrar al tocar afuera en móvil (en ln+ el panel se ancla a la campana). */}
+          <div
+            className="fixed inset-0 z-[65] bg-black/40 ln:hidden"
+            aria-hidden
+            onClick={() => setOpen(false)}
+          />
+          <div className="fixed inset-x-2 top-[70px] z-[70] overflow-hidden rounded-ln-lg border border-ln-border-strong bg-ln-card shadow-ln-modal ln:absolute ln:inset-x-auto ln:right-0 ln:top-[calc(100%+8px)] ln:w-[360px]">
+            <div className="flex items-center justify-between border-b border-ln-border px-3.5 py-2.5">
+              <span className="text-sm font-semibold text-ln-text">Notificaciones</span>
+              <Link
+                href="/notifications"
+                onClick={() => setOpen(false)}
+                className="text-xs text-ln-muted hover:text-white"
+              >
+                Ver todas
+              </Link>
+            </div>
+            <div className="max-h-[min(60vh,calc(100vh-120px))] overflow-y-auto">
             {items === null ? (
               <p className="px-3.5 py-6 text-center text-xs text-ln-faint">
                 Cargando…
@@ -106,8 +113,9 @@ export function NotificationsBell() {
                 ))}
               </ul>
             )}
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );

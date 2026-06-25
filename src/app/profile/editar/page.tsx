@@ -6,6 +6,7 @@ import { useSession } from "@/providers/session-provider";
 import { useWallet } from "@/providers/wallet-provider";
 import { Button } from "@/components/ui/button";
 import { Lud16Form } from "@/components/lud16-form";
+import { NostrProfileForm } from "@/components/nostr-profile-form";
 import { NostrPermsSection } from "@/components/nostr-perms-section";
 import { fetchProfile, type NostrProfile } from "@/lib/nostr";
 import { satsLabel } from "@/lib/format";
@@ -49,6 +50,7 @@ export default function EditProfilePage() {
       </div>
 
       <div className="mt-6 space-y-6">
+        <NostrProfileForm profile={profile} />
         {user.custodial ? <CustodialKeySection /> : null}
         <NwcSection />
         <PayoutDestinationSection nostrLud16={profile?.lud16 ?? null} />
