@@ -459,6 +459,52 @@ const HTML = `<!doctype html>
         color: var(--muted);
         font-size: 1rem;
       }
+      .manual {
+        scroll-margin-top: 88px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.5);
+      }
+      .manual[open] { background: transparent; border-color: transparent; }
+      .manual > .manual-summary {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.74);
+        padding: 18px clamp(20px, 4vw, 30px);
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
+      }
+      .manual > .manual-summary::-webkit-details-marker { display: none; }
+      .manual > .manual-summary::after {
+        content: "Mostrar";
+        flex: 0 0 auto;
+        margin-left: auto;
+        border: 1px solid var(--line-2);
+        border-radius: 4px;
+        padding: 7px 12px;
+        color: var(--ink);
+        font-size: 0.8rem;
+        font-weight: 800;
+      }
+      .manual[open] > .manual-summary::after { content: "Ocultar"; }
+      .manual > .manual-summary:hover { background: rgba(24, 35, 49, 0.92); }
+      .manual-summary-text { display: grid; gap: 4px; min-width: 0; }
+      .manual-summary-main { color: var(--white); font-size: 1.05rem; font-weight: 800; }
+      .manual-summary-sub { color: var(--muted); font-size: 0.9rem; line-height: 1.35; }
+      .manual[open] { display: grid; gap: 16px; }
+      .toc a.toc-sep {
+        margin-top: 6px;
+        border-top: 1px solid var(--line);
+        border-radius: 0;
+        padding-top: 12px;
+        color: var(--faint);
+        font-size: 0.74rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
       .two-col {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
@@ -798,6 +844,8 @@ const HTML = `<!doctype html>
         <aside class="toc" aria-label="Indice de secciones">
           <strong>Indice</strong>
           <nav>
+            <a href="#skill">Skill para tu IA</a>
+            <a class="toc-sep" href="#guia-manual">Guia manual</a>
             <a href="#conceptos">Conceptos en simple</a>
             <a href="#credenciales">Credenciales</a>
             <a href="#sso">Identidad y SSO</a>
@@ -806,12 +854,99 @@ const HTML = `<!doctype html>
             <a href="#leaderboards">Marcadores</a>
             <a href="#webhooks">Webhooks</a>
             <a href="#sdk">SDK TypeScript</a>
-            <a href="#skill">Skill para tu IA</a>
             <a href="#endpoints">Endpoints rapidos</a>
           </nav>
         </aside>
 
         <article class="article">
+          <section id="skill">
+            <h2>Skill para tu agente de IA <span class="badge ok">recomendado</span></h2>
+            <p class="section-lead">
+              Un solo comando instala <strong>todo el conocimiento para integrar tu
+              juego con Luna Negra</strong> en tu agente. No tenes que leer la guia
+              manual de abajo: instalas la skill y le pedis a tu IA &ldquo;integra mi
+              juego con Luna Negra&rdquo;. Es modular &mdash; podes aplicar solo
+              login, o sumar pagos, salas, apuestas o webhooks segun necesites.
+            </p>
+
+            <div class="explain-grid">
+              <div class="explain">
+                <strong>Que hace</strong>
+                <span>Le da a tu agente el mapa completo: login SSO, verificar compra, presencia, salas, invitaciones, marcadores, apuestas/escrow, webhooks y el SDK, con los endpoints y las reglas de seguridad.</span>
+              </div>
+              <div class="explain">
+                <strong>Como se instala</strong>
+                <span>Con el CLI estandar <code>skills</code>: un comando lee el repo publico y deja el <code>SKILL.md</code> en la carpeta de skills de tu agente. Sirve para Claude Code, Cursor, Codex y demas.</span>
+              </div>
+            </div>
+
+            <div class="install-hero">
+              <span class="step-label">Recomendado &middot; cualquier agente</span>
+              <h3>Un comando con el CLI <code>skills</code></h3>
+              <div class="cmd">
+                <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
+                <pre><code>npx skills add soyezequiel/luna-negra</code></pre>
+              </div>
+              <p class="hint">
+                Funciona desde cualquier carpeta, sin clonar nada. El
+                <a href="https://github.com/vercel-labs/skills" target="_blank" rel="noopener">CLI <code>skills</code></a>
+                instala la skill en <code>.claude/skills/</code> o
+                <code>.agents/skills/</code> segun tu agente. Despues reinicialo y
+                pedile: <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
+              </p>
+              <p class="hint">
+                Para saltear la telemetria del CLI:
+                <code>DISABLE_TELEMETRY=1 npx skills add soyezequiel/luna-negra</code>.
+              </p>
+            </div>
+
+            <p class="note">
+              <strong>La skill no aplica todo de golpe.</strong> Es un menu: el
+              minimo util es el login SSO; presencia, salas, apuestas, marcadores y
+              webhooks se suman solo si los pedis. Tu agente te pregunta que queres
+              antes de tocar codigo.
+            </p>
+
+            <h3>Otras formas de instalarla</h3>
+            <p>
+              Si no queres usar <code>npx</code>, hay un instalador directo a la
+              carpeta de skills de Claude Code y la descarga del archivo. La skill es
+              un Markdown autocontenido, asi que tambien sirve como archivo de
+              contexto (<code>AGENTS.md</code>) para cualquier agente.
+            </p>
+            <div class="card-grid">
+              <div class="mini-card info">
+                <strong>Instalador directo (Claude Code)</strong>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar comando PowerShell">Copiar</button>
+                  <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
+                </div>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar comando bash">Copiar</button>
+                  <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
+                </div>
+                <span>PowerShell (Windows) o bash (macOS/Linux). Deja el <code>SKILL.md</code> ya configurado con la URL de este deploy.</span>
+              </div>
+              <div class="mini-card ok">
+                <strong>Descargar o pasar por URL</strong>
+                <p style="margin:6px 0 0;"><a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a></p>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
+                  <pre><code>__LUNA_NEGRA_BASE__/dev/skill</code></pre>
+                </div>
+                <span>Guardalo como <code>AGENTS.md</code> en la raiz del repo, o pasale esa URL al agente y pedile que la lea.</span>
+              </div>
+            </div>
+          </section>
+
+          <details class="manual" id="guia-manual">
+            <summary class="manual-summary">
+              <span class="manual-summary-text">
+                <span class="manual-summary-main">Guia manual &mdash; integrar sin IA</span>
+                <span class="manual-summary-sub">Conceptos, credenciales, SSO, apuestas, salas, marcadores, webhooks, SDK y endpoints. Abrila solo si preferis implementar a mano.</span>
+              </span>
+            </summary>
+
           <section id="conceptos">
             <h2>1. Conceptos en simple</h2>
             <p class="section-lead">
@@ -1107,88 +1242,8 @@ const info = await luna.getBet(bet.betId);
 await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
           </section>
 
-          <section id="skill">
-            <h2>9. Skill para tu agente de IA <span class="badge ok">nuevo</span></h2>
-            <p class="section-lead">
-              Un solo comando instala <strong>todo el conocimiento para integrar tu
-              juego con Luna Negra</strong> en tu agente. No tenes que leer esta
-              pagina entera: instalas la skill y le pedis a tu IA &ldquo;integra mi
-              juego con Luna Negra&rdquo;. Es modular &mdash; podes aplicar solo
-              login, o sumar pagos, salas, apuestas o webhooks segun necesites.
-            </p>
-
-            <div class="explain-grid">
-              <div class="explain">
-                <strong>Que hace</strong>
-                <span>Le da a tu agente el mapa completo: login SSO, verificar compra, presencia, salas, invitaciones, marcadores, apuestas/escrow, webhooks y el SDK, con los endpoints y las reglas de seguridad.</span>
-              </div>
-              <div class="explain">
-                <strong>Como se instala</strong>
-                <span>Con el CLI estandar <code>skills</code>: un comando lee el repo publico y deja el <code>SKILL.md</code> en la carpeta de skills de tu agente. Sirve para Claude Code, Cursor, Codex y demas.</span>
-              </div>
-            </div>
-
-            <div class="install-hero">
-              <span class="step-label">Recomendado &middot; cualquier agente</span>
-              <h3>Un comando con el CLI <code>skills</code></h3>
-              <div class="cmd">
-                <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
-                <pre><code>npx skills add soyezequiel/luna-negra</code></pre>
-              </div>
-              <p class="hint">
-                Funciona desde cualquier carpeta, sin clonar nada. El
-                <a href="https://github.com/vercel-labs/skills" target="_blank" rel="noopener">CLI <code>skills</code></a>
-                instala la skill en <code>.claude/skills/</code> o
-                <code>.agents/skills/</code> segun tu agente. Despues reinicialo y
-                pedile: <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
-              </p>
-              <p class="hint">
-                Para saltear la telemetria del CLI:
-                <code>DISABLE_TELEMETRY=1 npx skills add soyezequiel/luna-negra</code>.
-              </p>
-            </div>
-
-            <p class="note">
-              <strong>La skill no aplica todo de golpe.</strong> Es un menu: el
-              minimo util es el login SSO; presencia, salas, apuestas, marcadores y
-              webhooks se suman solo si los pedis. Tu agente te pregunta que queres
-              antes de tocar codigo.
-            </p>
-
-            <h3>Otras formas de instalarla</h3>
-            <p>
-              Si no queres usar <code>npx</code>, hay un instalador directo a la
-              carpeta de skills de Claude Code y la descarga del archivo. La skill es
-              un Markdown autocontenido, asi que tambien sirve como archivo de
-              contexto (<code>AGENTS.md</code>) para cualquier agente.
-            </p>
-            <div class="card-grid">
-              <div class="mini-card info">
-                <strong>Instalador directo (Claude Code)</strong>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar comando PowerShell">Copiar</button>
-                  <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
-                </div>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar comando bash">Copiar</button>
-                  <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
-                </div>
-                <span>PowerShell (Windows) o bash (macOS/Linux). Deja el <code>SKILL.md</code> ya configurado con la URL de este deploy.</span>
-              </div>
-              <div class="mini-card ok">
-                <strong>Descargar o pasar por URL</strong>
-                <p style="margin:6px 0 0;"><a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a></p>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
-                  <pre><code>__LUNA_NEGRA_BASE__/dev/skill</code></pre>
-                </div>
-                <span>Guardalo como <code>AGENTS.md</code> en la raiz del repo, o pasale esa URL al agente y pedile que la lea.</span>
-              </div>
-            </div>
-          </section>
-
           <section id="endpoints">
-            <h2>10. Referencia rapida de endpoints</h2>
+            <h2>9. Referencia rapida de endpoints</h2>
             <p class="section-lead">
               Para campos completos, codigos de error y schemas, usa
               <a href="/developers">/developers</a> o <a href="/openapi.json">/openapi.json</a>.
@@ -1218,6 +1273,7 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
               </table>
             </div>
           </section>
+          </details>
         </article>
       </div>
     </main>
@@ -1256,6 +1312,27 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
           document.body.removeChild(ta);
         }
       });
+
+      // La guia manual vive en un <details> colapsado. Si el usuario llega a una
+      // de sus secciones por un ancla (indice, header o link directo), lo abrimos
+      // para que el scroll caiga en el lugar correcto.
+      (function () {
+        var manual = document.getElementById("guia-manual");
+        if (!manual) return;
+        var openFor = function (hash) {
+          if (!hash || hash === "#") return;
+          var target;
+          try { target = document.querySelector(hash); } catch (err) { return; }
+          if (target && manual.contains(target)) manual.open = true;
+        };
+        document.addEventListener("click", function (e) {
+          var link = e.target.closest('a[href^="#"]');
+          if (!link) return;
+          openFor(link.getAttribute("href"));
+        });
+        window.addEventListener("hashchange", function () { openFor(location.hash); });
+        openFor(location.hash);
+      })();
     </script>
   </body>
 </html>`;
