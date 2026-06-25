@@ -7,6 +7,7 @@ import { useWallet } from "@/providers/wallet-provider";
 import { Button } from "@/components/ui/button";
 import { payWithExtension, WebLNError } from "@/lib/webln";
 import { payInvoiceWithNwc, NwcError } from "@/lib/nwc-wallet";
+import { getActiveSigner, restoreSigner, type UnsignedEvent } from "@/lib/signer";
 
 type Props = {
   gameId: string;
@@ -15,10 +16,17 @@ type Props = {
 
 type Phase = "idle" | "picking" | "creating" | "pending" | "done" | "error";
 
-// Montos sugeridos de propina (sats). El usuario también puede tipear uno propio.
+// Montos sugeridos de zap (sats). El usuario también puede tipear uno propio.
 const PRESETS = [100, 500, 2000] as const;
 
-export function TipButton({ gameId, providerName }: Props) {
+/**
+ * Tarjeta "Dejar un zap ⚡" de los juegos gratis. Convierte la propina en un zap
+ * NIP-57 real: arma el zap request en el server (prepare), lo FIRMA con la
+ * identidad Nostr del usuario (así se sabe quién mandó), pide el invoice al
+ * wallet del dev (invoice) y lo paga con NWC/extensión/QR. El recibo (9735) que
+ * emite el wallet del dev alimenta el top de zappers (puede tardar un tick).
+ */
+export function ZapButton({ gameId, providerName }: Props) {
   const { user, login } = useSession();
   const { connected: nwcConnected, refresh: refreshWallet } = useWallet();
 
@@ -26,9 +34,9 @@ export function TipButton({ gameId, providerName }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [amount, setAmount] = useState<number>(PRESETS[0]);
   const [custom, setCustom] = useState("");
+  const [comment, setComment] = useState("");
   const [invoice, setInvoice] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
-  const [devMode, setDevMode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [weblnPaying, setWeblnPaying] = useState(false);
   const [weblnError, setWeblnError] = useState<string | null>(null);
@@ -41,6 +49,7 @@ export function TipButton({ gameId, providerName }: Props) {
     setInvoice(null);
     setQr(null);
     setCustom("");
+    setComment("");
     setAmount(PRESETS[0]);
     setWeblnError(null);
     setWeblnPaying(false);
@@ -57,7 +66,7 @@ export function TipButton({ gameId, providerName }: Props) {
     return amount;
   }, [custom, amount]);
 
-  const startTip = useCallback(async () => {
+  const startZap = useCallback(async () => {
     const sats = chosenAmount();
     if (!sats) {
       setError("Ingresá un monto válido en sats.");
@@ -66,23 +75,46 @@ export function TipButton({ gameId, providerName }: Props) {
     setError(null);
     setPhase("creating");
     try {
-      const res = await fetch(`/api/games/${gameId}/tip`, {
+      // 1) Pedir el zap request sin firmar (valida gating + monto).
+      const prepRes = await fetch(`/api/games/${gameId}/zap/prepare`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amountSats: sats }),
+        body: JSON.stringify({ amountSats: sats, comment: comment.trim() || undefined }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "No se pudo generar la propina");
+      const prep = await prepRes.json();
+      if (!prepRes.ok) throw new Error(prep.error ?? "No se pudo preparar el zap");
+
+      // 2) Firmar el 9734 con la identidad Nostr del usuario.
+      const signer = getActiveSigner() ?? (await restoreSigner());
+      if (!signer) throw new Error("Conectá tu Nostr para zapear");
+      const signed = await signer.signEvent(
+        prep.unsignedZapRequest as UnsignedEvent,
+      );
+
+      // 3) Pedir el invoice al wallet del dev con el request firmado.
+      const invRes = await fetch(`/api/games/${gameId}/zap/invoice`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signedZapRequest: signed }),
+      });
+      const inv = await invRes.json();
+      if (!invRes.ok) throw new Error(inv.error ?? "No se pudo generar el invoice");
+
       setAmount(sats);
-      setInvoice(data.invoice);
-      setDevMode(Boolean(data.devMode));
-      setQr(await QRCode.toDataURL(data.invoice, { margin: 1, width: 240 }));
+      setInvoice(inv.invoice);
+      setQr(await QRCode.toDataURL(inv.invoice, { margin: 1, width: 240 }));
       setPhase("pending");
     } catch (e) {
       setPhase("error");
-      setError(e instanceof Error ? e.message : "Error al generar la propina");
+      setError(e instanceof Error ? e.message : "Error al generar el zap");
     }
-  }, [gameId, chosenAmount]);
+  }, [gameId, chosenAmount, comment]);
+
+  // Una vez pagado, el recibo 9735 lo levanta el sync (puede tardar un tick);
+  // avisamos a la página para que refresque el top apenas aparezca.
+  const announceZapped = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("luna:zapped", { detail: { gameId } }));
+  }, [gameId]);
 
   const payWithNwcClick = useCallback(async () => {
     if (!invoice) return;
@@ -91,14 +123,14 @@ export function TipButton({ gameId, providerName }: Props) {
     try {
       await payInvoiceWithNwc(invoice);
       void refreshWallet();
-      // El invoice es del dev, no de la tienda: la confirmación la da el wallet.
+      announceZapped();
       setPhase("done");
     } catch (e) {
       setNwcError(e instanceof NwcError ? e.message : "No se pudo pagar con el wallet NWC.");
     } finally {
       setNwcPaying(false);
     }
-  }, [invoice, refreshWallet]);
+  }, [invoice, refreshWallet, announceZapped]);
 
   const payWithExtensionClick = useCallback(async () => {
     if (!invoice) return;
@@ -106,13 +138,14 @@ export function TipButton({ gameId, providerName }: Props) {
     setWeblnPaying(true);
     try {
       await payWithExtension(invoice);
+      announceZapped();
       setPhase("done");
     } catch (e) {
       setWeblnError(e instanceof WebLNError ? e.message : "No se pudo pagar con la extensión.");
     } finally {
       setWeblnPaying(false);
     }
-  }, [invoice]);
+  }, [invoice, announceZapped]);
 
   const copyInvoice = useCallback(async () => {
     if (!invoice) return;
@@ -127,7 +160,7 @@ export function TipButton({ gameId, providerName }: Props) {
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
       <p className="text-sm font-semibold text-ln-text">¿Te gustó el juego?</p>
       <p className="mt-1 text-[13px] text-ln-muted">
-        Dejale una propina opcional a {providerName} ⚡
+        Dejale un zap a {providerName} ⚡ (queda público en Nostr)
       </p>
       {user ? (
         <Button
@@ -135,11 +168,11 @@ export function TipButton({ gameId, providerName }: Props) {
           className="mt-3 w-full"
           onClick={() => setPhase("picking")}
         >
-          Dejar propina
+          Dejar un zap
         </Button>
       ) : (
         <Button variant="blue" className="mt-3 w-full" onClick={login}>
-          Conectar para dejar propina
+          Conectar para zapear
         </Button>
       )}
 
@@ -152,8 +185,8 @@ export function TipButton({ gameId, providerName }: Props) {
                   ¡Gracias! ⚡
                 </h3>
                 <p className="mt-2 text-sm text-ln-muted">
-                  Tu propina de {amount.toLocaleString("es-AR")} sats fue enviada a{" "}
-                  {providerName}.
+                  Tu zap de {amount.toLocaleString("es-AR")} sats fue enviado a{" "}
+                  {providerName}. Aparecerás en el top en unos segundos.
                 </p>
                 <Button variant="corona" className="mt-5 w-full" onClick={close}>
                   Cerrar
@@ -162,7 +195,7 @@ export function TipButton({ gameId, providerName }: Props) {
             ) : phase === "pending" && invoice ? (
               <>
                 <h3 className="font-display text-lg font-bold text-white">
-                  ⚡ Propina de {amount.toLocaleString("es-AR")} sats
+                  ⚡ Zap de {amount.toLocaleString("es-AR")} sats
                 </h3>
                 <p className="mt-1 text-sm text-ln-corona-bright">
                   Para {providerName} · escaneá o copiá el invoice
@@ -207,22 +240,15 @@ export function TipButton({ gameId, providerName }: Props) {
                 >
                   {copied ? "¡Copiado!" : invoice}
                 </button>
-                {devMode ? (
-                  <Button
-                    variant="ghost"
-                    className="mt-4 w-full"
-                    onClick={() => setPhase("done")}
-                  >
-                    Simular pago (dev)
-                  </Button>
-                ) : (
-                  <button
-                    onClick={() => setPhase("done")}
-                    className="mt-4 block w-full text-xs text-faint hover:text-ink"
-                  >
-                    Ya pagué desde otra wallet
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    announceZapped();
+                    setPhase("done");
+                  }}
+                  className="mt-4 block w-full text-xs text-faint hover:text-ink"
+                >
+                  Ya pagué desde otra wallet
+                </button>
                 <button
                   onClick={close}
                   className="mt-3 text-xs text-faint hover:text-ink"
@@ -233,7 +259,7 @@ export function TipButton({ gameId, providerName }: Props) {
             ) : (
               <>
                 <h3 className="font-display text-lg font-bold text-white">
-                  Dejar propina ⚡
+                  Dejar un zap ⚡
                 </h3>
                 <p className="mt-1 text-sm text-ln-muted">
                   Elegí cuánto darle a {providerName}.
@@ -269,16 +295,24 @@ export function TipButton({ gameId, providerName }: Props) {
                   />
                   <span className="text-xs text-ln-faint">sats</span>
                 </div>
+                <input
+                  type="text"
+                  value={comment}
+                  maxLength={280}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Comentario (opcional)"
+                  className="mt-3 w-full rounded-ln-lg border border-ln-border bg-transparent px-3 py-2 text-sm text-ln-text outline-none placeholder:text-ln-faint"
+                />
                 {error ? (
                   <p className="mt-2 text-sm text-[var(--lose)]">{error}</p>
                 ) : null}
                 <Button
                   variant="corona"
                   className="mt-4 w-full"
-                  onClick={startTip}
+                  onClick={startZap}
                   disabled={phase === "creating"}
                 >
-                  {phase === "creating" ? "Generando…" : "Continuar"}
+                  {phase === "creating" ? "Firmando…" : "Continuar"}
                 </Button>
                 <button
                   onClick={close}

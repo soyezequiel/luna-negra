@@ -1,10 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
-import { TipButton } from "@/components/tip-button";
+import { ZapButton } from "@/components/zap-button";
+import { ZapLeaderboard } from "@/components/zap-leaderboard";
 import { PlayButton } from "@/components/play-button";
 import { GameBets } from "@/components/game-bets";
 import { MultiplayerPanel } from "@/components/multiplayer-panel";
@@ -23,7 +25,7 @@ import {
   EditableMedia,
 } from "@/components/game-store-edit";
 import { hueFromSlug } from "@/lib/format";
-import { gameGalleryMedia } from "@/lib/game-media";
+import { gameGalleryMedia, normalizeImageUrl } from "@/lib/game-media";
 import { getPublishedGameBySlug, getRelatedGames } from "@/lib/store-catalog";
 import { StoreUnavailable } from "@/components/store-unavailable";
 import {
@@ -32,6 +34,66 @@ import {
 } from "@/lib/sanitize-description";
 
 export const dynamic = "force-dynamic";
+
+// Base pública del sitio (para resolver og:image relativos a una URL absoluta).
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://luna.naranja.fit";
+
+// Texto plano para la descripción del preview: saca etiquetas HTML, colapsa
+// espacios y recorta. La descripción puede venir como HTML enriquecido o texto.
+function plainDescription(raw: string, max = 200): string {
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1).trimEnd() + "…";
+}
+
+// Metadatos por juego: cuando alguien comparte el link de la ficha (WhatsApp,
+// Discord, X, Telegram…), el título del preview es "Juego — Proveedor" y se
+// adjunta la portada como imagen. Reutiliza la lectura cacheada de la ficha.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  let game: Awaited<ReturnType<typeof getPublishedGameBySlug>> = null;
+  try {
+    game = await getPublishedGameBySlug(slug);
+  } catch {
+    game = null;
+  }
+  if (!game) {
+    return { title: "Juego no encontrado · Luna Negra" };
+  }
+
+  const title = `${game.title} — ${game.provider.name}`;
+  const description = plainDescription(game.description) || `${game.title} en Luna Negra.`;
+  const cover = normalizeImageUrl(game.coverUrl || game.horizontalCoverUrl);
+  const images = cover ? [cover] : undefined;
+  const url = `${SITE_URL}/game/${game.slug}`;
+
+  return {
+    metadataBase: new URL(SITE_URL),
+    title,
+    description,
+    openGraph: {
+      type: "website",
+      siteName: "Luna Negra",
+      url,
+      title,
+      description,
+      images,
+    },
+    twitter: {
+      card: cover ? "summary_large_image" : "summary",
+      title,
+      description,
+      images,
+    },
+  };
+}
 
 export default async function GamePage({
   params,
@@ -250,10 +312,14 @@ export default async function GamePage({
             </div>
           )}
 
-          {/* Propina opcional al dev (juegos gratis): el sat va 100% al proveedor,
-              sin custodia ni comisión de la tienda. */}
-          {game.priceSats === 0 ? (
-            <TipButton gameId={game.id} providerName={game.provider.name} />
+          {/* Zap opcional al dev (juegos gratis con anuncio en Nostr): propina
+              NIP-57 firmada con la identidad del usuario, el sat va 100% al dev.
+              Debajo, el top de zappers (sale de los recibos 9735 verificados). */}
+          {game.priceSats === 0 && game.nostrEventId ? (
+            <>
+              <ZapButton gameId={game.id} providerName={game.provider.name} />
+              <ZapLeaderboard scope="game" gameId={game.id} />
+            </>
           ) : null}
 
           {/* Panel social "Jugá con amigos" (juegos con salas y comprables) */}

@@ -6,6 +6,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
     await startEscrowTick();
+    await startZapSync();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
@@ -44,6 +45,38 @@ async function startEscrowTick() {
   // No bloquear el arranque: primer tick a los pocos segundos, luego periódico.
   setTimeout(tick, 5_000).unref?.();
   setInterval(tick, ESCROW_TICK_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de recibos de zap (NIP-57): levanta de relays los kind 9735 de
+ * los anuncios de juegos y los persiste en la tabla `Zap` (top de zappers). Mismo
+ * patrón que el tick de escrow: una sola instancia → un setInterval alcanza. Ver
+ * src/lib/zap-sync.ts (syncZapReceipts) y ZAP_SYNC_INTERVAL_MS.
+ */
+async function startZapSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { ZAP_SYNC_INTERVAL_MS } = await import("./lib/zap-sync");
+  if (!ZAP_SYNC_INTERVAL_MS || ZAP_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncZapReceipts } = await import("./lib/zap-sync");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncZapReceipts();
+    } catch (err) {
+      console.error("[zap-sync] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 8_000).unref?.();
+  setInterval(tick, ZAP_SYNC_INTERVAL_MS).unref?.();
 }
 
 // Captura errores no manejados de route handlers y server components.

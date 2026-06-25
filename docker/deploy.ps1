@@ -21,7 +21,13 @@ Write-Host '-> Enviando a la laptop...'
 scp $pkg luna:luna-update.tgz
 
 Write-Host '-> Reconstruyendo en la laptop (puede tardar la primera vez)...'
-ssh luna "tar xzf ~/luna-update.tgz -C ~/luna-negra && cd ~/luna-negra && NEXT_PUBLIC_BUILD_ID='$buildId' docker compose --env-file .env.docker up -d --build && rm ~/luna-update.tgz"
+# OJO: `tar xzf` extrae ENCIMA del dir existente y NO borra archivos que ya no
+# estan en el paquete. Si se borro/renombro un archivo de codigo, su copia vieja
+# queda en la laptop y el build la levanta (rompe, p. ej. un import a un export
+# que ya no existe). Por eso borramos `src` antes de extraer: el .tgz SIEMPRE
+# trae el `src` completo. Los datos (uploads/backups/.env) viven fuera de `src` y
+# estan excluidos del paquete, asi que no se tocan.
+ssh luna "rm -rf ~/luna-negra/src && tar xzf ~/luna-update.tgz -C ~/luna-negra && cd ~/luna-negra && NEXT_PUBLIC_BUILD_ID='$buildId' docker compose --env-file .env.docker up -d --build && rm ~/luna-update.tgz"
 
 Remove-Item $pkg -ErrorAction SilentlyContinue
 Write-Host '== Listo: https://luna.naranja.fit =='

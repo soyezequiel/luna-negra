@@ -19,6 +19,7 @@ import {
   type GameForm,
 } from "@/components/provider/game-form-fields";
 import { normalizeCategories } from "@/lib/categories";
+import { ZapLeaderboard } from "@/components/zap-leaderboard";
 
 import { hueFromSlug, satsLabel } from "@/lib/format";
 
@@ -649,6 +650,15 @@ export default function ProviderPage() {
       {/* ===== VENTAS ===== */}
       {tab === "sales" ? (
         <section className="mt-6 animate-ln-rise">
+          {/* Top de zappers acumulado (todos los juegos del dev). Sale de los
+              recibos 9735 verificados (zap-sync.ts). */}
+          <div className="mb-6 max-w-lg">
+            <ZapLeaderboard
+              scope="provider"
+              providerId={provider.id}
+              title="Tus mayores apoyos ⚡"
+            />
+          </div>
           <h2 className="mb-4 font-display text-[19px] font-bold">Ventas recientes</h2>
           {sales.length === 0 ? (
             <p className="text-sm text-faint">Todavía no hay ventas.</p>

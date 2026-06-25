@@ -141,23 +141,6 @@ export async function payToLightningAddress(
   });
 }
 
-/**
- * Pide un invoice (bolt11) DIRECTAMENTE a una Lightning Address, sin pasar por el
- * wallet de la tienda. Lo usa la propina: el invoice lo emite el wallet del
- * desarrollador, así que el sat va 100% a él y Luna Negra nunca custodia el dinero
- * (no hay payout ni comisión). El usuario lo paga con su wallet/extensión/QR.
- */
-export async function requestInvoiceFromAddress(
-  lightningAddress: string,
-  amountSats: number,
-  comment?: string,
-): Promise<string> {
-  const la = new LightningAddress(lightningAddress);
-  await la.fetch();
-  const invoice = await la.requestInvoice({ satoshi: amountSats, comment });
-  return invoice.paymentRequest;
-}
-
 /** Paga un invoice bolt11 ya provisto (ej. LNURL-withdraw). Devuelve el preimage. */
 export async function payInvoiceRaw(bolt11: string): Promise<string> {
   return withFailover("payInvoice", async (client) => {

@@ -211,11 +211,38 @@ model Game {
   // Comentarios y reseñas se cuelgan de aquí como respuestas (NIP-10).
   nostrEventId       String? // id del evento anuncio
   nostrPubkey        String? // pubkey de Luna Negra que firmó el anuncio (tag p de las respuestas)
+  // Pubkey (hex) que firma los recibos de zap (kind 9735) del wallet LNURL del
+  // dev de este juego. Se cachea en `zap/prepare` y se usa en la reconciliación
+  // (zap-sync.ts) para validar que un recibo viene del wallet correcto. Si es
+  // null, el dev todavía no tiene un address con soporte de zaps NIP-57.
+  zapLnurlPubkey     String?
   createdAt          DateTime @default(now())
 
   purchases Purchase[]
   reviews   Review[]
   bets      Bet[]
+  zaps      Zap[]
+}
+
+// Zap (propina NIP-57) verificado a un juego gratis. La fuente de verdad es el
+// recibo de zap (kind 9735) firmado por el wallet del dev; lo levanta de relays
+// la reconciliación (src/lib/zap-sync.ts) y lo deduplica por `receiptId`. De acá
+// sale el "top de zappers" por juego y por dev (providerId denormalizado).
+model Zap {
+  id           String   @id @default(cuid())
+  receiptId    String   @unique // id del evento 9735 (dedup idempotente)
+  gameId       String
+  game         Game     @relation(fields: [gameId], references: [id])
+  providerId   String // denormalizado → top por dev (suma de todos sus juegos)
+  zapperPubkey String // hex; del zap request (9734) embebido en el recibo
+  amountSats   Int
+  comment      String?
+  zappedAt     DateTime // created_at del recibo 9735
+  recordedAt   DateTime @default(now())
+
+  @@index([gameId])
+  @@index([providerId])
+  @@index([zapperPubkey])
 }
 
 model Purchase {
