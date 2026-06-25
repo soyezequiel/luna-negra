@@ -208,14 +208,14 @@ const HTML = `<!doctype html>
       }
       h1 {
         margin: 14px 0 16px;
-        max-width: 780px;
+        max-width: 700px;
         color: var(--white);
-        font-size: clamp(2.25rem, 6vw, 5.7rem);
-        line-height: 0.95;
+        font-size: clamp(2.2rem, 5vw, 4.7rem);
+        line-height: 1.08;
         letter-spacing: 0;
       }
       .lead {
-        max-width: 760px;
+        max-width: 640px;
         margin: 0;
         color: #b7c8d8;
         font-size: clamp(1rem, 1.5vw, 1.22rem);
@@ -351,6 +351,76 @@ const HTML = `<!doctype html>
       .quick-card strong { color: var(--white); font-size: 1rem; }
       .quick-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.35; }
       .quick-card em { color: var(--blue-hi); font-style: normal; font-weight: 800; }
+      .choice-section {
+        display: grid;
+        grid-template-columns: minmax(220px, 0.52fr) minmax(0, 1.48fr);
+        gap: 18px;
+        align-items: stretch;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        margin: 0 0 34px;
+        padding: 22px 0;
+      }
+      .choice-head h2 {
+        margin: 8px 0 8px;
+        color: var(--white);
+        font-size: clamp(1.35rem, 3vw, 2rem);
+        line-height: 1.18;
+      }
+      .choice-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      .choice-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .choice-card {
+        display: flex;
+        min-height: 178px;
+        flex-direction: column;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(18, 26, 36, 0.74);
+        padding: 18px;
+        text-decoration: none;
+      }
+      .choice-card:hover {
+        border-color: rgba(102, 192, 244, 0.38);
+        background: rgba(24, 35, 49, 0.92);
+        text-decoration: none;
+      }
+      .choice-card.recommended {
+        border-color: rgba(247, 147, 26, 0.34);
+        background: linear-gradient(180deg, rgba(247, 147, 26, 0.1), rgba(18, 26, 36, 0.78));
+      }
+      .choice-label {
+        color: var(--blue-hi);
+        font-size: 0.72rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .choice-card.recommended .choice-label { color: var(--btc-hi); }
+      .choice-card strong {
+        color: var(--white);
+        font-size: 1.12rem;
+        line-height: 1.2;
+      }
+      .choice-card span:not(.choice-label) {
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.42;
+      }
+      .choice-card em {
+        margin-top: auto;
+        color: var(--blue-hi);
+        font-style: normal;
+        font-weight: 800;
+      }
+      .choice-card.recommended em { color: var(--btc-hi); }
       .audience-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -442,7 +512,7 @@ const HTML = `<!doctype html>
         margin: 0;
         color: var(--white);
         font-size: clamp(1.45rem, 3vw, 2rem);
-        line-height: 1.1;
+        line-height: 1.18;
         letter-spacing: 0;
       }
       section h3 {
@@ -682,11 +752,46 @@ const HTML = `<!doctype html>
       .install-hero h3 { margin: 8px 0 4px; color: var(--white); }
       .install-hero .cmd pre { font-size: 0.95rem; }
       .install-hero .hint { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+      .alt-install {
+        margin-top: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.14);
+      }
+      .alt-install > summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        color: var(--white);
+        cursor: pointer;
+        font-weight: 800;
+        list-style: none;
+      }
+      .alt-install > summary::-webkit-details-marker { display: none; }
+      .alt-install > summary::after {
+        content: "Mostrar";
+        flex: 0 0 auto;
+        border: 1px solid var(--line-2);
+        border-radius: 4px;
+        color: var(--muted);
+        padding: 5px 9px;
+        font-size: 0.74rem;
+      }
+      .alt-install[open] > summary::after { content: "Ocultar"; }
+      .alt-install > p,
+      .alt-install > .card-grid {
+        margin-left: 16px;
+        margin-right: 16px;
+      }
+      .alt-install > .card-grid { margin-bottom: 16px; }
 
       @media (max-width: 980px) {
         .hero,
         .content,
-        .two-col { grid-template-columns: 1fr; }
+        .two-col,
+        .choice-section { grid-template-columns: 1fr; }
         .toc { position: static; order: -1; }
         .toc nav {
           display: grid;
@@ -716,8 +821,10 @@ const HTML = `<!doctype html>
         }
         .shell { width: min(100% - 24px, 1180px); }
         .hero { padding-top: 34px; }
+        .flow-panel { display: none; }
         .signal-row,
         .quick-grid,
+        .choice-grid,
         .audience-grid,
         .card-grid,
         .explain-grid,
@@ -743,45 +850,33 @@ const HTML = `<!doctype html>
         </a>
         <nav class="top-links" aria-label="Navegacion principal">
           <a href="#inicio">Inicio</a>
-          <a href="#conceptos">Conceptos</a>
-          <a href="#credenciales">Credenciales</a>
-          <a href="#sso">SSO</a>
-          <a href="#apuestas">Apuestas</a>
-          <a href="#multijugador">Multijugador</a>
-          <a href="#webhooks">Webhooks</a>
-          <a href="#sdk">SDK</a>
           <a href="#skill">Skill IA</a>
+          <a href="#guia-manual">Guia manual</a>
+          <a href="/developers">Referencia</a>
         </nav>
-        <a class="top-action" href="#skill">Instalar skill</a>
+        <a class="top-action" href="/provider">Crear juego</a>
       </div>
     </header>
 
     <main id="inicio" class="shell">
       <div class="hero">
         <div>
-          <span class="eyebrow">Guia para equipos y developers</span>
-          <h1>Publica tu juego y conecta login, pagos y multijugador.</h1>
+          <span class="eyebrow">Guia para integrar juegos</span>
+          <h1>Integra tu juego con Luna Negra.</h1>
           <p class="lead">
-            Esta pagina explica que resuelve Luna Negra en lenguaje simple y tambien
-            deja el detalle tecnico para implementarlo. Si no programas, usala para
-            entender el flujo. Si programas, usala como mapa antes de abrir OpenAPI.
+            Publica, reconoce jugadores Nostr, cobra en sats y agrega salas sin
+            construir la infraestructura comun desde cero.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="/provider">Crear juego</a>
-            <a class="button" href="#skill">Instalar skill para tu IA</a>
-            <a class="button" href="/developers">Abrir referencia interactiva</a>
-            <a class="button" href="/openapi.json">Ver OpenAPI</a>
-          </div>
-          <div class="signal-row" aria-label="Capacidades principales">
-            <div class="signal"><strong>Login sin cuentas nuevas</strong><span>El jugador entra con su identidad Nostr y tu juego recibe quien es.</span></div>
-            <div class="signal"><strong>Pagos y apuestas</strong><span>Luna Negra cobra, custodia pozos en sats y liquida pagos.</span></div>
-            <div class="signal"><strong>Social y salas</strong><span>Invites, presencia, amigos y estado compartido para partidas simples.</span></div>
+            <a class="button" href="#skill">Instalar skill</a>
+            <a class="button" href="/developers">Probar API</a>
           </div>
         </div>
 
         <aside class="flow-panel" aria-label="Flujo recomendado de integracion">
           <div class="panel-head">
-            <strong>Camino de integracion</strong>
+            <strong>Ruta base</strong>
             <span class="status">API v1 estable</span>
           </div>
           <div class="flow">
@@ -791,52 +886,35 @@ const HTML = `<!doctype html>
             </div>
             <div class="flow-step">
               <b>02</b>
-              <div><strong>Reconoce al jugador</strong><span>Luna Negra abre tu juego con un pase temporal. Tu juego lo cambia por la identidad del jugador.</span></div>
+              <div><strong>Valida al jugador</strong><span>Canjea el <code>lnToken</code> por identidad Nostr en <code>/api/v1/session</code>.</span></div>
             </div>
             <div class="flow-step">
               <b>03</b>
-              <div><strong>Activa funciones</strong><span>Agrega presencia, salas, apuestas, marcadores y webhooks segun lo que necesite tu juego.</span></div>
+              <div><strong>Suma funciones</strong><span>Activa pagos, apuestas, salas, marcadores o webhooks solo si tu juego los necesita.</span></div>
             </div>
           </div>
         </aside>
       </div>
 
-      <div class="quick-grid">
-        <a class="quick-card" href="/developers">
-          <strong>Referencia interactiva</strong>
-          <span>Para developers: prueba endpoints contra tu entorno desde el navegador.</span>
-          <em>Abrir /developers &rarr;</em>
-        </a>
-        <a class="quick-card" href="/openapi.json">
-          <strong>Contrato OpenAPI</strong>
-          <span>Para integraciones: schemas, rutas y respuestas en formato machine-readable.</span>
-          <em>Ver /openapi.json &rarr;</em>
-        </a>
-        <a class="quick-card" href="#skill">
-          <strong>Skill para tu IA</strong>
-          <span>Para vibe coders: instala el conocimiento de Luna Negra en Claude Code, Codex u otro agente y deja que integre tu juego.</span>
-          <em>Instalar skill &rarr;</em>
-        </a>
-      </div>
-
-      <div class="audience-grid" aria-label="Como leer esta guia">
-        <div class="audience-card">
-          <strong>Si no programas</strong>
-          <p>Lee los bloques "en simple" para entender que parte de la experiencia cubre Luna Negra.</p>
-          <ul>
-            <li>Quien es el jugador y si puede jugar.</li>
-            <li>Como se cobran compras, apuestas y premios en sats.</li>
-            <li>Que necesita tu equipo tecnico para conectar el juego.</li>
-          </ul>
+      <div class="choice-section" aria-label="Rutas de integracion">
+        <div class="choice-head">
+          <span class="eyebrow">Elegi una ruta</span>
+          <h2>Arranca por un solo camino.</h2>
+          <p>La guia completa queda abajo como consulta. No hace falta leer todo antes de empezar.</p>
         </div>
-        <div class="audience-card">
-          <strong>Si programas</strong>
-          <p>Despues de cada explicacion hay endpoints, tokens y ejemplos minimos para implementar.</p>
-          <ul>
-            <li>Usa <code>/developers</code> para probar endpoints campo por campo.</li>
-            <li>Guarda la API key solo en tu servidor.</li>
-            <li>Valida tokens con JWKS o con los endpoints de verify.</li>
-          </ul>
+        <div class="choice-grid">
+          <a class="choice-card recommended" href="#skill">
+            <span class="choice-label">Mas directo</span>
+            <strong>Deja que tu agente integre la API</strong>
+            <span>Instala la skill y pedi login, pagos, salas o webhooks segun lo que necesite tu juego.</span>
+            <em>Ver comando &rarr;</em>
+          </a>
+          <a class="choice-card" href="/developers">
+            <span class="choice-label">Manual</span>
+            <strong>Proba la API v1 endpoint por endpoint</strong>
+            <span>Usa la referencia interactiva para requests reales. El contrato completo esta en OpenAPI.</span>
+            <em>Abrir /developers &rarr;</em>
+          </a>
         </div>
       </div>
 
@@ -845,54 +923,36 @@ const HTML = `<!doctype html>
           <strong>Indice</strong>
           <nav>
             <a href="#skill">Skill para tu IA</a>
-            <a class="toc-sep" href="#guia-manual">Guia manual</a>
+            <a href="#guia-manual">Guia manual</a>
             <a href="#conceptos">Conceptos en simple</a>
-            <a href="#credenciales">Credenciales</a>
             <a href="#sso">Identidad y SSO</a>
             <a href="#apuestas">Apuestas / escrow</a>
             <a href="#multijugador">Multijugador</a>
-            <a href="#leaderboards">Marcadores</a>
-            <a href="#webhooks">Webhooks</a>
             <a href="#sdk">SDK TypeScript</a>
-            <a href="#endpoints">Endpoints rapidos</a>
+            <a class="toc-sep" href="#endpoints">Endpoints rapidos</a>
           </nav>
         </aside>
 
         <article class="article">
           <section id="skill">
-            <h2>Skill para tu agente de IA <span class="badge ok">recomendado</span></h2>
+            <h2>Integra con una skill de IA <span class="badge ok">recomendado</span></h2>
             <p class="section-lead">
-              Un solo comando instala <strong>todo el conocimiento para integrar tu
-              juego con Luna Negra</strong> en tu agente. No tenes que leer la guia
-              manual de abajo: instalas la skill y le pedis a tu IA &ldquo;integra mi
-              juego con Luna Negra&rdquo;. Es modular &mdash; podes aplicar solo
-              login, o sumar pagos, salas, apuestas o webhooks segun necesites.
+              Instala el contexto de Luna Negra una vez y pedi a tu agente que conecte
+              solo lo que necesitas: login, pagos, salas, marcadores o webhooks.
             </p>
-
-            <div class="explain-grid">
-              <div class="explain">
-                <strong>Que hace</strong>
-                <span>Le da a tu agente el mapa completo: login SSO, verificar compra, presencia, salas, invitaciones, marcadores, apuestas/escrow, webhooks y el SDK, con los endpoints y las reglas de seguridad.</span>
-              </div>
-              <div class="explain">
-                <strong>Como se instala</strong>
-                <span>Con el CLI estandar <code>skills</code>: un comando lee el repo publico y deja el <code>SKILL.md</code> en la carpeta de skills de tu agente. Sirve para Claude Code, Cursor, Codex y demas.</span>
-              </div>
-            </div>
 
             <div class="install-hero">
               <span class="step-label">Recomendado &middot; cualquier agente</span>
-              <h3>Un comando con el CLI <code>skills</code></h3>
+              <h3>Copia este comando</h3>
               <div class="cmd">
                 <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
                 <pre><code>npx skills add soyezequiel/luna-negra</code></pre>
               </div>
               <p class="hint">
-                Funciona desde cualquier carpeta, sin clonar nada. El
+                Funciona desde cualquier carpeta, sin clonar nada. El CLI
                 <a href="https://github.com/vercel-labs/skills" target="_blank" rel="noopener">CLI <code>skills</code></a>
-                instala la skill en <code>.claude/skills/</code> o
-                <code>.agents/skills/</code> segun tu agente. Despues reinicialo y
-                pedile: <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
+                deja el <code>SKILL.md</code> en la carpeta de skills de tu agente.
+                Despues reinicialo y pedi: <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
               </p>
               <p class="hint">
                 Para saltear la telemetria del CLI:
@@ -901,49 +961,47 @@ const HTML = `<!doctype html>
             </div>
 
             <p class="note">
-              <strong>La skill no aplica todo de golpe.</strong> Es un menu: el
-              minimo util es el login SSO; presencia, salas, apuestas, marcadores y
-              webhooks se suman solo si los pedis. Tu agente te pregunta que queres
-              antes de tocar codigo.
+              <strong>Empieza chico.</strong> El minimo util es login SSO. Presencia,
+              salas, apuestas, marcadores y webhooks se suman solo si los pedis.
             </p>
 
-            <h3>Otras formas de instalarla</h3>
-            <p>
-              Si no queres usar <code>npx</code>, hay un instalador directo a la
-              carpeta de skills de Claude Code y la descarga del archivo. La skill es
-              un Markdown autocontenido, asi que tambien sirve como archivo de
-              contexto (<code>AGENTS.md</code>) para cualquier agente.
-            </p>
-            <div class="card-grid">
-              <div class="mini-card info">
-                <strong>Instalador directo (Claude Code)</strong>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar comando PowerShell">Copiar</button>
-                  <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
+            <details class="alt-install">
+              <summary>Otras formas de instalarla</summary>
+              <p>
+                Si no queres usar <code>npx</code>, podes instalar directo en Claude
+                Code o descargar el Markdown autocontenido para pasarlo como contexto.
+              </p>
+              <div class="card-grid">
+                <div class="mini-card info">
+                  <strong>Instalador directo (Claude Code)</strong>
+                  <div class="cmd" style="margin-top:8px;">
+                    <button type="button" class="copy-btn" aria-label="Copiar comando PowerShell">Copiar</button>
+                    <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
+                  </div>
+                  <div class="cmd" style="margin-top:8px;">
+                    <button type="button" class="copy-btn" aria-label="Copiar comando bash">Copiar</button>
+                    <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
+                  </div>
+                  <span>PowerShell (Windows) o bash (macOS/Linux). Deja el <code>SKILL.md</code> ya configurado con la URL de este deploy.</span>
                 </div>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar comando bash">Copiar</button>
-                  <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
+                <div class="mini-card ok">
+                  <strong>Descargar o pasar por URL</strong>
+                  <p style="margin:6px 0 0;"><a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a></p>
+                  <div class="cmd" style="margin-top:8px;">
+                    <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
+                    <pre><code>__LUNA_NEGRA_BASE__/dev/skill</code></pre>
+                  </div>
+                  <span>Guardalo como <code>AGENTS.md</code> en la raiz del repo, o pasale esa URL al agente y pedile que la lea.</span>
                 </div>
-                <span>PowerShell (Windows) o bash (macOS/Linux). Deja el <code>SKILL.md</code> ya configurado con la URL de este deploy.</span>
               </div>
-              <div class="mini-card ok">
-                <strong>Descargar o pasar por URL</strong>
-                <p style="margin:6px 0 0;"><a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a></p>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
-                  <pre><code>__LUNA_NEGRA_BASE__/dev/skill</code></pre>
-                </div>
-                <span>Guardalo como <code>AGENTS.md</code> en la raiz del repo, o pasale esa URL al agente y pedile que la lea.</span>
-              </div>
-            </div>
+            </details>
           </section>
 
           <details class="manual" id="guia-manual">
             <summary class="manual-summary">
               <span class="manual-summary-text">
-                <span class="manual-summary-main">Guia manual &mdash; integrar sin IA</span>
-                <span class="manual-summary-sub">Conceptos, credenciales, SSO, apuestas, salas, marcadores, webhooks, SDK y endpoints. Abrila solo si preferis implementar a mano.</span>
+                <span class="manual-summary-main">Guia manual de API v1</span>
+                <span class="manual-summary-sub">Login, pagos, salas, marcadores, webhooks y SDK. Abri solo la parte que necesites.</span>
               </span>
             </summary>
 
