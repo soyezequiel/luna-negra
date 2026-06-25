@@ -3,8 +3,7 @@
  *
  * El estado NIP-38 lo firma la pestaña de la tienda con la llave Nostr del
  * usuario (`window.nostr`): el JUEGO nunca toca Nostr. El juego solo reporta su
- * presencia a Luna Negra POR LA API —`POST /api/v1/presence` con su API key, o el
- * demo same-origin por `POST /api/demo/presence` con la cookie de sesión—. La
+ * presencia a Luna Negra POR LA API (`POST /api/v1/presence` con su API key). La
  * tienda sondea su propia presencia (`GET /api/me/playing`): mientras el juego
  * siga reportando, renueva el estado; cuando deja de reportar (TTL vencido al
  * cerrar el juego), lo limpia. Así no hay acoplamiento de ventana (`opener`,

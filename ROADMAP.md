@@ -35,7 +35,7 @@ de forma recurrente; hoy se resuelve con el tick de QStash pegándole a `/api/es
 (el self-host en Docker ya es un proceso always-on).
 
 - **C0 · Diseño + `swr-review`** ✅ (hecho): revisión completa en [`docs/review/`](docs/review/) (idea→requisitos→arquitectura→diseño→datos→API→seguridad). **Plan de implementación: [`docs/apuestas-plan.md`](docs/apuestas-plan.md)** (M0–M7). Gates antes de escalar: oráculo 3ros, legal, custodia.
-> **C1–C4 implementados (código) ✅** — ver [`docs/apuestas-plan.md`](docs/apuestas-plan.md) (M0–M7). Falta deploy/infra + prueba real. C5 (disputas/oráculo 3ros) sigue siendo gate.
+> **C1–C4 implementados y probados con sats reales ✅** (corrida end-to-end: depósito al pozo → resolución → payout al ganador, junio 2026, con TETRA) — ver [`docs/apuestas-plan.md`](docs/apuestas-plan.md) (M0–M7). C5 (disputas/oráculo 3ros) sigue siendo gate.
 
 - **C1 · Modelo de datos** (S): apuestas, participantes, pozo, resultado, estados.
 - **C2 · Depósitos al pozo** (M): el juego crea una apuesta; los jugadores depositan (zap/invoice); Luna Negra **custodia** el pozo.

@@ -62,7 +62,6 @@ Endpoints con límite devuelven cabeceras `RateLimit-Limit/Remaining/Reset` y, e
 | Escrow interno | `/api/escrow/*` | cookie/bearer · QStash · LNURL | [§7](#7-escrow--apuestas-interno) |
 | Contrato público (devs) | `/api/v1/*`, `/.well-known/jwks.json` | Bearer / API key | [§8](#8-contrato-público-para-desarrolladores-apiv1) |
 | Webhooks (salientes) | — | HMAC firmado | [§9](#9-webhooks-salientes) |
-| Demo | `/api/demo/*` | cookie | [§10](#10-demo) |
 
 ---
 
@@ -458,16 +457,7 @@ Todos los eventos de apuesta incluyen además `roomId` y `metadata` (los pasados
 
 ---
 
-## 10. Demo
-
-### `POST /api/demo/presence`
-Heartbeat de presencia del juego demo (`public/demo-game`), que corre en el mismo origen y se autentica con la **cookie de sesión** (no API key). Reporta presencia bajo el provider "Estudio Demo".
-- **Body:** `{ "status": "in-game"|"online", "roomId"? }`
-- **200:** `{ "ok": true }` · **401** no autenticado · **503** `no-demo-provider`
-
----
-
-## 11. SDK de TypeScript
+## 10. SDK de TypeScript
 
 `@lunanegra/sdk` ([`sdk/index.ts`](../sdk/index.ts)) envuelve el contrato público:
 

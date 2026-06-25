@@ -61,12 +61,11 @@ async function main() {
     });
   }
 
-  const gameUrl = "/demo-game/index.html"; // relleno por si se reactivan juegos demo
   for (const g of GAMES) {
     await prisma.game.upsert({
       where: { slug: g.slug },
-      update: { ...g, providerId: provider.id, status: "published", gameUrl },
-      create: { ...g, providerId: provider.id, status: "published", gameUrl },
+      update: { ...g, providerId: provider.id, status: "published" },
+      create: { ...g, providerId: provider.id, status: "published" },
     });
   }
 

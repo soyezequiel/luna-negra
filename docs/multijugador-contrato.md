@@ -75,19 +75,17 @@ Reglas:
 - El estado NIP-38 lleva una expiración corta (NIP-40), así se auto-limpia aunque
   la propia tienda muera sin poder publicar el `clear`.
 
-> El juego demo (`public/demo-game`) reporta presencia por `POST /api/demo/presence`
-> (same-origin, autenticado con la cookie de sesión) porque es estático y no puede
-> sostener una API key; un juego con backend usa `POST /api/v1/presence` con su API
-> key. Ambos caminos alimentan `GET /api/me/playing` igual.
+> Un juego con backend reporta presencia con `POST /api/v1/presence` (su API key),
+> que alimenta `GET /api/me/playing`.
 
 ## Infraestructura
 - Luna Negra: **serverless** (solo mint + verify de tokens). No hostea el lobby.
 - El **WebSocket/realtime lo corre el proveedor** en su subdominio.
 - No hace falta worker always-on en Luna Negra para esto.
 
-## Nota sobre el juego demo
-El juego demo de Luna Negra (`public/demo-game`) es estático (sin servidor). Su
-lobby usa **presencia por polling contra el backend**:
+## Nota: lobby para juegos sin servidor propio
+Un juego estático (sin servidor propio) puede armar su lobby con **presencia por
+polling contra el backend** de Luna Negra:
 
 ```
 POST /api/v1/rooms/:roomId/presence   (Authorization: Bearer <inviteToken>)
@@ -103,6 +101,6 @@ serverless.
 
 > **Por qué no relays Nostr:** se probó usar eventos efímeros sobre relays públicos
 > y, aunque los relays *aceptan* el evento, **no lo retransmiten** a los demás
-> suscriptores de forma confiable (ni cross-conexión). Por eso el demo usa el
+> suscriptores de forma confiable (ni cross-conexión). Por eso este camino usa el
 > backend. Un proveedor real puede usar su propio WebSocket validando el token con
 > `GET /api/rooms/verify` (contrato de arriba).
