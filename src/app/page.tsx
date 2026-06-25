@@ -53,6 +53,15 @@ export default async function StorePage({
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Categorías con al menos un juego publicado: las vacías no se muestran en los
+  // chips. Se deriva del catálogo completo (no del filtrado por búsqueda) para que
+  // la lista de filtros refleje todo el inventario de la tienda.
+  const usedCategories = new Set<string>();
+  for (const g of catalog) {
+    for (const c of g.categories) usedCategories.add(c);
+  }
+  const visibleCategories = CATEGORIES.filter((c) => usedCategories.has(c.slug));
+
   // Hero destacado: el juego más nuevo, solo en la portada limpia (sin búsqueda
   // ni filtro, página 1). Se quita de la grilla para no duplicarlo.
   const hero = !q && !cat && page === 1 && games.length > 0 ? games[0] : null;
@@ -172,7 +181,7 @@ export default async function StorePage({
 
       {/* Chips de categoría */}
       <nav className="mb-7 flex flex-wrap gap-2">
-        {[{ slug: "", label: "Todas" }, ...CATEGORIES].map((c) => {
+        {[{ slug: "", label: "Todas" }, ...visibleCategories].map((c) => {
           const active = (c.slug || null) === cat;
           return (
             <Link
