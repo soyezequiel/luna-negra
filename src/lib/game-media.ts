@@ -1,6 +1,6 @@
 export type GameGalleryMedia = {
   src: string;
-  kind: "screenshot" | "horizontalCover" | "verticalCover";
+  kind: "video" | "screenshot" | "horizontalCover" | "verticalCover";
 };
 
 /**
@@ -43,14 +43,27 @@ export function parseScreenshotUrls(value: string | null | undefined): string[] 
   }
 }
 
+/** URLs de video (trailers). Mismo formato JSON que las capturas. */
+export function parseVideoUrls(value: string | null | undefined): string[] {
+  return parseScreenshotUrls(value);
+}
+
 export function gameGalleryMedia(game: {
   screenshots: string | null;
+  videos?: string | null;
   horizontalCoverUrl?: string | null;
   coverUrl?: string | null;
 }): GameGalleryMedia[] {
-  const screenshots = parseScreenshotUrls(game.screenshots);
-  if (screenshots.length > 0) {
-    return screenshots.map((src) => ({ src: normalizeImageUrl(src), kind: "screenshot" }));
+  // Como Steam: los trailers van primero, después las capturas.
+  const videos: GameGalleryMedia[] = parseVideoUrls(game.videos).map((src) => ({
+    src: normalizeImageUrl(src),
+    kind: "video",
+  }));
+  const screenshots: GameGalleryMedia[] = parseScreenshotUrls(game.screenshots).map(
+    (src) => ({ src: normalizeImageUrl(src), kind: "screenshot" }),
+  );
+  if (videos.length > 0 || screenshots.length > 0) {
+    return [...videos, ...screenshots];
   }
 
   if (game.horizontalCoverUrl) {

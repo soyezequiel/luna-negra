@@ -14,19 +14,23 @@ export const runtime = "nodejs";
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
 
 // Tope de tamaño: evita abusar el endpoint como hosting de archivos grandes y
-// limita el costo/DoS. Portadas/capturas de juego entran de sobra.
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB
+// limita el costo/DoS. Portadas/capturas de juego entran de sobra. Los videos
+// (trailers, estilo Steam) necesitan mucho más; se sube por separado y por
+// debajo del tope de 100 MB del túnel de Cloudflare.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
+const MAX_VIDEO_BYTES = Number(process.env.MAX_VIDEO_UPLOAD_BYTES || 64 * 1024 * 1024); // 64 MB
 
-// Solo imágenes. No confiamos en el content-type declarado: lo cruzamos con la
-// firma real del archivo (magic bytes) para que no se pueda subir HTML/SVG/JS
-// disfrazado de imagen a una URL pública.
-const ALLOWED = new Set([
+// Imágenes y videos. No confiamos en el content-type declarado: lo cruzamos con
+// la firma real del archivo (magic bytes) para que no se pueda subir HTML/SVG/JS
+// disfrazado de media a una URL pública.
+const ALLOWED_IMAGE = new Set([
   "image/png",
   "image/jpeg",
   "image/webp",
   "image/gif",
   "image/avif",
 ]);
+const ALLOWED_VIDEO = new Set(["video/mp4", "video/webm"]);
 
 // MIME detectado → extensión del archivo en disco.
 const EXT_BY_MIME: Record<string, string> = {
@@ -35,6 +39,8 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
   "image/avif": "avif",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
 };
 
 /** Detecta el tipo real por magic bytes. Devuelve el MIME o null si no es imagen. */
@@ -68,6 +74,38 @@ function sniffImageType(buf: Buffer): string | null {
   return null;
 }
 
+// Brands ISO BMFF que tratamos como MP4 reproducible en navegador. AVIF también
+// usa la caja ftyp pero con brand avif/avis (lo captura sniffImageType primero).
+const MP4_BRANDS = new Set([
+  "isom",
+  "iso2",
+  "iso4",
+  "iso5",
+  "iso6",
+  "mp41",
+  "mp42",
+  "mp4v",
+  "avc1",
+  "M4V ",
+  "dash",
+  "mmp4",
+]);
+
+/** Detecta video por magic bytes. Devuelve el MIME o null si no reconoce. */
+function sniffVideoType(buf: Buffer): string | null {
+  if (buf.length < 12) return null;
+  // WebM / Matroska: cabecera EBML 1A 45 DF A3.
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    return "video/webm";
+  }
+  // MP4 / ISO BMFF: "ftyp" en bytes 4..8; el brand 8..12 lo distingue de AVIF.
+  if (buf.toString("ascii", 4, 8) === "ftyp") {
+    const brand = buf.toString("ascii", 8, 12);
+    if (MP4_BRANDS.has(brand)) return "video/mp4";
+  }
+  return null;
+}
+
 // Guarda una imagen en el disco del server y devuelve su URL pública.
 export async function POST(req: Request) {
   const session = await getSession();
@@ -83,9 +121,10 @@ export async function POST(req: Request) {
     );
   }
 
-  // Rechazo temprano por content-length declarado (no esperamos a bufferear).
+  // Rechazo temprano por content-length declarado (no esperamos a bufferear). Se
+  // usa el tope más alto (video); el tope por tipo se aplica al detectarlo.
   const declaredLen = Number(req.headers.get("content-length") ?? "0");
-  if (declaredLen > MAX_UPLOAD_BYTES) {
+  if (declaredLen > MAX_VIDEO_BYTES) {
     return NextResponse.json({ error: "Archivo demasiado grande" }, { status: 413 });
   }
 
@@ -108,17 +147,21 @@ export async function POST(req: Request) {
   if (bytes.byteLength === 0) {
     return NextResponse.json({ error: "Archivo vacío" }, { status: 400 });
   }
-  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "Archivo demasiado grande" }, { status: 413 });
-  }
 
-  // El tipo lo decide la firma real del archivo, no el header del request.
-  const detected = sniffImageType(bytes);
-  if (!detected || !ALLOWED.has(detected)) {
+  // El tipo lo decide la firma real del archivo, no el header del request. Primero
+  // imagen (AVIF comparte la caja ftyp con MP4), después video.
+  const detected = sniffImageType(bytes) ?? sniffVideoType(bytes);
+  const isVideo = !!detected && ALLOWED_VIDEO.has(detected);
+  if (!detected || (!ALLOWED_IMAGE.has(detected) && !isVideo)) {
     return NextResponse.json(
-      { error: "Formato no permitido (solo PNG, JPEG, WebP, GIF, AVIF)" },
+      { error: "Formato no permitido (imágenes PNG/JPEG/WebP/GIF/AVIF o video MP4/WebM)" },
       { status: 415 },
     );
+  }
+
+  const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (bytes.byteLength > maxBytes) {
+    return NextResponse.json({ error: "Archivo demasiado grande" }, { status: 413 });
   }
 
   const filename = `${baseName}-${randomBytes(8).toString("hex")}.${EXT_BY_MIME[detected]}`;

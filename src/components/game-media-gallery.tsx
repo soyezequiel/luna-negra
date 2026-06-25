@@ -17,6 +17,7 @@ export function GameMediaGallery({ title, hue, media }: GameMediaGalleryProps) {
 
   const label = useMemo(() => {
     if (!active) return title;
+    if (active.kind === "video") return `${title} - video ${index + 1}`;
     if (active.kind === "screenshot") return `${title} - captura ${index + 1}`;
     if (active.kind === "horizontalCover") return `${title} - portada horizontal`;
     return `${title} - portada vertical`;
@@ -33,7 +34,16 @@ export function GameMediaGallery({ title, hue, media }: GameMediaGalleryProps) {
         className="cover relative aspect-video overflow-hidden rounded-lg border border-line bg-black/20"
         style={{ "--h": hue } as CSSProperties}
       >
-        {active ? (
+        {active && active.kind === "video" ? (
+          <video
+            key={active.src}
+            src={active.src}
+            controls
+            playsInline
+            preload="metadata"
+            className="absolute inset-0 h-full w-full bg-black object-contain"
+          />
+        ) : active ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={active.src}
@@ -78,7 +88,11 @@ export function GameMediaGallery({ title, hue, media }: GameMediaGalleryProps) {
             <button
               key={`${item.src}-${itemIndex}`}
               type="button"
-              aria-label={`Ver captura ${itemIndex + 1}`}
+              aria-label={
+                item.kind === "video"
+                  ? `Ver video ${itemIndex + 1}`
+                  : `Ver captura ${itemIndex + 1}`
+              }
               onClick={() => setIndex(itemIndex)}
               className={`relative aspect-video overflow-hidden rounded-sm border transition focus:outline-none focus:ring-2 focus:ring-blue/60 ${
                 itemIndex === index
@@ -86,13 +100,29 @@ export function GameMediaGallery({ title, hue, media }: GameMediaGalleryProps) {
                   : "border-line opacity-75 hover:opacity-100"
               }`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.src}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+              {item.kind === "video" ? (
+                <>
+                  <video
+                    src={item.src}
+                    muted
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full bg-black object-cover"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-[10px] text-white">
+                      ▶
+                    </span>
+                  </span>
+                </>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.src}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              )}
             </button>
           ))}
         </div>

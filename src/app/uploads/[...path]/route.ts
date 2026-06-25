@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 // coincidir con la de src/app/api/upload/route.ts.
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
 
-// Solo servimos imágenes; la extensión decide el Content-Type.
+// Servimos imágenes y videos; la extensión decide el Content-Type.
 const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -15,12 +15,14 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   ".webp": "image/webp",
   ".gif": "image/gif",
   ".avif": "image/avif",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 };
 
 const notFound = () => new Response("Not found", { status: 404 });
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path: segments } = await params;
@@ -48,11 +50,39 @@ export async function GET(
   }
 
   // Nombres con sufijo aleatorio → el contenido es inmutable, cache agresiva.
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": contentType,
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "Accept-Ranges": "bytes",
+  };
+
+  // Range request (seeking de video, o Safari que lo exige para reproducir).
+  const range = req.headers.get("range");
+  const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (m) {
+    const size = data.byteLength;
+    let start = m[1] ? Number(m[1]) : 0;
+    let end = m[2] ? Number(m[2]) : size - 1;
+    if (Number.isNaN(start)) start = 0;
+    if (Number.isNaN(end) || end >= size) end = size - 1;
+    if (start > end || start >= size) {
+      return new Response("Range Not Satisfiable", {
+        status: 416,
+        headers: { "Content-Range": `bytes */${size}` },
+      });
+    }
+    const chunk = data.subarray(start, end + 1);
+    return new Response(new Uint8Array(chunk), {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        "Content-Range": `bytes ${start}-${end}/${size}`,
+        "Content-Length": String(chunk.byteLength),
+      },
+    });
+  }
+
   return new Response(new Uint8Array(data), {
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": String(data.byteLength),
-      "Cache-Control": "public, max-age=31536000, immutable",
-    },
+    headers: { ...baseHeaders, "Content-Length": String(data.byteLength) },
   });
 }

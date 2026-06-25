@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { inputCls } from "@/components/provider/game-form-fields";
 import { CATEGORIES, categoryLabel, normalizeCategories } from "@/lib/categories";
 import { priceLabel } from "@/lib/format";
-import { parseScreenshotUrls } from "@/lib/game-media";
+import { parseScreenshotUrls, parseVideoUrls } from "@/lib/game-media";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -440,6 +440,7 @@ export function EditableMedia({
   coverUrl,
   horizontalCoverUrl,
   screenshots,
+  videos,
   children,
 }: {
   gameId: string;
@@ -447,6 +448,7 @@ export function EditableMedia({
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
   screenshots: string;
+  videos: string;
   children: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -454,6 +456,7 @@ export function EditableMedia({
   const [cover, setCover] = useState(coverUrl ?? "");
   const [horizontal, setHorizontal] = useState(horizontalCoverUrl ?? "");
   const [shots, setShots] = useState<string[]>(parseScreenshotUrls(screenshots));
+  const [vids, setVids] = useState<string[]>(parseVideoUrls(videos));
   const { save, saving, error, setError } = usePatchGame(gameId);
 
   async function uploadFile(file: File): Promise<string | null> {
@@ -488,6 +491,7 @@ export function EditableMedia({
               setCover(coverUrl ?? "");
               setHorizontal(horizontalCoverUrl ?? "");
               setShots(parseScreenshotUrls(screenshots));
+              setVids(parseVideoUrls(videos));
               setEditing(true);
             }}
             className="absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3 py-1 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85"
@@ -506,6 +510,7 @@ export function EditableMedia({
               coverUrl: cover,
               horizontalCoverUrl: horizontal,
               screenshots: shots,
+              videos: vids,
             });
             if (ok) setEditing(false);
           }}
@@ -580,6 +585,43 @@ export function EditableMedia({
             }} label="➕ Agregar captura" />
           </div>
 
+          {/* Videos (trailers) — se muestran primero en la galería, como Steam */}
+          <div>
+            <label className="block text-sm text-ln-soft">
+              Videos <span className="text-ln-faint">(MP4 o WebM)</span>
+            </label>
+            {vids.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {vids.map((src, i) => (
+                  <div key={src} className="relative">
+                    <video
+                      src={src}
+                      muted
+                      preload="metadata"
+                      className="h-16 w-28 rounded bg-black object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setVids((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -right-1 -top-1 rounded-full bg-black/80 px-1.5 text-xs leading-tight text-white"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <UploadButton
+              uploading={uploading}
+              accept="video/mp4,video/webm,.mp4,.webm"
+              onPick={async (f) => {
+                const url = await uploadFile(f);
+                if (url) setVids((prev) => [...prev, url]);
+              }}
+              label="🎬 Agregar video"
+            />
+          </div>
+
           <EditBar saving={saving} error={error} onCancel={() => setEditing(false)} />
         </form>
       ) : null}
@@ -591,17 +633,19 @@ function UploadButton({
   uploading,
   onPick,
   label,
+  accept = "image/*",
 }: {
   uploading: boolean;
   onPick: (file: File) => void | Promise<void>;
   label: string;
+  accept?: string;
 }) {
   return (
     <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ln-text hover:bg-white/5">
       {uploading ? "Subiendo…" : label}
       <input
         type="file"
-        accept="image/*"
+        accept={accept}
         className="hidden"
         onChange={async (e) => {
           const f = e.target.files?.[0];

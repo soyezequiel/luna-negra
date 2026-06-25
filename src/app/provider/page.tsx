@@ -42,6 +42,7 @@ type Game = {
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
   screenshots: string;
+  videos: string;
   status: string;
 };
 type Sale = {
@@ -312,6 +313,7 @@ export default function ProviderPage() {
       coverUrl: g.coverUrl ?? "",
       horizontalCoverUrl: g.horizontalCoverUrl ?? "",
       screenshots: parseShots(g.screenshots),
+      videos: parseShots(g.videos),
     });
     setMsg(null);
   }

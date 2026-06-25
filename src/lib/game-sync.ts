@@ -122,6 +122,7 @@ async function reconcileArticle(ev: Event, storePubkey: string): Promise<boolean
       coverUrl: parsed.coverUrl,
       horizontalCoverUrl: parsed.horizontalCoverUrl,
       screenshots: parsed.screenshots,
+      videos: parsed.videos,
       gameUrl: parsed.gameUrl,
       nostrEventId: ev.id,
       nostrPubkey: storePubkey,

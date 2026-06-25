@@ -29,6 +29,7 @@ export type GameArticleInput = {
   coverUrl?: string | null;
   horizontalCoverUrl?: string | null;
   screenshots?: string | null; // JSON array de URLs (como se guarda en la DB)
+  videos?: string | null; // JSON array de URLs de video (trailers)
   gameUrl?: string | null;
 };
 
@@ -42,11 +43,13 @@ export type ParsedGameArticle = {
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
   screenshots: string; // JSON array de URLs
+  videos: string; // JSON array de URLs de video
   gameUrl: string | null;
   publishedAt: number | null; // unix (segundos) del `published_at`
 };
 
-function parseScreenshots(value: string | null | undefined): string[] {
+/** Parsea un array JSON de URLs (capturas o videos) guardado en la DB. */
+function parseUrlList(value: string | null | undefined): string[] {
   if (!value) return [];
   try {
     const arr = JSON.parse(value);
@@ -93,8 +96,9 @@ export function buildGameArticleTemplate(
     tags.push(["horizontal_cover", game.horizontalCoverUrl]);
   if (game.gameUrl) tags.push(["game_url", game.gameUrl]);
   for (const c of normalizeCategories(game.categories)) tags.push(["t", c]);
-  for (const url of parseScreenshots(game.screenshots))
+  for (const url of parseUrlList(game.screenshots))
     tags.push(["screenshot", url]);
+  for (const url of parseUrlList(game.videos)) tags.push(["video", url]);
 
   return {
     kind: GAME_ARTICLE_KIND,
@@ -131,6 +135,9 @@ export function parseGameArticle(
   const screenshots = ev.tags
     .filter((t) => t[0] === "screenshot" && t[1])
     .map((t) => t[1]);
+  const videos = ev.tags
+    .filter((t) => t[0] === "video" && t[1])
+    .map((t) => t[1]);
 
   return {
     slug,
@@ -141,6 +148,7 @@ export function parseGameArticle(
     coverUrl: first("image") ?? null,
     horizontalCoverUrl: first("horizontal_cover") ?? null,
     screenshots: JSON.stringify(screenshots),
+    videos: JSON.stringify(videos),
     gameUrl: first("game_url") ?? null,
     publishedAt,
   };

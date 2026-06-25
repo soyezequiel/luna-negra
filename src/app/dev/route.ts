@@ -1110,11 +1110,11 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
           <section id="skill">
             <h2>9. Skill para tu agente de IA <span class="badge ok">nuevo</span></h2>
             <p class="section-lead">
-              Instala una skill con <strong>todo el conocimiento para integrar tu
-              juego con Luna Negra</strong> directo en tu agente. No tenes que leer
-              esta pagina entera: instalas la skill y le pedis a tu IA "integra mi
-              juego con Luna Negra". Es modular &mdash; podes aplicar solo login, o
-              sumar pagos, salas, apuestas o webhooks segun necesites.
+              Un solo comando instala <strong>todo el conocimiento para integrar tu
+              juego con Luna Negra</strong> en tu agente. No tenes que leer esta
+              pagina entera: instalas la skill y le pedis a tu IA &ldquo;integra mi
+              juego con Luna Negra&rdquo;. Es modular &mdash; podes aplicar solo
+              login, o sumar pagos, salas, apuestas o webhooks segun necesites.
             </p>
 
             <div class="explain-grid">
@@ -1124,57 +1124,28 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
               </div>
               <div class="explain">
                 <strong>Como se instala</strong>
-                <span>Un solo comando descarga e instala el <code>SKILL.md</code> (con la URL de este deploy ya puesta) en la carpeta de skills de tu agente. No hace falta posicionarte en ninguna carpeta.</span>
+                <span>Con el CLI estandar <code>skills</code>: un comando lee el repo publico y deja el <code>SKILL.md</code> en la carpeta de skills de tu agente. Sirve para Claude Code, Cursor, Codex y demas.</span>
               </div>
             </div>
 
             <div class="install-hero">
-              <span class="step-label">Claude Code &middot; Windows</span>
-              <h3>Pega esto en PowerShell y enter</h3>
+              <span class="step-label">Recomendado &middot; cualquier agente</span>
+              <h3>Un comando con el CLI <code>skills</code></h3>
               <div class="cmd">
                 <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
-                <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
+                <pre><code>npx skills add soyezequiel/luna-negra</code></pre>
               </div>
               <p class="hint">
-                Un solo comando, desde cualquier carpeta. Se instala solo en
-                <code>%USERPROFILE%\.claude\skills\integrar-luna-negra</code>.
-                Despues reinicia Claude Code y pedile:
-                <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
+                Funciona desde cualquier carpeta, sin clonar nada. El
+                <a href="https://github.com/vercel-labs/skills" target="_blank" rel="noopener">CLI <code>skills</code></a>
+                instala la skill en <code>.claude/skills/</code> o
+                <code>.agents/skills/</code> segun tu agente. Despues reinicialo y
+                pedile: <em>&ldquo;integra mi juego con Luna Negra&rdquo;</em>.
               </p>
-            </div>
-
-            <h3>macOS / Linux (bash) &mdash; el mismo comando para tu terminal</h3>
-            <div class="cmd">
-              <button type="button" class="copy-btn" aria-label="Copiar comando">Copiar</button>
-              <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
-            </div>
-
-            <div class="install-cta">
-              <div>
-                <strong>&iquest;No queres ejecutar un comando? Descarga el archivo</strong><br />
-                <span>Baja el <code>SKILL.md</code> ya configurado y guardalo a mano en la carpeta de skills de tu agente.</span>
-              </div>
-              <a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a>
-            </div>
-
-            <h3>Codex, Antigravity, OpenCode, OpenClaw, Hermes y otros</h3>
-            <p>
-              La skill es un Markdown autocontenido, asi que sirve como archivo de
-              contexto para cualquier agente:
-            </p>
-            <div class="card-grid">
-              <div class="mini-card info">
-                <strong>Descargar (recomendado)</strong>
-                <span>Usa el boton <a href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a> y guardalo como <code>AGENTS.md</code> en la raiz del repo (Codex, OpenCode) o en la carpeta de reglas/skills de tu herramienta.</span>
-              </div>
-              <div class="mini-card ok">
-                <strong>Por URL</strong>
-                <div class="cmd" style="margin-top:8px;">
-                  <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
-                  <pre><code>__LUNA_NEGRA_BASE__/skill/integrar-luna-negra/SKILL.md</code></pre>
-                </div>
-                <span>Pasale esa URL al agente y pedile que la lea y siga la guia.</span>
-              </div>
+              <p class="hint">
+                Para saltear la telemetria del CLI:
+                <code>DISABLE_TELEMETRY=1 npx skills add soyezequiel/luna-negra</code>.
+              </p>
             </div>
 
             <p class="note">
@@ -1183,6 +1154,37 @@ await luna.reportWinners(bet.betId, [winnerNpub]);</code></pre>
               webhooks se suman solo si los pedis. Tu agente te pregunta que queres
               antes de tocar codigo.
             </p>
+
+            <h3>Otras formas de instalarla</h3>
+            <p>
+              Si no queres usar <code>npx</code>, hay un instalador directo a la
+              carpeta de skills de Claude Code y la descarga del archivo. La skill es
+              un Markdown autocontenido, asi que tambien sirve como archivo de
+              contexto (<code>AGENTS.md</code>) para cualquier agente.
+            </p>
+            <div class="card-grid">
+              <div class="mini-card info">
+                <strong>Instalador directo (Claude Code)</strong>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar comando PowerShell">Copiar</button>
+                  <pre><code>iwr -useb __LUNA_NEGRA_BASE__/dev/install?ps | iex</code></pre>
+                </div>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar comando bash">Copiar</button>
+                  <pre><code>curl -fsSL __LUNA_NEGRA_BASE__/dev/install | sh</code></pre>
+                </div>
+                <span>PowerShell (Windows) o bash (macOS/Linux). Deja el <code>SKILL.md</code> ya configurado con la URL de este deploy.</span>
+              </div>
+              <div class="mini-card ok">
+                <strong>Descargar o pasar por URL</strong>
+                <p style="margin:6px 0 0;"><a class="button" href="/dev/skill" download="SKILL.md">Descargar SKILL.md</a></p>
+                <div class="cmd" style="margin-top:8px;">
+                  <button type="button" class="copy-btn" aria-label="Copiar URL">Copiar</button>
+                  <pre><code>__LUNA_NEGRA_BASE__/dev/skill</code></pre>
+                </div>
+                <span>Guardalo como <code>AGENTS.md</code> en la raiz del repo, o pasale esa URL al agente y pedile que la lea.</span>
+              </div>
+            </div>
           </section>
 
           <section id="endpoints">

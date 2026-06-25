@@ -227,6 +227,7 @@ model Game {
   coverUrl           String?
   horizontalCoverUrl String?
   screenshots        String   @default("[]") // JSON array de URLs (portable SQLite/Postgres)
+  videos             String   @default("[]") // JSON array de URLs de video (trailers), estilo screenshots
   gameUrl            String? // subdominio donde el proveedor hostea el juego
   status             String   @default("draft") // draft | in_review | published
   revenueShare       Int      @default(70) // % para el proveedor

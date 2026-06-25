@@ -14,8 +14,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // El route /dev/skill lee este archivo en runtime para servirlo interpolado:
   // hay que incluirlo en el bundle de la función serverless (no solo en el CDN).
+  // La skill vive en ./skills (layout estándar de `npx skills`), no en public/.
   outputFileTracingIncludes: {
-    "/dev/skill": ["./public/skill/**/*"],
+    "/dev/skill": ["./skills/**/*"],
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

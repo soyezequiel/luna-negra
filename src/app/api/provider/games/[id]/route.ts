@@ -44,6 +44,13 @@ export async function PATCH(
         .filter((s: unknown) => typeof s === "string")
         .map((s: string) => normalizeImageUrl(s)),
     );
+  if (Array.isArray(body.videos))
+    data.videos = JSON.stringify(
+      body.videos
+        .filter((s: unknown) => typeof s === "string")
+        .map((s: string) => (s as string).trim())
+        .filter((s: string) => s !== ""),
+    );
 
   let game = await prisma.game.update({ where: { id }, data });
   // Si está publicado, el artículo NIP-23 es la fuente de verdad: re-firmamos con

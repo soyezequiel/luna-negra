@@ -27,6 +27,19 @@ describe("game media helpers", () => {
     ]);
   });
 
+  it("puts videos before screenshots (estilo Steam)", () => {
+    expect(
+      gameGalleryMedia({
+        videos: JSON.stringify(["trailer.mp4"]),
+        screenshots: JSON.stringify(["shot-1.png"]),
+        horizontalCoverUrl: "horizontal.png",
+      }),
+    ).toEqual([
+      { src: "trailer.mp4", kind: "video" },
+      { src: "shot-1.png", kind: "screenshot" },
+    ]);
+  });
+
   it("falls back to horizontal cover and then vertical cover", () => {
     expect(
       gameGalleryMedia({

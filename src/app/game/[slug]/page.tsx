@@ -264,6 +264,7 @@ export default async function GamePage({
             coverUrl={game.coverUrl}
             horizontalCoverUrl={game.horizontalCoverUrl}
             screenshots={game.screenshots}
+            videos={game.videos}
           >
             <GameMediaGallery title={game.title} hue={hue} media={media} />
           </EditableMedia>

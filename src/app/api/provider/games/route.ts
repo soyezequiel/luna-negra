@@ -59,6 +59,14 @@ export async function POST(req: Request) {
               .map((s: string) => normalizeImageUrl(s)),
           )
         : "[]",
+      videos: Array.isArray(body.videos)
+        ? JSON.stringify(
+            body.videos
+              .filter((s: unknown) => typeof s === "string")
+              .map((s: string) => (s as string).trim())
+              .filter((s: string) => s !== ""),
+          )
+        : "[]",
       status: "draft",
       revenueShare: economy.providerRevenueShare,
     },

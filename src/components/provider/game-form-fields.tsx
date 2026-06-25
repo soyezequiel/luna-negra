@@ -15,6 +15,7 @@ export type GameForm = {
   coverUrl: string;
   horizontalCoverUrl: string;
   screenshots: string[];
+  videos: string[];
 };
 
 export const emptyForm: GameForm = {
@@ -26,6 +27,7 @@ export const emptyForm: GameForm = {
   coverUrl: "",
   horizontalCoverUrl: "",
   screenshots: [],
+  videos: [],
 };
 
 export function parseShots(json: string): string[] {
@@ -264,6 +266,58 @@ export function GameFormFields({
                 setForm((prev) => ({
                   ...prev,
                   screenshots: [...prev.screenshots, url],
+                }));
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+
+      {/* Videos (trailers, estilo Steam: se muestran primero en la galería) */}
+      <div>
+        <label className="block text-sm text-muted">
+          Videos <span className="text-ln-faint">(MP4 o WebM · van primero en la galería)</span>
+        </label>
+        {form.videos.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-2">
+            {form.videos.map((src, i) => (
+              <div key={src} className="relative">
+                <video
+                  src={src}
+                  muted
+                  preload="metadata"
+                  className="h-16 w-28 rounded bg-black object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      videos: prev.videos.filter((_, j) => j !== i),
+                    }))
+                  }
+                  className="absolute -right-1 -top-1 rounded-full bg-black/80 px-1.5 text-xs leading-tight"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-ink hover:bg-white/5">
+          {uploading ? "Subiendo…" : "🎬 Agregar video"}
+          <input
+            type="file"
+            accept="video/mp4,video/webm,.mp4,.webm"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const url = await uploadFile(f);
+              if (url)
+                setForm((prev) => ({
+                  ...prev,
+                  videos: [...prev.videos, url],
                 }));
               e.target.value = "";
             }}

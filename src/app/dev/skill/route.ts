@@ -1,13 +1,13 @@
 // Descarga "de un click" del SKILL.md ya configurado: lee el archivo fuente de
-// public/skill/... y lo sirve con la base URL de este deploy ya reemplazada y como
-// adjunto, para guardarlo directo en la carpeta de skills del agente.
+// skills/integrar-luna-negra/SKILL.md y lo sirve con la base URL de este deploy ya
+// reemplazada y como adjunto, para guardarlo directo en la carpeta de skills del
+// agente. La skill vive en ./skills (layout estándar de `npx skills`).
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const SKILL_FILE = join(
   process.cwd(),
-  "public",
-  "skill",
+  "skills",
   "integrar-luna-negra",
   "SKILL.md",
 );
