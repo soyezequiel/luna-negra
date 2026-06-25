@@ -7,6 +7,7 @@ import { useWallet } from "@/providers/wallet-provider";
 import { satsLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { NotificationsBell } from "./notifications-bell";
 
 // Orden fijo: Tienda · Biblioteca · Apuestas | Proveedor · Admin.
 // "Amigos" sale del nav principal (se accede desde el panel derecho de amigos).
@@ -104,6 +105,7 @@ export function Navbar() {
                   <span>{balanceSats != null ? satsLabel(balanceSats) : "…"}</span>
                 </Link>
               ) : null}
+              <NotificationsBell />
               <Link
                 href="/profile"
                 className="flex items-center gap-2 text-sm text-ln-soft transition-colors hover:text-white"

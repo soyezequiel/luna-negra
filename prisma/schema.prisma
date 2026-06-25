@@ -35,12 +35,34 @@ model User {
   // Última vez que lanzó/jugó un juego (ordena la lista de amigos: los que
   // jugaron alguna vez van arriba). Null = nunca jugó.
   lastPlayedAt DateTime?
+  // Marca "visto hasta" del centro de notificaciones (campanita). El feed se
+  // deriva en lectura de tablas existentes (compras/zaps/reseñas/apuestas) +
+  // comentarios Nostr; las que tengan timestamp posterior a esta marca cuentan
+  // como no leídas. Null = nunca abrió el panel (todo lo reciente es nuevo).
+  notificationsSeenAt DateTime?
 
   providers         Provider[]
   purchases         Purchase[]
   reviews           Review[]
   betParticipations BetParticipant[]
   ledgerEntries     LedgerEntry[]
+  dismissedNotifications DismissedNotification[]
+}
+
+// Notificación descartada por el usuario ("marcar leído y que se vaya"). El feed
+// se deriva en lectura, así que no hay fila por notificación: guardamos solo la
+// CLAVE estable del ítem descartado (NotifItem.id, p. ej. "comment:<eventId>",
+// "purchase:<cuid>") y la filtramos del feed. Complementa la marca global
+// `User.notificationsSeenAt` (no-leído) con un descarte individual.
+model DismissedNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  key       String // NotifItem.id descartado
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 model Provider {
