@@ -87,7 +87,10 @@ export async function generateMetadata({
       images,
     },
     twitter: {
-      card: cover ? "summary_large_image" : "summary",
+      // Carátula vertical → card "summary" (miniatura al costado). Con
+      // "summary_large_image" (banner ~1.91:1) Discord/X descartan la imagen
+      // portrait y no muestran nada.
+      card: "summary",
       title,
       description,
       images,
