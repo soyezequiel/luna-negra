@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { generateOracleKey } from "@/lib/oracle-keys";
+import { revalidateCatalog } from "@/lib/store-catalog";
 
 // El secreto del oráculo nunca sale por la API: solo exponemos su pubkey.
 function publicProvider<T extends { oracleSecretEnc?: unknown }>(p: T) {
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-  const { name, lightningAddress } = await req.json().catch(() => ({}));
+  const { name, lightningAddress, imageUrl } = await req.json().catch(() => ({}));
   if (typeof name !== "string" || !name.trim()) {
     return NextResponse.json({ error: "Falta el nombre" }, { status: 400 });
   }
@@ -43,6 +44,8 @@ export async function POST(req: Request) {
   });
   const data = {
     name: name.trim(),
+    imageUrl:
+      typeof imageUrl === "string" && imageUrl.trim() ? imageUrl.trim() : null,
     lightningAddress:
       typeof lightningAddress === "string" && lightningAddress.trim()
         ? lightningAddress.trim()
@@ -72,6 +75,10 @@ export async function POST(req: Request) {
           ...(oracle ?? {}),
         },
       });
+
+  // La ficha de cada juego embebe los datos del proveedor (nombre/imagen) desde
+  // el catálogo cacheado; invalidamos para que el cambio se vea al instante.
+  revalidateCatalog();
 
   return NextResponse.json({ provider: publicProvider(provider) });
 }

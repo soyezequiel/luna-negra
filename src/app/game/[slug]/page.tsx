@@ -199,6 +199,29 @@ export default async function GamePage({
         />
       </div>
 
+      {/* Autoría: imagen del proveedor + nombre del estudio. */}
+      <div className="mt-2.5 flex items-center gap-2.5 text-sm text-ln-muted">
+        <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full border border-ln-border bg-ln-card">
+          {game.provider.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={game.provider.imageUrl}
+              alt={game.provider.name}
+              referrerPolicy="no-referrer"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <span className="absolute inset-0 grid place-items-center text-[12px] font-bold text-ln-faint">
+              {game.provider.name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </span>
+        <span>
+          por{" "}
+          <span className="font-medium text-ln-luna">{game.provider.name}</span>
+        </span>
+      </div>
+
       <div className="mt-6 grid gap-6 ln:[grid-template-columns:minmax(0,1fr)_340px]">
         {/* Columna izquierda: media + descripción (en móvil va debajo de la compra) */}
         <div className="order-2 min-w-0 ln:order-none">
@@ -349,9 +372,20 @@ export default async function GamePage({
 
           {/* Metadatos */}
           <dl className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 text-sm">
-            <div className="flex justify-between py-1.5">
+            <div className="flex items-center justify-between py-1.5">
               <dt className="text-ln-faint">Proveedor</dt>
-              <dd className="text-ln-luna">{game.provider.name}</dd>
+              <dd className="flex items-center gap-2 text-ln-luna">
+                {game.provider.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={game.provider.imageUrl}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="h-5 w-5 rounded-full border border-ln-border object-cover"
+                  />
+                ) : null}
+                {game.provider.name}
+              </dd>
             </div>
             <div className="flex justify-between py-1.5">
               <dt className="text-ln-faint">Modos</dt>

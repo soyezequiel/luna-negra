@@ -48,6 +48,7 @@ model Provider {
   ownerId          String
   owner            User     @relation(fields: [ownerId], references: [id])
   name             String
+  imageUrl         String? // imagen/avatar del proveedor (se muestra en la ficha del juego)
   lightningAddress String? // dirección Lightning para el payout (70%)
   status           String   @default("pending") // pending | approved
   webhookUrl       String? // URL para notificar eventos (purchase/bet/payout)

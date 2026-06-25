@@ -26,6 +26,7 @@ import { hueFromSlug, satsLabel } from "@/lib/format";
 type Provider = {
   id: string;
   name: string;
+  imageUrl?: string | null;
   lightningAddress: string | null;
   webhookUrl?: string | null;
   webhookSecret?: string | null;
@@ -179,6 +180,7 @@ export default function ProviderPage() {
 
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
 
   const [newForm, setNewForm] = useState<GameForm>({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -207,6 +209,7 @@ export default function ProviderPage() {
     if (d?.provider) {
       setProvider(d.provider);
       setName(d.provider.name);
+      setImageUrl(d.provider.imageUrl ?? "");
       setLn(d.provider.lightningAddress ?? "");
       setWebhookUrl(d.provider.webhookUrl ?? "");
       setWebhookSecret(d.provider.webhookSecret ?? null);
@@ -289,11 +292,12 @@ export default function ProviderPage() {
     const r = await fetch("/api/provider", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, lightningAddress: ln }),
+      body: JSON.stringify({ name, lightningAddress: ln, imageUrl }),
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "Error");
     setProvider(d.provider);
+    setImageUrl(d.provider.imageUrl ?? "");
     setMsg("Perfil guardado.");
   }
 
@@ -864,6 +868,54 @@ export default function ProviderPage() {
             <p className="text-xs text-ln-faint">
               Tu nombre público y la dirección donde recibís los pagos.
             </p>
+            <div>
+              <label className="ln-label">Imagen del proveedor</label>
+              <div className="mt-1.5 flex items-center gap-3">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-ln-border bg-ln-card">
+                  {imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imageUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="absolute inset-0 grid place-items-center text-xl font-bold text-ln-faint">
+                      {name.slice(0, 1).toUpperCase() || "?"}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploading}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const url = await uploadFile(f);
+                      if (url) setImageUrl(url);
+                      e.target.value = "";
+                    }}
+                    className="text-xs text-ln-muted file:mr-2 file:rounded-full file:border-0 file:bg-ln-luna/15 file:px-3 file:py-1.5 file:text-ln-luna hover:file:bg-ln-luna/25"
+                  />
+                  {imageUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl("")}
+                      className="self-start text-xs text-ln-faint hover:text-ln-text"
+                    >
+                      Quitar imagen
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <p className="mt-1 text-[11px] text-ln-faint">
+                Se muestra en la ficha de tus juegos. Acordate de{" "}
+                <strong>Guardar</strong>. PNG/JPG/WebP, hasta 8 MB.
+              </p>
+            </div>
             <div>
               <label className="ln-label">Nombre del estudio</label>
               <input
