@@ -7,6 +7,7 @@ export async function register() {
     await import("./sentry.server.config");
     await startEscrowTick();
     await startZapSync();
+    await startCommentSync();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
@@ -77,6 +78,38 @@ async function startZapSync() {
   // Primer sync poco después del arranque, luego periódico.
   setTimeout(tick, 8_000).unref?.();
   setInterval(tick, ZAP_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de comentarios (kind:1): levanta de relays las respuestas al
+ * anuncio del juego (tag `t` de Luna Negra) y las cachea en `GameComment` para
+ * el centro de notificaciones. Mismo patrón que zap-sync. Ver
+ * src/lib/comment-sync.ts (syncGameComments) y COMMENT_SYNC_INTERVAL_MS.
+ */
+async function startCommentSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { COMMENT_SYNC_INTERVAL_MS } = await import("./lib/comment-sync");
+  if (!COMMENT_SYNC_INTERVAL_MS || COMMENT_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncGameComments } = await import("./lib/comment-sync");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncGameComments();
+    } catch (err) {
+      console.error("[comment-sync] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 11_000).unref?.();
+  setInterval(tick, COMMENT_SYNC_INTERVAL_MS).unref?.();
 }
 
 // Captura errores no manejados de route handlers y server components.

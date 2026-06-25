@@ -3,6 +3,7 @@ import type { SubCloser } from "nostr-tools/abstract-pool";
 import { APP_NAME, RELAYS, SEARCH_RELAYS, gameTag } from "./constants";
 import { nip05 } from "nostr-tools";
 import { getActiveSigner, restoreSigner, type LunaSigner } from "./signer";
+import { GAME_NOTE_FOOTER_MARK, gameNoteText } from "./game-note";
 
 export type Profile = {
   name?: string;
@@ -564,10 +565,8 @@ export async function fetchGameActivity(
     }));
 }
 
-// Marca que separa el texto del usuario del pie de contexto (modo fallback,
-// cuando el juego aún no tiene anuncio raíz). Empezar el pie con este string
-// permite recortarlo al mostrar la nota dentro de Luna Negra.
-const GAME_NOTE_FOOTER_MARK = "\n\n🎮 Sobre «";
+// Pie de contexto de las notas de juego: GAME_NOTE_FOOTER_MARK / gameNoteText
+// viven en game-note.ts (server-safe), importados arriba.
 
 function replyTags(root: GameRoot, gameUrl: string): string[][] {
   return [
@@ -631,14 +630,8 @@ export async function publishGameReview(
   );
 }
 
-/**
- * Devuelve solo el texto que escribió el usuario, sin el pie de contexto del
- * modo fallback. Las notas sin pie (respuestas o notas viejas) van intactas.
- */
-export function gameNoteText(content: string): string {
-  const i = content.indexOf(GAME_NOTE_FOOTER_MARK);
-  return i === -1 ? content : content.slice(0, i);
-}
+// Re-export para el cliente: el texto sin el pie de contexto (ver game-note.ts).
+export { gameNoteText };
 
 // --- Chat (NIP-04, kind:4) ---
 

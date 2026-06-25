@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 export default function NotificationsPage() {
   const { user, login, loading } = useSession();
-  const { items, refreshing, refresh, seenAt, markAllSeen } =
+  const { items, refreshing, refresh, seenAt, markAllSeen, dismiss, undoDismiss, pendingDismissals } =
     useNotificationsCenter();
   // Foto de la marca al entrar, para resaltar lo que era nuevo antes de marcar leído.
   const [seenSnapshot, setSeenSnapshot] = useState<number | null>(null);
@@ -74,7 +74,13 @@ export default function NotificationsPage() {
         <ul className="divide-y divide-ln-border/60 overflow-hidden rounded-ln-lg border border-ln-border bg-ln-card/60">
           {items.map((it) => (
             <li key={it.id}>
-              <NotificationItemRow it={it} unread={it.at > (seenSnapshot ?? 0)} />
+              <NotificationItemRow
+                it={it}
+                unread={it.at > (seenSnapshot ?? 0)}
+                onDismiss={dismiss}
+                pending={pendingDismissals.has(it.id)}
+                onUndo={undoDismiss}
+              />
             </li>
           ))}
         </ul>

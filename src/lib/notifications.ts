@@ -1,13 +1,15 @@
 // Tipos compartidos del centro de notificaciones (campanita).
 //
-// El feed se DERIVA en lectura: el server arma los ítems desde tablas existentes
-// (compras, zaps, reseñas, apuestas del jugador) y el cliente le suma los
-// comentarios kind:1 traídos de relays. No hay tabla `Notification`: el estado
-// de leído/no leído es una sola marca `User.notificationsSeenAt`, y cuenta como
-// no leído todo ítem con `at` posterior a esa marca. Ver:
-//   - GET  /api/notifications        (ítems de DB + marca + juegos para Nostr)
+// El feed se DERIVA en lectura: el server arma los ítems desde la DB (compras,
+// zaps, reseñas, apuestas del jugador y comentarios). Los comentarios son un
+// caché de los kind:1 de Nostr —fuente de verdad— que mantiene `comment-sync.ts`
+// (como `Zap` cachea los recibos 9735). No hay tabla `Notification`: el estado de
+// leído/no leído es una sola marca `User.notificationsSeenAt`, y cuenta como no
+// leído todo ítem con `at` posterior a esa marca. Ver:
+//   - GET  /api/notifications        (ítems de DB + marca + descartes)
 //   - POST /api/notifications/seen   (avanza la marca)
-//   - use-notifications-center.ts    (merge con comentarios Nostr + unread)
+//   - POST /api/notifications/dismiss(descarta un ítem)
+//   - use-notifications-center.ts    (unread + descartes)
 
 export type NotifType = "purchase" | "zap" | "review" | "comment" | "bet";
 
@@ -37,11 +39,6 @@ export type NotifItem = {
 export type NotificationsResponse = {
   items: NotifItem[];
   seenAt: number | null;
-  /** Juegos del dev con anuncio en Nostr, para traer comentarios del lado cliente. */
-  games: {
-    slug: string;
-    title: string;
-    nostrEventId: string;
-    nostrPubkey: string;
-  }[];
+  /** Claves (NotifItem.id) que el usuario descartó: se filtran del feed. */
+  dismissed: string[];
 };

@@ -245,6 +245,26 @@ model Game {
   reviews   Review[]
   bets      Bet[]
   zaps      Zap[]
+  comments  GameComment[]
+}
+
+// Comentario (kind:1) de un juego, CACHEADO desde Nostr. La fuente de verdad es
+// el evento Nostr firmado por el usuario (respuesta al anuncio del juego con el
+// tag `t = lunanegra:game:<slug>`); esta tabla solo acelera el acceso para el
+// centro de notificaciones (igual que `Zap` cachea los recibos 9735). La pobla
+// la reconciliación in-process `comment-sync.ts`, deduplicando por `eventId`.
+model GameComment {
+  id           String   @id @default(cuid())
+  eventId      String   @unique // id del kind:1 (dedup idempotente)
+  gameId       String
+  game         Game     @relation(fields: [gameId], references: [id])
+  authorPubkey String // hex; pubkey del autor del comentario
+  content      String // contenido crudo del evento (se recorta el pie al mostrar)
+  createdAt    DateTime // created_at del evento Nostr
+  recordedAt   DateTime @default(now())
+
+  @@index([gameId])
+  @@index([authorPubkey])
 }
 
 // Zap (propina NIP-57) verificado a un juego gratis. La fuente de verdad es el

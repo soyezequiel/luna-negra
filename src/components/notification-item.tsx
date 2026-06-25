@@ -69,58 +69,97 @@ export function notifSubtitle(it: NotifItem): string | null {
 /**
  * Una fila de notificación. `truncate` recorta la línea secundaria a una línea
  * (dropdown de la campanita); en la página /notifications se muestra completa.
+ * Si se pasa `onDismiss`, aparece una ✕ para "marcar leído y que se vaya".
  */
 export function NotificationItemRow({
   it,
   unread,
   truncate = false,
   onNavigate,
+  onDismiss,
+  pending = false,
+  onUndo,
 }: {
   it: NotifItem;
   unread: boolean;
   truncate?: boolean;
   onNavigate?: () => void;
+  onDismiss?: (id: string) => void;
+  /** En ventana de "Deshacer": se muestra la tira en vez del contenido. */
+  pending?: boolean;
+  onUndo?: (id: string) => void;
 }) {
   const sub = notifSubtitle(it);
+
+  if (pending) {
+    return (
+      <div className="flex items-center justify-between gap-2 bg-white/[.03] px-3.5 py-3 text-[12px] text-ln-muted">
+        <span>Notificación descartada</span>
+        <button
+          type="button"
+          onClick={() => onUndo?.(it.id)}
+          className="shrink-0 font-semibold text-ln-luna hover:underline"
+        >
+          Deshacer
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <Link
-      href={it.href}
-      onClick={onNavigate}
-      className={cn(
-        "flex gap-2.5 px-3.5 py-3 transition-colors hover:bg-white/5",
-        unread && "bg-ln-luna/[.06]",
-      )}
-    >
-      <span
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px]"
-        style={{ background: `color-mix(in srgb, ${NOTIF_DOT[it.type]} 18%, transparent)` }}
-      >
-        {NOTIF_ICON[it.type]}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium leading-snug text-ln-text">
-          {notifTitle(it)}
-        </span>
-        {sub ? (
-          <span
-            className={cn(
-              "mt-0.5 block text-[12px] text-ln-muted",
-              truncate ? "truncate" : "whitespace-pre-wrap",
-            )}
-          >
-            {sub}
-          </span>
-        ) : null}
-        <span className="mt-0.5 block text-[11px] text-ln-faint">
-          {timeAgo(Math.floor(it.at / 1000))}
-        </span>
-      </span>
+    <div className={cn("group relative", unread && "bg-ln-luna/[.06]")}>
+      {/* Acento de no-leído (a la izquierda, no choca con la ✕). */}
       {unread ? (
         <span
-          className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+          className="absolute inset-y-0 left-0 w-0.5"
           style={{ background: NOTIF_DOT[it.type] }}
         />
       ) : null}
-    </Link>
+      <Link
+        href={it.href}
+        onClick={onNavigate}
+        className="flex gap-2.5 py-3 pl-3.5 pr-9 transition-colors hover:bg-white/5"
+      >
+        <span
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px]"
+          style={{ background: `color-mix(in srgb, ${NOTIF_DOT[it.type]} 18%, transparent)` }}
+        >
+          {NOTIF_ICON[it.type]}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] font-medium leading-snug text-ln-text">
+            {notifTitle(it)}
+          </span>
+          {sub ? (
+            <span
+              className={cn(
+                "mt-0.5 block text-[12px] text-ln-muted",
+                truncate ? "truncate" : "whitespace-pre-wrap",
+              )}
+            >
+              {sub}
+            </span>
+          ) : null}
+          <span className="mt-0.5 block text-[11px] text-ln-faint">
+            {timeAgo(Math.floor(it.at / 1000))}
+          </span>
+        </span>
+      </Link>
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDismiss(it.id);
+          }}
+          aria-label="Marcar como leída y quitar"
+          title="Marcar como leída y quitar"
+          className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-ln-faint transition-colors hover:bg-white/10 hover:text-ln-text"
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
   );
 }

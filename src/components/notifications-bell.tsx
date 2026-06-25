@@ -8,7 +8,8 @@ import { NotificationItemRow } from "@/components/notification-item";
 
 export function NotificationsBell() {
   const { user } = useSession();
-  const { items, unreadCount, seenAt, markAllSeen } = useNotificationsCenter();
+  const { items, unreadCount, seenAt, markAllSeen, dismiss, undoDismiss, pendingDismissals } =
+    useNotificationsCenter();
   const [open, setOpen] = useState(false);
   // Foto de la marca "visto hasta" al abrir: markAllSeen la avanza enseguida, así
   // que la guardamos para seguir resaltando lo que ERA nuevo mientras está abierto.
@@ -97,6 +98,9 @@ export function NotificationsBell() {
                       unread={it.at > (seenSnapshot ?? 0)}
                       truncate
                       onNavigate={() => setOpen(false)}
+                      onDismiss={dismiss}
+                      pending={pendingDismissals.has(it.id)}
+                      onUndo={undoDismiss}
                     />
                   </li>
                 ))}

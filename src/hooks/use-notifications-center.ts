@@ -10,23 +10,17 @@ import {
 } from "react";
 import { useSession } from "@/providers/session-provider";
 import {
-  fetchGameActivity,
   fetchProfiles,
-  gameNoteText,
-  npubOf,
   profileName,
-  shortId,
   type Profile,
 } from "@/lib/nostr-social";
 import type { NotifItem, NotificationsResponse } from "@/lib/notifications";
 
-// Máximo de juegos a los que les traemos comentarios Nostr por carga (cada uno
-// es una consulta a relays; un dev con muchos juegos no debe disparar una
-// tormenta). Los más nuevos primero (el server los devuelve por orden de juego).
-const MAX_COMMENT_GAMES = 10;
 const MAX_ITEMS = 50;
 const POLL_MS = 90_000;
 const FOCUS_THROTTLE_MS = 60_000;
+// Ventana para "Deshacer" un descarte antes de persistirlo.
+const UNDO_MS = 5_000;
 
 export type NotificationsCenterValue = {
   items: NotifItem[] | null;
@@ -37,39 +31,13 @@ export type NotificationsCenterValue = {
   refresh: () => Promise<void>;
   /** Marca todo como leído (avanza la marca "visto hasta" a ahora). */
   markAllSeen: () => void;
+  /** Descarta una notificación: abre una ventana de "Deshacer" y luego persiste. */
+  dismiss: (id: string) => void;
+  /** Cancela un descarte mientras está en la ventana de "Deshacer". */
+  undoDismiss: (id: string) => void;
+  /** Ids en ventana de "Deshacer" (se muestran como tira "descartada · Deshacer"). */
+  pendingDismissals: Set<string>;
 };
-
-/** Trae los comentarios kind:1 de los juegos del dev y los vuelve NotifItem. */
-async function fetchCommentItems(
-  games: NotificationsResponse["games"],
-  myPubkey: string,
-): Promise<NotifItem[]> {
-  const subset = games.slice(0, MAX_COMMENT_GAMES);
-  const perGame = await Promise.all(
-    subset.map(async (g) => {
-      try {
-        const notes = await fetchGameActivity(g.slug, g.nostrEventId);
-        return notes
-          .filter((n) => n.pubkey !== myPubkey) // no me notifico de mis propios comentarios
-          .map(
-            (n): NotifItem => ({
-              id: `comment:${n.id}`,
-              type: "comment",
-              at: n.created_at * 1000,
-              gameSlug: g.slug,
-              gameTitle: g.title,
-              actorNpub: npubOf(n.pubkey),
-              text: gameNoteText(n.content),
-              href: `/game/${g.slug}`,
-            }),
-          );
-      } catch {
-        return [] as NotifItem[];
-      }
-    }),
-  );
-  return perGame.flat();
-}
 
 /** Resuelve nombres legibles para los actores que solo traen npub (zaps/comentarios). */
 async function resolveActorNames(items: NotifItem[]): Promise<NotifItem[]> {
@@ -107,6 +75,16 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
   const [refreshing, setRefreshing] = useState(false);
   const loadingRef = useRef(false);
   const lastLoadRef = useRef(0);
+  // Claves descartadas conocidas (server + descartes optimistas locales). Se usa
+  // para filtrar el feed incluso antes de que el server confirme el POST.
+  const dismissedRef = useRef<Set<string>>(new Set());
+  // Descartes en ventana de "Deshacer": id → timer que lo persiste al expirar.
+  const [pendingDismissals, setPendingDismissals] = useState<Set<string>>(
+    new Set(),
+  );
+  const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
 
   const load = useCallback(async () => {
     if (!user) {
@@ -124,12 +102,17 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
       const data = (await res.json()) as NotificationsResponse;
       setSeenAt(data.seenAt);
 
-      // Pintamos los ítems de DB ya mismo; los comentarios Nostr llegan después.
-      setItems(data.items.slice(0, MAX_ITEMS));
+      // Unión de descartes del server con los locales (un descarte optimista no
+      // debe reaparecer si el server todavía no lo registró).
+      for (const k of data.dismissed) dismissedRef.current.add(k);
+      const visible = data.items.filter(
+        (it) => !dismissedRef.current.has(it.id),
+      );
 
-      const comments = await fetchCommentItems(data.games, user.pubkey);
-      const merged = [...data.items, ...comments].sort((a, b) => b.at - a.at);
-      const withNames = await resolveActorNames(merged.slice(0, MAX_ITEMS));
+      // Pintamos ya; luego resolvemos los nombres de los actores (zaps/comentarios
+      // solo traen npub) contra los perfiles kind:0 y re-renderizamos.
+      setItems(visible.slice(0, MAX_ITEMS));
+      const withNames = await resolveActorNames(visible.slice(0, MAX_ITEMS));
       setItems(withNames);
     } catch {
       /* best-effort: reintenta en el próximo poll/foco */
@@ -176,10 +159,80 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
     });
   }, [items, seenAt]);
 
+  // Persiste el descarte de verdad: lo saca del feed y lo manda al server.
+  const finalizeDismiss = useCallback((id: string) => {
+    undoTimers.current.delete(id);
+    setPendingDismissals((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    dismissedRef.current.add(id);
+    setItems((prev) => (prev ? prev.filter((it) => it.id !== id) : prev));
+    void fetch("/api/notifications/dismiss", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => {
+      /* si falla, reaparece en el próximo load (no se persistió) */
+    });
+  }, []);
+
+  // Abre la ventana de "Deshacer": la fila queda en estado "descartada" pero el
+  // ítem no se borra ni se persiste hasta que expira el timer.
+  const dismiss = useCallback(
+    (id: string) => {
+      if (undoTimers.current.has(id)) return; // ya en ventana
+      setPendingDismissals((prev) => new Set(prev).add(id));
+      const t = setTimeout(() => finalizeDismiss(id), UNDO_MS);
+      undoTimers.current.set(id, t);
+    },
+    [finalizeDismiss],
+  );
+
+  const undoDismiss = useCallback((id: string) => {
+    const t = undoTimers.current.get(id);
+    if (t) clearTimeout(t);
+    undoTimers.current.delete(id);
+    setPendingDismissals((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // Al desmontar, persiste lo que quedó en ventana (no se pierde la intención).
+  useEffect(() => {
+    const timers = undoTimers.current;
+    return () => {
+      for (const [id, t] of timers) {
+        clearTimeout(t);
+        void fetch("/api/notifications/dismiss", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        }).catch(() => {});
+      }
+      timers.clear();
+    };
+  }, []);
+
   const unreadCount =
     items?.reduce((n, it) => (it.at > (seenAt ?? 0) ? n + 1 : n), 0) ?? 0;
 
-  return { items, unreadCount, seenAt, refreshing, refresh: load, markAllSeen };
+  return {
+    items,
+    unreadCount,
+    seenAt,
+    refreshing,
+    refresh: load,
+    markAllSeen,
+    dismiss,
+    undoDismiss,
+    pendingDismissals,
+  };
 }
 
 const FALLBACK: NotificationsCenterValue = {
@@ -189,6 +242,9 @@ const FALLBACK: NotificationsCenterValue = {
   refreshing: false,
   refresh: async () => {},
   markAllSeen: () => {},
+  dismiss: () => {},
+  undoDismiss: () => {},
+  pendingDismissals: new Set(),
 };
 
 export const NotificationsCenterContext =

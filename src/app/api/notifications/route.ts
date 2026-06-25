@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { gameNoteText } from "@/lib/game-note";
 import type { NotifItem, NotificationsResponse } from "@/lib/notifications";
 
 // Cuántos ítems traer por fuente antes de mezclar y recortar.
@@ -19,10 +20,11 @@ function npubOf(pubkeyHex: string): string {
 /**
  * Feed de notificaciones del usuario (campanita). Reúne, en una sola lista
  * ordenada por fecha:
- *   · como dev: compras pagadas, zaps y reseñas en sus juegos;
+ *   · como dev: compras pagadas, zaps, reseñas y comentarios en sus juegos;
  *   · como jugador: sus apuestas resueltas / premios listos.
- * Devuelve además los juegos con anuncio en Nostr para que el cliente sume los
- * comentarios kind:1 (que no viven en la DB). Los eventos propios se excluyen.
+ * Todo sale de la DB; los comentarios son un caché de los kind:1 de Nostr que
+ * mantiene `comment-sync.ts` (Nostr es la fuente de verdad). Los eventos propios
+ * se excluyen.
  */
 export async function GET(): Promise<NextResponse> {
   const session = await getSession();
@@ -35,9 +37,15 @@ export async function GET(): Promise<NextResponse> {
     select: { notificationsSeenAt: true, pubkey: true },
   });
 
+  const dismissedRows = await prisma.dismissedNotification.findMany({
+    where: { userId: session.sub },
+    select: { key: true },
+  });
+  const dismissed = dismissedRows.map((d) => d.key);
+
   const providers = await prisma.provider.findMany({
     where: { ownerId: session.sub },
-    select: { id: true, games: { select: { id: true, slug: true, title: true, nostrEventId: true, nostrPubkey: true } } },
+    select: { id: true, games: { select: { id: true, slug: true, title: true } } },
   });
   const providerIds = providers.map((p) => p.id);
   const games = providers.flatMap((p) => p.games);
@@ -86,6 +94,30 @@ export async function GET(): Promise<NextResponse> {
         rating: r.rating,
         text: r.body || null,
         href: `/game/${r.game.slug}`,
+      });
+    }
+
+    // Comentarios (kind:1) en tus juegos — caché Nostr (comment-sync). Excluye
+    // los tuyos. La fuente de verdad es el evento; acá leemos rápido de la DB.
+    const comments = await prisma.gameComment.findMany({
+      where: {
+        gameId: { in: gameIds },
+        ...(me?.pubkey ? { authorPubkey: { not: me.pubkey } } : {}),
+      },
+      include: { game: { select: { slug: true, title: true } } },
+      orderBy: { createdAt: "desc" },
+      take: PER_SOURCE,
+    });
+    for (const c of comments) {
+      items.push({
+        id: `comment:${c.eventId}`,
+        type: "comment",
+        at: c.createdAt.getTime(),
+        gameSlug: c.game.slug,
+        gameTitle: c.game.title,
+        actorNpub: npubOf(c.authorPubkey),
+        text: gameNoteText(c.content) || null,
+        href: `/game/${c.game.slug}`,
       });
     }
   }
@@ -145,19 +177,15 @@ export async function GET(): Promise<NextResponse> {
 
   items.sort((a, b) => b.at - a.at);
 
+  // Filtramos los descartados acá (ya está todo en la DB) y mandamos también la
+  // lista de claves para que el cliente filtre sus descartes optimistas.
+  const dismissedSet = new Set(dismissed);
+  const visible = items.filter((it) => !dismissedSet.has(it.id));
+
   const body: NotificationsResponse = {
-    items: items.slice(0, MAX_ITEMS),
+    items: visible.slice(0, MAX_ITEMS),
     seenAt: me?.notificationsSeenAt ? me.notificationsSeenAt.getTime() : null,
-    games: games
-      .filter((g): g is typeof g & { nostrEventId: string; nostrPubkey: string } =>
-        Boolean(g.nostrEventId && g.nostrPubkey),
-      )
-      .map((g) => ({
-        slug: g.slug,
-        title: g.title,
-        nostrEventId: g.nostrEventId,
-        nostrPubkey: g.nostrPubkey,
-      })),
+    dismissed,
   };
   return NextResponse.json(body);
 }
