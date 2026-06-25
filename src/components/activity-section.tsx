@@ -39,11 +39,11 @@ export function ActivitySection({
   const [, startLoadTransition] = useTransition();
 
   const load = useCallback(async () => {
-    const ns = await fetchGameActivity(slug, root?.id);
+    const ns = await fetchGameActivity(slug, root);
     setNotes(ns);
     const authors = [...new Set(ns.map((n) => n.pubkey))];
     if (authors.length) setProfiles(await fetchProfiles(authors));
-  }, [slug, root?.id]);
+  }, [slug, root]);
 
   useEffect(() => {
     startLoadTransition(() => {

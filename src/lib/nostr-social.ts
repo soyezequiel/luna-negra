@@ -515,17 +515,22 @@ export async function clearPlayingStatus(): Promise<void> {
   );
 }
 
-// --- Actividad por juego (respuestas NIP-10 al anuncio del juego) ---
+// --- Actividad por juego (respuestas al artículo NIP-23 del juego) ---
 //
-// Al aprobar un juego, Luna Negra publica un anuncio (kind:1) — ver
-// `nostr-server.ts#publishGameAnnouncement`. Comentarios y reseñas se cuelgan de
-// ese anuncio como respuestas (tags `e` root + `p` autor), de modo que en
-// cualquier cliente Nostr se ven dentro del hilo del juego y no como notas
-// sueltas. Si el juego todavía no tiene anuncio, los comentarios caen al modo
-// "nota suelta con pie de contexto" (fallback).
+// Al aprobar un juego, Luna Negra publica un artículo direccionable (kind:30023)
+// — ver `nostr-server.ts#publishGameArticle`. Comentarios y reseñas se cuelgan de
+// su COORDENADA (tag `a` root + `p` autor): así, aunque el artículo se edite (y
+// cambie su id), las respuestas siguen apuntando al mismo juego. Juegos viejos
+// sin `coord` se enlazan por `e` (compat). Sin artículo, los comentarios caen al
+// modo "nota suelta con pie de contexto" (fallback).
 
-/** Anuncio raíz de un juego en Nostr, al que se responde con comentarios/reseñas. */
-export type GameRoot = { id: string; pubkey: string };
+/**
+ * Raíz Nostr de un juego al que se cuelgan comentarios/reseñas. `coord` es la
+ * coordenada direccionable del artículo NIP-23 (`30023:<pubkey>:<slug>`): es el
+ * enlace ESTABLE (tag `a`), no cambia aunque se edite el artículo. `id` es el id
+ * del último evento (legacy/compat: juegos viejos sin `coord` se enlazan por `e`).
+ */
+export type GameRoot = { id: string; pubkey: string; coord?: string | null };
 
 export type ActivityNote = {
   id: string;
@@ -535,26 +540,29 @@ export type ActivityNote = {
 };
 
 /**
- * Trae los comentarios de un juego. Si hay anuncio (`rootId`), pide las
- * respuestas a ese evento (`#e`); además sigue trayendo notas con el tag `t`
- * (compatibilidad con comentarios viejos y el fallback). El propio anuncio se
- * excluye del listado.
+ * Trae los comentarios de un juego, combinando varios filtros para no perder
+ * nada entre la migración a artículo:
+ * - `#a` [coord]: respuestas a la coordenada del artículo NIP-23 (lo nuevo/estable).
+ * - `#t` [gameTag]: notas tagueadas por slug (comentarios + fallback sin artículo).
+ * - `#e` [root.id]: respuestas colgadas del id del evento (juegos viejos kind:1).
+ * Deduplica por id y excluye el propio artículo/anuncio.
  */
 export async function fetchGameActivity(
   slug: string,
-  rootId?: string | null,
+  root?: GameRoot | null,
 ): Promise<ActivityNote[]> {
   const filters: Parameters<SimplePool["querySync"]>[1][] = [
     { kinds: [1], "#t": [gameTag(slug)] },
   ];
-  if (rootId) filters.push({ kinds: [1], "#e": [rootId] });
+  if (root?.coord) filters.push({ kinds: [1], "#a": [root.coord] });
+  if (root?.id) filters.push({ kinds: [1], "#e": [root.id] });
   const batches = await Promise.all(
     filters.map((f) => pool().querySync(RELAYS, f)),
   );
   const byId = new Map<string, (typeof batches)[number][number]>();
   for (const e of batches.flat()) byId.set(e.id, e);
   return [...byId.values()]
-    .filter((e) => e.id !== rootId) // el anuncio no es un comentario
+    .filter((e) => e.id !== root?.id) // el artículo no es un comentario
     .sort((a, b) => b.created_at - a.created_at)
     .slice(0, 50)
     .map((e) => ({
@@ -568,12 +576,13 @@ export async function fetchGameActivity(
 // Pie de contexto de las notas de juego: GAME_NOTE_FOOTER_MARK / gameNoteText
 // viven en game-note.ts (server-safe), importados arriba.
 
+// Tags de respuesta al artículo del juego. Preferimos la coordenada `a` (estable
+// entre ediciones); para juegos viejos sin `coord` caemos al `e` por id de evento.
 function replyTags(root: GameRoot, gameUrl: string): string[][] {
-  return [
-    ["e", root.id, "", "root"],
-    ["p", root.pubkey],
-    ["r", gameUrl],
-  ];
+  const rootTag = root.coord
+    ? ["a", root.coord, "", "root"]
+    : ["e", root.id, "", "root"];
+  return [rootTag, ["p", root.pubkey], ["r", gameUrl]];
 }
 
 /**

@@ -1,31 +1,39 @@
 import type { Game } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { publishGameAnnouncement } from "@/lib/nostr-server";
+import { publishGameArticle } from "@/lib/nostr-server";
 import { gamePageUrl } from "@/lib/site-url";
 
 /**
- * Publica el anuncio raíz del juego en Nostr y guarda su id/pubkey en la DB.
- * Idempotente: si el juego ya tiene `nostrEventId`, no hace nada. Best-effort:
- * si no hay clave o ningún relay acepta, el juego queda sin anuncio (los
- * comentarios caen al modo nota suelta) y se puede reintentar con "re-anunciar".
+ * Publica/actualiza el artículo NIP-23 del juego en Nostr (fuente de verdad) y
+ * proyecta su identidad al caché de la DB (write-through). Se llama al aprobar y
+ * en cada edición de un juego publicado: como el artículo es direccionable
+ * (mismo `d` = slug), re-publicar NO cambia su coordenada, así que comentarios y
+ * reseñas siguen enlazados. `published_at` se preserva del primer posteo.
  *
- * Devuelve el juego (actualizado si se publicó).
+ * Best-effort: si no hay `LUNA_NEGRA_NSEC` o ningún relay acepta, el juego queda
+ * publicado en la DB sin artículo (se puede reintentar con "re-anunciar") y se
+ * devuelve el juego sin tocar. Devuelve el juego (actualizado si se publicó).
  */
-export async function announceGame(game: Game, req: Request): Promise<Game> {
-  if (game.nostrEventId) return game;
+export async function syncGameToNostr(game: Game, req: Request): Promise<Game> {
+  const publishedAt = game.nostrPublishedAt
+    ? Math.floor(game.nostrPublishedAt.getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
 
-  const announced = await publishGameAnnouncement({
-    slug: game.slug,
-    title: game.title,
-    description: game.description,
-    coverUrl: game.coverUrl,
-    priceSats: game.priceSats,
-    gameUrl: gamePageUrl(req, game.slug),
-  });
-  if (!announced) return game;
+  const published = await publishGameArticle(
+    game,
+    gamePageUrl(req, game.slug),
+    publishedAt,
+  );
+  if (!published) return game;
 
   return prisma.game.update({
     where: { id: game.id },
-    data: { nostrEventId: announced.id, nostrPubkey: announced.pubkey },
+    data: {
+      nostrEventId: published.id,
+      nostrPubkey: published.pubkey,
+      nostrCoord: published.coord,
+      nostrPublishedAt: new Date(published.publishedAt * 1000),
+      nostrUpdatedAt: new Date(published.createdAt * 1000),
+    },
   });
 }

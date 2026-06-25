@@ -230,10 +230,16 @@ model Game {
   gameUrl            String? // subdominio donde el proveedor hostea el juego
   status             String   @default("draft") // draft | in_review | published
   revenueShare       Int      @default(70) // % para el proveedor
-  // Posteo raíz en Nostr (kind:1) que Luna Negra publica al aprobar el juego.
-  // Comentarios y reseñas se cuelgan de aquí como respuestas (NIP-10).
-  nostrEventId       String? // id del evento anuncio
-  nostrPubkey        String? // pubkey de Luna Negra que firmó el anuncio (tag p de las respuestas)
+  // Artículo NIP-23 (kind:30023) que Luna Negra publica al aprobar/editar el
+  // juego: la representación CANÓNICA del juego publicado en Nostr (fuente de
+  // verdad). La DB es un caché write-through, reconciliable por game-sync.ts.
+  // Comentarios y reseñas se cuelgan de la coordenada (`nostrCoord`, tag `a`),
+  // estable entre ediciones.
+  nostrEventId       String? // id del ÚLTIMO evento 30023 (cambia en cada edición)
+  nostrPubkey        String? // pubkey de Luna Negra que firmó el artículo
+  nostrCoord         String? // coordenada direccionable `30023:<pubkey>:<slug>` (root tag `a`)
+  nostrPublishedAt   DateTime? // `published_at` original (se preserva entre ediciones)
+  nostrUpdatedAt     DateTime? // created_at del último artículo cacheado (freshness del sync)
   // Pubkey (hex) que firma los recibos de zap (kind 9735) del wallet LNURL del
   // dev de este juego. Se cachea en `zap/prepare` y se usa en la reconciliación
   // (zap-sync.ts) para validar que un recibo viene del wallet correcto. Si es

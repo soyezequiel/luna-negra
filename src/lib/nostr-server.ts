@@ -1,8 +1,12 @@
-import { finalizeEvent } from "nostr-tools/pure";
+import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 import { SimplePool, nip19, type Event } from "nostr-tools";
-import { APP_NAME, RELAYS, gameTag } from "./constants";
-import { priceLabel } from "./format";
+import { RELAYS, gameTag } from "./constants";
 import { buildResultEventTemplate } from "./escrow";
+import {
+  buildGameArticleTemplate,
+  gameArticleCoord,
+  type GameArticleInput,
+} from "./game-article";
 
 // Identidad Nostr de Luna Negra (server) para firmar el contrato.
 function getSecretKey(): Uint8Array | null {
@@ -17,6 +21,17 @@ function getSecretKey(): Uint8Array | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Pubkey (hex) de la tienda, derivado de `LUNA_NEGRA_NSEC`. Es el firmante de los
+ * artículos de juego y, por ende, parte de la coordenada `30023:<pubkey>:<slug>`.
+ * Lo usa game-sync.ts para levantar los artículos por `authors`. Null si no hay
+ * clave configurada.
+ */
+export function getStorePubkey(): string | null {
+  const sk = getSecretKey();
+  return sk ? getPublicKey(sk) : null;
 }
 
 /**
@@ -109,55 +124,44 @@ export async function publishGameActivity(
   return { id: ev.id, pubkey: ev.pubkey };
 }
 
-export type GameAnnouncement = {
-  slug: string;
-  title: string;
-  description?: string | null;
-  coverUrl?: string | null;
-  priceSats: number;
-  gameUrl: string; // URL absoluta a la ficha del juego en la tienda
+export type PublishedGameArticle = {
+  id: string; // id del evento 30023 (cambia en cada edición)
+  pubkey: string; // pubkey de la tienda
+  coord: string; // coordenada direccionable `30023:<pubkey>:<slug>`
+  publishedAt: number; // `published_at` usado (preservado entre ediciones)
+  createdAt: number; // created_at del evento (freshness para el sync)
 };
 
 /**
- * Publica el anuncio raíz de un juego como nota Nostr (kind:1) firmada por Luna
- * Negra al aprobarlo. Comentarios y reseñas se cuelgan de este evento como
- * respuestas (NIP-10). El cuerpo incluye título, descripción, precio, link a la
- * ficha y la portada (URL en su propia línea, para que los clientes la muestren).
+ * Firma y publica (o re-publica) el ARTÍCULO NIP-23 (kind:30023) de un juego con
+ * la clave de la tienda. Es la representación canónica del juego publicado: al
+ * ser direccionable (tag `d` = slug), editarlo no cambia su coordenada, así que
+ * los comentarios/reseñas que cuelgan de `coord` (tag `a`) quedan intactos.
  *
- * Devuelve `{ id, pubkey }` solo si algún relay aceptó el evento; `null` si no
- * hay clave configurada o si ningún relay lo aceptó (para no guardar un id muerto).
+ * `publishedAt` debe ser la fecha del PRIMER posteo (el caller la preserva entre
+ * ediciones). Devuelve los datos del evento solo si algún relay lo aceptó; `null`
+ * si no hay clave o ningún relay lo aceptó (para no cachear un evento muerto).
  */
-export async function publishGameAnnouncement(
-  game: GameAnnouncement,
-): Promise<{ id: string; pubkey: string } | null> {
+export async function publishGameArticle(
+  game: GameArticleInput,
+  gamePageUrl: string,
+  publishedAt: number,
+): Promise<PublishedGameArticle | null> {
   const sk = getSecretKey();
   if (!sk) return null;
 
-  const lines = [`🎮 ${game.title} — ya disponible en ${APP_NAME}`];
-  const desc = game.description?.trim();
-  if (desc) lines.push("", desc.slice(0, 500));
-  lines.push("", `💰 ${priceLabel(game.priceSats)}`, `🔗 ${game.gameUrl}`);
-  if (game.coverUrl) lines.push("", game.coverUrl);
-
-  const tags: string[][] = [
-    ["t", gameTag(game.slug)],
-    ["r", game.gameUrl],
-  ];
-  if (game.coverUrl) tags.push(["r", game.coverUrl], ["image", game.coverUrl]);
-
-  const ev = finalizeEvent(
-    {
-      kind: 1,
-      created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content: lines.join("\n"),
-    },
-    sk,
-  );
+  const template = buildGameArticleTemplate(game, { gamePageUrl, publishedAt });
+  const ev = finalizeEvent(template, sk);
   const accepted = await publishToRelays(ev).catch(() => 0);
   if (accepted === 0) {
-    console.error("[nostr] el anuncio del juego no fue aceptado:", ev.id);
+    console.error("[nostr] el artículo del juego no fue aceptado:", ev.id);
     return null;
   }
-  return { id: ev.id, pubkey: ev.pubkey };
+  return {
+    id: ev.id,
+    pubkey: ev.pubkey,
+    coord: gameArticleCoord(ev.pubkey, game.slug),
+    publishedAt,
+    createdAt: ev.created_at,
+  };
 }

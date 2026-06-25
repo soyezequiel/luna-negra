@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
-import { announceGame } from "@/lib/announce-game";
+import { syncGameToNostr } from "@/lib/announce-game";
 import { revalidateCatalog } from "@/lib/store-catalog";
 
 export async function POST(
@@ -22,8 +22,9 @@ export async function POST(
     where: { id },
     data: { status: "published" },
   });
-  // Anuncio raíz en Nostr (idempotente): solo si todavía no lo tiene.
-  game = await announceGame(game, req);
+  // Publica el artículo NIP-23 del juego en Nostr (fuente de verdad) y cachea su
+  // identidad en la DB. Best-effort: si falla, el juego queda publicado igual.
+  game = await syncGameToNostr(game, req);
   // Refresca el catálogo cacheado (Home + ficha) al instante.
   revalidateCatalog();
   return NextResponse.json({ game });

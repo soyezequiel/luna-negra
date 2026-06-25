@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
-import { announceGame } from "@/lib/announce-game";
+import { syncGameToNostr } from "@/lib/announce-game";
 
-// Re-anuncia en Nostr un juego ya publicado que aún no tiene posteo raíz
-// (juegos aprobados antes de esta feature, o anuncios que ningún relay aceptó).
+// (Re)publica en Nostr el artículo NIP-23 de un juego ya publicado. Sirve para
+// juegos aprobados antes de esta feature (que tenían una nota kind:1), artículos
+// que ningún relay aceptó, o para forzar una re-firma. Como el artículo es
+// direccionable, re-publicar mantiene la coordenada y no rompe comentarios.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -25,14 +27,11 @@ export async function POST(
       { status: 400 },
     );
   }
-  if (game.nostrEventId) {
-    return NextResponse.json({ game, alreadyAnnounced: true });
-  }
 
-  const updated = await announceGame(game, req);
-  if (!updated.nostrEventId) {
+  const updated = await syncGameToNostr(game, req);
+  if (!updated.nostrCoord) {
     return NextResponse.json(
-      { error: "No se pudo publicar el anuncio (¿falta LUNA_NEGRA_NSEC o relays?)" },
+      { error: "No se pudo publicar el artículo (¿falta LUNA_NEGRA_NSEC o relays?)" },
       { status: 502 },
     );
   }

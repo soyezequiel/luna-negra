@@ -6,6 +6,7 @@ import { normalizeCategories } from "@/lib/categories";
 import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { revalidateCatalog } from "@/lib/store-catalog";
+import { syncGameToNostr } from "@/lib/announce-game";
 
 export async function PATCH(
   req: Request,
@@ -44,7 +45,17 @@ export async function PATCH(
         .map((s: string) => normalizeImageUrl(s)),
     );
 
-  const game = await prisma.game.update({ where: { id }, data });
+  let game = await prisma.game.update({ where: { id }, data });
+  // Si está publicado, el artículo NIP-23 es la fuente de verdad: re-firmamos con
+  // los datos nuevos (misma coordenada → comentarios intactos) y re-cacheamos.
+  // Best-effort: si no hay clave/relays, la edición igual queda en la DB.
+  if (game.status === "published") {
+    try {
+      game = await syncGameToNostr(game, req);
+    } catch (err) {
+      console.error("[provider edit] no se pudo re-publicar el artículo:", err);
+    }
+  }
   // El proveedor editó su ficha publicada → refrescar caché del catálogo.
   revalidateCatalog();
   return NextResponse.json({ game });

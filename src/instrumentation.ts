@@ -8,6 +8,7 @@ export async function register() {
     await startEscrowTick();
     await startZapSync();
     await startCommentSync();
+    await startGameSync();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
@@ -110,6 +111,38 @@ async function startCommentSync() {
   // Primer sync poco después del arranque, luego periódico.
   setTimeout(tick, 11_000).unref?.();
   setInterval(tick, COMMENT_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de JUEGOS (kind:30023): levanta de relays los artículos NIP-23
+ * de la tienda y reconcilia el caché `Game` (fuente de verdad = Nostr). Mismo
+ * patrón que zap/comment-sync. Ver src/lib/game-sync.ts (syncGames) y
+ * GAME_SYNC_INTERVAL_MS.
+ */
+async function startGameSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { GAME_SYNC_INTERVAL_MS } = await import("./lib/game-sync");
+  if (!GAME_SYNC_INTERVAL_MS || GAME_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncGames } = await import("./lib/game-sync");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncGames();
+    } catch (err) {
+      console.error("[game-sync] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 14_000).unref?.();
+  setInterval(tick, GAME_SYNC_INTERVAL_MS).unref?.();
 }
 
 // Captura errores no manejados de route handlers y server components.

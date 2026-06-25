@@ -142,10 +142,15 @@ export default async function GamePage({
 
   const hue = hueFromSlug(game.slug);
   const media = gameGalleryMedia(game);
-  // Anuncio raíz en Nostr (si existe) al que se cuelgan comentarios y reseñas.
+  // Artículo NIP-23 del juego (si existe) al que se cuelgan comentarios y reseñas.
+  // `coord` (cuando está) es el enlace estable entre ediciones.
   const root =
     game.nostrEventId && game.nostrPubkey
-      ? { id: game.nostrEventId, pubkey: game.nostrPubkey }
+      ? {
+          id: game.nostrEventId,
+          pubkey: game.nostrPubkey,
+          coord: game.nostrCoord,
+        }
       : null;
   // La descripción puede ser HTML enriquecido (ficha estilo Steam) o texto
   // plano. Si es HTML lo saneamos y lo renderizamos tal cual; si es texto
