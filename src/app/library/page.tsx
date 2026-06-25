@@ -20,13 +20,27 @@ type LibraryGame = {
 function Cover({
   game,
   className,
+  defaultAspect = "aspect-[16/9]",
 }: {
   game: LibraryGame;
   className?: string;
+  defaultAspect?: string;
 }) {
+  // El contenedor adopta la orientación de la portada: horizontal → 16:9,
+  // vertical → 2:3 (estilo cápsula). Así no se recorta ni se "agranda".
+  const [orientation, setOrientation] = useState<
+    "landscape" | "portrait" | null
+  >(null);
+  const aspect =
+    orientation === "portrait"
+      ? "aspect-[2/3]"
+      : orientation === "landscape"
+        ? "aspect-[16/9]"
+        : defaultAspect;
+
   return (
     <div
-      className={`cover relative overflow-hidden rounded-ln-lg border border-ln-border ${className ?? ""}`}
+      className={`cover relative overflow-hidden rounded-ln-lg border border-ln-border ${aspect} ${className ?? ""}`}
       style={{ "--h": hueFromSlug(game.slug) } as CSSProperties}
     >
       {game.coverUrl ? (
@@ -35,6 +49,13 @@ function Cover({
           src={normalizeImageUrl(game.coverUrl)}
           alt={game.title}
           referrerPolicy="no-referrer"
+          onLoad={(e) =>
+            setOrientation(
+              e.currentTarget.naturalHeight > e.currentTarget.naturalWidth
+                ? "portrait"
+                : "landscape",
+            )
+          }
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
@@ -78,8 +99,6 @@ export default function LibraryPage() {
     );
   }
 
-  const keepPlaying = games?.slice(0, 3) ?? [];
-
   return (
     <div className="mx-auto max-w-[1240px] px-[22px] py-8">
       <div className="flex items-baseline gap-3">
@@ -105,40 +124,6 @@ export default function LibraryPage() {
         </p>
       ) : (
         <>
-          {keepPlaying.length > 0 ? (
-            <section className="mt-8">
-              <h2 className="mb-3 text-[17px] font-semibold text-ln-text">
-                Seguir jugando
-              </h2>
-              <div className="grid gap-[18px] sm:grid-cols-2 ln:grid-cols-3">
-                {keepPlaying.map((g) => (
-                  <div key={g.id} className="group relative">
-                    <Link href={`/game/${g.slug}`} className="block">
-                      <Cover game={g} className="aspect-[16/9]" />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 rounded-b-ln-lg bg-gradient-to-t from-black/80 to-transparent" />
-                      <p className="absolute bottom-3 left-3 right-3 truncate font-display text-base font-bold text-white">
-                        {g.title}
-                      </p>
-                    </Link>
-                    {g.gameUrl ? (
-                      <div className="absolute bottom-3 right-3">
-                        <PlayButton
-                          gameId={g.id}
-                          gameUrl={g.gameUrl}
-                          title={g.title}
-                          slug={g.slug}
-                          variant="play"
-                          size="sm"
-                          label="▶ Jugar"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
           <section className="mt-10">
             <h2 className="mb-3 text-[17px] font-semibold text-ln-text">
               Todos tus juegos
@@ -147,7 +132,7 @@ export default function LibraryPage() {
               {games.map((g) => (
                 <div key={g.id} className="group">
                   <Link href={`/game/${g.slug}`} className="block">
-                    <Cover game={g} className="aspect-[16/10]" />
+                    <Cover game={g} defaultAspect="aspect-[16/10]" />
                   </Link>
                   <p className="mt-2 truncate text-sm text-ln-text">{g.title}</p>
                   <div className="mt-2 flex gap-2">

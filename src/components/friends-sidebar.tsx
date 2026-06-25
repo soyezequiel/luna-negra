@@ -7,6 +7,7 @@ import { useNotify } from "@/providers/notifications-provider";
 import { useGameContext } from "@/providers/game-context";
 import { useFriendsDrawer } from "@/providers/friends-drawer";
 import { useFriends } from "@/hooks/use-friends";
+import { useOnlyMembers } from "@/hooks/use-friends-filter";
 import { cn } from "@/lib/utils";
 import {
   FriendSearch,
@@ -97,6 +98,9 @@ export function FriendsSidebar() {
     (r: FriendSearchResults | null) => setSearch(r),
     [],
   );
+  // Toggle compartido y persistente: mostrar solo amigos que alguna vez
+  // iniciaron en Luna Negra (sincronizado con la página /friends).
+  const [onlyMembers, setOnlyMembers] = useOnlyMembers();
 
   useEffect(() => {
     return onActiveRoomChange(() => setActiveRoomState(getActiveRoom()));
@@ -303,8 +307,13 @@ export function FriendsSidebar() {
   const inviteByPk = new Map(pendingInvites.map((i) => [i.fromPubkey, i]));
 
   // Con buscador activo mostramos sus coincidencias locales; si no, la lista
-  // completa con las invitaciones pendientes ancladas arriba.
-  const baseList = search ? search.local : friends;
+  // completa con las invitaciones pendientes ancladas arriba. El toggle "Solo
+  // LN" filtra a los amigos que iniciaron alguna vez en Luna Negra (sin buscador).
+  const baseList = search
+    ? search.local
+    : onlyMembers
+      ? friends?.filter((f) => f.isMember) ?? null
+      : friends;
   const sortedFriends = baseList
     ? [...baseList].sort(
         (a, b) =>
@@ -414,6 +423,24 @@ export function FriendsSidebar() {
           {user ? (
             <div className="border-b border-line px-3 py-2">
               <FriendSearch friends={friends} onResults={onResults} compact />
+              {!search && friends && friends.length > 0 ? (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={() => setOnlyMembers(!onlyMembers)}
+                    aria-pressed={onlyMembers}
+                    title="Mostrar solo amigos que iniciaron en Luna Negra"
+                    className={cn(
+                      "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors",
+                      onlyMembers
+                        ? "bg-ln-corona/15 text-ln-corona"
+                        : "border border-line text-muted hover:text-ink",
+                    )}
+                  >
+                    <span className="text-[9px]">{onlyMembers ? "✓" : ""}</span>
+                    Solo en Luna Negra
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -509,6 +536,10 @@ export function FriendsSidebar() {
             ) : friends.length === 0 ? (
               <p className="px-1 text-xs text-muted">
                 No seguís a nadie todavía en Nostr.
+              </p>
+            ) : !search && onlyMembers && sortedFriends!.length === 0 ? (
+              <p className="px-1 text-xs text-muted">
+                Ninguno de tus amigos inició en Luna Negra todavía.
               </p>
             ) : (
               <ul className="space-y-1">

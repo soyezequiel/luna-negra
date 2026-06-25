@@ -15,7 +15,20 @@ if ($LASTEXITCODE -ne 0 -or -not $sha) { $sha = 'nogit' }
 $buildId = "$sha-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
 
 Write-Host '-> Empaquetando codigo...'
-tar.exe czf $pkg -C $root --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=./uploads --exclude=./blob-backup --exclude=./.claude --exclude=./.env --exclude=./.env.docker .
+# OJO con los excludes en tar.exe de Windows (bsdtar / libarchive):
+#  - `--exclude=./NAME` matchea el componente `NAME` en CUALQUIER nivel. Sirve
+#    para carpetas de datos top-level que NO comparten nombre con nada dentro de
+#    `src` (backups, blob-backup): las saca de verdad y sin danio colateral.
+#  - `uploads` SI colisiona: `src/app/uploads/` es la ruta que SIRVE las
+#    imagenes, asi que `--exclude=./uploads` tambien se la comia y en produccion
+#    daban 404. Por eso queda anclado `--exclude=/uploads`. (En este bsdtar esa
+#    forma anclada en la practica no matchea `./uploads`, o sea es casi un no-op,
+#    pero lo importante es que NUNCA borra `src/app/uploads`; en dev no hay una
+#    carpeta `uploads` top-level que haga falta excluir.)
+# Nota: `--exclude=/backups` (anclado) NO excluia nada -> `./backups` (root del
+# contenedor de backups) viajaba en el paquete y la extraccion en la laptop
+# fallaba con "Operacion no permitida". De ahi el cambio a `./backups`.
+tar.exe czf $pkg -C $root --exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./backups --exclude=/uploads --exclude=./blob-backup --exclude=./.claude --exclude=./.env --exclude=./.env.docker .
 
 Write-Host '-> Enviando a la laptop...'
 scp $pkg luna:luna-update.tgz

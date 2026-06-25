@@ -145,7 +145,8 @@ export function useFriendsData(): FriendsValue {
 
       // 2) Contactos: apenas llegan, mostramos la lista (nombre/avatar se
       //    completan después). Conservamos datos enriquecidos del caché por pk.
-      //    Limitamos a 150 para no saturar los relays con filtros gigantes.
+      //    El clamp es solo un techo de seguridad: las consultas a relays se
+      //    trocean por autor, así que no perdemos follows con muchas cuentas.
       const rawContacts = await fetchContacts(user.pubkey);
       if (rawContacts.length === 0) {
         setFriends([]);

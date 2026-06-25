@@ -22,6 +22,34 @@ function pool(): SimplePool {
 
 const now = () => Math.floor(Date.now() / 1000);
 
+// Máximo de autores por filtro REQ: muchos relays acotan el tamaño del array
+// `authors` y descartan en silencio lo que sobra. Por eso una consulta de
+// perfiles/estados con cientos de follows se trocea en lotes y se agregan los
+// resultados (antes se recortaba la lista de amigos a 150 y se perdían follows).
+const AUTHORS_PER_QUERY = 100;
+
+/**
+ * Consulta a los relays por `authors` troceando en lotes para no exceder el
+ * límite de los relays. Corre los lotes en paralelo y devuelve todos los eventos
+ * juntos. Cada llamada incluye `kinds` (y cualquier otro tag del filtro base).
+ */
+async function querySyncByAuthors(
+  authors: string[],
+  filter: Omit<Parameters<SimplePool["querySync"]>[1], "authors">,
+): Promise<Event[]> {
+  if (authors.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < authors.length; i += AUTHORS_PER_QUERY) {
+    chunks.push(authors.slice(i, i + AUTHORS_PER_QUERY));
+  }
+  const batches = await Promise.all(
+    chunks.map((chunk) =>
+      pool().querySync(RELAYS, { ...filter, authors: chunk }, { maxWait: MAX_WAIT }),
+    ),
+  );
+  return batches.flat();
+}
+
 // Tope de espera por consulta a relays: si un relay está caído o lento, no
 // bloquea el resto (nostr-tools resuelve con lo recibido al cumplirse el plazo).
 const MAX_WAIT = 4000;
@@ -194,8 +222,14 @@ export function contactsFromLatest(
  * Nostr appendean los nuevos al final del kind:3, así que se conserva la COLA
  * (un `slice(0, max)` tiraba justo a los últimos seguidos). Deduplica
  * conservando la última aparición y mantiene el orden relativo.
+ *
+ * El tope es solo un techo de seguridad (memoria / tamaño del POST a
+ * /api/users/known): las consultas a relays ya se trocean por autor
+ * (`querySyncByAuthors`), así que NO hace falta recortar para no saturarlos.
+ * Antes el tope era 150 y los usuarios con muchos follows perdían a los que
+ * seguían primero (la cabeza del kind:3 nunca se cargaba).
  */
-export function clampContacts(contacts: string[], max = 150): string[] {
+export function clampContacts(contacts: string[], max = 1000): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (let i = contacts.length - 1; i >= 0 && out.length < max; i--) {
@@ -252,11 +286,7 @@ export async function fetchProfiles(
   pubkeys: string[],
 ): Promise<Record<string, Profile>> {
   if (pubkeys.length === 0) return {};
-  const evs = await pool().querySync(
-    RELAYS,
-    { kinds: [0], authors: pubkeys },
-    { maxWait: MAX_WAIT },
-  );
+  const evs = await querySyncByAuthors(pubkeys, { kinds: [0] });
   const map: Record<string, Profile> = {};
   for (const ev of evs.sort((a, b) => a.created_at - b.created_at)) {
     try {
@@ -420,16 +450,11 @@ export async function fetchStatuses(
   pubkeys: string[],
 ): Promise<Record<string, Status>> {
   if (pubkeys.length === 0) return {};
-  const evs = await pool().querySync(
-    RELAYS,
-    {
-      kinds: [30315],
-      authors: pubkeys,
-      "#d": ["general"],
-      "#l": [LN_STATUS_LABEL],
-    },
-    { maxWait: MAX_WAIT },
-  );
+  const evs = await querySyncByAuthors(pubkeys, {
+    kinds: [30315],
+    "#d": ["general"],
+    "#l": [LN_STATUS_LABEL],
+  });
   return selectFreshStatuses(evs);
 }
 

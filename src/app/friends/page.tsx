@@ -7,6 +7,7 @@ import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { useFriends } from "@/hooks/use-friends";
+import { useOnlyMembers } from "@/hooks/use-friends-filter";
 import {
   FriendSearch,
   globalResultName,
@@ -46,6 +47,9 @@ export default function FriendsPage() {
   const { friends, refresh, refreshing } = useFriends();
   const [statusText, setStatusText] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  // Toggle compartido y persistente: mostrar solo amigos que alguna vez
+  // iniciaron en Luna Negra (sincronizado con el sidebar).
+  const [onlyMembers, setOnlyMembers] = useOnlyMembers();
 
   // Sala que el host tiene abierta (si la hay): permite invitar amigos a ella.
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
@@ -296,8 +300,27 @@ export default function FriendsPage() {
               relays).
             </p>
           ) : (
+          <>
+          <label className="mb-3 flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={onlyMembers}
+              onChange={(e) => setOnlyMembers(e.target.checked)}
+              className="h-4 w-4 rounded border-line accent-blue"
+            />
+            Solo amigos en Luna Negra
+          </label>
+          {(() => {
+            const shown = onlyMembers
+              ? friends.filter((f) => f.isMember)
+              : friends;
+            return shown.length === 0 ? (
+              <p className="text-muted">
+                Ninguno de tus amigos inició en Luna Negra todavía.
+              </p>
+            ) : (
           <ul className="space-y-2">
-            {friends.map((f) => (
+            {shown.map((f) => (
               <li
                 key={f.pubkey}
                 className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3"
@@ -375,6 +398,9 @@ export default function FriendsPage() {
               </li>
             ))}
           </ul>
+            );
+          })()}
+          </>
           )}
         </div>
       )}
