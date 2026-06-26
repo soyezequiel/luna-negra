@@ -44,6 +44,20 @@ export function computeEconomics(p: {
 }
 
 /**
+ * Reserva (msat) para cubrir el routing Lightning de UN payout de `payoutMsat`
+ * cuando se paga por el wallet de fallback (ej. Rizful). Modela el algoritmo de
+ * fee inferido del fallback: piso de 1 sat + `pct`% del monto, SIEMPRE redondeado
+ * hacia arriba al sat entero (el fallback cobra sats enteros). Determinista.
+ *   reserva = max(1 sat, ceil_a_sat(payout × pct%))
+ */
+export function routingReserveMsat(payoutMsat: bigint, pct: number): bigint {
+  if (payoutMsat <= 0n) return 0n;
+  const payoutSats = Number(payoutMsat / 1000n); // montos chicos: seguro en Number
+  const reserveSats = Math.max(1, Math.ceil((payoutSats * pct) / 100));
+  return BigInt(reserveSats) * 1000n;
+}
+
+/**
  * Reparte el neto en partes iguales entre `winnerCount` ganadores.
  * El resto indivisible (`dust`, < winnerCount msat) lo retiene la casa con la
  * comisión (decisión de política; ver docs/api-publica.md).

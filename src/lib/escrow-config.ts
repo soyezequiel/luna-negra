@@ -17,6 +17,14 @@ export const BET_FEE_PCT = Number(process.env.BET_FEE_PCT ?? 5);
 export const BET_FEE_MIN_SATS = Number(process.env.BET_FEE_MIN_SATS ?? 1);
 export const BET_FEE_MIN_MSAT = satsToMsat(BET_FEE_MIN_SATS);
 
+// Sobrecosto de routing Lightning estimado al pagar premios por el wallet de
+// FALLBACK (ej. Rizful: cobra fee de ruteo; el nodo primario propio no). Cuando
+// la liquidación usa el fallback, la comisión efectiva de la casa se sube a
+// max(comisión normal, routing estimado) para no quedar en rojo por el ruteo.
+// Estimación empírica del fallback: ~1 sat fijo (piso) + ~1,1% redondeado al sat
+// entero (Rizful cobra sats enteros). Ver análisis de fees / memoria nwc-failover.
+export const BET_FALLBACK_ROUTING_PCT = Number(process.env.BET_FALLBACK_ROUTING_PCT ?? 1.1);
+
 // Apuestas anónimas (sin cuentas Nostr): un juego puede crear una apuesta para N
 // "asientos" anónimos (ej. un duelo 1v1 en la misma compu, en un stand). Luna
 // Negra genera una identidad efímera por asiento y el ganador cobra por

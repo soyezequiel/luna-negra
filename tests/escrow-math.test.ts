@@ -3,6 +3,7 @@ import {
   computeEconomics,
   splitWinnings,
   publicBetStatus,
+  routingReserveMsat,
 } from "@/lib/escrow-math";
 
 describe("computeEconomics", () => {
@@ -63,6 +64,33 @@ describe("computeEconomics", () => {
     });
     expect(e.feeMsat).toBe(2_000n);
     expect(e.netMsat).toBe(0n);
+  });
+});
+
+describe("routingReserveMsat (reserva de routing del fallback)", () => {
+  const PCT = 1.1;
+
+  it("piso de 1 sat en payouts chicos (el % redondea a 0)", () => {
+    // 7 sats × 1,1% = 0,077 → ceil 1 sat. Coincide con el dato real (7→1).
+    expect(routingReserveMsat(7_000n, PCT)).toBe(1_000n);
+    expect(routingReserveMsat(39_000n, PCT)).toBe(1_000n); // 0,429 → 1
+  });
+
+  it("redondea hacia arriba al sat entero", () => {
+    // 95 sats × 1,1% = 1,045 → ceil 2 sats. Coincide con el dato real (95→2).
+    expect(routingReserveMsat(95_000n, PCT)).toBe(2_000n);
+    // 190 sats × 1,1% = 2,09 → ceil 3 sats (cota conservadora sobre el real de 2).
+    expect(routingReserveMsat(190_000n, PCT)).toBe(3_000n);
+  });
+
+  it("payout 0 o negativo → sin reserva", () => {
+    expect(routingReserveMsat(0n, PCT)).toBe(0n);
+    expect(routingReserveMsat(-1_000n, PCT)).toBe(0n);
+  });
+
+  it("escala ~1,1% en montos grandes", () => {
+    // 10_000 sats × 1,1% = 110 sats.
+    expect(routingReserveMsat(10_000_000n, PCT)).toBe(110_000n);
   });
 });
 

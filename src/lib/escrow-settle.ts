@@ -5,11 +5,17 @@ import type { Bet, BetParticipant, Provider, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordOutflow } from "@/lib/ledger";
 import { computeContractHash } from "@/lib/escrow";
-import { computeEconomics, splitWinnings, publicBetStatus } from "@/lib/escrow-math";
+import {
+  computeEconomics,
+  splitWinnings,
+  publicBetStatus,
+  routingReserveMsat,
+} from "@/lib/escrow-math";
 import { isTerminal } from "@/lib/bet-state";
 import { payParticipant } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
-import { BET_FEE_MIN_MSAT } from "@/lib/escrow-config";
+import { payoutsWillUseFallback } from "@/lib/lightning";
+import { BET_FEE_MIN_MSAT, BET_FALLBACK_ROUTING_PCT } from "@/lib/escrow-config";
 import { emitBetSettled, emitBetRefunded } from "@/lib/webhooks";
 
 export type BetWithRelations = Bet & {
@@ -156,11 +162,30 @@ async function runSettlement(args: {
   }
 
   // Montos (msat). Pozo = stake * participantes (todos pagaron al estar ready).
+  // Piso de comisión: normalmente BET_FEE_MIN_MSAT. Si esta liquidación va a pagar
+  // los premios por el wallet de FALLBACK (primario caído → ej. Rizful, que cobra
+  // routing), subimos el piso al routing estimado para que la casa no quede en rojo
+  // por el ruteo. Se estima sobre el payout por ganador de un primer cálculo base
+  // (con el piso normal), por cada envío de premio (cada payout paga su routing).
+  let feeMinMsat = BET_FEE_MIN_MSAT;
+  if (payoutsWillUseFallback()) {
+    const base = computeEconomics({
+      stakeMsat: bet.stakeMsat,
+      participantCount: bet.participants.length,
+      feePct: bet.feePct,
+      feeMinMsat: BET_FEE_MIN_MSAT,
+    });
+    const { perWinner: basePerWinner } = splitWinnings(base.netMsat, winners.length);
+    const reserveMsat =
+      routingReserveMsat(basePerWinner, BET_FALLBACK_ROUTING_PCT) * BigInt(winners.length);
+    if (reserveMsat > feeMinMsat) feeMinMsat = reserveMsat;
+  }
+
   const { netMsat, feeMsat } = computeEconomics({
     stakeMsat: bet.stakeMsat,
     participantCount: bet.participants.length,
     feePct: bet.feePct,
-    feeMinMsat: BET_FEE_MIN_MSAT,
+    feeMinMsat,
   });
   const { perWinner, dust } = splitWinnings(netMsat, winners.length);
 

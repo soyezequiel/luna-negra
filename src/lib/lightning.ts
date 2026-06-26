@@ -18,6 +18,17 @@ export function lightningConfigured(): boolean {
   return NWC_URLS.length > 0;
 }
 
+/**
+ * ¿El próximo pago saldría por un wallet que NO es el primario? Es decir, el
+ * primario está caído y un fallback va a cobrar el routing (ej. Rizful). Lo usa
+ * la liquidación para reservar el sobrecosto de ruteo solo cuando corresponde.
+ * Con un único wallet configurado no hay distinción de fallback → false.
+ */
+export function payoutsWillUseFallback(): boolean {
+  if (NWC_URLS.length < 2) return false;
+  return attemptOrder()[0] !== 0;
+}
+
 // Clientes NWC reutilizados entre llamadas (uno por wallet): la conexión al relay
 // (WebSocket + handshake NWC) tarda segundos en abrirse, así que crear uno nuevo
 // por cada consulta hacía que la detección del pago se sintiera muy lenta.
