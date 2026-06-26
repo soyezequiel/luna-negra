@@ -1,4 +1,4 @@
-import { NWCClient } from "@getalby/sdk";
+import { NWCClient, Nip47TimeoutError, Nip47NetworkError } from "@getalby/sdk";
 import { LightningAddress } from "@getalby/lightning-tools";
 import * as Sentry from "@sentry/nextjs";
 
@@ -33,38 +33,146 @@ function getClient(i: number): NWCClient {
   return cachedClients[i]!;
 }
 
+// ── Salud de wallets (failover rápido) ───────────────────────────────────────
+// Un wallet NWC cuyo nodo perdió internet NO falla rápido: el relay sigue vivo y
+// acepta el pedido, pero el wallet nunca publica respuesta, así que el SDK espera
+// el `replyTimeout` (~60s) antes de lanzar. Si probáramos siempre el primario
+// primero, pagaríamos ese peaje de ~60s en CADA operación mientras el nodo esté
+// caído (crear invoice del depósito, cada poll de detección de pago, pagar el
+// premio…), que es por qué una apuesta con el primario caído tardaba minutos.
+//
+// Para evitarlo marcamos el wallet como "caído" cuando una operación muere por
+// timeout/red, y lo mandamos al fondo del orden de intentos: las siguientes
+// llamadas prueban primero el wallet sano (el fallback) sin colgarse. En segundo
+// plano lo re-sondeamos con un `get_info` liviano; cuando responde (volvió
+// internet) lo reponemos al frente solo, sin intervención del operador.
+const PROBE_INTERVAL_MS = 60_000; // mínimo entre re-sondeos de un wallet caído
+const PROBE_TIMEOUT_MS = 12_000; // corte del sondeo (get_info ya corta a ~10s)
+// Corte propio para operaciones rápidas (crear invoice, consultar pago). El SDK
+// espera ~60s su `replyTimeout` antes de rendirse cuando el nodo no responde, y
+// como el estado de salud arranca vacío tras cada deploy, el PRIMER pedido al
+// primario caído pagaba esos 60s enteros antes de marcarlo y pasar al fallback.
+// Con este corte ese primer descubrimiento tarda segundos. No lo aplicamos a
+// `pay_invoice`: un pago real puede tardar por ruteo, y para entonces la salud ya
+// sabe que el primario está caído (lo marcó el makeInvoice/lookup previo) y lo
+// saltea por el reordenamiento.
+const FAST_OP_TIMEOUT_MS = 8_000;
+
+/** Timeout propio (más corto que el del SDK) para que el failover no se cuelgue. */
+class WalletTimeoutError extends Error {}
+
+type WalletHealth = { down: boolean; lastProbe: number; probing: boolean };
+const health: WalletHealth[] = NWC_URLS.map(() => ({
+  down: false,
+  lastProbe: 0,
+  probing: false,
+}));
+
+/** ¿El error indica que el wallet no respondió (caído), no que rechazó la operación? */
+function isWalletDownError(err: unknown): boolean {
+  return (
+    err instanceof Nip47TimeoutError ||
+    err instanceof Nip47NetworkError ||
+    err instanceof WalletTimeoutError
+  );
+}
+
+function markDown(i: number): void {
+  if (!health[i].down) {
+    health[i].down = true;
+    Sentry.captureMessage(
+      `NWC wallet #${i} marcado caído: failover al siguiente wallet`,
+      "warning",
+    );
+  }
+}
+
+function markUp(i: number): void {
+  if (health[i].down) {
+    health[i].down = false;
+    Sentry.captureMessage(`NWC wallet #${i} recuperado`, "info");
+  }
+}
+
+/** Índices de wallets en orden de intento: sanos primero (por preferencia), caídos al final. */
+function attemptOrder(): number[] {
+  return NWC_URLS.map((_, i) => i).sort((a, b) => {
+    const da = health[a].down ? 1 : 0;
+    const db = health[b].down ? 1 : 0;
+    return da - db || a - b;
+  });
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new WalletTimeoutError(`timeout tras ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 /**
- * Ejecuta una operación de cobro/pago contra el wallet primario; si falla y hay
- * un fallback configurado, reintenta contra el siguiente. Devuelve el resultado
- * del primer wallet que responda OK. Si todos fallan, propaga el último error.
+ * Re-sondea en segundo plano los wallets marcados caídos (a lo sumo cada
+ * `PROBE_INTERVAL_MS`). NO bloquea la operación en curso: si el `get_info`
+ * responde, el wallet volvió y lo reponemos al frente para la próxima llamada.
+ */
+function probeDownWallets(): void {
+  const now = Date.now();
+  for (let i = 0; i < NWC_URLS.length; i++) {
+    const h = health[i];
+    if (!h.down || h.probing || now - h.lastProbe < PROBE_INTERVAL_MS) continue;
+    h.probing = true;
+    h.lastProbe = now;
+    withTimeout(getClient(i).getInfo(), PROBE_TIMEOUT_MS)
+      .then(() => markUp(i))
+      .catch(() => {}) // sigue caído: queda al fondo del orden
+      .finally(() => {
+        h.probing = false;
+      });
+  }
+}
+
+/**
+ * Ejecuta una operación de cobro/pago probando los wallets en orden de salud
+ * (sano primero, caído al final). Devuelve el resultado del primero que responda
+ * OK. Si todos fallan, propaga el último error. Un wallet que muere por timeout/red
+ * se marca caído para que las próximas llamadas no se cuelguen con él.
  *
  * IMPORTANTE para pagos: quien llame con un invoice/bolt11 ya emitido debe
- * mantenerlo fijo entre reintentos (no pedir uno nuevo por wallet). Así, si el
- * primario ya pagó pero la respuesta se perdió, el fallback intenta el MISMO
+ * mantenerlo fijo entre reintentos (no pedir uno nuevo por wallet). Así, si un
+ * wallet ya pagó pero la respuesta se perdió, el siguiente intenta el MISMO
  * invoice y la red lo rechaza por "ya pagado" en vez de pagar dos veces.
  */
 async function withFailover<T>(
   op: string,
   fn: (client: NWCClient) => Promise<T>,
+  timeoutMs?: number,
 ): Promise<T> {
+  probeDownWallets();
   let lastErr: unknown;
-  for (let i = 0; i < NWC_URLS.length; i++) {
+  const orden = attemptOrder();
+  for (let k = 0; k < orden.length; k++) {
+    const i = orden[k];
     try {
-      const result = await fn(getClient(i));
-      if (i > 0) {
-        // El primario falló y salvó el fallback: avisar para que el operador
-        // revise el wallet primario (puede estar caído o sin saldo).
+      const call = fn(getClient(i));
+      const result = await (timeoutMs ? withTimeout(call, timeoutMs) : call);
+      markUp(i);
+      if (k > 0) {
+        // No salió el wallet preferido: avisar para que el operador lo revise
+        // (puede estar caído o sin saldo).
         Sentry.captureMessage(
-          `NWC ${op}: se usó el wallet fallback #${i} tras fallar el primario`,
+          `NWC ${op}: se usó el wallet #${i} (el preferido falló o está caído)`,
           "warning",
         );
       }
       return result;
     } catch (err) {
       lastErr = err;
-      const hayFallback = i < NWC_URLS.length - 1;
+      if (isWalletDownError(err)) markDown(i);
+      const hayMas = k < orden.length - 1;
       Sentry.captureException(err, {
-        level: hayFallback ? "warning" : "error",
+        level: hayMas ? "warning" : "error",
         tags: { flow: "nwc-failover", op, wallet: i },
       });
     }
@@ -83,18 +191,22 @@ export async function createInvoice(
   amountSats: number,
   description: string,
 ): Promise<CreatedInvoice> {
-  return withFailover("makeInvoice", async (client) => {
-    const tx = await client.makeInvoice({
-      amount: amountSats * 1000,
-      description,
-      expiry: 60 * 15,
-    });
-    return {
-      invoice: tx.invoice,
-      paymentHash: tx.payment_hash,
-      expiresAt: tx.expires_at,
-    };
-  });
+  return withFailover(
+    "makeInvoice",
+    async (client) => {
+      const tx = await client.makeInvoice({
+        amount: amountSats * 1000,
+        description,
+        expiry: 60 * 15,
+      });
+      return {
+        invoice: tx.invoice,
+        paymentHash: tx.payment_hash,
+        expiresAt: tx.expires_at,
+      };
+    },
+    FAST_OP_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -108,17 +220,31 @@ export async function createInvoice(
  * con "no pagado".
  */
 export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
+  probeDownWallets();
   let lastErr: unknown;
   let algunoRespondio = false;
-  for (let i = 0; i < NWC_URLS.length; i++) {
-    try {
-      const tx = await getClient(i).lookupInvoice({ payment_hash: paymentHash });
-      algunoRespondio = true;
-      if (tx.state === "settled") return true;
-    } catch (err) {
-      // Este wallet no conoce el invoice o está caído: probamos el siguiente.
-      lastErr = err;
+  // Dos pasadas: primero los wallets sanos; sólo si NINGUNO conoce el invoice
+  // (p. ej. lo emitió el wallet que ahora está caído) tocamos los caídos, que
+  // pueden colgarse hasta el timeout. Durante una caída del primario los invoices
+  // los emite el fallback (sano), así que el caso normal nunca toca el caído.
+  for (const soloSanos of [true, false]) {
+    for (const i of attemptOrder()) {
+      if (health[i].down === soloSanos) continue; // 1ª pasada: sanos; 2ª: sólo caídos
+      try {
+        const tx = await withTimeout(
+          getClient(i).lookupInvoice({ payment_hash: paymentHash }),
+          FAST_OP_TIMEOUT_MS,
+        );
+        markUp(i);
+        algunoRespondio = true;
+        if (tx.state === "settled") return true;
+      } catch (err) {
+        // Este wallet no conoce el invoice o está caído: probamos el siguiente.
+        lastErr = err;
+        if (isWalletDownError(err)) markDown(i);
+      }
     }
+    if (algunoRespondio) break; // un wallet conocía el invoice; no hace falta tocar los caídos
   }
   if (!algunoRespondio) throw lastErr;
   return false;
