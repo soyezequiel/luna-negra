@@ -328,10 +328,10 @@ export function FriendsSidebar() {
   // la página del juego y el otro acepta abriéndolo.
   async function challengeFriend(recipientPubkey: string, name: string) {
     const coord = currentGame?.nostrCoord;
-    if (!coord || challengingPk) return;
+    if (!coord || challengingPk || !user) return;
     setChallengingPk(recipientPubkey);
     try {
-      await sendChallenge(recipientPubkey, {
+      await sendChallenge(user.pubkey, recipientPubkey, {
         game: coord,
         message: `Te reté a una partida de ${currentGame!.title}`,
         url: `${window.location.origin}/game/${currentGame!.slug}`,

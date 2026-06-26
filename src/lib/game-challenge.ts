@@ -196,15 +196,21 @@ function pool(): SimplePool {
 // al bunker. Se reinicia al recargar (in-memory), y el primer sondeo re-examina.
 const examined = new Set<string>();
 
-/** Envía un reto al `recipient` (pubkey hex) usando el signer activo del cliente. */
+/**
+ * Envía un reto al `recipient` (pubkey hex) usando el signer activo. `senderPubkey`
+ * lo pasa el llamador desde la sesión (no se lo pedimos de nuevo al firmante: en
+ * NIP-46 `get_public_key` sobre una sesión restaurada puede colgarse, y además
+ * ya conocemos la pubkey del usuario logueado).
+ */
 export async function sendChallenge(
+  senderPubkey: string,
   recipient: string,
   input: ChallengeInput,
 ): Promise<void> {
   const signer = getActiveSigner();
   if (!signer) throw new Error("No hay sesión Nostr activa");
   const crypto = signerToCrypto(signer);
-  crypto.pubkey = await signer.getPublicKey();
+  crypto.pubkey = senderPubkey;
   const wrap = await buildChallengeWrap(crypto, recipient, input);
   await Promise.any(pool().publish(RELAYS, wrap)).catch(() => {
     throw new Error("Ningún relay aceptó el reto");
