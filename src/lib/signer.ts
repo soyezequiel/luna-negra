@@ -14,6 +14,7 @@ import {
   generateSecretKey,
   getPublicKey,
   nip04,
+  nip44,
   nip19,
   type Event,
 } from "nostr-tools";
@@ -33,6 +34,12 @@ export interface LunaSigner {
   signEvent(e: UnsignedEvent): Promise<Event>;
   nip04Encrypt(peerPubkey: string, plaintext: string): Promise<string>;
   nip04Decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
+  /**
+   * NIP-44 (cifrado moderno; lo necesita NIP-17 para los retos cifrados).
+   * Opcional: nip07 y local lo soportan; nip46 todavía no lo expone acá.
+   */
+  nip44Encrypt?(peerPubkey: string, plaintext: string): Promise<string>;
+  nip44Decrypt?(peerPubkey: string, ciphertext: string): Promise<string>;
   /** Libera recursos (pool del bunker NIP-46). */
   close?(): Promise<void>;
 }
@@ -155,6 +162,16 @@ export function createNip07Signer(): LunaSigner {
       if (!n.nip04) throw new Error("Tu extensión no soporta NIP-04");
       return n.nip04.decrypt(peer, ciphertext);
     },
+    nip44Encrypt: (peer, plaintext) => {
+      const n = nostr();
+      if (!n.nip44) throw new Error("Tu extensión no soporta NIP-44");
+      return n.nip44.encrypt(peer, plaintext);
+    },
+    nip44Decrypt: (peer, ciphertext) => {
+      const n = nostr();
+      if (!n.nip44) throw new Error("Tu extensión no soporta NIP-44");
+      return n.nip44.decrypt(peer, ciphertext);
+    },
   };
 }
 
@@ -170,6 +187,10 @@ export function createLocalSigner(secretKey: Uint8Array): LunaSigner {
       nip04.encrypt(secretKey, peer, plaintext),
     nip04Decrypt: async (peer, ciphertext) =>
       nip04.decrypt(secretKey, peer, ciphertext),
+    nip44Encrypt: async (peer, plaintext) =>
+      nip44.encrypt(plaintext, nip44.getConversationKey(secretKey, peer)),
+    nip44Decrypt: async (peer, ciphertext) =>
+      nip44.decrypt(ciphertext, nip44.getConversationKey(secretKey, peer)),
   };
 }
 

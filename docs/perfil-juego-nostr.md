@@ -7,9 +7,13 @@
 >
 > **Relación con la 1.0.** La [API REST `/api/v1`](api-publica.md) sigue vigente y
 > es la única opción para lo que **necesita un tercero confiable**: custodia de
-> apuestas/escrow, verificación de compra de juego de pago, y salas hosteadas. La
-> 2.0 corre **en paralelo** y cubre la capa social/identidad/reputación. No es
-> todo-o-nada: se adopta por niveles.
+> apuestas/escrow y verificación de compra de juego de pago. La 2.0 corre **en
+> paralelo** y cubre la capa social/identidad/reputación. No es todo-o-nada: se
+> adopta por niveles.
+>
+> **Salas e invitaciones multijugador** (lo que en el panel 1.0 son §4 y §5) tienen
+> su propio diseño Nostr —invitación NIP-17 desacoplada + sala NIP-29— en
+> [perfil-juego-nostr-salas-invitaciones.md](perfil-juego-nostr-salas-invitaciones.md).
 >
 > **Estado.** Borrador. Los `kind` marcados como *(propuesto)* pueden cambiar
 > hasta que se congele la v1 de la spec.
