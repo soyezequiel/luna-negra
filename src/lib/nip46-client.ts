@@ -336,6 +336,14 @@ export class Nip46Client {
     return this.sendRequest("nip04_decrypt", [peerPubkey, ciphertext]);
   }
 
+  async nip44Encrypt(peerPubkey: string, plaintext: string): Promise<string> {
+    return this.sendRequest("nip44_encrypt", [peerPubkey, plaintext]);
+  }
+
+  async nip44Decrypt(peerPubkey: string, ciphertext: string): Promise<string> {
+    return this.sendRequest("nip44_decrypt", [peerPubkey, ciphertext]);
+  }
+
   async close(): Promise<void> {
     this.isOpen = false;
     for (const id of Object.keys(this.listeners)) {

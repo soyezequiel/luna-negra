@@ -31,10 +31,11 @@ export const NIP46_RELAYS = [
 // El QR expira a los 5 minutos sin respuesta (igual que lacrypta-dev).
 const QR_TIMEOUT_MS = 5 * 60_000;
 
-// Kinds que la app llega a firmar — DEBE reflejar SIGN_KINDS en nostr-social.ts:
-// 1=comentarios/reseñas, 3=contactos NIP-02, 4=DM NIP-04, 27235=login,
-// 30315=presencia NIP-38.
-const NIP46_SIGN_KINDS = [1, 3, 4, 27235, 30315];
+// Kinds que la app llega a firmar — refleja SIGN_KINDS en nostr-social.ts más el
+// kind:13 (seal NIP-17) que firma el reto 1v1 (game-challenge.ts):
+// 1=comentarios/reseñas, 3=contactos NIP-02, 4=DM NIP-04, 13=seal NIP-17,
+// 27235=login, 30315=presencia NIP-38.
+const NIP46_SIGN_KINDS = [1, 3, 4, 13, 27235, 30315];
 
 // Permisos que pre-solicitamos al firmante en el URI nostrconnect://. Clave para
 // firmantes con confianza "media" (Primal): solo pre-autorizan EXACTAMENTE lo
@@ -48,6 +49,8 @@ const NIP46_PERMS = [
   ...NIP46_SIGN_KINDS.map((k) => `sign_event:${k}`),
   "nip04_encrypt",
   "nip04_decrypt",
+  "nip44_encrypt",
+  "nip44_decrypt",
 ];
 
 // ─── Wrappers a LunaSigner ────────────────────────────────────────────────
@@ -60,6 +63,8 @@ function wrapBunker(signer: BunkerSigner): LunaSigner {
     signEvent: (e) => signer.signEvent(e),
     nip04Encrypt: (peer, plaintext) => signer.nip04Encrypt(peer, plaintext),
     nip04Decrypt: (peer, ciphertext) => signer.nip04Decrypt(peer, ciphertext),
+    nip44Encrypt: (peer, plaintext) => signer.nip44Encrypt(peer, plaintext),
+    nip44Decrypt: (peer, ciphertext) => signer.nip44Decrypt(peer, ciphertext),
     close: () => signer.close(),
   };
 }
@@ -90,6 +95,14 @@ function wrapClient(
     nip04Decrypt: async (peer, ciphertext) => {
       await ensureConnected();
       return client.nip04Decrypt(peer, ciphertext);
+    },
+    nip44Encrypt: async (peer, plaintext) => {
+      await ensureConnected();
+      return client.nip44Encrypt(peer, plaintext);
+    },
+    nip44Decrypt: async (peer, ciphertext) => {
+      await ensureConnected();
+      return client.nip44Decrypt(peer, ciphertext);
     },
     close: () => client.close(),
   };

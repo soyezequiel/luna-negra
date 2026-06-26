@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { useGameContext } from "@/providers/game-context";
@@ -41,6 +42,13 @@ import {
   POPUP_BLOCKED_BODY,
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
+import { sendChallenge } from "@/lib/game-challenge";
+import {
+  getPendingChallenges,
+  onPendingChallengesChange,
+  removePendingChallenge,
+  type PendingChallenge,
+} from "@/lib/challenge-inbox";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { FriendsChatPanel } from "@/components/friends-chat-panel";
@@ -69,12 +77,19 @@ export function FriendsSidebar() {
   const { currentGame } = useGameContext();
   const { open: drawerOpen, setOpen: setDrawerOpen } = useFriendsDrawer();
   const { friends, refresh, refreshing } = useFriends();
+  const router = useRouter();
 
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
     getActiveRoom(),
   );
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Retos 1v1 (interfaz 2.0): a quién le mandé reto y quién me retó a mí.
+  const [challengingPk, setChallengingPk] = useState<string | null>(null);
+  const [challenged, setChallenged] = useState<Set<string>>(new Set());
+  const [pendingChallenges, setPendingChallenges] = useState<PendingChallenge[]>(
+    () => getPendingChallenges(),
+  );
   // Amigo cuyo chat está abierto (panel dinámico; null = vista de lista).
   const [chatWith, setChatWith] = useState<{
     pubkey: string;
@@ -110,6 +125,12 @@ export function FriendsSidebar() {
     return onPendingInvitesChange(() => setPendingInvites(getPendingInvites()));
   }, []);
 
+  useEffect(() => {
+    return onPendingChallengesChange(() =>
+      setPendingChallenges(getPendingChallenges()),
+    );
+  }, []);
+
   // Al cambiar de juego, reseteamos a quién marcamos como invitado. Lo hacemos
   // en render (patrón recomendado por React) y no en un effect.
   const [prevSlug, setPrevSlug] = useState<string | null>(
@@ -118,6 +139,7 @@ export function FriendsSidebar() {
   if ((currentGame?.slug ?? null) !== prevSlug) {
     setPrevSlug(currentGame?.slug ?? null);
     setInvited(new Set());
+    setChallenged(new Set());
   }
 
   // Sala del juego que está abierto (si la creamos en esta sesión de invitación).
@@ -301,7 +323,49 @@ export function FriendsSidebar() {
     removePendingInvite(invite.fromPubkey);
   }
 
+  // Reto 1v1 (interfaz 2.0): manda un DM cifrado NIP-17 que apunta al juego
+  // actual. No necesita sala abierta (a diferencia del invite 1.0): se reta desde
+  // la página del juego y el otro acepta abriéndolo.
+  async function challengeFriend(recipientPubkey: string, name: string) {
+    const coord = currentGame?.nostrCoord;
+    if (!coord || challengingPk) return;
+    setChallengingPk(recipientPubkey);
+    try {
+      await sendChallenge(recipientPubkey, {
+        game: coord,
+        message: `Te reté a una partida de ${currentGame!.title}`,
+        url: `${window.location.origin}/game/${currentGame!.slug}`,
+      });
+      setChallenged((prev) => new Set(prev).add(recipientPubkey));
+      notify({ title: `Reto enviado a ${name}`, kind: "play" });
+    } catch (e) {
+      notify({
+        title: "No se pudo retar",
+        body: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setChallengingPk(null);
+    }
+  }
+
+  // Aceptar un reto recibido: abrir la página del juego (ahí el otro toca Jugar).
+  function acceptChallenge(ch: PendingChallenge) {
+    removePendingChallenge(ch.wrapId);
+    setDrawerOpen(false);
+    router.push(`/game/${ch.slug}`);
+  }
+
   const canInvite = Boolean(currentGame);
+  const canChallenge = Boolean(currentGame?.nostrCoord);
+
+  const challengeLabelFor = (pk: string) =>
+    challenged.has(pk)
+      ? "✓ Retado"
+      : challengingPk === pk
+        ? "Enviando…"
+        : "⚔️ Retar a jugar";
+  const challengeDisabledFor = (pk: string) =>
+    challenged.has(pk) || challengingPk === pk;
 
   // Invitaciones recibidas indexadas por emisor, para anclar a ese amigo arriba.
   const inviteByPk = new Map(pendingInvites.map((i) => [i.fromPubkey, i]));
@@ -486,6 +550,53 @@ export function FriendsSidebar() {
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {pendingChallenges.length > 0 ? (
+              <ul className="mb-2 space-y-1">
+                {pendingChallenges.map((ch) => {
+                  const fromFriend = friends?.find(
+                    (f) => f.pubkey === ch.fromPubkey,
+                  );
+                  const name = fromFriend
+                    ? profileName(fromFriend.profile, shortId(fromFriend.npub))
+                    : shortId(npubOf(ch.fromPubkey));
+                  return (
+                    <li
+                      key={ch.wrapId}
+                      className="rounded border border-ln-aurora/40 bg-ln-aurora/10 px-2 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Avatar
+                          src={fromFriend?.profile?.picture}
+                          seed={name}
+                          className="h-8 w-8 shrink-0"
+                        />
+                        <span className="truncate text-sm font-medium text-ink">
+                          {name}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-ln-aurora">
+                        ⚔️ {ch.message || "Te retó a una partida"}
+                      </p>
+                      <div className="mt-1 flex gap-1.5">
+                        <button
+                          onClick={() => acceptChallenge(ch)}
+                          className="btn btn-play flex-1 px-2.5 py-1 text-xs"
+                        >
+                          Aceptar
+                        </button>
+                        <button
+                          onClick={() => removePendingChallenge(ch.wrapId)}
+                          className="shrink-0 rounded-sm px-2 py-1 text-xs text-muted hover:text-ink"
+                          aria-label="Rechazar reto"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
             {orphanInvites.length > 0 ? (
               <ul className="mb-2 space-y-1">
                 {orphanInvites.map((inv) => (
@@ -646,6 +757,15 @@ export function FriendsSidebar() {
                           {inviteLabelFor(f.pubkey)}
                         </button>
                       ) : null}
+                      {canChallenge ? (
+                        <button
+                          onClick={() => challengeFriend(f.pubkey, name)}
+                          disabled={challengeDisabledFor(f.pubkey)}
+                          className="mt-1.5 w-full rounded-sm border border-ln-aurora/40 px-2.5 py-1 text-xs font-medium text-ln-aurora hover:bg-ln-aurora/10 disabled:opacity-50"
+                        >
+                          {challengeLabelFor(f.pubkey)}
+                        </button>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -699,6 +819,15 @@ export function FriendsSidebar() {
                             className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                           >
                             {inviteLabelFor(g.pubkey)}
+                          </button>
+                        ) : null}
+                        {canChallenge ? (
+                          <button
+                            onClick={() => challengeFriend(g.pubkey, name)}
+                            disabled={challengeDisabledFor(g.pubkey)}
+                            className="mt-1.5 w-full rounded-sm border border-ln-aurora/40 px-2.5 py-1 text-xs font-medium text-ln-aurora hover:bg-ln-aurora/10 disabled:opacity-50"
+                          >
+                            {challengeLabelFor(g.pubkey)}
                           </button>
                         ) : null}
                       </li>

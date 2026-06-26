@@ -410,6 +410,7 @@ export default async function GamePage({
                 slug={game.slug}
                 title={game.title}
                 gameUrl={game.gameUrl}
+                nostrCoord={game.nostrCoord}
               />
               <MultiplayerPanel
                 gameId={game.id}

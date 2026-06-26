@@ -105,25 +105,33 @@ export async function buildChallengeWrap(
   );
 }
 
-/** Abre un gift-wrap dirigido a mí y devuelve el reto, o null si no es válido. */
+/**
+ * Abre un gift-wrap dirigido a mí y devuelve el reto, o null si no es un reto.
+ * El **descifrado** puede lanzar de forma transitoria (relay/bunker NIP-46 caído):
+ * en ese caso propaga, para que el llamador reintente. Lo *estructural* (no es un
+ * NIP-17 que entendamos, firma inválida) devuelve null.
+ */
 export async function unwrapChallenge(
   crypto: ChallengeCrypto,
   wrap: Event,
 ): Promise<Challenge | null> {
   if (wrap.kind !== GIFT_WRAP_KIND) return null;
 
+  // Puede lanzar (transitorio) → propaga.
+  const sealJson = await crypto.nip44Decrypt(wrap.pubkey, wrap.content);
   let seal: Event;
   try {
-    seal = JSON.parse(await crypto.nip44Decrypt(wrap.pubkey, wrap.content)) as Event;
+    seal = JSON.parse(sealJson) as Event;
   } catch {
     return null;
   }
   // El seal tiene que estar firmado de verdad por quien dice ser (anti-forja).
   if (seal.kind !== SEAL_KIND || !verifyEvent(seal)) return null;
 
+  const rumorJson = await crypto.nip44Decrypt(seal.pubkey, seal.content);
   let rumor: { pubkey: string; tags: string[][]; content: string };
   try {
-    rumor = JSON.parse(await crypto.nip44Decrypt(seal.pubkey, seal.content));
+    rumor = JSON.parse(rumorJson);
   } catch {
     return null;
   }
@@ -183,6 +191,11 @@ function pool(): SimplePool {
   return _pool;
 }
 
+// Gift-wraps ya descifrados en esta sesión (sean reto o no). Evita re-descifrar
+// los mismos en cada sondeo — crítico con NIP-46, donde cada descifrado es un RPC
+// al bunker. Se reinicia al recargar (in-memory), y el primer sondeo re-examina.
+const examined = new Set<string>();
+
 /** Envía un reto al `recipient` (pubkey hex) usando el signer activo del cliente. */
 export async function sendChallenge(
   recipient: string,
@@ -214,8 +227,15 @@ export async function fetchChallenges(myPubkey: string): Promise<Challenge[]> {
   const out = new Map<string, Challenge>();
   const nowS = now();
   for (const wrap of wraps) {
-    const ch = await unwrapChallenge(crypto, wrap).catch(() => null);
-    if (!ch) continue; // no es un reto (otro tipo de DM NIP-17) o inválido
+    if (examined.has(wrap.id)) continue; // ya descifrado en esta sesión
+    let ch: Challenge | null;
+    try {
+      ch = await unwrapChallenge(crypto, wrap);
+    } catch {
+      continue; // transitorio (relay/bunker): no marcar; reintenta el próximo tick
+    }
+    examined.add(wrap.id); // descifrado OK (sea reto o no): no re-descifrar
+    if (!ch) continue; // no es un reto (otro tipo de DM NIP-17)
     if (ch.expiresAt && ch.expiresAt < nowS) continue; // caducado
     out.set(ch.wrapId, ch);
   }
