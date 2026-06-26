@@ -111,7 +111,13 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
       setPurchaseId(data.purchaseId);
       setInvoice(data.invoice);
       setDevMode(Boolean(data.devMode));
-      setQr(await QRCode.toDataURL(data.invoice, { margin: 1, width: 240 }));
+      setQr(
+        await QRCode.toDataURL(data.invoice, {
+          margin: 2,
+          width: 288,
+          errorCorrectionLevel: "M",
+        }),
+      );
       setPhase("pending");
 
       const startedAt = Date.now();

@@ -269,7 +269,14 @@ export function BetView({ betId }: { betId: string }) {
                     className="mt-2 w-full"
                     onClick={async () => {
                       const u = bet.me?.withdrawUrl;
-                      if (u) setWithdrawQr(await QRCode.toDataURL(u, { margin: 1, width: 220 }));
+                      if (u)
+                        setWithdrawQr(
+                          await QRCode.toDataURL(u, {
+                            margin: 2,
+                            width: 288,
+                            errorCorrectionLevel: "M",
+                          }),
+                        );
                     }}
                   >
                     Cobrar con QR

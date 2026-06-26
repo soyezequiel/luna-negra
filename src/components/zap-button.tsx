@@ -105,7 +105,13 @@ export function ZapButton({ gameId, providerName, className }: Props) {
 
       setAmount(sats);
       setInvoice(inv.invoice);
-      setQr(await QRCode.toDataURL(inv.invoice, { margin: 1, width: 240 }));
+      setQr(
+        await QRCode.toDataURL(inv.invoice, {
+          margin: 2,
+          width: 288,
+          errorCorrectionLevel: "M",
+        }),
+      );
       setPhase("pending");
     } catch (e) {
       setPhase("error");

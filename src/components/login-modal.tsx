@@ -174,8 +174,8 @@ export function LoginModal() {
         try {
           setQrDataUrl(
             await QRCode.toDataURL(uri, {
-              margin: 1,
-              width: 240,
+              margin: 2,
+              width: 288,
               errorCorrectionLevel: "M",
             }),
           );
@@ -474,9 +474,9 @@ export function LoginModal() {
                       <img
                         src={qrDataUrl}
                         alt="Código QR de Nostr Connect"
-                        className="block h-[208px] w-[208px]"
-                        width={208}
-                        height={208}
+                        className="block h-[256px] w-[256px]"
+                        width={256}
+                        height={256}
                       />
                     </div>
                   ) : (

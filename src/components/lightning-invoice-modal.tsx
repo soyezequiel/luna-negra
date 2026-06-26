@@ -61,7 +61,7 @@ export function LightningInvoiceModal({
 
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(bolt11, { margin: 1, width: 200 })
+    QRCode.toDataURL(bolt11, { margin: 2, width: 288, errorCorrectionLevel: "M" })
       .then((url) => {
         if (!cancelled) setQr(url);
       })
