@@ -12,7 +12,7 @@ import {
   routingReserveMsat,
 } from "@/lib/escrow-math";
 import { isTerminal } from "@/lib/bet-state";
-import { payParticipant } from "@/lib/escrow-payout";
+import { payParticipant, payProviderFee } from "@/lib/escrow-payout";
 import { publishSignedEvent } from "@/lib/nostr-server";
 import { payoutsWillUseFallback } from "@/lib/lightning";
 import { BET_FEE_MIN_MSAT, BET_FALLBACK_ROUTING_PCT } from "@/lib/escrow-config";
@@ -120,6 +120,7 @@ async function runSettlement(args: {
       gameId: bet.gameId,
       stakeMsat: bet.stakeMsat,
       feePct: bet.feePct,
+      devFeePct: bet.devFeePct,
       victoryCondition: bet.victoryCondition,
       npubs: bet.participants.map((p) => p.npub),
     });
@@ -173,18 +174,25 @@ async function runSettlement(args: {
       stakeMsat: bet.stakeMsat,
       participantCount: bet.participants.length,
       feePct: bet.feePct,
+      devFeePct: bet.devFeePct,
       feeMinMsat: BET_FEE_MIN_MSAT,
     });
     const { perWinner: basePerWinner } = splitWinnings(base.netMsat, winners.length);
-    const reserveMsat =
+    // Routing de cada premio al ganador + (si el dev cobra) el routing de su payout,
+    // que también va por el fallback: un hop más a cubrir para no quedar en rojo.
+    let reserveMsat =
       routingReserveMsat(basePerWinner, BET_FALLBACK_ROUTING_PCT) * BigInt(winners.length);
+    if (base.devFeeMsat > 0n) {
+      reserveMsat += routingReserveMsat(base.devFeeMsat, BET_FALLBACK_ROUTING_PCT);
+    }
     if (reserveMsat > feeMinMsat) feeMinMsat = reserveMsat;
   }
 
-  const { netMsat, feeMsat } = computeEconomics({
+  const { netMsat, feeMsat, devFeeMsat } = computeEconomics({
     stakeMsat: bet.stakeMsat,
     participantCount: bet.participants.length,
     feePct: bet.feePct,
+    devFeePct: bet.devFeePct,
     feeMinMsat,
   });
   const { perWinner, dust } = splitWinnings(netMsat, winners.length);
@@ -202,6 +210,11 @@ async function runSettlement(args: {
       where: { idempotencyKey: `fee:${betId}` },
       data: { status: "settled" },
     });
+  }
+
+  // Corte del dev (proveedor): sale del pozo y se paga a su dirección de cobro.
+  if (devFeeMsat > 0n) {
+    await payProviderFee({ bet, amountMsat: devFeeMsat });
   }
 
   const resultVal = winners.length > 1 ? "tie" : "won";

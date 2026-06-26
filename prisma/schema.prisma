@@ -73,6 +73,11 @@ model Provider {
   imageUrl         String? // imagen/avatar del proveedor (se muestra en la ficha del juego)
   lightningAddress String? // dirección Lightning para el payout (70%)
   status           String   @default("pending") // pending | approved
+  // % del pozo que se lleva el dev (proveedor) al liquidar apuestas con ganador.
+  // Es el default para todas sus apuestas; un juego puede overridearlo con
+  // `Game.betDevFeePct`. Se ACOTA al tope global `PlatformSettings.betDevFeeMaxPct`
+  // al crear la apuesta. Se SUMA al corte de la casa (`Bet.feePct`).
+  betDevFeePct     Int      @default(0)
   webhookUrl       String? // URL para notificar eventos (purchase/bet/payout)
   webhookSecret    String? // secreto para firmar los webhooks (HMAC) — whsec_…
   // Oráculo gestionado: clave Nostr que Luna Negra custodia para firmar el
@@ -107,6 +112,10 @@ model PlatformSettings {
   // % que retiene Luna Negra al liquidar apuestas con ganador. Cada apuesta
   // guarda una copia en `Bet.feePct` para que el contrato firmado sea inmutable.
   betFeePct   Int      @default(5)
+  // Tope máximo del corte del dev sobre las apuestas. El % que fije el proveedor
+  // (`Provider.betDevFeePct` o `Game.betDevFeePct`) se acota a este valor al crear
+  // la apuesta, para que el dev no deje al ganador con muy poco ni a la casa en rojo.
+  betDevFeeMaxPct Int   @default(20)
   updatedAt   DateTime @default(now()) @updatedAt
 }
 
@@ -231,6 +240,12 @@ model Game {
   gameUrl            String? // subdominio donde el proveedor hostea el juego
   status             String   @default("draft") // draft | in_review | published
   revenueShare       Int      @default(70) // % para el proveedor
+  // Override por juego del corte de Luna Negra en apuestas (admin). null = hereda
+  // el global `PlatformSettings.betFeePct`.
+  betFeePct          Int? // override del corte de la casa en apuestas (admin)
+  // Override por juego del corte del dev en apuestas (proveedor). null = hereda el
+  // default del proveedor `Provider.betDevFeePct`. Se acota al tope global.
+  betDevFeePct       Int? // override del corte del dev en apuestas (proveedor)
   // Artículo NIP-23 (kind:30023) que Luna Negra publica al aprobar/editar el
   // juego: la representación CANÓNICA del juego publicado en Nostr (fuente de
   // verdad). La DB es un caché write-through, reconciliable por game-sync.ts.
@@ -467,7 +482,8 @@ model Bet {
   // refunding | cancelled_incomplete | cancelled_admin | refunded_timeout | voided
   status           String    @default("created")
   stakeMsat        BigInt // monto por jugador (msat)
-  feePct           Int       @default(5) // fijado por Luna Negra
+  feePct           Int       @default(5) // corte de Luna Negra (fijado por la casa)
+  devFeePct        Int       @default(0) // corte del dev (proveedor), resuelto y acotado al crear
   victoryCondition String    @default("")
   roomId           String? // sala multijugador del juego (correlación, opcional)
   metadataJson     String? // metadata libre del proveedor (JSON serializado, opcional)

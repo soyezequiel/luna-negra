@@ -16,6 +16,9 @@ export type GameForm = {
   horizontalCoverUrl: string;
   screenshots: string[];
   videos: string[];
+  // Override del corte del dev en apuestas para este juego. "" = usar el default
+  // del proveedor. Se acota al tope global del admin al guardar.
+  betDevFeePct: string;
 };
 
 export const emptyForm: GameForm = {
@@ -28,6 +31,7 @@ export const emptyForm: GameForm = {
   horizontalCoverUrl: "",
   screenshots: [],
   videos: [],
+  betDevFeePct: "",
 };
 
 export function parseShots(json: string): string[] {
@@ -44,11 +48,14 @@ export function GameFormFields({
   setForm,
   uploadFile,
   uploading,
+  devFeeDefault = 0,
 }: {
   form: GameForm;
   setForm: (updater: (prev: GameForm) => GameForm) => void;
   uploadFile: (file: File) => Promise<string | null>;
   uploading: boolean;
+  /** Corte del dev por defecto del proveedor; se muestra como placeholder/hereda. */
+  devFeeDefault?: number;
 }) {
   return (
     <>
@@ -101,6 +108,27 @@ export function GameFormFields({
             setForm((prev) => ({ ...prev, priceSats: e.target.value }))
           }
         />
+      </div>
+      <div>
+        <label className="block text-sm text-muted">
+          Mi corte de apuestas para este juego (%){" "}
+          <span className="text-ln-faint">(vacío = usar mi default)</span>
+        </label>
+        <input
+          className={`${inputCls} mt-1`}
+          type="number"
+          min={0}
+          max={100}
+          placeholder={`${devFeeDefault} (mi default)`}
+          value={form.betDevFeePct}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, betDevFeePct: e.target.value }))
+          }
+        />
+        <p className="mt-1 text-[11px] text-ln-faint">
+          Porcentaje del pozo que te llevás al liquidar apuestas de este juego. Se
+          acota al tope que fija Luna Negra.
+        </p>
       </div>
       <div>
         <label className="block text-sm text-muted">

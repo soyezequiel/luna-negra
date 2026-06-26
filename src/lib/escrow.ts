@@ -173,6 +173,9 @@ export function computeContractHash(p: {
   gameId: string;
   stakeMsat: bigint;
   feePct: number;
+  /** Corte del dev. Solo entra al canónico si es > 0, para no romper el hash de
+   *  apuestas previas a la feature (devFeePct 0 hashea idéntico a antes). */
+  devFeePct?: number;
   victoryCondition: string;
   npubs: string[];
 }): string {
@@ -181,6 +184,7 @@ export function computeContractHash(p: {
     gameId: p.gameId,
     stakeMsat: p.stakeMsat.toString(),
     feePct: p.feePct,
+    ...(p.devFeePct && p.devFeePct > 0 ? { devFeePct: p.devFeePct } : {}),
     victoryCondition: p.victoryCondition,
     npubs: [...p.npubs].sort(),
   });
@@ -218,13 +222,19 @@ export function buildContractText(p: {
   stakeSats: number;
   victoryCondition: string;
   feePct: number;
+  /** Corte del dev (proveedor) sobre el pozo. 0/omitido = el dev no cobra. */
+  devFeePct?: number;
   /** Comisión mínima absoluta en sats (piso anti-routing). 0/omitido = sin piso. */
   feeMinSats?: number;
   providerName: string;
 }): string {
-  const comision = p.feeMinSats
+  const comisionCasa = p.feeMinSats
     ? `${p.feePct}% (mínimo ${p.feeMinSats} sats)`
     : `${p.feePct}%`;
+  const comision =
+    p.devFeePct && p.devFeePct > 0
+      ? `${comisionCasa} de Luna Negra + ${p.devFeePct}% del desarrollador`
+      : comisionCasa;
   return [
     `🌑 Contrato de apuesta — Luna Negra`,
     ``,

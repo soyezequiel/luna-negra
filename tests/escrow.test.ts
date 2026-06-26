@@ -153,4 +153,17 @@ describe("computeContractHash", () => {
       computeContractHash(base),
     );
   });
+
+  it("devFeePct 0 u omitido hashea igual que antes (retrocompat)", () => {
+    // Sin la feature el hash no incluía devFeePct; un 0 explícito no debe cambiarlo.
+    expect(computeContractHash({ ...base, devFeePct: 0 })).toBe(
+      computeContractHash(base),
+    );
+  });
+
+  it("cambia si el dev cobra (devFeePct > 0)", () => {
+    expect(computeContractHash({ ...base, devFeePct: 3 })).not.toBe(
+      computeContractHash(base),
+    );
+  });
 });

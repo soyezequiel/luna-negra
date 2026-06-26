@@ -13,11 +13,17 @@ function envPercent(raw: string | undefined, fallback: number): number {
 
 export const DEFAULT_STORE_FEE_PCT = envPercent(process.env.STORE_FEE_PCT, 30);
 export const DEFAULT_BET_FEE_PCT = envPercent(String(BET_FEE_PCT), 5);
+export const DEFAULT_BET_DEV_FEE_MAX_PCT = envPercent(
+  process.env.BET_DEV_FEE_MAX_PCT,
+  20,
+);
 
 export type EconomySettings = {
   storeFeePct: number;
   providerRevenueShare: number;
   betFeePct: number;
+  /** Tope máximo del corte del dev sobre las apuestas (lo fija el admin). */
+  betDevFeeMaxPct: number;
   updatedAt: Date | null;
   configured: boolean;
 };
@@ -44,6 +50,7 @@ export function normalizePercent(value: unknown, label: string): number {
 function toSettings(row: {
   storeFeePct: number;
   betFeePct: number;
+  betDevFeeMaxPct: number;
   updatedAt: Date;
 } | null): EconomySettings {
   const storeFeePct = row?.storeFeePct ?? DEFAULT_STORE_FEE_PCT;
@@ -51,9 +58,29 @@ function toSettings(row: {
     storeFeePct,
     providerRevenueShare: providerShareFromStoreFee(storeFeePct),
     betFeePct: row?.betFeePct ?? DEFAULT_BET_FEE_PCT,
+    betDevFeeMaxPct: row?.betDevFeeMaxPct ?? DEFAULT_BET_DEV_FEE_MAX_PCT,
     updatedAt: row?.updatedAt ?? null,
     configured: row !== null,
   };
+}
+
+/**
+ * Resuelve los DOS cortes (casa + dev) que se congelan en una apuesta al crearla,
+ * aplicando los overrides por juego y el tope global del corte del dev:
+ *   feePct    = override del juego (admin) ?? global de la casa
+ *   devFeePct = min(override del juego (dev) ?? default del proveedor, tope global)
+ * El tope es la última palabra: aunque el dev configure más, se acota.
+ */
+export function resolveBetFees(args: {
+  game: { betFeePct: number | null; betDevFeePct: number | null };
+  provider: { betDevFeePct: number };
+  economy: EconomySettings;
+}): { feePct: number; devFeePct: number } {
+  const { game, provider, economy } = args;
+  const feePct = game.betFeePct ?? economy.betFeePct;
+  const devWanted = game.betDevFeePct ?? provider.betDevFeePct;
+  const devFeePct = Math.min(devWanted, economy.betDevFeeMaxPct);
+  return { feePct, devFeePct };
 }
 
 export async function getEconomySettings(): Promise<EconomySettings> {
@@ -66,6 +93,7 @@ export async function getEconomySettings(): Promise<EconomySettings> {
 export async function updateEconomySettings(input: {
   storeFeePct?: unknown;
   betFeePct?: unknown;
+  betDevFeeMaxPct?: unknown;
 }): Promise<EconomySettings> {
   const current = await getEconomySettings();
   const storeFeePct =
@@ -76,11 +104,15 @@ export async function updateEconomySettings(input: {
     input.betFeePct === undefined
       ? current.betFeePct
       : normalizePercent(input.betFeePct, "La comision de apuestas");
+  const betDevFeeMaxPct =
+    input.betDevFeeMaxPct === undefined
+      ? current.betDevFeeMaxPct
+      : normalizePercent(input.betDevFeeMaxPct, "El tope del corte del dev");
 
   const row = await prisma.platformSettings.upsert({
     where: { id: SETTINGS_ID },
-    create: { id: SETTINGS_ID, storeFeePct, betFeePct },
-    update: { storeFeePct, betFeePct },
+    create: { id: SETTINGS_ID, storeFeePct, betFeePct, betDevFeeMaxPct },
+    update: { storeFeePct, betFeePct, betDevFeeMaxPct },
   });
   return toSettings(row);
 }
@@ -90,6 +122,7 @@ export function economySettingsPayload(settings: EconomySettings) {
     storeFeePct: settings.storeFeePct,
     providerRevenueShare: settings.providerRevenueShare,
     betFeePct: settings.betFeePct,
+    betDevFeeMaxPct: settings.betDevFeeMaxPct,
     updatedAt: settings.updatedAt?.toISOString() ?? null,
     configured: settings.configured,
   };

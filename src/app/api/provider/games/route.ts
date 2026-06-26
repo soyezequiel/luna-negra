@@ -29,6 +29,19 @@ export async function POST(req: Request) {
   }
 
   const economy = await getEconomySettings();
+  // Override por juego del corte del dev: vacío/ausente = heredar el default del
+  // proveedor (null). Si viene, se acota al tope global.
+  let betDevFeePct: number | null = null;
+  if (
+    body.betDevFeePct !== undefined &&
+    body.betDevFeePct !== null &&
+    body.betDevFeePct !== ""
+  ) {
+    const n = Math.floor(Number(body.betDevFeePct));
+    if (Number.isFinite(n) && n >= 0) {
+      betDevFeePct = Math.min(n, economy.betDevFeeMaxPct);
+    }
+  }
   const game = await prisma.game.create({
     data: {
       providerId: provider.id,
@@ -69,6 +82,7 @@ export async function POST(req: Request) {
         : "[]",
       status: "draft",
       revenueShare: economy.providerRevenueShare,
+      betDevFeePct,
     },
   });
 

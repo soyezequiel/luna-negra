@@ -30,6 +30,7 @@ export async function PATCH(req: Request) {
     const settings = await updateEconomySettings({
       storeFeePct: body.storeFeePct,
       betFeePct: body.betFeePct,
+      betDevFeeMaxPct: body.betDevFeeMaxPct,
     });
     return NextResponse.json({ settings: economySettingsPayload(settings) });
   } catch (err) {

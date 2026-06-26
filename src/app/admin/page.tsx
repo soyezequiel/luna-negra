@@ -29,13 +29,18 @@ type ReviewGame = Row & {
   description: string;
   categories: string[];
   revenueShare: number;
+  betFeePct: number | null; // override del corte de apuestas de la casa; null = global
   gameUrl: string | null;
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
   screenshots: string; // JSON array de URLs
   createdAt: string;
 };
-type CatalogRow = Row & { owners: number; revenueShare: number };
+type CatalogRow = Row & {
+  owners: number;
+  revenueShare: number;
+  betFeePct: number | null;
+};
 type Payout = {
   id: string;
   gameTitle: string;
@@ -57,6 +62,7 @@ type EconomySettings = {
   storeFeePct: number;
   providerRevenueShare: number;
   betFeePct: number;
+  betDevFeeMaxPct: number;
   updatedAt: string | null;
   configured: boolean;
 };
@@ -206,11 +212,104 @@ function RevenueShareControl({
   );
 }
 
+// Override por juego del corte de Luna Negra en APUESTAS. `value` null = el juego
+// hereda el global (`fallback`). Guardar vacío vuelve a heredar.
+function BetFeeControl({
+  gameId,
+  value,
+  fallback,
+  onSaved,
+}: {
+  gameId: string;
+  value: number | null;
+  fallback: number;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value == null ? "" : String(value));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/games/${gameId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ betFeePct: draft.trim() === "" ? null : draft }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(d.error ?? "No se pudo guardar");
+        return;
+      }
+      setEditing(false);
+      await onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <span>
+          {value == null ? `${fallback}% (global)` : `${value}% (override)`}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(value == null ? "" : String(value));
+            setError(null);
+            setEditing(true);
+          }}
+          className="rounded border border-line px-2 py-0.5 text-[11px] text-muted transition hover:bg-white/5 hover:text-ink"
+        >
+          Editar
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="block">
+      <span className="flex flex-wrap items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          placeholder={`${fallback} (global)`}
+          className="w-24 rounded border border-line bg-bg px-2 py-1 text-xs text-ink outline-none focus:ring-2 focus:ring-blue/30"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <span className="text-xs text-faint">% Luna Negra (vacío = global)</span>
+        <Button type="button" size="sm" onClick={save} disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setEditing(false)}
+          disabled={saving}
+        >
+          Cancelar
+        </Button>
+      </span>
+      {error ? <span className="mt-1 block text-[11px] text-[var(--lose)]">{error}</span> : null}
+    </span>
+  );
+}
+
 function ReviewDetail({
   g,
+  betFeeFallback,
   onSaved,
 }: {
   g: ReviewGame;
+  betFeeFallback: number;
   onSaved: () => void | Promise<void>;
 }) {
   const shots = parseShots(g.screenshots);
@@ -229,6 +328,17 @@ function ReviewDetail({
             <RevenueShareControl
               gameId={g.id}
               revenueShare={g.revenueShare}
+              onSaved={onSaved}
+            />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-faint">Comisión apuestas</dt>
+          <dd className="text-ink">
+            <BetFeeControl
+              gameId={g.id}
+              value={g.betFeePct}
+              fallback={betFeeFallback}
               onSaved={onSaved}
             />
           </dd>
@@ -329,6 +439,7 @@ export default function AdminPage() {
   const [economyDraft, setEconomyDraft] = useState({
     storeFeePct: "",
     betFeePct: "",
+    betDevFeeMaxPct: "",
   });
   const [economyMsg, setEconomyMsg] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -367,6 +478,7 @@ export default function AdminPage() {
       setEconomyDraft({
         storeFeePct: String(e.settings.storeFeePct),
         betFeePct: String(e.settings.betFeePct),
+        betDevFeeMaxPct: String(e.settings.betDevFeeMaxPct),
       });
     }
   }, []);
@@ -407,6 +519,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           storeFeePct: economyDraft.storeFeePct,
           betFeePct: economyDraft.betFeePct,
+          betDevFeeMaxPct: economyDraft.betDevFeeMaxPct,
         }),
       });
       const d = await r.json().catch(() => ({}));
@@ -418,6 +531,7 @@ export default function AdminPage() {
       setEconomyDraft({
         storeFeePct: String(d.settings.storeFeePct),
         betFeePct: String(d.settings.betFeePct),
+        betDevFeeMaxPct: String(d.settings.betDevFeeMaxPct),
       });
       setEconomyMsg("Porcentajes guardados.");
     } finally {
@@ -596,6 +710,32 @@ export default function AdminPage() {
               </span>
             </label>
 
+            <label className="block">
+              <span className="text-xs font-medium text-muted">
+                Tope corte dev
+              </span>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  className="w-24 rounded border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
+                  value={economyDraft.betDevFeeMaxPct}
+                  onChange={(ev) =>
+                    setEconomyDraft((prev) => ({
+                      ...prev,
+                      betDevFeeMaxPct: ev.target.value,
+                    }))
+                  }
+                />
+                <span className="text-sm text-muted">% máx. del pozo</span>
+              </div>
+              <span className="mt-1 block text-[11px] text-faint">
+                Máximo que el dev puede llevarse de una apuesta (se suma al de la casa).
+              </span>
+            </label>
+
             <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
               <Button type="submit" disabled={busy === "economy"}>
                 {busy === "economy" ? "Guardando..." : "Guardar porcentajes"}
@@ -650,7 +790,13 @@ export default function AdminPage() {
                       </Button>
                     </div>
                   </div>
-                  {open ? <ReviewDetail g={g} onSaved={load} /> : null}
+                  {open ? (
+                    <ReviewDetail
+                      g={g}
+                      betFeeFallback={economy?.betFeePct ?? 5}
+                      onSaved={load}
+                    />
+                  ) : null}
                 </li>
               );
             })}

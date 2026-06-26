@@ -9,7 +9,7 @@ import {
   computeContractHash,
 } from "@/lib/escrow";
 import { computeEconomics } from "@/lib/escrow-math";
-import { getEconomySettings } from "@/lib/economy-settings";
+import { getEconomySettings, resolveBetFees } from "@/lib/economy-settings";
 import { publishContract } from "@/lib/nostr-server";
 import { msatToSats } from "@/lib/money";
 import {
@@ -112,7 +112,11 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
   const participantNpubs = participantSeats.map((p) => p.npub);
   const depositDeadline = new Date(Date.now() + DEPOSIT_WINDOW_MS);
   const economy = await getEconomySettings();
-  const feePct = economy.betFeePct;
+  const { feePct, devFeePct } = resolveBetFees({
+    game: { betFeePct: game.betFeePct, betDevFeePct: game.betDevFeePct },
+    provider: { betDevFeePct: game.provider.betDevFeePct },
+    economy,
+  });
   const bet = await prisma.bet.create({
     data: {
       gameId: game.id,
@@ -120,6 +124,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       status: "pending_deposits",
       stakeMsat: v.stakeMsat,
       feePct,
+      devFeePct,
       victoryCondition: v.victoryCondition,
       roomId: v.roomId,
       metadataJson: v.metadataJson,
@@ -138,6 +143,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     gameId: game.id,
     stakeMsat: v.stakeMsat,
     feePct,
+    devFeePct,
     victoryCondition: v.victoryCondition,
     npubs: participantNpubs,
   });
@@ -150,6 +156,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     stakeSats: Number(msatToSats(v.stakeMsat)),
     victoryCondition: v.victoryCondition,
     feePct,
+    devFeePct,
     feeMinSats: BET_FEE_MIN_SATS,
     providerName: game.provider.name,
   });
@@ -169,6 +176,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     stakeMsat: v.stakeMsat,
     participantCount: v.seatCount,
     feePct,
+    devFeePct,
     feeMinMsat: BET_FEE_MIN_MSAT,
   });
 
@@ -185,6 +193,9 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
       feePct,
       feeBps: econ.feeBps,
       feeSats: Number(msatToSats(econ.feeMsat)),
+      devFeePct,
+      devFeeBps: econ.devFeeBps,
+      devFeeSats: Number(msatToSats(econ.devFeeMsat)),
       netPayoutSats: Number(msatToSats(econ.netMsat)),
       roomId: v.roomId,
       metadata: v.metadataJson ? JSON.parse(v.metadataJson) : null,

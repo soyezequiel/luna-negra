@@ -23,6 +23,18 @@ describe("poolBalances", () => {
     const e = [dep(10000n), out("payout", 9500n), out("fee", 500n)];
     expect(poolBalances(e).available).toBe(0n);
   });
+  it("dev_fee cuenta como salida y cierra el pozo con los tres cortes", () => {
+    // Pozo 20_000: casa 1_000 + dev 600 + payout 18_400 = 20_000.
+    const e = [
+      dep(10000n),
+      dep(10000n),
+      out("fee", 1000n),
+      out("dev_fee", 600n),
+      out("payout", 18400n),
+    ];
+    expect(poolBalances(e).available).toBe(0n);
+    expect(canPayout(e, 1n)).toBe(false); // ya no queda nada
+  });
   it("ignora movimientos failed", () => {
     const e = [dep(10000n), out("payout", 9500n, "failed")];
     expect(poolBalances(e).available).toBe(10000n);

@@ -18,8 +18,9 @@ const ACTIVE_BET_STATES = [
   "refunding",
 ];
 
-// Ajusta el reparto de ventas de un juego puntual. La UI lo expresa como
-// "% Luna Negra"; internamente el juego guarda el % del proveedor.
+// Ajusta el reparto de un juego puntual: el de VENTAS (la UI lo expresa como
+// "% Luna Negra"; internamente se guarda el % del proveedor) y/o el override del
+// corte de Luna Negra en APUESTAS (`betFeePct`: número o null para volver al global).
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -31,17 +32,28 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
-  let storeFeePct: number;
+  const data: { revenueShare?: number; betFeePct?: number | null } = {};
   try {
-    storeFeePct = normalizePercent(
-      body.storeFeePct,
-      "La comision de tienda",
-    );
+    if (body.storeFeePct !== undefined) {
+      const storeFeePct = normalizePercent(body.storeFeePct, "La comision de tienda");
+      data.revenueShare = providerShareFromStoreFee(storeFeePct);
+    }
+    // Override del corte de apuestas de la casa: null/"" = volver al global.
+    if (body.betFeePct !== undefined) {
+      data.betFeePct =
+        body.betFeePct === null || body.betFeePct === ""
+          ? null
+          : normalizePercent(body.betFeePct, "La comision de apuestas");
+    }
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Porcentaje invalido" },
       { status: 400 },
     );
+  }
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
   }
 
   const existing = await prisma.game.findUnique({ where: { id } });
@@ -51,7 +63,7 @@ export async function PATCH(
 
   const game = await prisma.game.update({
     where: { id },
-    data: { revenueShare: providerShareFromStoreFee(storeFeePct) },
+    data,
     include: { provider: true },
   });
   revalidateCatalog();

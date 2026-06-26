@@ -1,10 +1,16 @@
 // Lógica PURA del ledger (sin DB) — testeable sin tocar Postgres.
 
-export type LedgerKind = "deposit" | "payout" | "refund" | "fee" | "forfeit";
+export type LedgerKind =
+  | "deposit"
+  | "payout"
+  | "refund"
+  | "fee"
+  | "dev_fee"
+  | "forfeit";
 
 export type EntryLike = { kind: string; amountMsat: bigint; status: string };
 
-const OUTFLOW = new Set<string>(["payout", "refund", "fee", "forfeit"]);
+const OUTFLOW = new Set<string>(["payout", "refund", "fee", "dev_fee", "forfeit"]);
 
 /** Balances del pozo de una apuesta a partir de sus movimientos. */
 export function poolBalances(entries: EntryLike[]): {

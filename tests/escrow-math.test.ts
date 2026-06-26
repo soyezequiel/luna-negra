@@ -65,6 +65,56 @@ describe("computeEconomics", () => {
     expect(e.feeMsat).toBe(2_000n);
     expect(e.netMsat).toBe(0n);
   });
+
+  it("corte del dev: aditivo sobre el de la casa", () => {
+    // 100 sats × 2 = 200_000 msat. Casa 5% = 10_000, dev 3% = 6_000.
+    const e = computeEconomics({
+      stakeMsat: 100_000n,
+      participantCount: 2,
+      feePct: 5,
+      devFeePct: 3,
+    });
+    expect(e.feeMsat).toBe(10_000n);
+    expect(e.devFeeMsat).toBe(6_000n);
+    expect(e.netMsat).toBe(184_000n); // pozo − casa − dev
+    expect(e.feeBps).toBe(500);
+    expect(e.devFeeBps).toBe(300);
+  });
+
+  it("corte del dev 0% (default) → solo cobra la casa", () => {
+    const e = computeEconomics({ stakeMsat: 10_000n, participantCount: 2, feePct: 5 });
+    expect(e.devFeeMsat).toBe(0n);
+    expect(e.devFeeBps).toBe(0);
+    expect(e.netMsat).toBe(19_000n);
+  });
+
+  it("la casa cobra primero: el dev se acota a lo que sobra tras el piso", () => {
+    // Pozo 12_000 msat. Casa: 5% = 600 < piso 1 sat → 1_000. Dev pide 90% = 10_800
+    // pero solo quedan 11_000 → cobra 10_800; neto 200.
+    const e = computeEconomics({
+      stakeMsat: 6_000n,
+      participantCount: 2,
+      feePct: 5,
+      devFeePct: 90,
+      feeMinMsat: 1_000n,
+    });
+    expect(e.feeMsat).toBe(1_000n);
+    expect(e.devFeeMsat).toBe(10_800n);
+    expect(e.netMsat).toBe(200n);
+  });
+
+  it("corte del dev acotado al pozo: el neto nunca queda negativo", () => {
+    // Casa 0%, dev 150% (caso patológico): el dev se topa al pozo, neto 0.
+    const e = computeEconomics({
+      stakeMsat: 10_000n,
+      participantCount: 2,
+      feePct: 0,
+      devFeePct: 150,
+    });
+    expect(e.feeMsat).toBe(0n);
+    expect(e.devFeeMsat).toBe(20_000n);
+    expect(e.netMsat).toBe(0n);
+  });
 });
 
 describe("routingReserveMsat (reserva de routing del fallback)", () => {

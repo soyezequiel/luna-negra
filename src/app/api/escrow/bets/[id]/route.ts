@@ -92,6 +92,7 @@ export async function GET(
     status: bet.status,
     stakeSats: Number(msatToSats(bet.stakeMsat)),
     feePct: bet.feePct,
+    devFeePct: bet.devFeePct,
     victoryCondition: bet.victoryCondition,
     depositDeadline: bet.depositDeadline,
     resolveDeadline: bet.resolveDeadline,

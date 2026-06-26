@@ -7,6 +7,7 @@ import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { revalidateCatalog } from "@/lib/store-catalog";
 import { syncGameToNostr } from "@/lib/announce-game";
+import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
 
 export async function PATCH(
   req: Request,
@@ -51,6 +52,26 @@ export async function PATCH(
         .map((s: string) => (s as string).trim())
         .filter((s: string) => s !== ""),
     );
+  // Override por juego del corte del dev en apuestas: null/"" = usar el default del
+  // proveedor. Se acota al tope global (la misma cota se reaplica al crear apuestas).
+  if (body.betDevFeePct !== undefined) {
+    if (body.betDevFeePct === null || body.betDevFeePct === "") {
+      data.betDevFeePct = null;
+    } else {
+      try {
+        const economy = await getEconomySettings();
+        data.betDevFeePct = Math.min(
+          normalizePercent(body.betDevFeePct, "El corte de apuestas del juego"),
+          economy.betDevFeeMaxPct,
+        );
+      } catch (err) {
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : "Porcentaje invalido" },
+          { status: 400 },
+        );
+      }
+    }
+  }
 
   let game = await prisma.game.update({ where: { id }, data });
   // Si está publicado, el artículo NIP-23 es la fuente de verdad: re-firmamos con

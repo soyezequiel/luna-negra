@@ -1,4 +1,5 @@
-import type { Bet, BetParticipant } from "@prisma/client";
+import { nip19 } from "nostr-tools";
+import type { Bet, BetParticipant, Provider, User } from "@prisma/client";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { fetchProfile } from "@/lib/nostr";
@@ -120,6 +121,78 @@ export async function payParticipant(args: {
       extra: { participantId: participant.id, amountMsat: amountMsat.toString() },
     });
     await markFailed();
+  }
+}
+
+/**
+ * Paga el CORTE DEL DEV (proveedor) de una apuesta liquidada. Sale del pozo como
+ * un asiento `dev_fee` (idempotente vía ledger) y se envía a la dirección de cobro
+ * del proveedor. Espeja a `payParticipant` pero el destinatario es el dueño del
+ * juego, no un jugador:
+ * - destino: `provider.lightningAddress` (la misma que cobra las ventas) y, si
+ *   falta, la cascada lud16 del dueño (`resolveDestination`).
+ * - sin destino → el asiento queda `pending` (deuda registrada con el dev; la casa
+ *   la retiene). NO bloquea el pago al ganador ni lanza.
+ * - en dev sin wallet, se simula el pago.
+ */
+export async function payProviderFee(args: {
+  bet: Bet & { provider: Provider & { owner: User } };
+  amountMsat: bigint;
+}): Promise<void> {
+  const { bet, amountMsat } = args;
+  if (amountMsat <= 0n) return;
+  const owner = bet.provider.owner;
+  const idempotencyKey = `dev_fee:${bet.id}`;
+
+  const rec = await recordOutflow({
+    betId: bet.id,
+    userId: owner.id,
+    kind: "dev_fee",
+    amountMsat,
+    idempotencyKey,
+  });
+  if (!rec.ok) return; // duplicado (ya procesado) o insolvente (no debería)
+
+  // Destino: la dirección de cobro del proveedor, o la cascada lud16 del dueño.
+  const dest =
+    bet.provider.lightningAddress ??
+    (await resolveDestination(nip19.npubEncode(owner.pubkey)));
+
+  const markPaid = async (preimage: string) => {
+    await prisma.ledgerEntry.update({
+      where: { idempotencyKey },
+      data: { status: "settled", paymentHash: preimage },
+    });
+  };
+
+  // Dev sin wallet: simular el pago para poder probar el flujo.
+  if (!lightningConfigured()) {
+    await markPaid("dev-preimage");
+    return;
+  }
+
+  // Sin destino → el asiento queda `pending` (deuda con el dev, la casa la retiene).
+  if (!dest) return;
+
+  try {
+    const preimage = await payToLightningAddress(
+      dest,
+      Number(msatToSats(amountMsat)),
+      `Luna Negra dev_fee ${bet.id}`,
+    );
+    await markPaid(preimage);
+  } catch (err) {
+    // Falló pagar el corte del dev: alertar y dejar el asiento `failed`. No afecta
+    // al ganador (su payout es un asiento aparte ya emitido).
+    Sentry.captureException(err, {
+      level: "error",
+      tags: { flow: "escrow-payout", kind: "dev_fee", betId: bet.id },
+      extra: { amountMsat: amountMsat.toString() },
+    });
+    await prisma.ledgerEntry.update({
+      where: { idempotencyKey },
+      data: { status: "failed" },
+    });
   }
 }
 

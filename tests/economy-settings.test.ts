@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   row: null as {
     storeFeePct: number;
     betFeePct: number;
+    betDevFeeMaxPct: number;
     updatedAt: Date;
   } | null,
   findUnique: vi.fn(),
@@ -27,6 +28,7 @@ beforeEach(() => {
     mocks.row = {
       storeFeePct: update.storeFeePct ?? create.storeFeePct,
       betFeePct: update.betFeePct ?? create.betFeePct,
+      betDevFeeMaxPct: update.betDevFeeMaxPct ?? create.betDevFeeMaxPct,
       updatedAt,
     };
     return mocks.row;
@@ -41,6 +43,7 @@ describe("economy settings", () => {
       storeFeePct: 30,
       providerRevenueShare: 70,
       betFeePct: 5,
+      betDevFeeMaxPct: 20,
       configured: false,
     });
   });
@@ -51,18 +54,20 @@ describe("economy settings", () => {
     const settings = await updateEconomySettings({
       storeFeePct: 25.9,
       betFeePct: "8",
+      betDevFeeMaxPct: "15",
     });
 
     expect(settings).toMatchObject({
       storeFeePct: 25,
       providerRevenueShare: 75,
       betFeePct: 8,
+      betDevFeeMaxPct: 15,
       configured: true,
     });
     expect(mocks.upsert).toHaveBeenCalledWith({
       where: { id: "global" },
-      create: { id: "global", storeFeePct: 25, betFeePct: 8 },
-      update: { storeFeePct: 25, betFeePct: 8 },
+      create: { id: "global", storeFeePct: 25, betFeePct: 8, betDevFeeMaxPct: 15 },
+      update: { storeFeePct: 25, betFeePct: 8, betDevFeeMaxPct: 15 },
     });
   });
 
@@ -80,5 +85,58 @@ describe("economy settings", () => {
     await expect(updateEconomySettings({ betFeePct: "" })).rejects.toThrow(
       "porcentaje valido",
     );
+  });
+});
+
+describe("resolveBetFees (cortes casa + dev de una apuesta)", () => {
+  const economy = {
+    storeFeePct: 30,
+    providerRevenueShare: 70,
+    betFeePct: 5,
+    betDevFeeMaxPct: 20,
+    updatedAt: null,
+    configured: true,
+  };
+
+  it("sin overrides: casa = global, dev = default del proveedor", async () => {
+    const { resolveBetFees } = await import("@/lib/economy-settings");
+    expect(
+      resolveBetFees({
+        game: { betFeePct: null, betDevFeePct: null },
+        provider: { betDevFeePct: 3 },
+        economy,
+      }),
+    ).toEqual({ feePct: 5, devFeePct: 3 });
+  });
+
+  it("override por juego de ambos cortes pisa el global/default", async () => {
+    const { resolveBetFees } = await import("@/lib/economy-settings");
+    expect(
+      resolveBetFees({
+        game: { betFeePct: 8, betDevFeePct: 10 },
+        provider: { betDevFeePct: 3 },
+        economy,
+      }),
+    ).toEqual({ feePct: 8, devFeePct: 10 });
+  });
+
+  it("el corte del dev se acota al tope global", async () => {
+    const { resolveBetFees } = await import("@/lib/economy-settings");
+    // El juego pide 50% pero el tope es 20%.
+    expect(
+      resolveBetFees({
+        game: { betFeePct: null, betDevFeePct: 50 },
+        provider: { betDevFeePct: 3 },
+        economy,
+      }),
+    ).toEqual({ feePct: 5, devFeePct: 20 });
+    // También acota el default del proveedor.
+    expect(
+      resolveBetFees({
+        game: { betFeePct: null, betDevFeePct: null },
+        provider: { betDevFeePct: 99 },
+        economy,
+      }),
+    ).toEqual({ feePct: 5, devFeePct: 20 });
   });
 });

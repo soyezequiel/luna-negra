@@ -28,6 +28,7 @@ type Provider = {
   name: string;
   imageUrl?: string | null;
   lightningAddress: string | null;
+  betDevFeePct?: number;
   webhookUrl?: string | null;
   webhookSecret?: string | null;
 };
@@ -44,6 +45,7 @@ type Game = {
   screenshots: string;
   videos: string;
   status: string;
+  betDevFeePct: number | null;
 };
 type Sale = {
   id: string;
@@ -182,6 +184,7 @@ export default function ProviderPage() {
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [betDevFee, setBetDevFee] = useState("0");
 
   const [newForm, setNewForm] = useState<GameForm>({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -212,6 +215,7 @@ export default function ProviderPage() {
       setName(d.provider.name);
       setImageUrl(d.provider.imageUrl ?? "");
       setLn(d.provider.lightningAddress ?? "");
+      setBetDevFee(String(d.provider.betDevFeePct ?? 0));
       setWebhookUrl(d.provider.webhookUrl ?? "");
       setWebhookSecret(d.provider.webhookSecret ?? null);
     }
@@ -293,12 +297,18 @@ export default function ProviderPage() {
     const r = await fetch("/api/provider", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, lightningAddress: ln, imageUrl }),
+      body: JSON.stringify({
+        name,
+        lightningAddress: ln,
+        imageUrl,
+        betDevFeePct: betDevFee.trim() === "" ? 0 : betDevFee,
+      }),
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "Error");
     setProvider(d.provider);
     setImageUrl(d.provider.imageUrl ?? "");
+    setBetDevFee(String(d.provider.betDevFeePct ?? 0));
     setMsg("Perfil guardado.");
   }
 
@@ -314,6 +324,7 @@ export default function ProviderPage() {
       horizontalCoverUrl: g.horizontalCoverUrl ?? "",
       screenshots: parseShots(g.screenshots),
       videos: parseShots(g.videos),
+      betDevFeePct: g.betDevFeePct == null ? "" : String(g.betDevFeePct),
     });
     setMsg(null);
   }
@@ -512,6 +523,7 @@ export default function ProviderPage() {
                 setForm={setNewForm}
                 uploadFile={uploadFile}
                 uploading={uploading}
+                devFeeDefault={provider.betDevFeePct ?? 0}
               />
               <Button type="submit">Crear borrador</Button>
             </form>
@@ -537,6 +549,7 @@ export default function ProviderPage() {
                     setForm={setEditForm}
                     uploadFile={uploadFile}
                     uploading={uploading}
+                    devFeeDefault={provider.betDevFeePct ?? 0}
                   />
                   <div className="flex gap-3">
                     <Button type="submit">Guardar cambios</Button>
@@ -935,6 +948,23 @@ export default function ProviderPage() {
                 value={ln}
                 onChange={(e) => setLn(e.target.value)}
               />
+            </div>
+            <div>
+              <label className="ln-label">Mi corte de apuestas (%)</label>
+              <input
+                className={`${inputCls} mt-1.5`}
+                type="number"
+                min={0}
+                max={100}
+                placeholder="0"
+                value={betDevFee}
+                onChange={(e) => setBetDevFee(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-ln-faint">
+                Porcentaje del pozo que te llevás al liquidar apuestas de tus
+                juegos (default para todos). Se acota al tope que fija Luna Negra y
+                se suma a la comisión de la tienda. Lo podés overridear por juego.
+              </p>
             </div>
             <Button type="submit">Guardar</Button>
           </form>

@@ -93,6 +93,7 @@ export async function GET(
     stakeMsat: bet.stakeMsat,
     participantCount: bet.participants.length,
     feePct: bet.feePct,
+    devFeePct: bet.devFeePct,
     feeMinMsat: BET_FEE_MIN_MSAT,
   });
   const paidCount = bet.participants.filter((p) => p.depositStatus === "paid").length;
@@ -189,6 +190,9 @@ export async function GET(
       feePct: bet.feePct,
       feeBps: econ.feeBps,
       feeSats: sats(econ.feeMsat),
+      devFeePct: bet.devFeePct,
+      devFeeBps: econ.devFeeBps,
+      devFeeSats: sats(econ.devFeeMsat),
       netPayoutSats: sats(econ.netMsat),
       participants,
       roomId: bet.roomId,

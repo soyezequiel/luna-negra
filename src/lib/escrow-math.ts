@@ -5,41 +5,56 @@
 export type Economics = {
   /** Pozo total = stake por jugador × participantes (msat). */
   potMsat: bigint;
-  /** Comisión de Luna Negra sobre el pozo (msat). */
+  /** Comisión de Luna Negra (la casa) sobre el pozo (msat). */
   feeMsat: bigint;
-  /** Neto que se reparte entre ganadores = pozo − comisión (msat). */
+  /** Corte del dev (proveedor) sobre el pozo (msat). Se SUMA al de la casa. */
+  devFeeMsat: bigint;
+  /** Neto que se reparte entre ganadores = pozo − comisión casa − corte dev (msat). */
   netMsat: bigint;
-  /** Comisión en basis points (feePct × 100), para clientes. */
+  /** Comisión de la casa en basis points efectivos sobre el pozo, para clientes. */
   feeBps: number;
+  /** Corte del dev en basis points efectivos sobre el pozo, para clientes. */
+  devFeeBps: number;
 };
 
 /**
- * Calcula pozo/comisión/neto de una apuesta. Determinista.
+ * Calcula pozo/comisiones/neto de una apuesta. Determinista.
  *
- * `feeMinMsat` (opcional) es un piso ABSOLUTO: la comisión efectiva es
- * `max(pozo×feePct%, feeMinMsat)`, acotada al pozo entero para no dejar el neto
- * negativo. Sirve para que apuestas chicas no queden en rojo por el routing de
- * Lightning (ver BET_FEE_MIN_SATS). Cuando el piso aplica, `feeBps` refleja la
- * tasa EFECTIVA (no `feePct`), para no engañar al cliente.
+ * Hay DOS cortes ADITIVOS sobre el pozo: el de la casa (`feePct`) y el del dev
+ * (`devFeePct`). El neto del ganador es el pozo menos ambos.
+ *
+ * `feeMinMsat` (opcional) es un piso ABSOLUTO para la comisión de la CASA: su
+ * comisión efectiva es `max(pozo×feePct%, feeMinMsat)`, acotada al pozo. Sirve
+ * para que apuestas chicas no queden en rojo por el routing de Lightning (ver
+ * BET_FEE_MIN_SATS). La casa cobra PRIMERO (su piso tiene prioridad); el corte
+ * del dev se acota a lo que sobra, para no dejar el neto negativo. Cuando un piso
+ * aplica, `feeBps`/`devFeeBps` reflejan la tasa EFECTIVA, no la nominal.
  */
 export function computeEconomics(p: {
   stakeMsat: bigint;
   participantCount: number;
   feePct: number;
+  devFeePct?: number;
   feeMinMsat?: bigint;
 }): Economics {
   const potMsat = p.stakeMsat * BigInt(p.participantCount);
+  // 1) Comisión de la casa: max(%, piso), acotada al pozo (neto ≥ 0).
   const pctMsat = (potMsat * BigInt(p.feePct)) / 100n;
   const floor = p.feeMinMsat ?? 0n;
-  // max(%, piso), pero nunca más que el pozo (neto ≥ 0).
-  const raw = pctMsat < floor ? floor : pctMsat;
-  const feeMsat = raw > potMsat ? potMsat : raw;
+  const rawHouse = pctMsat < floor ? floor : pctMsat;
+  const feeMsat = rawHouse > potMsat ? potMsat : rawHouse;
+  // 2) Corte del dev: % del pozo, pero acotado a lo que queda tras la casa.
+  const remaining = potMsat - feeMsat;
+  const devPctMsat = (potMsat * BigInt(p.devFeePct ?? 0)) / 100n;
+  const devFeeMsat = devPctMsat > remaining ? remaining : devPctMsat;
+  const bps = (msat: bigint) => (potMsat > 0n ? Number((msat * 10000n) / potMsat) : 0);
   return {
     potMsat,
     feeMsat,
-    netMsat: potMsat - feeMsat,
-    // bps efectivos sobre el pozo (coincide con feePct×100 si el piso no aplica).
-    feeBps: potMsat > 0n ? Number((feeMsat * 10000n) / potMsat) : 0,
+    devFeeMsat,
+    netMsat: potMsat - feeMsat - devFeeMsat,
+    feeBps: bps(feeMsat),
+    devFeeBps: bps(devFeeMsat),
   };
 }
 

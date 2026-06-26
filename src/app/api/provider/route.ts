@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { generateOracleKey } from "@/lib/oracle-keys";
 import { revalidateCatalog } from "@/lib/store-catalog";
+import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
 
 // El secreto del oráculo nunca sale por la API: solo exponemos su pubkey.
 function publicProvider<T extends { oracleSecretEnc?: unknown }>(p: T) {
@@ -34,9 +35,29 @@ export async function POST(req: Request) {
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-  const { name, lightningAddress, imageUrl } = await req.json().catch(() => ({}));
+  const { name, lightningAddress, imageUrl, betDevFeePct } = await req
+    .json()
+    .catch(() => ({}));
   if (typeof name !== "string" || !name.trim()) {
     return NextResponse.json({ error: "Falta el nombre" }, { status: 400 });
+  }
+
+  // Corte del dev en apuestas: % válido, acotado al tope global del admin (la
+  // misma cota se reaplica al crear cada apuesta). Si no se envía, no se toca.
+  let devFee: number | undefined;
+  if (betDevFeePct !== undefined) {
+    try {
+      const economy = await getEconomySettings();
+      devFee = Math.min(
+        normalizePercent(betDevFeePct, "Tu corte de apuestas"),
+        economy.betDevFeeMaxPct,
+      );
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Porcentaje invalido" },
+        { status: 400 },
+      );
+    }
   }
 
   const existing = await prisma.provider.findFirst({
@@ -50,6 +71,7 @@ export async function POST(req: Request) {
       typeof lightningAddress === "string" && lightningAddress.trim()
         ? lightningAddress.trim()
         : null,
+    ...(devFee !== undefined ? { betDevFeePct: devFee } : {}),
   };
 
   // Provisiona la clave del oráculo gestionado al crear el proveedor. Si no hay

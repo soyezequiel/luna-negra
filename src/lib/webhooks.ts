@@ -207,15 +207,17 @@ export async function emitBetSettled(betId: string): Promise<void> {
   const payouts = won
     .filter((p) => p.payoutMsat != null)
     .map((p) => ({ npub: p.npub, amountSats: sats(p.payoutMsat as bigint) }));
-  const fee = await prisma.ledgerEntry.findFirst({
-    where: { betId: bet.id, kind: "fee" },
-  });
+  const [fee, devFee] = await Promise.all([
+    prisma.ledgerEntry.findFirst({ where: { betId: bet.id, kind: "fee" } }),
+    prisma.ledgerEntry.findFirst({ where: { betId: bet.id, kind: "dev_fee" } }),
+  ]);
   await deliver(bet.providerId, "bet.settled", {
     betId: bet.id,
     gameId: bet.gameId,
     winners: won.map((p) => p.npub),
     payouts,
     feeSats: fee ? sats(fee.amountMsat) : 0,
+    devFeeSats: devFee ? sats(devFee.amountMsat) : 0,
     ...correlation(bet),
   });
 }

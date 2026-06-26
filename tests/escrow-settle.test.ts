@@ -6,9 +6,13 @@ import { computeContractHash } from "@/lib/escrow";
 vi.mock("next/server", () => ({ after: (fn: () => void) => fn() }));
 
 const payCalls: Array<{ npub: string; amountMsat: bigint; kind: string }> = [];
+const devFeeCalls: Array<{ amountMsat: bigint }> = [];
 vi.mock("@/lib/escrow-payout", () => ({
   payParticipant: vi.fn(async (args: { participant: { npub: string }; amountMsat: bigint; kind: string }) => {
     payCalls.push({ npub: args.participant.npub, amountMsat: args.amountMsat, kind: args.kind });
+  }),
+  payProviderFee: vi.fn(async (args: { amountMsat: bigint }) => {
+    devFeeCalls.push({ amountMsat: args.amountMsat });
   }),
 }));
 
@@ -85,6 +89,7 @@ const fakeEvent = { id: "evt1", pubkey: "abc" } as never;
 beforeEach(() => {
   claimCount = 1;
   payCalls.length = 0;
+  devFeeCalls.length = 0;
   published.length = 0;
   settled.length = 0;
   refunded.length = 0;
@@ -105,6 +110,21 @@ describe("settleBetWithResult", () => {
     expect(betUpdates.at(-1)).toMatchObject({ status: "settled", resultEventId: "evt1" });
     expect(settled).toEqual(["bet1"]);
     expect(published).toHaveLength(1);
+    // Sin corte del dev (devFeePct 0) → no se paga al proveedor.
+    expect(devFeeCalls).toHaveLength(0);
+  });
+
+  it("con corte del dev: paga al proveedor y descuenta del neto del ganador", async () => {
+    const { settleBetWithResult } = await import("@/lib/escrow-settle");
+    const r = await settleBetWithResult({
+      bet: makeBet({ devFeePct: 3 }),
+      winnerNpubs: [np1],
+      resultEvent: fakeEvent,
+    });
+    expect(r.ok).toBe(true);
+    // pozo = 20000, casa 5% = 1000, dev 3% = 600, neto = 18400 al ganador.
+    expect(devFeeCalls).toEqual([{ amountMsat: 600n }]);
+    expect(payCalls).toEqual([{ npub: np1, amountMsat: 18_400n, kind: "payout" }]);
   });
 
   it("varios ganadores: divide el neto en partes iguales", async () => {
