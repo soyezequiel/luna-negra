@@ -9,6 +9,7 @@ export async function register() {
     await startZapSync();
     await startCommentSync();
     await startGameSync();
+    await startScoreSync();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
@@ -143,6 +144,38 @@ async function startGameSync() {
   // Primer sync poco después del arranque, luego periódico.
   setTimeout(tick, 14_000).unref?.();
   setInterval(tick, GAME_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de PUNTAJES (kind:31337, interfaz 2.0): levanta de relays los
+ * marcadores firmados por los jugadores y los proyecta a la tabla `Score` (mismo
+ * read-model que la API REST 1.0). Mismo patrón que zap/comment/game-sync. Ver
+ * src/lib/score-sync.ts (syncScores) y SCORE_SYNC_INTERVAL_MS.
+ */
+async function startScoreSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { SCORE_SYNC_INTERVAL_MS } = await import("./lib/score-sync");
+  if (!SCORE_SYNC_INTERVAL_MS || SCORE_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncScores } = await import("./lib/score-sync");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncScores();
+    } catch (err) {
+      console.error("[score-sync] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 17_000).unref?.();
+  setInterval(tick, SCORE_SYNC_INTERVAL_MS).unref?.();
 }
 
 // Captura errores no manejados de route handlers y server components.

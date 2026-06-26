@@ -417,11 +417,17 @@ model Score {
   leaderboard   Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
   npub          String
   score         Int
+  // Procedencia 2.0: si el récord vigente entró por un evento Nostr (kind:31337
+  // firmado por el jugador), guardamos su id y pubkey. null = vino por REST 1.0.
+  // Ver docs/perfil-juego-nostr-implementacion.md y src/lib/score-sync.ts.
+  sourceEventId String?
+  sourcePubkey  String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@unique([leaderboardId, npub])
   @@index([leaderboardId, score])
+  @@index([sourceEventId])
 }
 
 model Review {

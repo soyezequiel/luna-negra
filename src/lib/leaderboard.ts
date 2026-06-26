@@ -31,15 +31,27 @@ export type SubmitScoreResult =
   | { ok: false; code: string; message: string; status: number };
 
 /**
+ * Origen Nostr de un puntaje (camino 2.0): el evento kind:31337 firmado por el
+ * jugador que fijó este récord. Lo pasa `score-sync`; el camino REST 1.0 lo omite.
+ */
+export type ScoreSource = { eventId: string; pubkey: string };
+
+/**
  * Sube un puntaje al marcador `name` del juego. Se queda el mejor: si el nuevo
  * no supera al guardado, no cambia nada (`improved: false`). Crea el marcador la
  * primera vez. Devuelve el récord vigente del jugador y su puesto all-time.
+ *
+ * `source` (opcional) marca la procedencia Nostr 2.0: cuando el récord mejora,
+ * se persiste el id/pubkey del evento que lo fijó. Sin `source` (REST 1.0) los
+ * campos quedan en null. Conviven en la misma fila: gana el mejor, venga de donde
+ * venga (ver docs/perfil-juego-nostr-implementacion.md §4).
  */
 export async function submitScore(
   gameId: string,
   name: string,
   npub: string,
   rawScore: unknown,
+  source?: ScoreSource,
 ): Promise<SubmitScoreResult> {
   if (!isValidLeaderboardName(name)) {
     return { ok: false, code: "INVALID_NAME", message: "Nombre de marcador inválido", status: 400 };
@@ -69,8 +81,18 @@ export async function submitScore(
   if (improved) {
     await prisma.score.upsert({
       where: { leaderboardId_npub: { leaderboardId: board.id, npub } },
-      create: { leaderboardId: board.id, npub, score },
-      update: { score },
+      create: {
+        leaderboardId: board.id,
+        npub,
+        score,
+        sourceEventId: source?.eventId ?? null,
+        sourcePubkey: source?.pubkey ?? null,
+      },
+      update: {
+        score,
+        sourceEventId: source?.eventId ?? null,
+        sourcePubkey: source?.pubkey ?? null,
+      },
     });
   }
 

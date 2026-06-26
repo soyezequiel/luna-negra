@@ -38,6 +38,15 @@ export async function GET(req: Request) {
   if (user && (!user.displayName || !user.avatarUrl)) {
     after(() => cacheProfile(ent.pubkey).then(() => undefined));
   }
+
+  // Coordenada NIP-23 del juego (`30023:<tienda>:<slug>`): el ancla del marcador
+  // 2.0. Con ella el juego firma su propio kind:31337 (Camino A). null si el
+  // juego aún no se publicó (sin artículo → sin coordenada). Ver
+  // docs/perfil-juego-nostr.md.
+  const game = await prisma.game.findUnique({
+    where: { id: ent.gameId },
+    select: { slug: true, nostrCoord: true },
+  });
   trackIntegration("sso", { gameId: ent.gameId });
 
   return apiOk({
@@ -46,5 +55,7 @@ export async function GET(req: Request) {
     displayName: user?.displayName ?? null,
     avatarUrl: user?.avatarUrl ?? null,
     gameId: ent.gameId,
+    slug: game?.slug ?? null,
+    gameCoord: game?.nostrCoord ?? null,
   });
 }

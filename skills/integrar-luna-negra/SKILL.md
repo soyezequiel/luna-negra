@@ -88,11 +88,14 @@ const lnToken = new URLSearchParams(location.search).get("lnToken");
 const r = await fetch("__LUNA_NEGRA_BASE__/api/v1/session", {
   headers: { authorization: "Bearer " + lnToken },
 });
-const { npub, pubkey, displayName, avatarUrl, gameId } = await r.json();
+const { npub, pubkey, displayName, avatarUrl, gameId, slug, gameCoord } = await r.json();
 // Usá `npub` como identidad estable del jugador.
+// `gameCoord` es la coordenada Nostr del juego (para el marcador 2.0, ver §6).
 ```
 
-- **`GET /api/v1/session`** (Bearer entitlement) → `{ npub, pubkey, displayName, avatarUrl, gameId }`.
+- **`GET /api/v1/session`** (Bearer entitlement) →
+  `{ npub, pubkey, displayName, avatarUrl, gameId, slug, gameCoord }`.
+  `gameCoord` es `30023:<tienda>:<slug>` (o `null` si el juego aún no se publicó).
   Errores: `400 MISSING_TOKEN`, `401 INVALID_TOKEN`.
 - Después de canjearlo, **descarta el `lnToken` de la URL** (`history.replaceState`)
   para no dejarlo en logs/historial.
@@ -190,15 +193,61 @@ Desde tu game server (API key) podés invitar amigos a una sala y leer su presen
 
 ## §6. Marcadores (leaderboards)
 
-Rankings por juego. El `name` lo elige tu juego (`semanal`, `clasico`,
-`speedrun`…). Política actual: **se queda el mejor puntaje**.
+Rankings por juego. El `name`/`board` lo elige tu juego (`semanal`, `clasico`,
+`speedrun`…). Política: **se queda el mejor puntaje**. Hay **dos caminos** que
+alimentan el **mismo ranking**; podés usar cualquiera (o ambos).
+
+### Camino REST (1.0) — simple, depende de Luna Negra
 
 - **`POST /api/v1/leaderboards/{name}/scores`** (Bearer entitlement) — `{ score }` (entero 0…1e9) → `{ score, rank, improved }`.
 - **`GET /api/v1/leaderboards/{name}`** (Bearer entitlement) — query `window=all|week`, `view=top|around`, `npub` (para `around`) → `{ entries: [{ npub, displayName, score, rank }] }`.
 
-> ⚠️ **Anti-trampa.** El puntaje lo manda el **cliente** y es **falsificable**.
-> Sirve para **mostrar** rankings, **no** para repartir dinero. El resultado de una
-> apuesta SIEMPRE viene del game server por `/bets/{id}/result`.
+### Camino Nostr (2.0) — *recomendado*: el juego firma su puntaje
+
+El jugador **firma su propio puntaje** como evento Nostr y lo publica a los relays.
+Ventaja: el marcador vive en Nostr, sobrevive aunque Luna Negra caiga y lo puede
+leer cualquier cliente Nostr. Luna Negra lo recoge solo (un sync lo proyecta al
+mismo ranking que el camino REST). El juego **no llama a ninguna API** para esto.
+
+Necesitás dos cosas que ya tenés del login (§1): la **pubkey del jugador** (firma
+con NIP-07/46) y **`gameCoord`** (la coordenada del juego, de `GET /api/v1/session`).
+
+```ts
+// Publicar el mejor puntaje del jugador (firmado por él, NIP-07).
+import { SimplePool } from "nostr-tools";
+
+const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
+const board = "clasico"; // tu nombre de tabla
+
+const evt = await window.nostr.signEvent({
+  kind: 31337,                                  // evento de puntaje (addressable)
+  created_at: Math.floor(Date.now() / 1000),
+  tags: [
+    ["a", gameCoord],                           // ancla: 30023:<tienda>:<slug>
+    ["d", `${gameCoord}:${board}`],             // 1 registro por jugador y tabla
+    ["board", board],
+    ["score", String(puntaje)],                 // entero, como string
+    ["client", "tu-juego"],                     // opcional
+  ],
+  content: "",                                  // opcional: JSON con nivel, etc.
+});
+await Promise.any(new SimplePool().publish(RELAYS, evt));
+```
+
+Leer el ranking (cualquier cliente, sin Luna Negra): filtro Nostr
+`{ kinds:[31337], "#a":[gameCoord], "#board":[board] }`, agrupás por `pubkey` y te
+quedás con el mejor `score`. (También seguís pudiendo leerlo por el `GET` REST de
+arriba: es el mismo ranking.)
+
+> **Reglas del evento.** `a` = `gameCoord`. El `kind` 31337 es **addressable**: el
+> `d` (`<gameCoord>:<board>`) hace que cada jugador tenga **un** récord por tabla,
+> que se auto-reemplaza. Nombre de `board`: `^[a-z0-9][a-z0-9_-]{0,63}$` (no empieza
+> con `_`/`-`). Ver `docs/perfil-juego-nostr.md` para la spec completa.
+
+> ⚠️ **Anti-trampa.** El puntaje lo firma el **cliente del jugador** y es
+> **falsificable** (vale para los dos caminos). Sirve para **mostrar** rankings,
+> **no** para repartir dinero. El resultado de una apuesta SIEMPRE viene del game
+> server por `/bets/{id}/result`.
 
 ---
 
