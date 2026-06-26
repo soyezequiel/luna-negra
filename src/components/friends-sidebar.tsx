@@ -43,6 +43,7 @@ import {
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
 import { sendChallenge } from "@/lib/game-challenge";
+import { getActiveSigner } from "@/lib/signer";
 import {
   getPendingChallenges,
   onPendingChallengesChange,
@@ -330,6 +331,16 @@ export function FriendsSidebar() {
     const coord = currentGame?.nostrCoord;
     if (!coord || challengingPk || !user) return;
     setChallengingPk(recipientPubkey);
+    // Con firmante remoto (NIP-46) hay que aprobar en el celu, y si la app está
+    // en segundo plano no recibe el pedido → recordatorio al tocar.
+    const isRemote = getActiveSigner()?.method === "nip46";
+    if (isRemote) {
+      notify({
+        title: "Abrí tu firmante en el celular",
+        body: "Aprobá el reto en tu app (Amber/Primal). Si está en segundo plano no recibe el pedido.",
+        kind: "info",
+      });
+    }
     try {
       await sendChallenge(user.pubkey, recipientPubkey, {
         game: coord,
@@ -339,9 +350,12 @@ export function FriendsSidebar() {
       setChallenged((prev) => new Set(prev).add(recipientPubkey));
       notify({ title: `Reto enviado a ${name}`, kind: "play" });
     } catch (e) {
+      const base = e instanceof Error ? e.message : "Error desconocido";
       notify({
         title: "No se pudo retar",
-        body: e instanceof Error ? e.message : undefined,
+        body: isRemote
+          ? `${base}. Asegurate de tener tu firmante abierto en el celu y reintentá.`
+          : base,
       });
     } finally {
       setChallengingPk(null);
