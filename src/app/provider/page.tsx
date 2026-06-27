@@ -469,6 +469,9 @@ export default function ProviderPage() {
           </h1>
         </div>
         <div className="flex shrink-0 gap-2 self-start sm:self-end">
+          <Link href="/provider/stats" className="btn btn-ghost">
+            Estadísticas
+          </Link>
           <Link href="/provider/integracion" className="btn btn-ghost">
             Integración
           </Link>

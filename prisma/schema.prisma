@@ -97,6 +97,25 @@ model Provider {
   gameLaunchRequests  GameLaunchRequest[]
   gameLaunchListeners GameLaunchListener[]
   integrationPings    IntegrationPing[]
+  playerCountSamples  PlayerCountSample[]
+}
+
+// Muestra periódica del conteo de jugadores con presencia activa de un proveedor.
+// La presencia (`GamePresence`) es efímera (TTL ~30s, sin histórico), así que para
+// dibujar la curva "jugadores concurrentes en el tiempo" (estilo SteamDB) la
+// muestreamos cada pocos minutos desde el tick in-process (ver
+// src/lib/presence-sampler.ts y src/instrumentation.ts). OJO: `GamePresence` se
+// llavea por (providerId, npub) — no tiene gameId —, así que el conteo es POR
+// PROVEEDOR. Exacto si el proveedor tiene un solo juego; si tiene varios, la curva
+// es compartida. La serie arranca vacía y crece de aquí en adelante.
+model PlayerCountSample {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  count      Int // npub distintos con presencia activa al momento del sample
+  sampledAt  DateTime @default(now())
+
+  @@index([providerId, sampledAt])
 }
 
 // Telemetría de integración: registra que un endpoint del contrato público

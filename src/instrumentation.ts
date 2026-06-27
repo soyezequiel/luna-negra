@@ -10,6 +10,7 @@ export async function register() {
     await startCommentSync();
     await startGameSync();
     await startScoreSync();
+    await startPresenceSampler();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
@@ -176,6 +177,39 @@ async function startScoreSync() {
   // Primer sync poco después del arranque, luego periódico.
   setTimeout(tick, 17_000).unref?.();
   setInterval(tick, SCORE_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Muestreo IN-PROCESS de presencia: cada pocos minutos guarda el conteo de
+ * jugadores activos por proveedor en `PlayerCountSample`, para poder dibujar la
+ * curva "jugadores concurrentes en el tiempo" (estilo SteamDB) en las pantallas
+ * de estadísticas. Mismo patrón que los syncs. Ver src/lib/presence-sampler.ts
+ * (samplePresence) y PRESENCE_SAMPLE_INTERVAL_MS.
+ */
+async function startPresenceSampler() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { PRESENCE_SAMPLE_INTERVAL_MS } = await import("./lib/presence-sampler");
+  if (!PRESENCE_SAMPLE_INTERVAL_MS || PRESENCE_SAMPLE_INTERVAL_MS <= 0) return;
+
+  const { samplePresence } = await import("./lib/presence-sampler");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await samplePresence();
+    } catch (err) {
+      console.error("[presence-sampler] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primera muestra poco después del arranque, luego periódica.
+  setTimeout(tick, 20_000).unref?.();
+  setInterval(tick, PRESENCE_SAMPLE_INTERVAL_MS).unref?.();
 }
 
 // Captura errores no manejados de route handlers y server components.

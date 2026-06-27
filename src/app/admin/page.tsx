@@ -7,6 +7,7 @@ import {
   useTransition,
   type FormEvent,
 } from "react";
+import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { categoryLabel } from "@/lib/categories";
@@ -631,7 +632,12 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight text-white">Admin</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-3xl font-bold tracking-tight text-white">Admin</h1>
+        <Link href="/admin/stats" className="btn btn-ghost shrink-0">
+          Estadísticas
+        </Link>
+      </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="En revisión" value={String(games?.length ?? 0)} sub="juegos" accent="var(--blue)" />
