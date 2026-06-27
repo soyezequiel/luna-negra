@@ -26,7 +26,7 @@ export async function GET() {
       _count: { select: { apiKeys: { where: { revokedAt: null } } } },
       games: {
         orderBy: { createdAt: "desc" },
-        select: { id: true, title: true, slug: true, status: true },
+        select: { id: true, title: true, slug: true, status: true, supportsChallenges: true },
       },
     },
   });

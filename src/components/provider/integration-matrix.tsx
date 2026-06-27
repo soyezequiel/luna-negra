@@ -22,9 +22,18 @@ export type IntegrationView = {
     title: string;
     slug: string;
     status: string;
+    supportsChallenges: boolean;
     features: Record<string, PingInfo | null>;
   }>;
 };
+
+// Qué tiene que implementar el dev para que el reto 1v1 funcione (tooltip).
+const CHALLENGE_HELP =
+  "El reto le llega al otro jugador como DM cifrado (NIP-17) firmado por quien reta, " +
+  "con un tag que apunta a la coordenada Nostr de tu juego. Para que la partida arranque, " +
+  "tu juego debe: (1) detectar que lo abrieron desde un reto y (2) emparejar a los dos " +
+  "jugadores (retador + retado) en una partida 1v1. Si no lo implementás, el botón solo " +
+  "manda la notificación. Ver la guía /dev.";
 export type ProbeResult = {
   feature: IntegrationFeature;
   ok: boolean;
@@ -142,11 +151,14 @@ export function GameIntegrationCard({
   providerLevel,
   webhookConfigured,
   probe,
+  editable,
 }: {
   game: IntegrationView["games"][number];
   providerLevel: Record<string, PingInfo | null>;
   webhookConfigured: boolean;
   probe?: Record<string, ProbeResult>;
+  /** Solo el proveedor dueño puede togglear capacidades; admin lo ve read-only. */
+  editable?: boolean;
 }) {
   // Ping por feature: las de alcance "game" salen del juego; las "provider" del
   // nivel proveedor (aplican a todos sus juegos).
@@ -157,6 +169,25 @@ export function GameIntegrationCard({
     (f) => levelFor(f, pingOf(f), webhookConfigured) !== "none",
   ).length;
 
+  const [challenges, setChallenges] = useState(game.supportsChallenges);
+  const [saving, setSaving] = useState(false);
+  async function toggleChallenges(next: boolean) {
+    setChallenges(next); // optimista
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/provider/games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ supportsChallenges: next }),
+      });
+      if (!r.ok) throw new Error();
+    } catch {
+      setChallenges(!next); // revertir si falló
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -165,6 +196,56 @@ export function GameIntegrationCard({
           {integrated}/{INTEGRATION_FEATURES.length} interfaces
         </span>
       </div>
+
+      {/* Capacidad declarada (no telemetría): retos 1v1 (interfaz 2.0, en construcción). */}
+      <div className="mt-3 rounded-ln-md border border-dashed border-ln-corona/40 bg-ln-bg-deep/50 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex flex-wrap items-center gap-1.5 text-[13px] text-ln-text">
+            ⚔️ Permite retos 1v1
+            <span className="rounded-full bg-ln-corona/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ln-corona">
+              2.0 · en construcción
+            </span>
+            <span
+              className="cursor-help text-ln-faint"
+              title={CHALLENGE_HELP}
+              aria-label={CHALLENGE_HELP}
+            >
+              ⓘ
+            </span>
+          </span>
+          {editable ? (
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              {saving ? (
+                <span className="text-[11px] text-ln-faint">Guardando…</span>
+              ) : null}
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-ln-aurora"
+                checked={challenges}
+                disabled={saving}
+                onChange={(e) => toggleChallenges(e.target.checked)}
+              />
+            </label>
+          ) : (
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                challenges ? "bg-ln-aurora/15 text-ln-aurora" : "bg-white/10 text-ln-muted",
+              )}
+            >
+              {challenges ? "Activado" : "Desactivado"}
+            </span>
+          )}
+        </div>
+        <p className="mt-1.5 text-[11px] text-ln-faint">
+          Parte de la <strong className="text-ln-muted">interfaz 2.0 (Nostr)</strong>, todavía
+          experimental y <strong className="text-ln-muted">no prometida</strong> — pensada para
+          después del hackathon, mientras seguimos desarrollando el proyecto. Hoy lo garantizado
+          es la <strong className="text-ln-muted">1.0 (§1–§8)</strong> de arriba; activar esto no
+          afecta tu integración 1.0.
+        </p>
+      </div>
+
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {INTEGRATION_FEATURES.map((f) => (
           <FeatureTile
@@ -189,10 +270,13 @@ export function IntegrationMatrix({
   view,
   onProbe,
   compact,
+  editable,
 }: {
   view: IntegrationView;
   onProbe?: () => Promise<ProbeResult[]>;
   compact?: boolean;
+  /** Permite togglear capacidades por juego (solo el panel del proveedor dueño). */
+  editable?: boolean;
 }) {
   const [probe, setProbe] = useState<Record<string, ProbeResult> | null>(null);
   const [running, setRunning] = useState(false);
@@ -238,6 +322,7 @@ export function IntegrationMatrix({
             providerLevel={view.providerLevel}
             webhookConfigured={view.provider.webhookConfigured}
             probe={probe ?? undefined}
+            editable={editable}
           />
         ))
       )}

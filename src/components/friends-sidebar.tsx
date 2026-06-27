@@ -370,7 +370,10 @@ export function FriendsSidebar() {
   }
 
   const canInvite = Boolean(currentGame);
-  const canChallenge = Boolean(currentGame?.nostrCoord);
+  // Solo los juegos que el proveedor marcó como compatibles con retos 1v1.
+  const canChallenge = Boolean(
+    currentGame?.nostrCoord && currentGame?.supportsChallenges,
+  );
 
   const challengeLabelFor = (pk: string) =>
     challenged.has(pk)

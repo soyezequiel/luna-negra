@@ -202,7 +202,12 @@ alimentan el **mismo ranking**; podés usar cualquiera (o ambos).
 - **`POST /api/v1/leaderboards/{name}/scores`** (Bearer entitlement) — `{ score }` (entero 0…1e9) → `{ score, rank, improved }`.
 - **`GET /api/v1/leaderboards/{name}`** (Bearer entitlement) — query `window=all|week`, `view=top|around`, `npub` (para `around`) → `{ entries: [{ npub, displayName, score, rank }] }`.
 
-### Camino Nostr (2.0) — *recomendado*: el juego firma su puntaje
+### Camino Nostr (2.0) — *experimental, en construcción*: el juego firma su puntaje
+
+> ⚠️ La interfaz **2.0 (Nostr)** es una mejora **experimental y no prometida**, trabajo
+> **post-hackathon**. Para algo productivo hoy, usá el **Camino REST (1.0)** de arriba.
+> Esto es un adelanto opcional para quien quiera resiliencia/interoperabilidad Nostr.
+
 
 El jugador **firma su propio puntaje** como evento Nostr y lo publica a los relays.
 Ventaja: el marcador vive en Nostr, sobrevive aunque Luna Negra caiga y lo puede

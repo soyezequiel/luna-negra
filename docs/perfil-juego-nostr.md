@@ -1,5 +1,13 @@
 # Perfil de Juego Nostr — Interfaz 2.0 (draft)
 
+> ⚠️ **EN CONSTRUCCIÓN — no usar en producción todavía.** La interfaz **2.0 (Nostr)**
+> es una **mejora experimental y NO prometida**: no formaba parte del alcance del
+> hackathon. Es trabajo **post-hackathon**, porque el proyecto se va a **seguir
+> desarrollando** después. Lo único **garantizado y funcionando hoy** es la
+> [**interfaz 1.0 (REST, §1–§8)**](api-publica.md). Salvo el marcador (kind:31337) y
+> el reto 1v1 (NIP-17), que están implementados como adelanto, **el resto de la 2.0
+> es diseño, no código**. Los `kind` propuestos pueden cambiar.
+
 > **Qué es.** Una forma de hacer un juego compatible con Luna Negra usando
 > **exclusivamente eventos Nostr**, sin depender de la API REST de Luna Negra ni
 > de ningún servidor central. Lo que un juego publica con esta spec lo puede leer

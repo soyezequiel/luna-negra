@@ -16,6 +16,8 @@ export type CurrentGame = {
   gameUrl: string;
   /** Coordenada Nostr `30023:<tienda>:<slug>` para retar (interfaz 2.0). */
   nostrCoord?: string | null;
+  /** El proveedor declaró que el juego soporta retos 1v1. */
+  supportsChallenges?: boolean;
 };
 
 type GameContextValue = {
@@ -51,10 +53,10 @@ export function useGameContext(): GameContextValue {
  */
 export function RegisterGame(props: CurrentGame) {
   const { setCurrentGame } = useGameContext();
-  const { gameId, slug, title, gameUrl, nostrCoord } = props;
+  const { gameId, slug, title, gameUrl, nostrCoord, supportsChallenges } = props;
   useEffect(() => {
-    setCurrentGame({ gameId, slug, title, gameUrl, nostrCoord });
+    setCurrentGame({ gameId, slug, title, gameUrl, nostrCoord, supportsChallenges });
     return () => setCurrentGame(null);
-  }, [setCurrentGame, gameId, slug, title, gameUrl, nostrCoord]);
+  }, [setCurrentGame, gameId, slug, title, gameUrl, nostrCoord, supportsChallenges]);
   return null;
 }

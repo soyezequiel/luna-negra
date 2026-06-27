@@ -1,5 +1,9 @@
 # Convivencia 1.0 ↔ 2.0 dentro de Luna Negra
 
+> ⚠️ **La interfaz 2.0 está EN CONSTRUCCIÓN** — mejora experimental, **no prometida**,
+> trabajo **post-hackathon** (el proyecto se sigue desarrollando). Hoy lo garantizado
+> es la **1.0 (REST, §1–§8)**. Ver [`perfil-juego-nostr.md`](perfil-juego-nostr.md).
+
 > Cómo encaja la [interfaz 2.0 Nostr](perfil-juego-nostr.md) en el código actual
 > **sin romper la 1.0 REST**. La idea central: el 2.0 no es un subsistema nuevo,
 > es **un sync in-process más** con la misma forma que `zap-sync` / `game-sync` /

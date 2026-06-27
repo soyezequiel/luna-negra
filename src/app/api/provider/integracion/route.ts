@@ -23,7 +23,7 @@ export async function GET() {
   const games = await prisma.game.findMany({
     where: { providerId: provider.id },
     orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, slug: true, status: true },
+    select: { id: true, title: true, slug: true, status: true, supportsChallenges: true },
   });
   const [byGame, apiKeys] = await Promise.all([
     readIntegrationEvidence(

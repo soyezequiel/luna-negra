@@ -99,7 +99,7 @@ export default function ProviderIntegrationPage() {
             para empezar.
           </p>
         ) : (
-          <IntegrationMatrix view={view} onProbe={onProbe} />
+          <IntegrationMatrix view={view} onProbe={onProbe} editable />
         )}
       </div>
 

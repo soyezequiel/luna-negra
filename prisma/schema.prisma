@@ -239,6 +239,9 @@ model Game {
   videos             String   @default("[]") // JSON array de URLs de video (trailers), estilo screenshots
   gameUrl            String? // subdominio donde el proveedor hostea el juego
   status             String   @default("draft") // draft | in_review | published
+  // Capacidad declarada por el proveedor: este juego soporta retos 1v1 (interfaz
+  // 2.0, NIP-17). Solo si es true Luna Negra muestra el botón "Retar" en el juego.
+  supportsChallenges Boolean  @default(false)
   revenueShare       Int      @default(70) // % para el proveedor
   // Override por juego del corte de Luna Negra en apuestas (admin). null = hereda
   // el global `PlatformSettings.betFeePct`.

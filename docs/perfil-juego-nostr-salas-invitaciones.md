@@ -1,5 +1,10 @@
 # Salas e invitaciones en Nostr — Interfaz 2.0 (draft)
 
+> ⚠️ **EN CONSTRUCCIÓN — mayormente diseño, no código.** La interfaz 2.0 es una mejora
+> experimental, **no prometida**, **post-hackathon**. Hoy lo garantizado es la **1.0
+> (REST, §1–§8)**. De este documento solo el **reto 1v1 (M0)** está implementado; salas
+> NIP-29 y el resto son diseño. Ver [`perfil-juego-nostr.md`](perfil-juego-nostr.md).
+
 > Extiende la [spec 2.0](perfil-juego-nostr.md) con las dos piezas multijugador:
 > **§4 Salas y estado** y **§5 Invitaciones**, ambas basadas en eventos Nostr. El
 > principio rector es **desacoplar**: la *invitación* es una notificación social

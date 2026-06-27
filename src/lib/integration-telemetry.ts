@@ -454,7 +454,13 @@ export async function scoreGamesByIntegration(
   return score;
 }
 
-export type GameRef = { id: string; title: string; slug: string; status: string };
+export type GameRef = {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+  supportsChallenges: boolean;
+};
 
 export type IntegrationView = {
   provider: {
