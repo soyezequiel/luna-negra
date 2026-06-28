@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const stats = await buildGameStats(gameId, parseRange(searchParams.get("range")));
+  const stats = await buildGameStats(gameId, parseRange(searchParams.get("range")), {
+    viewerNpub: session.npub,
+  });
   return NextResponse.json({ games, stats });
 }

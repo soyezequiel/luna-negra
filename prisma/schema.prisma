@@ -113,6 +113,10 @@ model PlayerCountSample {
   providerId String
   provider   Provider @relation(fields: [providerId], references: [id])
   count      Int // npub distintos con presencia activa al momento del sample
+  // npubs presentes en esa muestra: permite mostrar QUIÉN jugaba al pasar el mouse
+  // por el punto, y distinguir las sesiones del dueño (para no inflar la curva con
+  // las pruebas del propio proveedor). Capado a un máximo razonable por muestra.
+  npubs      String[] @default([])
   sampledAt  DateTime @default(now())
 
   @@index([providerId, sampledAt])

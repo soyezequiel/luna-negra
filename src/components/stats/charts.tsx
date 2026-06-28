@@ -17,12 +17,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { PlayerSample } from "@/lib/game-stats";
 
 export interface Series {
   key: string;
   label: string;
   color: string;
   format?: (n: number) => string;
+}
+
+/** npub corto y legible para jugadores sin displayName. */
+function shortNpub(npub: string): string {
+  return npub.length > 16 ? `${npub.slice(0, 10)}…${npub.slice(-4)}` : npub;
 }
 
 const AXIS = "var(--ln-faint)";
@@ -180,6 +186,137 @@ export function BarTrend({ data, xKey, xFormat, series, height = 220 }: TrendPro
           />
         ))}
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ── Curva de jugadores con "quién jugaba" en el tooltip ──
+
+type PlayerRow = PlayerSample & { value: number };
+
+function PlayersTooltip({
+  active,
+  payload,
+  labelFormat,
+  excludeOwner,
+  color,
+}: {
+  active?: boolean;
+  payload?: { payload?: PlayerRow }[];
+  labelFormat: (s: string) => string;
+  excludeOwner: boolean;
+  color: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  const MAX = 12;
+  const shown = row.players.slice(0, MAX);
+  const rest = row.players.length - shown.length;
+  return (
+    <div className="max-w-[260px] rounded-ln-md border border-ln-border bg-ln-bg-deep/95 px-3 py-2 text-xs shadow-ln-card backdrop-blur">
+      <p className="mb-1 font-medium text-ln-text">{labelFormat(row.t)}</p>
+      <p className="flex items-center gap-1.5 text-ln-muted">
+        <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
+        {excludeOwner ? "Jugadores (sin el dueño)" : "Jugadores"}:{" "}
+        <span className="font-mono text-ln-text">{row.value}</span>
+        {row.ownerCount > 0 ? (
+          <span className="text-ln-faint">· {row.ownerCount} del dueño</span>
+        ) : null}
+      </p>
+      {row.players.length > 0 ? (
+        <ul className="mt-1.5 space-y-0.5 border-t border-ln-border/60 pt-1.5">
+          {shown.map((p) => (
+            <li key={p.npub} className="flex items-center gap-1.5 text-ln-muted">
+              <span className="truncate">{p.name ?? shortNpub(p.npub)}</span>
+              {p.you ? (
+                <span className="shrink-0 rounded-full bg-ln-luna/20 px-1.5 text-[10px] font-semibold text-ln-luna">
+                  vos
+                </span>
+              ) : p.owner ? (
+                <span className="shrink-0 rounded-full bg-ln-corona/20 px-1.5 text-[10px] font-semibold text-ln-corona">
+                  dueño
+                </span>
+              ) : null}
+            </li>
+          ))}
+          {rest > 0 ? <li className="text-ln-faint">+{rest} más</li> : null}
+        </ul>
+      ) : (
+        <p className="mt-1 text-ln-faint">Sin nombres registrados.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Curva de jugadores concurrentes. El tooltip lista QUIÉN jugaba en ese punto
+ * (marcando "vos" y "dueño"). Con `excludeOwner`, la curva resta las sesiones del
+ * dueño del juego para no inflar las estadísticas con sus propias pruebas.
+ */
+export function PlayersAreaChart({
+  data,
+  xFormat,
+  excludeOwner,
+  height = 260,
+}: {
+  data: PlayerSample[];
+  xFormat: (s: string) => string;
+  excludeOwner: boolean;
+  height?: number;
+}) {
+  const color = "var(--ln-aurora)";
+  const rows: PlayerRow[] = data.map((s) => ({
+    ...s,
+    value: excludeOwner ? Math.max(0, s.count - s.ownerCount) : s.count,
+  }));
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={rows} margin={{ top: 6, right: 10, bottom: 0, left: -6 }}>
+        <defs>
+          <linearGradient id="grad-players" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.45} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
+        <XAxis
+          dataKey="t"
+          tickFormatter={xFormat}
+          tick={{ fill: AXIS, fontSize: 11 }}
+          tickLine={false}
+          axisLine={{ stroke: GRID }}
+          minTickGap={24}
+        />
+        <YAxis
+          tick={{ fill: AXIS, fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          width={48}
+          allowDecimals={false}
+        />
+        <Tooltip
+          cursor={{ stroke: GRID }}
+          content={(p) => (
+            <PlayersTooltip
+              {...(p as unknown as { active?: boolean; payload?: { payload?: PlayerRow }[] })}
+              labelFormat={xFormat}
+              excludeOwner={excludeOwner}
+              color={color}
+            />
+          )}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          strokeWidth={2}
+          fill="url(#grad-players)"
+          dot={false}
+          activeDot={{ r: 3, fill: color }}
+          isAnimationActive={false}
+        />
+      </AreaChart>
     </ResponsiveContainer>
   );
 }

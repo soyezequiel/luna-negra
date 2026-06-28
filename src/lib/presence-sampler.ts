@@ -29,29 +29,41 @@ const RETENTION_DAYS = (() => {
   return Number.isFinite(n) && n > 0 ? n : 90;
 })();
 
+// Tope de npubs guardados por muestra: evita que una muestra con mucha gente
+// haga crecer la fila sin límite. El `count` es siempre el real; la lista de
+// npubs se trunca (sirve para "quién jugaba", no como fuente de conteo).
+const MAX_NPUBS_PER_SAMPLE = 200;
+
 /**
- * Toma una muestra: cuenta jugadores con presencia activa (no vencida) agrupados
- * por proveedor e inserta una fila por proveedor con al menos un jugador. Los
- * proveedores sin jugadores no generan fila (hueco = 0 al graficar). Después purga
- * muestras más viejas que la retención.
+ * Toma una muestra: junta los npubs con presencia activa (no vencida) por
+ * proveedor e inserta una fila por proveedor con al menos un jugador, guardando
+ * el conteo real + la lista de npubs (para mostrar QUIÉN jugaba). Los proveedores
+ * sin jugadores no generan fila (hueco = 0 al graficar). Después purga muestras
+ * más viejas que la retención.
  */
 export async function samplePresence(): Promise<void> {
   const now = new Date();
 
   // Un jugador = un npub distinto con presencia vigente. `GamePresence` ya tiene
-  // unique (providerId, npub), así que contar filas activas equivale a contar
-  // jugadores distintos por proveedor.
-  const groups = await prisma.gamePresence.groupBy({
-    by: ["providerId"],
+  // unique (providerId, npub), así que cada fila activa es un jugador distinto.
+  const rows = await prisma.gamePresence.findMany({
     where: { expiresAt: { gt: now } },
-    _count: { _all: true },
+    select: { providerId: true, npub: true },
   });
 
-  if (groups.length > 0) {
+  const byProvider = new Map<string, string[]>();
+  for (const r of rows) {
+    const list = byProvider.get(r.providerId);
+    if (list) list.push(r.npub);
+    else byProvider.set(r.providerId, [r.npub]);
+  }
+
+  if (byProvider.size > 0) {
     await prisma.playerCountSample.createMany({
-      data: groups.map((g) => ({
-        providerId: g.providerId,
-        count: g._count._all,
+      data: [...byProvider.entries()].map(([providerId, npubs]) => ({
+        providerId,
+        count: npubs.length,
+        npubs: npubs.slice(0, MAX_NPUBS_PER_SAMPLE),
         sampledAt: now,
       })),
     });

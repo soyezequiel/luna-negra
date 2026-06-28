@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
 
   const stats = await buildGameStats(gameId, parseRange(searchParams.get("range")), {
     includeHouse: true,
+    viewerNpub: session.npub,
   });
   if (!stats) {
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });

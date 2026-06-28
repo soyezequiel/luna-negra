@@ -6,10 +6,11 @@
  * usan tanto la pantalla de proveedor como la de admin.
  */
 
+import { useState } from "react";
 import { satsLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { GameStats, StatsRange, Granularity } from "@/lib/game-stats";
-import { AreaTrend, BarTrend } from "./charts";
+import { AreaTrend, BarTrend, PlayersAreaChart } from "./charts";
 
 const RANGES: { id: StatsRange; label: string }[] = [
   { id: "24h", label: "24 h" },
@@ -103,6 +104,11 @@ export function GameStatsDashboard({
 }) {
   const g = stats?.granularity ?? "day";
   const bx = (key: string) => bucketLabel(key, g);
+  const [excludeOwner, setExcludeOwner] = useState(false);
+
+  // ¿Alguna muestra incluye sesiones del dueño? Solo entonces ofrecemos excluirlas.
+  const hasOwnerSessions =
+    stats?.players.samples.some((s) => s.ownerCount > 0) ?? false;
 
   return (
     <div className="space-y-5">
@@ -226,7 +232,7 @@ export function GameStatsDashboard({
             hint={
               stats.players.sharedAcrossGames
                 ? "compartido entre los juegos del proveedor"
-                : undefined
+                : "pasá el mouse para ver quién jugaba"
             }
           >
             {stats.players.samples.length === 0 ? (
@@ -235,15 +241,25 @@ export function GameStatsDashboard({
                 a medida que haya gente jugando (se muestrea cada pocos minutos).
               </p>
             ) : (
-              <AreaTrend
-                data={stats.players.samples}
-                xKey="t"
-                xFormat={(iso) => sampleLabel(iso, g)}
-                series={[
-                  { key: "count", label: "Jugadores", color: "var(--ln-aurora)" },
-                ]}
-                height={260}
-              />
+              <>
+                {hasOwnerSessions ? (
+                  <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-[12px] text-ln-muted">
+                    <input
+                      type="checkbox"
+                      checked={excludeOwner}
+                      onChange={(e) => setExcludeOwner(e.target.checked)}
+                      className="accent-ln-luna"
+                    />
+                    Excluir las sesiones del dueño (no inflar con sus pruebas)
+                  </label>
+                ) : null}
+                <PlayersAreaChart
+                  data={stats.players.samples}
+                  xFormat={(iso) => sampleLabel(iso, g)}
+                  excludeOwner={excludeOwner}
+                  height={260}
+                />
+              </>
             )}
           </ChartCard>
 

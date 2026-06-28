@@ -39,9 +39,17 @@ export interface ZapBucket {
   sats: number;
   count: number;
 }
+export interface SamplePlayer {
+  npub: string;
+  name: string | null; // displayName si es usuario conocido, si no null
+  owner: boolean; // es el dueño del juego (proveedor) → sus pruebas inflan la curva
+  you: boolean; // es quien está mirando (admin o proveedor)
+}
 export interface PlayerSample {
   t: string;
   count: number;
+  ownerCount: number; // cuántas de esas sesiones son del dueño (para descontarlas)
+  players: SamplePlayer[];
 }
 
 export interface GameStats {
@@ -154,14 +162,22 @@ function enumerateBuckets(start: Date, end: Date, g: Granularity): string[] {
 export async function buildGameStats(
   gameId: string,
   range: StatsRange = "30d",
-  opts: { includeHouse?: boolean } = {},
+  opts: { includeHouse?: boolean; viewerNpub?: string } = {},
 ): Promise<GameStats | null> {
   const now = new Date();
   const game = await prisma.game.findUnique({
     where: { id: gameId },
-    include: { provider: { include: { _count: { select: { games: true } } } } },
+    include: {
+      provider: {
+        include: {
+          owner: { select: { npub: true } },
+          _count: { select: { games: true } },
+        },
+      },
+    },
   });
   if (!game) return null;
+  const ownerNpub = game.provider.owner.npub;
 
   const providerId = game.providerId;
   const g = granularityFor(range);
@@ -192,7 +208,7 @@ export async function buildGameStats(
     }),
     prisma.playerCountSample.findMany({
       where: { providerId, sampledAt: { gte: start } },
-      select: { count: true, sampledAt: true },
+      select: { count: true, npubs: true, sampledAt: true },
       orderBy: { sampledAt: "asc" },
     }),
     prisma.bet.findMany({
@@ -245,10 +261,32 @@ export async function buildGameStats(
   }
 
   // ── Jugadores ──
-  const playerSamples: PlayerSample[] = samples.map((s) => ({
-    t: s.sampledAt.toISOString(),
-    count: s.count,
-  }));
+  // Resolvemos displayName de los npubs presentes en las muestras (los conocidos:
+  // tienen cuenta en Luna Negra). Una sola query para todo el período.
+  const sampleNpubs = [...new Set(samples.flatMap((s) => s.npubs))];
+  const nameMap = new Map<string, string>();
+  if (sampleNpubs.length > 0) {
+    const known = await prisma.user.findMany({
+      where: { npub: { in: sampleNpubs } },
+      select: { npub: true, displayName: true },
+    });
+    for (const u of known) if (u.displayName) nameMap.set(u.npub, u.displayName);
+  }
+  const viewerNpub = opts.viewerNpub;
+  const playerSamples: PlayerSample[] = samples.map((s) => {
+    const players: SamplePlayer[] = s.npubs.map((npub) => ({
+      npub,
+      name: nameMap.get(npub) ?? null,
+      owner: npub === ownerNpub,
+      you: viewerNpub != null && npub === viewerNpub,
+    }));
+    return {
+      t: s.sampledAt.toISOString(),
+      count: s.count,
+      ownerCount: players.filter((p) => p.owner).length,
+      players,
+    };
+  });
   const peak = playerSamples.reduce(
     (max, s) => Math.max(max, s.count),
     presenceNow,
