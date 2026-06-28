@@ -12,13 +12,20 @@
 
 import { prisma } from "@/lib/prisma";
 
-// Cada cuánto tomamos una muestra. Configurable por env; default 5 min. 0 o
-// negativo lo desactiva (mismo contrato que los *_INTERVAL_MS de los syncs).
+// Cada cuánto tomamos una muestra. Configurable por env; 0 o negativo lo desactiva
+// (mismo contrato que los *_INTERVAL_MS de los syncs).
+//
+// Default 60s: la presencia "jugando" dura ~30s (GamePresence TTL), así que un
+// intervalo grande (p. ej. 5 min) PIERDE las sesiones cortas que caen entre dos
+// tomas → la curva queda casi vacía aunque el juego reporte presencia. Muestrear
+// al minuto captura cualquier sesión de ≥1 min. Es barato: el sampler solo inserta
+// fila cuando hay alguien jugando (las tomas vacías no escriben nada).
+const DEFAULT_INTERVAL_MS = 60_000;
 export const PRESENCE_SAMPLE_INTERVAL_MS = (() => {
   const raw = process.env.PRESENCE_SAMPLE_INTERVAL_MS;
-  if (raw == null || raw.trim() === "") return 5 * 60_000;
+  if (raw == null || raw.trim() === "") return DEFAULT_INTERVAL_MS;
   const n = Number(raw);
-  return Number.isFinite(n) ? n : 5 * 60_000;
+  return Number.isFinite(n) ? n : DEFAULT_INTERVAL_MS;
 })();
 
 // Cuánto histórico conservamos. Las muestras viejas se purgan en cada corrida
