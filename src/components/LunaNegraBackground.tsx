@@ -112,13 +112,56 @@ function fireflyConfig(t: string): { rgb: [number, number, number]; alpha: numbe
   return { rgb: [190, 233, 200], alpha: 1 }; // noche
 }
 
+// El ciclo sigue el sol REAL de Buenos Aires (la tienda vive acá). Calculamos
+// amanecer/atardecer del día con la ecuación del Almanac for Computers (1990) y
+// comparamos instantes absolutos (UTC), así se ve igual en cualquier huso.
+const BA_LAT = -34.6131;
+const BA_LNG = -58.3772;
+
+/** Hora UTC (0–24) del orto/ocaso para el día N del año en (lat,lng). null en zona polar. */
+function sunUTCHours(N: number, isSunrise: boolean, lat: number, lng: number): number | null {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const ZENITH = 90.833; // orto/ocaso oficial (incluye refracción + radio solar)
+  const lngHour = lng / 15;
+  const t = N + ((isSunrise ? 6 : 18) - lngHour) / 24;
+  const M = 0.9856 * t - 3.289;                                   // anomalía media
+  let L = M + 1.916 * Math.sin(M * D2R) + 0.020 * Math.sin(2 * M * D2R) + 282.634;
+  L = ((L % 360) + 360) % 360;                                    // longitud verdadera
+  let RA = R2D * Math.atan(0.91764 * Math.tan(L * D2R));          // ascensión recta
+  RA = ((RA % 360) + 360) % 360;
+  RA += Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90;       // mismo cuadrante que L
+  RA /= 15;
+  const sinDec = 0.39782 * Math.sin(L * D2R);
+  const cosDec = Math.cos(Math.asin(sinDec));
+  const cosH = (Math.cos(ZENITH * D2R) - sinDec * Math.sin(lat * D2R)) / (cosDec * Math.cos(lat * D2R));
+  if (cosH > 1 || cosH < -1) return null;                        // no sale / no se pone
+  let H = isSunrise ? 360 - R2D * Math.acos(cosH) : R2D * Math.acos(cosH);
+  H /= 15;
+  const T = H + RA - 0.06571 * t - 6.622;
+  return (((T - lngHour) % 24) + 24) % 24;
+}
+
+let sunCache: { key: string; sr: number | null; ss: number | null } | null = null;
+
 function resolveTiempo(t: Tiempo): string {
   if (t && t !== "auto") return t;
-  const h = new Date().getHours();
-  if (h >= 6 && h < 9) return "amanecer";
-  if (h >= 9 && h < 17) return "dia";
-  if (h >= 17 && h < 19) return "atardecer";
-  return "noche"; // 19–6
+  const now = new Date();
+  const key = now.toISOString().slice(0, 10); // día UTC
+  if (!sunCache || sunCache.key !== key) {
+    const y = now.getUTCFullYear();
+    const base = Date.UTC(y, now.getUTCMonth(), now.getUTCDate());
+    const N = Math.floor((base - Date.UTC(y, 0, 0)) / 86400000); // día del año (1 = 1 ene)
+    sunCache = { key, sr: sunUTCHours(N, true, BA_LAT, BA_LNG), ss: sunUTCHours(N, false, BA_LAT, BA_LNG) };
+  }
+  if (sunCache.sr == null || sunCache.ss == null) return "noche"; // por las dudas (no pasa en BA)
+  const base = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const SR = base + sunCache.sr * 3600e3;
+  const SS = base + sunCache.ss * 3600e3;
+  const m = 60e3, tn = now.getTime();
+  if (tn >= SR - 45 * m && tn < SR + 60 * m) return "amanecer";  // ~1¾ h alrededor del orto
+  if (tn >= SR + 60 * m && tn < SS - 60 * m) return "dia";
+  if (tn >= SS - 60 * m && tn < SS + 30 * m) return "atardecer"; // ~1½ h alrededor del ocaso
+  return "noche";
 }
 
 function makeGlow(rgb: [number, number, number]): HTMLCanvasElement {
