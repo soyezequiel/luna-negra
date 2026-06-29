@@ -327,7 +327,7 @@ export function LoginModal() {
           </button>
         </div>
 
-        <div className="mt-5 flex gap-1 rounded-xl border border-white/[0.06] bg-ln-bg-deep p-1">
+        <div className="mt-5 flex gap-1 overflow-x-auto rounded-xl border border-white/[0.06] bg-ln-bg-deep p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -339,7 +339,7 @@ export function LoginModal() {
                 setRevealQr(false);
               }}
               className={cn(
-                "flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40",
+                "flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40",
                 tab === t.id
                   ? "bg-ln-luna/15 text-ln-luna-bright shadow-[inset_0_0_0_1px_rgba(157,140,255,.25)]"
                   : "text-ln-muted hover:text-ln-text",

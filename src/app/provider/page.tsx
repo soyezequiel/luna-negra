@@ -131,14 +131,14 @@ function TabNav({
     { id: "profile", label: "Perfil" },
   ];
   return (
-    <div className="flex w-fit gap-1 rounded-full border border-ln-border bg-ln-card/55 p-1.5">
+    <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-ln-border bg-ln-card/55 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {items.map((it) => (
         <button
           key={it.id}
           type="button"
           onClick={() => setTab(it.id)}
           className={cn(
-            "rounded-full px-5 py-2 text-[13.5px] font-semibold transition-colors",
+            "shrink-0 whitespace-nowrap rounded-full px-5 py-2 text-[13.5px] font-semibold transition-colors",
             tab === it.id
               ? "text-[#1a1430]"
               : "text-ln-muted hover:text-ln-text",
@@ -468,7 +468,7 @@ export default function ProviderPage() {
             Panel de proveedor
           </h1>
         </div>
-        <div className="flex shrink-0 gap-2 self-start sm:self-end">
+        <div className="flex flex-wrap gap-2 self-start sm:flex-nowrap sm:self-end">
           <Link href="/provider/stats" className="btn btn-ghost">
             Estadísticas
           </Link>
