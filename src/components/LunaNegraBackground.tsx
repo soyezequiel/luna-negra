@@ -47,10 +47,61 @@ export interface LunaNegraBackgroundProps {
   zIndex?: number;
   /** Carpeta pública con los assets (animales + fondos). Default "/luna-assets/". */
   assetsBase?: string;
+  /** Fondo alternativo para el modo "dia". */
+  diaBackgroundSrc?: string;
+  /** Dibuja el modo dia como una composicion por capas con parallax. */
+  layeredDiaScene?: boolean;
+  /** Movimiento autonomo de animales/luciernagas. Si es false, solo repinta por carga, resize o puntero. */
+  animated?: boolean;
+  /** Limite de frames cuando hay movimiento continuo. Default 30. */
+  frameRate?: number;
+  /** Pausa el canvas cuando sale del viewport o la pestana queda oculta. */
+  pauseWhenOffscreen?: boolean;
 }
 
 const ANIMALS = ["tiger", "bear", "gorilla", "ostrich", "hummingbird"] as const;
 const BACKGROUNDS = ["amanecer", "dia", "atardecer", "noche"] as const;
+type Animal = (typeof ANIMALS)[number];
+type BackgroundName = (typeof BACKGROUNDS)[number];
+const LAYERED_FILES = {
+  tiger: "tiger.webp",
+  bear: "bear.webp",
+  gorilla: "gorilla.webp",
+  ostrich: "ostrich.webp",
+  hummingbird: "hummingbird.webp",
+  leftFoliage: "foreground-left-foliage-overlay.webp",
+  rightFoliage: "foreground-right-foliage-overlay.webp",
+  pondGrass: "pond-edge-grass-strip.webp",
+  shadow: "soft-contact-shadow.webp",
+} as const;
+
+type LayeredAsset = keyof typeof LAYERED_FILES;
+type LayeredCreature = {
+  asset: Animal;
+  cx: number;
+  bottom: number;
+  h: number;
+  px: number;
+  py: number;
+  phase: number;
+  float?: boolean;
+  shadow?: { w: number; h: number; alpha: number };
+};
+
+// La escena por capas está dibujada sobre el fondo de 1280×960. Estas marcas
+// definen el centro y el rango horizontal donde viven los animales (sin contar
+// el follaje, que sí puede sangrar por los bordes) para el ajuste responsive.
+const DESIGN_CENTER_X = 640;
+const DESIGN_CONTENT_L = 40;
+const DESIGN_CONTENT_R = 1240;
+
+const LAYERED_CREATURES: readonly LayeredCreature[] = [
+  { asset: "hummingbird", cx: 1065, bottom: 334, h: 78, px: 18, py: 8, phase: 1.4, float: true },
+  { asset: "gorilla", cx: 775, bottom: 455, h: 160, px: 5, py: 2, phase: 2.8, shadow: { w: 112, h: 32, alpha: 0.14 } },
+  { asset: "bear", cx: 505, bottom: 620, h: 245, px: 13, py: 5, phase: 0.6, shadow: { w: 190, h: 42, alpha: 0.2 } },
+  { asset: "ostrich", cx: 990, bottom: 665, h: 255, px: 18, py: 7, phase: 2.1, shadow: { w: 116, h: 34, alpha: 0.18 } },
+  { asset: "tiger", cx: 175, bottom: 722, h: 330, px: 26, py: 9, phase: 3.2, shadow: { w: 250, h: 50, alpha: 0.22 } },
+];
 
 /** Color y presencia de las luciérnagas por momento del día. */
 function fireflyConfig(t: string): { rgb: [number, number, number]; alpha: number } {
@@ -91,13 +142,18 @@ export default function LunaNegraBackground({
   className = "",
   zIndex = 0,
   assetsBase = "/luna-assets/",
+  diaBackgroundSrc,
+  layeredDiaScene = false,
+  animated = true,
+  frameRate = 30,
+  pauseWhenOffscreen = true,
 }: LunaNegraBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cfg = useRef({ tiempo, densidad, velocidad, parallax, animales, scrim });
+  const cfg = useRef({ tiempo, densidad, velocidad, parallax, animales, scrim, layeredDiaScene, animated, frameRate });
 
   useEffect(() => {
-    cfg.current = { tiempo, densidad, velocidad, parallax, animales, scrim };
-  }, [tiempo, densidad, velocidad, parallax, animales, scrim]);
+    cfg.current = { tiempo, densidad, velocidad, parallax, animales, scrim, layeredDiaScene, animated, frameRate };
+  }, [tiempo, densidad, velocidad, parallax, animales, scrim, layeredDiaScene, animated, frameRate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -105,23 +161,55 @@ export default function LunaNegraBackground({
     const ctx = canvas.getContext("2d")!;
     const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    let W = 0, H = 0, raf = 0, last = 0;
+    let W = 0, H = 0, raf = 0, last = 0, lastFrame = 0;
+    let running = false;
     const t0 = performance.now();
     const mouse = { x: 0, y: 0, nx: 0, ny: 0 };
+    let paintStatic = () => {};
+    const loadedImages: HTMLImageElement[] = [];
+    const onImageLoad = () => paintStatic();
 
     // carga de imágenes
     const base = assetsBase.endsWith("/") ? assetsBase : assetsBase + "/";
-    const imgs: Record<string, HTMLImageElement> = {};
-    for (const n of ANIMALS) { const im = new Image(); im.src = `${base}${n}.png`; imgs[n] = im; }
-    const bgs: Record<string, HTMLImageElement> = {};
-    for (const n of BACKGROUNDS) { const im = new Image(); im.src = `${base}bg-${n}.jpg`; bgs[n] = im; }
+    const loadImage = (src: string) => {
+      const im = new Image();
+      im.decoding = "async";
+      im.addEventListener("load", onImageLoad);
+      loadedImages.push(im);
+      im.src = src;
+      return im;
+    };
+    const imgs: Partial<Record<Animal, HTMLImageElement>> = {};
+    const getAnimal = (name: Animal) => {
+      imgs[name] ??= loadImage(`${base}${name}.png`);
+      return imgs[name];
+    };
+    if (animales && !layeredDiaScene) {
+      for (const n of ANIMALS) getAnimal(n);
+    }
+    const layeredImgs: Partial<Record<LayeredAsset, HTMLImageElement>> = {};
+    if (layeredDiaScene) {
+      const layeredBase = `${base}composite/`;
+      for (const key of Object.keys(LAYERED_FILES) as LayeredAsset[]) {
+        layeredImgs[key] = loadImage(`${layeredBase}${LAYERED_FILES[key]}`);
+      }
+    }
+    const bgs: Partial<Record<BackgroundName, HTMLImageElement>> = {};
+    const bgSrc = (name: BackgroundName) => (
+      name === "dia" && diaBackgroundSrc && !layeredDiaScene ? diaBackgroundSrc : `${base}bg-${name}.jpg`
+    );
+    const getBg = (name: string) => {
+      const key = (BACKGROUNDS as readonly string[]).includes(name) ? name as BackgroundName : "dia";
+      bgs[key] ??= loadImage(bgSrc(key));
+      return bgs[key];
+    };
 
     let tiempoNow = resolveTiempo(cfg.current.tiempo);
     let fc = fireflyConfig(tiempoNow);
     let glowSprite = makeGlow(fc.rgb);
     let density = 0;
 
-    type Creature = { type: string; fx: number; baseY: number; s: number; bobAmp: number; fly: boolean; bob: number; phase: number };
+    type Creature = { type: Animal; fx: number; baseY: number; s: number; bobAmp: number; fly: boolean; bob: number; phase: number };
     let scene: {
       bokeh: { x: number; y: number; r: number; tw: number; sp: number; vx: number }[];
       fireflies: { x: number; y: number; amp: number; ph: number; r: number; vy: number; fl: number; fs: number }[];
@@ -130,6 +218,9 @@ export default function LunaNegraBackground({
 
     const r = () => Math.random() * 6.28;
     const buildFireflies = (n: number) => {
+      scene.bokeh = n > 0
+        ? Array.from({ length: 11 }, () => ({ x: Math.random() * W, y: H * (0.4 + Math.random() * 0.5), r: 16 + Math.random() * 30, tw: Math.random() * 6.28, sp: 0.3 + Math.random() * 0.4, vx: (Math.random() - 0.5) * 5 }))
+        : [];
       scene.fireflies = Array.from({ length: n }, () => ({
         x: Math.random() * W, y: H * (0.45 + Math.random() * 0.55),
         amp: 8 + Math.random() * 24, ph: Math.random() * 6.28,
@@ -141,7 +232,7 @@ export default function LunaNegraBackground({
 
     const initScene = () => {
       scene = {
-        bokeh: Array.from({ length: 11 }, () => ({ x: Math.random() * W, y: H * (0.4 + Math.random() * 0.5), r: 16 + Math.random() * 30, tw: Math.random() * 6.28, sp: 0.3 + Math.random() * 0.4, vx: (Math.random() - 0.5) * 5 })),
+        bokeh: [],
         fireflies: [],
         creatures: [
           { type: "hummingbird", fx: 0.49, baseY: 0.40, s: 0.52, bobAmp: 11, fly: true, bob: r(), phase: r() },
@@ -168,8 +259,8 @@ export default function LunaNegraBackground({
       const glowA = fc.alpha * 0.34;
       for (const cr of scene.creatures) {
         cr.bob += dt * 1.1;
-        const img = imgs[cr.type];
-        if (!img || !img.complete || !img.naturalWidth) continue;
+        const img = getAnimal(cr.type);
+        if (!img.complete || !img.naturalWidth) continue;
         const px = cr.fly ? 26 : 16;
         const cx = W * cr.fx + mouse.x * px;
         const groundY = H * cr.baseY + mouse.y * px * 0.45;
@@ -197,6 +288,7 @@ export default function LunaNegraBackground({
     };
 
     const drawFireflies = (t: number, dt: number) => {
+      if (scene.bokeh.length === 0 && scene.fireflies.length === 0) return;
       const fa = fc.alpha;
       ctx.globalCompositeOperation = "lighter";
       for (const f of scene.bokeh) {
@@ -219,20 +311,124 @@ export default function LunaNegraBackground({
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     };
 
-    const draw = (t: number, dt: number, animalesOn: boolean, scrimOn: boolean) => {
+    const imageReady = (img?: HTMLImageElement): img is HTMLImageElement => Boolean(img && img.complete && img.naturalWidth);
+
+    const drawBackgroundImage = (bg: HTMLImageElement | undefined, offsetX: number, offsetY: number) => {
+      if (!imageReady(bg)) {
+        ctx.fillStyle = "#0c1622"; ctx.fillRect(0, 0, W, H);
+        return null;
+      }
+      const iw = bg.naturalWidth, ih = bg.naturalHeight;
+      const sc = Math.max(W / iw, H / ih);
+      const dw = iw * sc, dh = ih * sc;
+      const x = (W - dw) / 2 + offsetX;
+      const y = (H - dh) / 2 - H * 0.04 + offsetY;
+      ctx.drawImage(bg, x, y, dw, dh);
+      return { x, y, sc };
+    };
+
+    const drawSceneRect = (
+      img: HTMLImageElement | undefined,
+      frame: { x: number; y: number; sc: number },
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      px: number,
+      py: number,
+      alpha = 1,
+      filter = "none",
+    ) => {
+      if (!imageReady(img)) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.filter = filter;
+      ctx.drawImage(
+        img,
+        frame.x + x * frame.sc + mouse.x * px,
+        frame.y + y * frame.sc + mouse.y * py,
+        w * frame.sc,
+        h * frame.sc,
+      );
+      ctx.restore();
+    };
+
+    const drawLayeredCreature = (
+      layer: LayeredCreature,
+      frame: { x: number; y: number; sc: number },
+      t: number,
+    ) => {
+      const img = layeredImgs[layer.asset];
+      if (!imageReady(img)) return;
+
+      const moving = cfg.current.animated && !reduce;
+      const floatY = moving
+        ? layer.float
+          ? Math.sin(t * 2.2 + layer.phase) * 5
+          : Math.sin(t * 0.9 + layer.phase) * 1.1
+        : 0;
+      const scalePulse = moving && layer.float ? 1 + Math.sin(t * 3.8 + layer.phase) * 0.018 : 1;
+      const h = layer.h * scalePulse;
+      const w = h * (img.naturalWidth / img.naturalHeight);
+
+      // Responsive: la escena está diseñada en un lienzo de 1280px y se pinta en
+      // "cover", así que en pantallas angostas (celular) los laterales quedan
+      // recortados y los animales de los extremos se cortan. Comprimimos el
+      // layout horizontal hacia el centro según el ancho visible y, como red de
+      // seguridad, fijamos cada animal dentro del área visible. En desktop el
+      // ancho visible es >= 1280 → squeeze = 1, no cambia nada.
+      const visLeft = -frame.x / frame.sc;
+      const visRight = (W - frame.x) / frame.sc;
+      const margin = 10; // unidades de diseño
+      const squeeze = Math.min(1, (visRight - visLeft - margin * 2) / (DESIGN_CONTENT_R - DESIGN_CONTENT_L));
+      let cx = DESIGN_CENTER_X + (layer.cx - DESIGN_CENTER_X) * squeeze;
+      const minCx = visLeft + w / 2 + margin;
+      const maxCx = visRight - w / 2 - margin;
+      cx = minCx <= maxCx ? Math.min(Math.max(cx, minCx), maxCx) : (visLeft + visRight) / 2;
+
+      const dx = frame.x + cx * frame.sc - (w * frame.sc) / 2 + mouse.x * layer.px;
+      const dy = frame.y + (layer.bottom - h) * frame.sc + mouse.y * layer.py + floatY;
+
+      if (layer.shadow) {
+        drawSceneRect(
+          layeredImgs.shadow,
+          frame,
+          cx - layer.shadow.w / 2,
+          layer.bottom - layer.shadow.h * 0.55,
+          layer.shadow.w,
+          layer.shadow.h,
+          layer.px,
+          layer.py,
+          layer.shadow.alpha,
+        );
+      }
+
+      ctx.save();
+      ctx.filter = layer.float ? "drop-shadow(0 8px 8px rgba(3,9,16,.2))" : "drop-shadow(0 12px 12px rgba(3,9,16,.22))";
+      ctx.drawImage(img, dx, dy, w * frame.sc, h * frame.sc);
+      ctx.restore();
+    };
+
+    const drawLayeredDiaScene = (t: number, bg: HTMLImageElement | undefined) => {
+      const frame = drawBackgroundImage(bg, mouse.x * -8, mouse.y * -5);
+      if (!frame) return;
+
+      drawSceneRect(layeredImgs.pondGrass, frame, 238, 620, 470, 57, 11, 5, 0.48);
+      for (const layer of LAYERED_CREATURES) drawLayeredCreature(layer, frame, t);
+      drawSceneRect(layeredImgs.leftFoliage, frame, -110, 620, 520, 268, 34, 10, 0.98, "drop-shadow(0 16px 14px rgba(3,9,16,.24))");
+      drawSceneRect(layeredImgs.rightFoliage, frame, 875, 585, 430, 233, 30, 9, 0.96, "drop-shadow(0 14px 12px rgba(3,9,16,.2))");
+    };
+
+    const draw = (t: number, dt: number, animalesOn: boolean, scrimOn: boolean, layeredOn: boolean) => {
       ctx.clearRect(0, 0, W, H);
       // fondo pintado del hero (cover-fit, leve parallax con el mouse)
-      const bg = bgs[tiempoNow];
-      if (bg && bg.complete && bg.naturalWidth) {
-        const iw = bg.naturalWidth, ih = bg.naturalHeight;
-        const sc = Math.max(W / iw, H / ih);
-        const dw = iw * sc, dh = ih * sc;
-        const ox = mouse.x * -14, oy = mouse.y * -10;
-        ctx.drawImage(bg, (W - dw) / 2 + ox, (H - dh) / 2 - H * 0.04 + oy, dw, dh);
+      const bg = getBg(tiempoNow);
+      if (layeredOn && tiempoNow === "dia") {
+        drawLayeredDiaScene(t, bg);
       } else {
-        ctx.fillStyle = "#0c1622"; ctx.fillRect(0, 0, W, H);
+        drawBackgroundImage(bg, mouse.x * -14, mouse.y * -10);
+        if (animalesOn) drawCreatures(dt);
       }
-      if (animalesOn) drawCreatures(dt);
       drawFireflies(t, dt);
       if (scrimOn) {
         // scrim izquierdo para legibilidad del hero
@@ -250,47 +446,109 @@ export default function LunaNegraBackground({
       ctx.fillStyle = bf; ctx.fillRect(0, H * 0.80, W, H * 0.20);
     };
 
-    const loop = (now: number) => {
-      raf = requestAnimationFrame(loop);
+    const paintFrame = (now: number, fixedDt?: number, immediateParallax = false) => {
       if (canvas.clientWidth > 0 && (canvas.clientWidth !== W || canvas.clientHeight !== H)) resize();
       const c = cfg.current;
       const tm = resolveTiempo(c.tiempo);
       if (tm !== tiempoNow) {
         tiempoNow = tm; fc = fireflyConfig(tm); glowSprite = makeGlow(fc.rgb);
       }
+      getBg(tiempoNow);
       if (Math.round(c.densidad) !== density) buildFireflies(Math.round(c.densidad));
       const t = (now - t0) / 1000;
-      let dt = (now - (last || now)) / 1000; last = now;
+      let dt = fixedDt ?? (now - (last || now)) / 1000; last = now;
       dt = Math.min(0.05, dt) * c.velocidad;
       const targetX = c.parallax && !reduce ? mouse.nx : 0;
       const targetY = c.parallax && !reduce ? mouse.ny : 0;
-      mouse.x += (targetX - mouse.x) * 0.06;
-      mouse.y += (targetY - mouse.y) * 0.06;
-      draw(t, dt, c.animales, c.scrim);
+      if (immediateParallax) {
+        mouse.x = targetX;
+        mouse.y = targetY;
+      } else {
+        mouse.x += (targetX - mouse.x) * 0.06;
+        mouse.y += (targetY - mouse.y) * 0.06;
+      }
+      draw(t, dt, c.animales, c.scrim, c.layeredDiaScene);
     };
 
-    const onResize = () => resize();
-    const onMove = (e: MouseEvent) => { mouse.nx = (e.clientX / window.innerWidth) * 2 - 1; mouse.ny = (e.clientY / window.innerHeight) * 2 - 1; };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("mousemove", onMove);
+    paintStatic = () => paintFrame(performance.now(), 0, true);
+
+    let inViewport = !pauseWhenOffscreen;
+    let pageVisible = document.visibilityState !== "hidden";
+    const shouldRun = () => cfg.current.animated && !reduce && pageVisible && inViewport;
+    const stopLoop = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      running = false;
+    };
+    const loop = (now: number) => {
+      if (!shouldRun()) {
+        stopLoop();
+        return;
+      }
+      raf = requestAnimationFrame(loop);
+      const fps = Math.max(1, cfg.current.frameRate || 30);
+      const minFrameMs = 1000 / fps;
+      if (lastFrame && now - lastFrame < minFrameMs) return;
+      lastFrame = now;
+      paintFrame(now);
+    };
+    const startLoop = () => {
+      if (running || !shouldRun()) return;
+      running = true;
+      last = 0;
+      lastFrame = 0;
+      raf = requestAnimationFrame(loop);
+    };
+    const syncLoop = () => {
+      if (shouldRun()) startLoop();
+      else stopLoop();
+    };
+
+    const onResize = () => {
+      resize();
+      paintStatic();
+      syncLoop();
+    };
+    const onMove = (e: PointerEvent) => {
+      mouse.nx = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.ny = (e.clientY / window.innerHeight) * 2 - 1;
+      if (!running) paintStatic();
+    };
+    const onVisibility = () => {
+      pageVisible = document.visibilityState !== "hidden";
+      if (pageVisible) paintStatic();
+      syncLoop();
+    };
+    let observer: IntersectionObserver | undefined;
+    window.addEventListener("resize", onResize, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("visibilitychange", onVisibility);
     resize();
     initScene();
-    if (reduce) {
-      // respeta reduce-motion: un frame estático cuando carguen las imágenes
-      const paint = () => draw(0, 0, cfg.current.animales, cfg.current.scrim);
-      paint();
-      Object.values(bgs).forEach((im) => { im.addEventListener("load", paint); });
-      Object.values(imgs).forEach((im) => { im.addEventListener("load", paint); });
+    getBg(tiempoNow);
+    paintStatic();
+    if (pauseWhenOffscreen && "IntersectionObserver" in window) {
+      observer = new IntersectionObserver(([entry]) => {
+        inViewport = entry.isIntersecting;
+        if (inViewport) paintStatic();
+        syncLoop();
+      }, { rootMargin: "160px 0px", threshold: 0 });
+      observer.observe(canvas);
     } else {
-      raf = requestAnimationFrame(loop);
+      inViewport = true;
     }
+    syncLoop();
 
     return () => {
-      cancelAnimationFrame(raf);
+      stopLoop();
+      observer?.disconnect();
+      paintStatic = () => {};
+      for (const im of loadedImages) im.removeEventListener("load", onImageLoad);
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [assetsBase]);
+  }, [assetsBase, diaBackgroundSrc, layeredDiaScene, animated, animales, pauseWhenOffscreen]);
 
   return (
     <canvas

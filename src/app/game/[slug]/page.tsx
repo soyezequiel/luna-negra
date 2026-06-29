@@ -285,7 +285,7 @@ export default async function GamePage({
                 {features.map((f, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 text-sm text-ln-text"
+                    className="flex min-w-0 items-start gap-2 text-sm text-ln-text"
                   >
                     <span className="mt-0.5 text-ln-luna">›</span>
                     <span className="min-w-0 truncate">{f}</span>
@@ -473,7 +473,7 @@ export default async function GamePage({
           root={root}
         />
       ) : (
-        <div className="mt-10 grid gap-8 lg:grid-cols-2">
+        <div className="mt-10 grid gap-8 ln:grid-cols-2">
           <GameBets gameId={game.id} title={game.title} />
           <ActivitySection slug={game.slug} title={game.title} root={root} />
         </div>

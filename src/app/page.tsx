@@ -97,8 +97,11 @@ export default async function StorePage({
               tiempo="dia"
               densidad={0}
               velocidad={0.45}
-              parallax={false}
+              parallax
+              animales={false}
               scrim={false}
+              layeredDiaScene
+              animated={false}
             />
             <div
               className="absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.03)_48%,rgba(19,32,74,.36))]"
