@@ -101,7 +101,7 @@ export default async function StorePage({
               animales={false}
               scrim={false}
               layeredDiaScene
-              animated={false}
+              animated
             />
             <div
               className="absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.03)_48%,rgba(19,32,74,.36))]"

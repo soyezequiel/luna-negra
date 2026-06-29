@@ -362,13 +362,13 @@ export default function LunaNegraBackground({
       if (!imageReady(img)) return;
 
       const moving = cfg.current.animated && !reduce;
-      const floatY = moving
-        ? layer.float
-          ? Math.sin(t * 2.2 + layer.phase) * 5
-          : Math.sin(t * 0.9 + layer.phase) * 1.1
+      // Respiración mínima: squash vertical anclado en las patas (no desplaza el
+      // cuerpo, así que no "flota"). El movimiento de articulaciones se hace abajo
+      // deformando el sprite por bandas.
+      const breath = moving
+        ? Math.sin(t * (layer.float ? 3.0 : 1.0) + layer.phase) * (layer.float ? 0.01 : 0.007)
         : 0;
-      const scalePulse = moving && layer.float ? 1 + Math.sin(t * 3.8 + layer.phase) * 0.018 : 1;
-      const h = layer.h * scalePulse;
+      const h = layer.h * (1 + breath);
       const w = h * (img.naturalWidth / img.naturalHeight);
 
       // Responsive: la escena está diseñada en un lienzo de 1280px y se pinta en
@@ -386,8 +386,13 @@ export default function LunaNegraBackground({
       const maxCx = visRight - w / 2 - margin;
       cx = minCx <= maxCx ? Math.min(Math.max(cx, minCx), maxCx) : (visLeft + visRight) / 2;
 
-      const dx = frame.x + cx * frame.sc - (w * frame.sc) / 2 + mouse.x * layer.px;
-      const dy = frame.y + (layer.bottom - h) * frame.sc + mouse.y * layer.py + floatY;
+      // Punto de apoyo (centro de las patas) en coordenadas de canvas: ancla del
+      // squash de la respiración y del warp por bandas (offset 0 en el piso).
+      const footX = frame.x + cx * frame.sc + mouse.x * layer.px;
+      const footY = frame.y + layer.bottom * frame.sc + mouse.y * layer.py;
+      const dw = w * frame.sc, dh = h * frame.sc;
+      const left = footX - dw / 2;
+      const top = footY - dh;
 
       if (layer.shadow) {
         drawSceneRect(
@@ -404,8 +409,32 @@ export default function LunaNegraBackground({
       }
 
       ctx.save();
-      ctx.filter = layer.float ? "drop-shadow(0 8px 8px rgba(3,9,16,.2))" : "drop-shadow(0 12px 12px rgba(3,9,16,.22))";
-      ctx.drawImage(img, dx, dy, w * frame.sc, h * frame.sc);
+      if (!moving) {
+        // Estático: una sola pasada con sombra de contacto.
+        ctx.filter = layer.float ? "drop-shadow(0 8px 8px rgba(3,9,16,.2))" : "drop-shadow(0 12px 12px rgba(3,9,16,.22))";
+        ctx.drawImage(img, left, top, dw, dh);
+      } else {
+        // Articulación falsa: cortamos el sprite en bandas horizontales y
+        // desplazamos cada una en X según su altura. Las patas (abajo) quedan
+        // fijas y el torso/extremidades superiores flexionan con una onda que
+        // viaja => parece que mueve las articulaciones, sin que el animal flote.
+        const SLICES = 18;
+        const natBand = img.naturalHeight / SLICES;
+        const destBand = dh / SLICES;
+        const amp = (layer.float ? 4 : 2.6) * frame.sc; // px máx de desplazamiento
+        const spd = layer.float ? 2.4 : 1.0;            // el colibrí flamea más rápido
+        for (let i = 0; i < SLICES; i++) {
+          const v = 1 - (i + 0.5) / SLICES;             // 0 = patas, 1 = cabeza
+          const ease = v * v * (3 - 2 * v);             // casi nulo cerca del suelo
+          const flex =
+            Math.sin(v * Math.PI * 1.3 - t * 1.3 * spd + layer.phase) * 0.7 +
+            Math.sin(t * 0.8 * spd + layer.phase * 1.6) * v * 0.5;
+          const off = flex * ease * amp;
+          const sy = i * natBand;
+          const sh = Math.min(natBand + 0.6, img.naturalHeight - sy); // solape anti-costura
+          ctx.drawImage(img, 0, sy, img.naturalWidth, sh, left + off, top + i * destBand, dw, destBand + 0.6);
+        }
+      }
       ctx.restore();
     };
 
