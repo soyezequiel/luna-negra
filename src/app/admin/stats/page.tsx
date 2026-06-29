@@ -54,6 +54,8 @@ export default function AdminStatsPage() {
   }, []);
 
   useEffect(() => {
+    // Carga inicial del catálogo: fetch async, el setState ocurre tras el await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (user) void loadCatalog();
   }, [user, loadCatalog]);
 

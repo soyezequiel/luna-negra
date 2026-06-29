@@ -123,6 +123,8 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
   }, [user]);
 
   useEffect(() => {
+    // Poll inicial + intervalo: suscripción a un sistema externo (uso legítimo).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     if (!user) return;
     const id = setInterval(() => void load(), POLL_MS);

@@ -40,6 +40,8 @@ export default function ProviderStatsPage() {
   );
 
   useEffect(() => {
+    // Carga inicial al montar (muestra loading vía setBusy); patrón fetch-on-mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (user) void load(gameId, range);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);

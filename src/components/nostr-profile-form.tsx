@@ -36,11 +36,15 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
   // pisar lo que el usuario esté tipeando si el fetch resuelve tarde.
   useEffect(() => {
     if (!profile || hydrated) return;
+    // Sembrado único desde un prop que llega async (fetch del perfil); el guard
+    // `hydrated` evita pisar lo tipeado. Uso legítimo del efecto.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setDisplayName(profile.displayName || profile.display_name || "");
     setName(profile.name || "");
     setAbout(profile.about || "");
     setPicture(profile.picture || "");
     setHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [profile, hydrated]);
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
