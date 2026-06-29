@@ -1,22 +1,27 @@
 "use client";
 
 /**
- * Luna Negra — fondo animado (pradera con luciérnagas + animales).
+ * Luna Negra — fondo animado (selva con animales + luciérnagas).
  * Componente client autónomo: dibuja todo en un <canvas> fijo detrás de la app.
  *
- * Uso (App Router): montalo UNA vez, alto en el árbol (p. ej. en app/layout.tsx,
- * justo dentro de <body>, antes del contenido):
+ * - El fondo es una de 4 ilustraciones de selva según el momento del día
+ *   (amanecer / dia / atardecer / noche), elegido por la hora real con "auto".
+ * - Sobre la escena caminan/vuelan 5 animales (tigre, oso, gorila, avestruz, colibrí)
+ *   con respiración, balanceo, sombra y parallax con el mouse.
+ * - De noche/atardecer aparecen luciérnagas; de día son casi imperceptibles.
+ *
+ * Uso (App Router): montalo UNA vez, alto en el árbol (en app/layout.tsx,
+ * dentro de <body>, antes del contenido):
  *
  *   import LunaNegraBackground from "@/components/LunaNegraBackground";
- *   ...
  *   <body>
- *     <LunaNegraBackground />        // tiempo="auto" -> según la hora real
+ *     <LunaNegraBackground />
  *     <div className="relative z-[1]">{children}</div>
  *   </body>
  *
- * Asegurate de que tu contenido tenga un z-index por encima (p. ej. relative z-[1])
- * y que paneles/secciones que quieras "calmados" lleven un fondo semitransparente
- * oscuro (rgba(8,7,12,.9)) para atenuar la animación detrás de ellos.
+ * El contenido debe ir en z-index >= 1. Las secciones que quieras "calmadas"
+ * deben llevar un fondo oscuro semitransparente (rgba(8,7,12,.92)) para atenuar
+ * la escena detrás de ellas.
  */
 
 import { useEffect, useRef } from "react";
@@ -32,26 +37,25 @@ export interface LunaNegraBackgroundProps {
   velocidad?: number;
   /** Parallax sutil con el mouse. */
   parallax?: boolean;
-  /** Mostrar los animales en la pradera. */
+  /** Mostrar los animales en la escena. */
   animales?: boolean;
-  /** Clase extra para el <canvas> (el componente ya lo fija a pantalla completa). */
+  /** Clase extra para el <canvas> (ya se fija a pantalla completa). */
   className?: string;
   /** z-index del canvas. Por defecto 0 (poné tu contenido en z-index >= 1). */
   zIndex?: number;
+  /** Carpeta pública con los assets (animales + fondos). Default "/luna-assets/". */
+  assetsBase?: string;
 }
 
-type Pal = {
-  skyTop: string; skyMid: string; skyHorizon: string; glow: string;
-  star: string; starA: number; hills: string[];
-  eye: string; beak: string; rim: string;
-  fly: [number, number, number]; flyAlpha: number; cloudRGB: [number, number, number];
-};
+const ANIMALS = ["tiger", "bear", "gorilla", "ostrich", "hummingbird"] as const;
+const BACKGROUNDS = ["amanecer", "dia", "atardecer", "noche"] as const;
 
-function makePalette(t: string): Pal {
-  if (t === "dia") return { skyTop: "#3f74ad", skyMid: "#84afcf", skyHorizon: "#ecd9ad", glow: "rgba(255,232,180,0.5)", star: "#ffffff", starA: 0, hills: ["#5d8a73", "#3f6e55", "#2f5642", "#1d3b2b"], eye: "#2a2230", beak: "#ff9a3c", rim: "rgba(255,240,210,0.55)", fly: [255, 250, 230], flyAlpha: 0.28, cloudRGB: [255, 255, 255] };
-  if (t === "noche") return { skyTop: "#06050f", skyMid: "#0e0f2a", skyHorizon: "#241c42", glow: "rgba(157,140,255,0.30)", star: "#dfe0ff", starA: 0.95, hills: ["#241c3e", "#172a3c", "#0e2128", "#070f12"], eye: "#c2b5ff", beak: "#ffb648", rim: "rgba(157,140,255,0.5)", fly: [190, 233, 200], flyAlpha: 1, cloudRGB: [60, 55, 95] };
-  if (t === "amanecer") return { skyTop: "#20204a", skyMid: "#5a4668", skyHorizon: "#d59266", glow: "rgba(255,200,150,0.5)", star: "#e9e6f2", starA: 0.35, hills: ["#3c2f59", "#3d4a4c", "#2a4038", "#101c18"], eye: "#fff0d0", beak: "#ff9a3c", rim: "rgba(255,205,150,0.5)", fly: [255, 224, 160], flyAlpha: 0.8, cloudRGB: [200, 170, 185] };
-  return { skyTop: "#171232", skyMid: "#3a2452", skyHorizon: "#7a3f54", glow: "rgba(255,182,72,0.42)", star: "#cfc8de", starA: 0.6, hills: ["#3a2a55", "#284a49", "#163a32", "#0b1a1c"], eye: "#ffcd7a", beak: "#ffb648", rim: "rgba(255,205,122,0.45)", fly: [255, 205, 122], flyAlpha: 1, cloudRGB: [95, 78, 150] };
+/** Color y presencia de las luciérnagas por momento del día. */
+function fireflyConfig(t: string): { rgb: [number, number, number]; alpha: number } {
+  if (t === "dia") return { rgb: [255, 250, 230], alpha: 0.22 };
+  if (t === "amanecer") return { rgb: [255, 224, 160], alpha: 0.7 };
+  if (t === "atardecer") return { rgb: [255, 205, 122], alpha: 1 };
+  return { rgb: [190, 233, 200], alpha: 1 }; // noche
 }
 
 function resolveTiempo(t: Tiempo): string {
@@ -83,9 +87,9 @@ export default function LunaNegraBackground({
   animales = true,
   className = "",
   zIndex = 0,
+  assetsBase = "/luna-assets/",
 }: LunaNegraBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  // refs vivos para que el loop lea valores actualizados sin reiniciar
   const cfg = useRef({ tiempo, densidad, velocidad, parallax, animales });
   cfg.current = { tiempo, densidad, velocidad, parallax, animales };
 
@@ -98,24 +102,27 @@ export default function LunaNegraBackground({
     let W = 0, H = 0, raf = 0, last = 0;
     const t0 = performance.now();
     const mouse = { x: 0, y: 0, nx: 0, ny: 0 };
-    let tiempoNow = resolveTiempo(cfg.current.tiempo);
-    let pal = makePalette(tiempoNow);
-    const sprites = { cloud: makeGlow(pal.cloudRGB), glow: makeGlow(pal.fly) };
-    let density = 0;
-    const creatureLayer = 2;
 
-    type Hill = { by: number; amp: number; fq: number; ph: number; col: string; px: number };
-    type Creature = { type: string; fx: number; s: number; bob: number; blink: number; blinking: number };
+    // carga de imágenes
+    const base = assetsBase.endsWith("/") ? assetsBase : assetsBase + "/";
+    const imgs: Record<string, HTMLImageElement> = {};
+    for (const n of ANIMALS) { const im = new Image(); im.src = `${base}${n}.png`; imgs[n] = im; }
+    const bgs: Record<string, HTMLImageElement> = {};
+    for (const n of BACKGROUNDS) { const im = new Image(); im.src = `${base}bg-${n}.jpg`; bgs[n] = im; }
+
+    let tiempoNow = resolveTiempo(cfg.current.tiempo);
+    let fc = fireflyConfig(tiempoNow);
+    let glowSprite = makeGlow(fc.rgb);
+    let density = 0;
+
+    type Creature = { type: string; fx: number; baseY: number; s: number; bobAmp: number; fly: boolean; bob: number; phase: number };
     let scene: {
-      stars: { x: number; y: number; r: number; tw: number; sp: number }[];
-      clouds: { x: number; y: number; s: number; v: number; a: number }[];
       bokeh: { x: number; y: number; r: number; tw: number; sp: number; vx: number }[];
       fireflies: { x: number; y: number; amp: number; ph: number; r: number; vy: number; fl: number; fs: number }[];
-      hills: Hill[];
       creatures: Creature[];
-      spark: { active: boolean; next: number; x: number; y: number; vx: number; vy: number; life: number };
     };
 
+    const r = () => Math.random() * 6.28;
     const buildFireflies = (n: number) => {
       scene.fireflies = Array.from({ length: n }, () => ({
         x: Math.random() * W, y: H * (0.45 + Math.random() * 0.55),
@@ -128,160 +135,70 @@ export default function LunaNegraBackground({
 
     const initScene = () => {
       scene = {
-        stars: Array.from({ length: 90 }, () => ({ x: Math.random() * W, y: Math.random() * H * 0.5, r: Math.random() * 1.4 + 0.4, tw: Math.random() * 6.28, sp: Math.random() * 1.5 + 0.4 })),
-        clouds: Array.from({ length: 5 }, () => ({ x: Math.random() * W, y: H * (0.08 + Math.random() * 0.24), s: 130 + Math.random() * 170, v: 3 + Math.random() * 6, a: 0.045 + Math.random() * 0.06 })),
         bokeh: Array.from({ length: 11 }, () => ({ x: Math.random() * W, y: H * (0.4 + Math.random() * 0.5), r: 16 + Math.random() * 30, tw: Math.random() * 6.28, sp: 0.3 + Math.random() * 0.4, vx: (Math.random() - 0.5) * 5 })),
         fireflies: [],
-        hills: [
-          { by: 0.62, amp: 34, fq: 0.0016, ph: 0.0, col: pal.hills[0], px: 6 },
-          { by: 0.71, amp: 44, fq: 0.0021, ph: 1.3, col: pal.hills[1], px: 12 },
-          { by: 0.81, amp: 30, fq: 0.0027, ph: 2.6, col: pal.hills[2], px: 21 },
-          { by: 0.93, amp: 26, fq: 0.0033, ph: 0.6, col: pal.hills[3], px: 36 },
-        ],
         creatures: [
-          { type: "cat", fx: 0.16, s: 1.05, bob: Math.random() * 6.28, blink: 1.0 + Math.random() * 3, blinking: 0 },
-          { type: "bunny", fx: 0.40, s: 0.95, bob: Math.random() * 6.28, blink: 2.0 + Math.random() * 3, blinking: 0 },
-          { type: "fox", fx: 0.72, s: 1.12, bob: Math.random() * 6.28, blink: 1.5 + Math.random() * 3, blinking: 0 },
-          { type: "bird", fx: 0.88, s: 0.74, bob: Math.random() * 6.28, blink: 1.2 + Math.random() * 3, blinking: 0 },
+          { type: "hummingbird", fx: 0.49, baseY: 0.40, s: 0.52, bobAmp: 11, fly: true, bob: r(), phase: r() },
+          { type: "ostrich", fx: 0.71, baseY: 0.85, s: 1.02, bobAmp: 3, fly: false, bob: r(), phase: r() },
+          { type: "tiger", fx: 0.14, baseY: 0.90, s: 1.00, bobAmp: 2.4, fly: false, bob: r(), phase: r() },
+          { type: "gorilla", fx: 0.57, baseY: 0.92, s: 1.10, bobAmp: 2.4, fly: false, bob: r(), phase: r() },
+          { type: "bear", fx: 0.38, baseY: 0.96, s: 1.18, bobAmp: 2.4, fly: false, bob: r(), phase: r() },
         ],
-        spark: { active: false, next: 3 + Math.random() * 4, x: 0, y: 0, vx: 0, vy: 0, life: 0 },
       };
       buildFireflies(Math.round(cfg.current.densidad));
     };
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      W = window.innerWidth; H = window.innerHeight;
+      W = canvas.clientWidth || window.innerWidth;
+      H = canvas.clientHeight || window.innerHeight;
       canvas.width = W * dpr; canvas.height = H * dpr;
-      canvas.style.width = W + "px"; canvas.style.height = H + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (scene) initScene();
     };
 
-    const hillY = (L: Hill, x: number) => H * L.by + L.amp * Math.sin(x * L.fq + L.ph);
-
-    const drawHill = (L: Hill) => {
-      const ox = mouse.x * L.px, oy = mouse.y * L.px * 0.25;
-      ctx.beginPath(); ctx.moveTo(-50, H + 30);
-      for (let x = -50; x <= W + 50; x += 12) ctx.lineTo(x, hillY(L, x - ox) + oy);
-      ctx.lineTo(W + 50, H + 30); ctx.closePath();
-      ctx.fillStyle = L.col; ctx.fill();
-    };
-
-    const rim = (P: Pal, x: number, y: number, r: number) => {
-      ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = P.rim; ctx.lineWidth = 1.6; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.arc(x, y, r * 0.9, Math.PI * 1.18, Math.PI * 1.92); ctx.stroke(); ctx.restore();
-    };
-
-    const drawEye = (x: number, y: number, open: boolean, s: number, P: Pal) => {
-      if (open) {
-        ctx.globalCompositeOperation = "lighter";
-        const g = 15 * s; ctx.globalAlpha = 0.85; ctx.drawImage(sprites.glow, x - g / 2, y - g / 2, g, g);
-        ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-        ctx.fillStyle = P.eye; ctx.beginPath(); ctx.arc(x, y, 2.4 * s, 0, 6.3); ctx.fill();
-        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(x - 0.7 * s, y - 0.8 * s, 0.9 * s, 0, 6.3); ctx.fill();
-      } else {
-        ctx.strokeStyle = P.eye; ctx.lineWidth = 1.7 * s; ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(x - 2.6 * s, y); ctx.lineTo(x + 2.6 * s, y); ctx.stroke();
-      }
-    };
-
-    const drawCritter = (P: Pal, type: string, cx: number, gy: number, s: number, open: boolean) => {
-      const E = (x: number, y: number, rx: number, ry: number, rot: number, col: string) => { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot || 0, 0, 6.3); ctx.fillStyle = col; ctx.fill(); };
-      const T = (ax: number, ay: number, bx: number, by: number, dx: number, dy: number, col: string) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(dx, dy); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); };
-
-      if (type === "cat") {
-        const base = "#46415e", dark = "#37324c", belly = "#5d5878", ear = "#8a6678", nose = "#e8a0a8";
-        E(cx + 16 * s, gy - 13 * s, 6 * s, 12 * s, 0.6, dark);
-        E(cx + 21 * s, gy - 23 * s, 4 * s, 4 * s, 0, belly);
-        E(cx - 7 * s, gy - 3 * s, 5 * s, 3.2 * s, 0, belly); E(cx + 7 * s, gy - 3 * s, 5 * s, 3.2 * s, 0, belly);
-        E(cx, gy - 15 * s, 15 * s, 16 * s, 0, base);
-        E(cx, gy - 12 * s, 9 * s, 11 * s, 0, belly);
-        E(cx - 6 * s, gy - 4 * s, 4 * s, 3 * s, 0, belly); E(cx + 6 * s, gy - 4 * s, 4 * s, 3 * s, 0, belly);
-        E(cx, gy - 36 * s, 13 * s, 13 * s, 0, base);
-        T(cx - 12 * s, gy - 44 * s, cx - 5 * s, gy - 58 * s, cx - 1 * s, gy - 45 * s, base);
-        T(cx - 10 * s, gy - 46 * s, cx - 5.5 * s, gy - 54 * s, cx - 3 * s, gy - 46 * s, ear);
-        T(cx + 12 * s, gy - 44 * s, cx + 5 * s, gy - 58 * s, cx + 1 * s, gy - 45 * s, base);
-        T(cx + 10 * s, gy - 46 * s, cx + 5.5 * s, gy - 54 * s, cx + 3 * s, gy - 46 * s, ear);
-        E(cx, gy - 31 * s, 7 * s, 5 * s, 0, belly);
-        T(cx - 2.2 * s, gy - 33 * s, cx + 2.2 * s, gy - 33 * s, cx, gy - 30 * s, nose);
-        rim(P, cx, gy - 36 * s, 13 * s);
-        ctx.strokeStyle = "rgba(20,16,30,0.4)"; ctx.lineWidth = 0.8 * s; ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(cx, gy - 30 * s); ctx.lineTo(cx, gy - 28.5 * s); ctx.moveTo(cx, gy - 28.5 * s); ctx.lineTo(cx - 2.2 * s, gy - 27.5 * s); ctx.moveTo(cx, gy - 28.5 * s); ctx.lineTo(cx + 2.2 * s, gy - 27.5 * s); ctx.stroke();
-        drawEye(cx - 5.5 * s, gy - 37 * s, open, s, P);
-        drawEye(cx + 5.5 * s, gy - 37 * s, open, s, P);
-      } else if (type === "bunny") {
-        const base = "#5a5270", dark = "#48405e", belly = "#6f6786", ear = "#9a7888", nose = "#e8a0a8", tail = "#d8d2e4";
-        E(cx - 12 * s, gy - 8 * s, 5 * s, 5 * s, 0, tail);
-        E(cx - 7 * s, gy - 3 * s, 4.5 * s, 3 * s, 0, belly); E(cx + 7 * s, gy - 3 * s, 4.5 * s, 3 * s, 0, belly);
-        E(cx, gy - 13 * s, 13 * s, 15 * s, 0, base);
-        E(cx, gy - 10 * s, 8 * s, 10 * s, 0, belly);
-        E(cx - 5 * s, gy - 3.5 * s, 3.5 * s, 2.6 * s, 0, belly); E(cx + 5 * s, gy - 3.5 * s, 3.5 * s, 2.6 * s, 0, belly);
-        E(cx, gy - 32 * s, 11 * s, 11 * s, 0, base);
-        E(cx - 5 * s, gy - 48 * s, 4 * s, 15 * s, -0.14, base); E(cx - 5 * s, gy - 48 * s, 2 * s, 11 * s, -0.14, ear);
-        E(cx + 5 * s, gy - 48 * s, 4 * s, 15 * s, 0.14, base); E(cx + 5 * s, gy - 48 * s, 2 * s, 11 * s, 0.14, ear);
-        E(cx, gy - 28 * s, 6 * s, 4.5 * s, 0, belly);
-        T(cx - 1.8 * s, gy - 30 * s, cx + 1.8 * s, gy - 30 * s, cx, gy - 27.5 * s, nose);
-        rim(P, cx, gy - 32 * s, 11 * s);
-        drawEye(cx - 4.5 * s, gy - 33 * s, open, s, P);
-        drawEye(cx + 4.5 * s, gy - 33 * s, open, s, P);
-      } else if (type === "fox") {
-        const base = "#b06a3c", dark = "#8a4f2c", belly = "#e8d6b4", earin = "#3a2418", nose = "#241c2a";
-        E(cx + 15 * s, gy - 12 * s, 9 * s, 13 * s, 0.5, dark);
-        E(cx + 22 * s, gy - 21 * s, 5.5 * s, 6 * s, 0.3, belly);
-        E(cx - 7 * s, gy - 3 * s, 5 * s, 3.2 * s, 0, dark); E(cx + 7 * s, gy - 3 * s, 5 * s, 3.2 * s, 0, dark);
-        E(cx, gy - 15 * s, 15 * s, 16 * s, 0, base);
-        E(cx, gy - 12 * s, 9 * s, 11 * s, 0, belly);
-        E(cx, gy - 37 * s, 13 * s, 12 * s, 0, base);
-        T(cx - 13 * s, gy - 43 * s, cx - 9 * s, gy - 60 * s, cx - 2 * s, gy - 46 * s, base);
-        T(cx - 11 * s, gy - 45 * s, cx - 8.5 * s, gy - 55 * s, cx - 4 * s, gy - 46 * s, earin);
-        T(cx + 13 * s, gy - 43 * s, cx + 9 * s, gy - 60 * s, cx + 2 * s, gy - 46 * s, base);
-        T(cx + 11 * s, gy - 45 * s, cx + 8.5 * s, gy - 55 * s, cx + 4 * s, gy - 46 * s, earin);
-        E(cx - 6 * s, gy - 33 * s, 6 * s, 7 * s, 0, belly); E(cx + 6 * s, gy - 33 * s, 6 * s, 7 * s, 0, belly);
-        E(cx, gy - 30 * s, 5 * s, 5 * s, 0, belly);
-        E(cx, gy - 27 * s, 2.2 * s, 1.8 * s, 0, nose);
-        rim(P, cx, gy - 37 * s, 13 * s);
-        drawEye(cx - 5.5 * s, gy - 37 * s, open, s, P);
-        drawEye(cx + 5.5 * s, gy - 37 * s, open, s, P);
-      } else {
-        const base = "#d8b24a", dark = "#b58f2e", belly = "#f0d98a", beak = P.beak;
-        T(cx + 10 * s, gy - 20 * s, cx + 18 * s, gy - 16 * s, cx + 10 * s, gy - 12 * s, dark);
-        ctx.strokeStyle = beak; ctx.lineWidth = 1.4 * s; ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(cx - 3 * s, gy - 1 * s); ctx.lineTo(cx - 3 * s, gy + 2 * s); ctx.moveTo(cx + 3 * s, gy - 1 * s); ctx.lineTo(cx + 3 * s, gy + 2 * s); ctx.stroke();
-        E(cx, gy - 13 * s, 12 * s, 13 * s, 0, base);
-        E(cx, gy - 10 * s, 7.5 * s, 9 * s, 0, belly);
-        E(cx + 7 * s, gy - 14 * s, 5 * s, 8 * s, -0.3, dark);
-        T(cx - 10 * s, gy - 16 * s, cx - 18 * s, gy - 14 * s, cx - 10 * s, gy - 11 * s, beak);
-        E(cx, gy - 27 * s, 2.4 * s, 4 * s, 0, dark);
-        rim(P, cx, gy - 18 * s, 12 * s);
-        drawEye(cx - 5 * s, gy - 17 * s, open, s, P);
-        drawEye(cx + 1 * s, gy - 17 * s, open, s, P);
-      }
-    };
-
     const drawCreatures = (dt: number) => {
-      const L = scene.hills[creatureLayer];
-      const ox = mouse.x * L.px, oy = mouse.y * L.px * 0.25;
+      const baseH = Math.max(150, Math.min(290, H * 0.25));
+      const glowA = fc.alpha * 0.34;
       for (const cr of scene.creatures) {
-        cr.bob += dt * 1.2;
-        cr.blink -= dt;
-        if (cr.blink <= 0) { cr.blinking = 0.12; cr.blink = 2.4 + Math.random() * 3.6; }
-        if (cr.blinking > 0) cr.blinking -= dt;
-        const cx = W * cr.fx + ox;
-        const gy = hillY(L, W * cr.fx) + oy - Math.sin(cr.bob) * 2.4 * cr.s + 3;
-        drawCritter(pal, cr.type, cx, gy, cr.s, cr.blinking <= 0);
+        cr.bob += dt * 1.1;
+        const img = imgs[cr.type];
+        if (!img || !img.complete || !img.naturalWidth) continue;
+        const px = cr.fly ? 26 : 16;
+        const cx = W * cr.fx + mouse.x * px;
+        const groundY = H * cr.baseY + mouse.y * px * 0.45;
+        const h = baseH * cr.s, w = h * (img.naturalWidth / img.naturalHeight);
+        const bob = Math.sin(cr.bob) * cr.bobAmp;
+        const drift = cr.fly ? Math.sin(cr.bob * 0.5 + cr.phase) * 9 : 0;
+        const sway = Math.sin(cr.bob * 0.8 + cr.phase) * (cr.fly ? 0.05 : 0.02);
+        const sq = 1 + Math.sin(cr.bob * 2 + cr.phase) * 0.012;
+        if (!cr.fly) {
+          ctx.save(); ctx.globalAlpha = 0.26; ctx.fillStyle = "#0a0608";
+          ctx.beginPath(); ctx.ellipse(cx, groundY + 2, w * 0.40, 11 * cr.s, 0, 0, 6.3); ctx.fill(); ctx.restore();
+        }
+        if (glowA > 0.01) {
+          ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = glowA;
+          const gs = w * 1.5; ctx.drawImage(glowSprite, cx - gs / 2, (groundY - h * 0.5) - gs / 2, gs, gs);
+          ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+        }
+        ctx.save();
+        ctx.translate(cx + drift, groundY - bob);
+        ctx.rotate(sway);
+        ctx.scale(1, sq);
+        ctx.drawImage(img, -w / 2, -h, w, h);
+        ctx.restore();
       }
     };
 
     const drawFireflies = (t: number, dt: number) => {
-      const fa = pal.flyAlpha;
+      const fa = fc.alpha;
       ctx.globalCompositeOperation = "lighter";
       for (const f of scene.bokeh) {
         f.tw += dt * f.sp; f.x += f.vx * dt;
         if (f.x < -70) f.x = W + 70; if (f.x > W + 70) f.x = -70;
         const b = (0.05 + 0.06 * (0.5 + 0.5 * Math.sin(f.tw))) * fa;
         const sz = f.r * 4; ctx.globalAlpha = b;
-        ctx.drawImage(sprites.glow, f.x - sz / 2, f.y - sz / 2, sz, sz);
+        ctx.drawImage(glowSprite, f.x - sz / 2, f.y - sz / 2, sz, sz);
       }
       for (const f of scene.fireflies) {
         f.y -= f.vy * dt; f.ph += dt;
@@ -289,72 +206,49 @@ export default function LunaNegraBackground({
         const sx = f.x + Math.sin(f.ph * 0.6 + f.fl) * f.amp * 0.4;
         const b = (0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * f.fs * 2.2 + f.fl))) * fa;
         const sz = f.r * 9; ctx.globalAlpha = b;
-        ctx.drawImage(sprites.glow, sx - sz / 2, f.y - sz / 2, sz, sz);
+        ctx.drawImage(glowSprite, sx - sz / 2, f.y - sz / 2, sz, sz);
         ctx.globalAlpha = Math.min(1, b + 0.2 * fa); ctx.fillStyle = "#fffceb";
         ctx.beginPath(); ctx.arc(sx, f.y, f.r * 0.6, 0, 6.3); ctx.fill();
       }
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     };
 
-    const drawSpark = (dt: number) => {
-      const sp = scene.spark;
-      if (!sp.active) {
-        sp.next -= dt;
-        if (sp.next <= 0) { sp.active = true; sp.x = W * (0.55 + Math.random() * 0.4); sp.y = H * (0.04 + Math.random() * 0.12); sp.vx = -(W * 0.45 + Math.random() * W * 0.25); sp.vy = H * (0.12 + Math.random() * 0.1); sp.life = 0; }
-        return;
-      }
-      sp.life += dt; sp.x += sp.vx * dt; sp.y += sp.vy * dt;
-      const fade = Math.max(0, Math.min(1, Math.min(sp.life * 4, (1.15 - sp.life) * 4)));
-      ctx.globalCompositeOperation = "lighter";
-      const tx = sp.x - sp.vx * 0.05, ty = sp.y - sp.vy * 0.05;
-      const lg = ctx.createLinearGradient(sp.x, sp.y, tx, ty);
-      lg.addColorStop(0, `rgba(255,221,150,${0.9 * fade})`); lg.addColorStop(1, "rgba(255,221,150,0)");
-      ctx.strokeStyle = lg; ctx.lineWidth = 2.2; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(tx, ty); ctx.stroke();
-      const sz = 28 * fade; ctx.globalAlpha = fade; ctx.drawImage(sprites.glow, sp.x - sz / 2, sp.y - sz / 2, sz, sz);
-      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-      if (sp.life > 1.15 || sp.x < -70) { sp.active = false; sp.next = 6 + Math.random() * 10; }
-    };
-
     const draw = (t: number, dt: number, animalesOn: boolean) => {
-      const P = pal;
-      const g = ctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, P.skyTop); g.addColorStop(0.55, P.skyMid); g.addColorStop(1, P.skyHorizon);
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = "lighter";
-      const rg = ctx.createRadialGradient(W * 0.68, H * 0.6, 0, W * 0.68, H * 0.6, H * 0.7);
-      rg.addColorStop(0, P.glow); rg.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = P.star;
-      for (const st of scene.stars) { st.tw += dt * st.sp; ctx.globalAlpha = P.starA * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(st.tw))); ctx.fillRect(st.x, st.y, st.r, st.r); }
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "lighter";
-      for (const cl of scene.clouds) { cl.x += cl.v * dt; if (cl.x - cl.s > W) cl.x = -cl.s; ctx.globalAlpha = cl.a; ctx.drawImage(sprites.cloud, cl.x - cl.s, cl.y - cl.s * 0.5, cl.s * 2, cl.s); }
-      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-      for (let i = 0; i < scene.hills.length; i++) {
-        drawHill(scene.hills[i]);
-        if (animalesOn && i === creatureLayer) drawCreatures(dt);
+      ctx.clearRect(0, 0, W, H);
+      // fondo pintado del hero (cover-fit, leve parallax con el mouse)
+      const bg = bgs[tiempoNow];
+      if (bg && bg.complete && bg.naturalWidth) {
+        const iw = bg.naturalWidth, ih = bg.naturalHeight;
+        const sc = Math.max(W / iw, H / ih);
+        const dw = iw * sc, dh = ih * sc;
+        const ox = mouse.x * -14, oy = mouse.y * -10;
+        ctx.drawImage(bg, (W - dw) / 2 + ox, (H - dh) / 2 - H * 0.04 + oy, dw, dh);
+      } else {
+        ctx.fillStyle = "#0c1622"; ctx.fillRect(0, 0, W, H);
       }
+      if (animalesOn) drawCreatures(dt);
       drawFireflies(t, dt);
-      drawSpark(dt);
-      const vg = ctx.createRadialGradient(W * 0.5, H * 0.42, H * 0.15, W * 0.5, H * 0.5, H * 0.95);
-      vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(4,3,8,0.5)");
-      ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-      const bf = ctx.createLinearGradient(0, H * 0.72, 0, H);
-      bf.addColorStop(0, "rgba(8,7,12,0)"); bf.addColorStop(1, "rgba(8,7,12,0.92)");
-      ctx.fillStyle = bf; ctx.fillRect(0, H * 0.72, W, H * 0.28);
+      // scrim izquierdo para legibilidad del hero
+      const ls = ctx.createLinearGradient(0, 0, W * 0.55, 0);
+      ls.addColorStop(0, "rgba(6,6,12,0.55)"); ls.addColorStop(1, "rgba(6,6,12,0)");
+      ctx.fillStyle = ls; ctx.fillRect(0, 0, W * 0.55, H);
+      // funde el borde derecho hacia un color oscuro (evita corte duro contra paneles)
+      const rs = ctx.createLinearGradient(W, 0, W - 110, 0);
+      rs.addColorStop(0, "rgba(12,11,18,0.92)"); rs.addColorStop(1, "rgba(12,11,18,0)");
+      ctx.fillStyle = rs; ctx.fillRect(W - 110, 0, 110, H);
+      // leve fundido inferior hacia el navy de la textura (el borde rasgado hace el resto)
+      const bf = ctx.createLinearGradient(0, H * 0.80, 0, H);
+      bf.addColorStop(0, "rgba(19,32,74,0)"); bf.addColorStop(1, "rgba(19,32,74,0.55)");
+      ctx.fillStyle = bf; ctx.fillRect(0, H * 0.80, W, H * 0.20);
     };
 
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
+      if (canvas.clientWidth > 0 && (canvas.clientWidth !== W || canvas.clientHeight !== H)) resize();
       const c = cfg.current;
       const tm = resolveTiempo(c.tiempo);
       if (tm !== tiempoNow) {
-        tiempoNow = tm; pal = makePalette(tm);
-        sprites.glow = makeGlow(pal.fly);
-        sprites.cloud = makeGlow(pal.cloudRGB);
-        scene.hills.forEach((h, i) => { h.col = pal.hills[i]; });
+        tiempoNow = tm; fc = fireflyConfig(tm); glowSprite = makeGlow(fc.rgb);
       }
       if (Math.round(c.densidad) !== density) buildFireflies(Math.round(c.densidad));
       const t = (now - t0) / 1000;
@@ -374,8 +268,11 @@ export default function LunaNegraBackground({
     resize();
     initScene();
     if (reduce) {
-      // respeta reduce-motion: pinta un frame estático
-      draw(0, 0, cfg.current.animales);
+      // respeta reduce-motion: un frame estático cuando carguen las imágenes
+      const paint = () => draw(0, 0, cfg.current.animales);
+      paint();
+      Object.values(bgs).forEach((im) => { im.addEventListener("load", paint); });
+      Object.values(imgs).forEach((im) => { im.addEventListener("load", paint); });
     } else {
       raf = requestAnimationFrame(loop);
     }
@@ -392,7 +289,7 @@ export default function LunaNegraBackground({
       ref={canvasRef}
       aria-hidden="true"
       className={className}
-      style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", zIndex, display: "block", pointerEvents: "none" }}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex, display: "block", pointerEvents: "none", WebkitMaskImage: `url(${(assetsBase.endsWith("/") ? assetsBase : assetsBase + "/")}mask.png)`, maskImage: `url(${(assetsBase.endsWith("/") ? assetsBase : assetsBase + "/")}mask.png)`, WebkitMaskSize: "100% 100%", maskSize: "100% 100%", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "bottom", maskPosition: "bottom" }}
     />
   );
 }

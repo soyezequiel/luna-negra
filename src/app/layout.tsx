@@ -10,7 +10,6 @@ import { FriendsProvider } from "@/providers/friends-provider";
 import { NotificationsCenterProvider } from "@/providers/notifications-center-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import LunaNegraBackground from "@/components/LunaNegraBackground";
 import { FriendsSidebar } from "@/components/friends-sidebar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { LoginModal } from "@/components/login-modal";
@@ -72,9 +71,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
     >
       <body className="relative flex min-h-full flex-col font-sans text-ln-text">
-        {/* Fondo animado (pradera + luciérnagas). Canvas fijo a pantalla completa
-            en z-0; todo el chrome (navbar/main/footer/aside) va en z-10+ encima. */}
-        <LunaNegraBackground />
+        {/* El fondo de la página es la textura tileable de animalitos (ver
+            globals.css). La escena animada de selva vive sólo en el hero del
+            Home (ver app/page.tsx). El chrome va en z-10+ sobre el velo (z-0). */}
         <FreshGuard version={BUILD_ID} />
         <SessionProvider>
           <WalletProvider>

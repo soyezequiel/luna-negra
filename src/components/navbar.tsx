@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
 import { useWallet } from "@/providers/wallet-provider";
@@ -29,6 +30,24 @@ export function Navbar() {
   const { connected, balanceSats } = useWallet();
   const pathname = usePathname() ?? "/";
 
+  // La navbar va transparente mientras un hero full-bleed (#home-hero, ver
+  // app/page.tsx) esté detrás de ella; al scrollear más allá del hero —o en
+  // páginas sin hero— vuelve al panel sólido para mantener legibles los links.
+  const [overHero, setOverHero] = useState(false);
+  useEffect(() => {
+    const update = () => {
+      const hero = document.getElementById("home-hero");
+      setOverHero(!!hero && window.scrollY < hero.offsetHeight - 120);
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [pathname]);
+
   const navLink = (href: string, label: string) => {
     const active = isActive(pathname, href);
     return (
@@ -51,7 +70,14 @@ export function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-ln-border bg-gradient-to-b from-ln-panel/90 to-ln-bg/80 backdrop-blur">
+    <header
+      className={cn(
+        "sticky top-0 z-50 transition-colors duration-300",
+        overHero
+          ? "border-b border-transparent bg-gradient-to-b from-black/55 via-black/20 to-transparent"
+          : "border-b border-ln-border bg-gradient-to-b from-ln-panel/90 to-ln-bg/80 backdrop-blur",
+      )}
+    >
       <div className="mx-auto flex h-[66px] max-w-[1240px] items-center gap-3 px-[22px]">
         {/* Logo eclipse + wordmark */}
         <Link

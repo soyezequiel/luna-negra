@@ -22,6 +22,7 @@
   --ln-card: #181522;
   --ln-surface: #221d30; /* placeholders / avatares vacíos */
   --ln-logo-disc: #0a0810;
+  --ln-navy: #13204a; /* navy de la textura tileable del fondo (texture.jpg) */
 
   /* ---------- Texto ---------- */
   --ln-text: #e9e6f2;
@@ -207,10 +208,24 @@ html {
 }
 
 body {
-  background: var(--ln-eclipse-bg);
+  /* Patrón tileable de animalitos sobre navy: fondo de toda la página fuera del
+     hero del Home (la escena animada vive en el canvas del hero). */
+  background: var(--ln-navy) url("/luna-assets/texture.jpg") repeat;
+  background-size: 300px;
   background-attachment: fixed;
   color: var(--ln-text);
   font-family: var(--font-sans);
+}
+
+/* Velo que calma la textura detrás del contenido. Fijo a pantalla completa en
+   z-0; todo el chrome (navbar/main/footer/aside) va en z-10+ encima. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(11, 14, 32, 0.42);
 }
 
 /* "Corona" decorativa: aro luminoso arriba-derecha con pulso suave. */

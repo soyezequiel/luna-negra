@@ -1,16 +1,16 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { GameCard } from "@/components/game-card";
 import { SocialRail } from "@/components/social-rail";
+import LunaNegraBackground from "@/components/LunaNegraBackground";
+import { SITE_TAGLINE } from "@/lib/site";
 import {
   CATEGORIES,
   normalizeCategories,
   normalizeCategory,
   categoryLabel,
 } from "@/lib/categories";
-import { hueFromSlug, priceLabel } from "@/lib/format";
-import { normalizeImageUrl } from "@/lib/game-media";
 import { getPublishedCatalog } from "@/lib/store-catalog";
+import { getPlayingNowCount } from "@/lib/playing-now";
 import { StoreUnavailable } from "@/components/store-unavailable";
 import { cn } from "@/lib/utils";
 
@@ -62,10 +62,15 @@ export default async function StorePage({
   }
   const visibleCategories = CATEGORIES.filter((c) => usedCategories.has(c.slug));
 
-  // Hero destacado: el juego más nuevo, solo en la portada limpia (sin búsqueda
-  // ni filtro, página 1). Se quita de la grilla para no duplicarlo.
-  const hero = !q && !cat && page === 1 && games.length > 0 ? games[0] : null;
-  const gridGames = hero ? games.slice(1) : games;
+  // Hero de marca con la escena animada de selva: sólo en la portada limpia (sin
+  // búsqueda ni filtro, página 1). En búsquedas/otras páginas no aparece para no
+  // robar espacio a los resultados.
+  const showHero = !q && !cat && page === 1;
+  const gridGames = games;
+
+  // Conteo "jugando ahora" para el badge del hero. Sólo se consulta cuando hay
+  // hero; tolerante a fallos (cold start de la DB) → 0, que oculta el pill.
+  const playingNow = showHero ? await getPlayingNowCount().catch(() => 0) : 0;
 
   const linkFor = (p: number) => {
     const params = new URLSearchParams();
@@ -86,101 +91,86 @@ export default async function StorePage({
   };
 
   return (
-    <div className="mx-auto max-w-[1240px] px-[22px] py-8">
-      {/* Buscador full-width (solo móvil, al tope del Home) */}
-      <form action="/" method="get" className="mb-6 ln:hidden">
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Buscar juegos…"
-          aria-label="Buscar juegos"
-          className="h-[46px] w-full rounded-full border border-ln-border bg-ln-bg-deep px-5 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/20"
-        />
-      </form>
-
-      {hero ? (
+    <>
+      {/* Hero de marca full-bleed: escena animada de selva (canvas) a sangre,
+          alto, con la navbar transparente encima (navbar.tsx detecta #home-hero
+          para volverse transparente mientras el hero está bajo ella). El canvas
+          se posiciona absoluto y llena la sección; el contenido va en z-10
+          centrado al mismo ancho que el catálogo. El borde inferior rasgado
+          (mask.png) funde con la textura de la página. */}
+      {showHero ? (
         <section
-          className="cover relative mb-9 animate-ln-rise overflow-hidden rounded-ln-xl border border-ln-border shadow-ln-card"
-          style={{ "--h": hueFromSlug(hero.slug) } as CSSProperties}
+          id="home-hero"
+          className="relative -mt-[66px] animate-ln-rise overflow-hidden"
         >
-          {hero.horizontalCoverUrl || hero.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={normalizeImageUrl(hero.horizontalCoverUrl ?? hero.coverUrl ?? "")}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : null}
-
-          {/* Corona decorativa arriba-derecha */}
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] animate-ln-corona rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle at 50% 50%, transparent 52%, rgba(255,182,72,.22) 56%, rgba(157,140,255,.14) 62%, transparent 72%)",
-            }}
-            aria-hidden
-          />
-
-          <div
-            className="relative flex min-h-[350px] flex-col justify-end gap-3 p-6 ln:min-h-[430px] ln:p-12"
-            style={{
-              background:
-                "linear-gradient(95deg, rgba(8,7,12,.96) 8%, rgba(8,7,12,.7) 42%, transparent 78%)",
-            }}
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="ln-label rounded-full bg-black/40 px-2.5 py-1 !text-ln-corona-bright">
+          <LunaNegraBackground densidad={48} />
+          <div className="relative z-10 mx-auto flex min-h-[92svh] w-full max-w-[1240px] flex-col justify-end gap-4 px-6 pb-16 pt-[96px] ln:px-[22px] ln:pb-24">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="ln-label rounded-full bg-black/45 px-2.5 py-1 !text-ln-corona-bright backdrop-blur-sm">
                 ★ Destacado
               </span>
-              {hero.categories.length > 0 ? (
-                <span className="flex items-center gap-1.5 text-[12px] text-ln-soft">
-                  {hero.categories.map((c) => categoryLabel(c)).join(" · ")}
+              {playingNow > 0 ? (
+                <span className="flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-[12px] font-medium text-ln-soft backdrop-blur-sm">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-ln-aurora shadow-[0_0_8px] shadow-ln-aurora"
+                    aria-hidden
+                  />
+                  {playingNow.toLocaleString("es-AR")} jugando ahora
                 </span>
               ) : null}
             </div>
 
-            <h1 className="max-w-2xl font-display text-[38px] font-extrabold leading-[1.04] tracking-tight text-white ln:text-[62px]">
-              {hero.title}
+            <h1 className="max-w-[12ch] font-display text-[46px] font-extrabold leading-[1.0] tracking-tight text-white drop-shadow-[0_2px_18px_rgba(0,0,0,0.55)] ln:text-[72px]">
+              Tu próxima aventura ya empezó
             </h1>
 
-            {hero.description ? (
-              <p className="max-w-[480px] text-sm leading-relaxed text-ln-soft line-clamp-2">
-                {hero.description}
-              </p>
-            ) : null}
+            <p className="max-w-[460px] text-[15px] leading-relaxed text-ln-soft drop-shadow-[0_1px_10px_rgba(0,0,0,0.6)] ln:text-base">
+              Miles de juegos para PC, directo en tu navegador. Pagá con
+              Lightning y jugá con amigos por Nostr.
+            </p>
 
             <div className="mt-2 flex flex-wrap items-center gap-4">
-              <Link
-                href={`/game/${hero.slug}`}
-                className="btn btn-luna btn-xl shadow-ln-luna"
-              >
-                ▶ Ver juego
+              <Link href="#catalogo" className="btn btn-luna btn-xl shadow-ln-luna">
+                ▶ Explorar la tienda
               </Link>
-              <span className="font-mono text-sm text-ln-corona-bright">
-                {priceLabel(hero.priceSats)}{" "}
+              <span className="font-mono text-sm text-ln-soft drop-shadow-[0_1px_8px_rgba(0,0,0,0.7)]">
+                Gratis para empezar{" "}
                 <span className="text-ln-faint">· Web · Lightning</span>
               </span>
             </div>
           </div>
         </section>
-      ) : (
-        <section className="mb-8">
-          <h1 className="font-display text-[40px] font-extrabold tracking-tight text-white">
-            Tienda
-          </h1>
-          <p className="mt-2 max-w-xl text-ln-muted">
-            Todo se juega en el navegador. Pagá con Lightning, conectá con Nostr.
-          </p>
-        </section>
-      )}
+      ) : null}
 
-      {/* Riel social "amigos jugando" (cliente) */}
-      <SocialRail />
+      <div className="mx-auto max-w-[1240px] px-[22px] py-8">
+        {/* Buscador full-width (solo móvil, al tope del catálogo) */}
+        <form action="/" method="get" className="mb-6 ln:hidden">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Buscar juegos…"
+            aria-label="Buscar juegos"
+            className="h-[46px] w-full rounded-full border border-ln-border bg-ln-bg-deep px-5 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/20"
+          />
+        </form>
 
-      {/* Chips de categoría */}
-      <nav className="mb-7 flex flex-wrap gap-2">
+        {!showHero ? (
+          <section className="mb-8">
+            <h1 className="font-display text-[40px] font-extrabold tracking-tight text-white">
+              Tienda
+            </h1>
+            <p className="mt-2 max-w-xl text-ln-muted">
+              Todo se juega en el navegador. Pagá con Lightning, conectá con
+              Nostr.
+            </p>
+          </section>
+        ) : null}
+
+        {/* Riel social "amigos jugando" (cliente) */}
+        <SocialRail />
+
+      {/* Chips de categoría (destino del CTA "Explorar la tienda") */}
+      <nav id="catalogo" className="mb-7 flex flex-wrap gap-2 scroll-mt-[80px]">
         {[{ slug: "", label: "Todas" }, ...visibleCategories].map((c) => {
           const active = (c.slug || null) === cat;
           return (
@@ -259,6 +249,7 @@ export default async function StorePage({
           </>
         )}
       </section>
-    </div>
+      </div>
+    </>
   );
 }
