@@ -94,7 +94,7 @@ export default async function StorePage({
         <section className="summer-promo-bleed relative -mt-8 mb-10 overflow-hidden">
           <div className="relative h-[430px] overflow-hidden ln:h-[500px]">
             <LunaNegraBackground
-              tiempo="dia"
+              tiempo="auto"
               densidad={0}
               velocidad={0.45}
               parallax

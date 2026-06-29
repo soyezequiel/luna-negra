@@ -49,7 +49,8 @@ export interface LunaNegraBackgroundProps {
   assetsBase?: string;
   /** Fondo alternativo para el modo "dia". */
   diaBackgroundSrc?: string;
-  /** Dibuja el modo dia como una composicion por capas con parallax. */
+  /** Dibuja la escena como una composicion por capas con parallax (en todos los
+   * momentos del dia; las capas se tintan segun el ambiente para combinar con el fondo). */
   layeredDiaScene?: boolean;
   /** Movimiento autonomo de animales/luciernagas. Si es false, solo repinta por carga, resize o puntero. */
   animated?: boolean;
@@ -114,10 +115,10 @@ function fireflyConfig(t: string): { rgb: [number, number, number]; alpha: numbe
 function resolveTiempo(t: Tiempo): string {
   if (t && t !== "auto") return t;
   const h = new Date().getHours();
-  if (h >= 5 && h < 9) return "amanecer";
+  if (h >= 6 && h < 9) return "amanecer";
   if (h >= 9 && h < 17) return "dia";
-  if (h >= 17 && h < 20) return "atardecer";
-  return "noche";
+  if (h >= 17 && h < 19) return "atardecer";
+  return "noche"; // 19–6
 }
 
 function makeGlow(rgb: [number, number, number]): HTMLCanvasElement {
@@ -353,10 +354,22 @@ export default function LunaNegraBackground({
       ctx.restore();
     };
 
+    // Tinte de iluminación por momento aplicado a las capas (animales/follaje).
+    // Las capas están iluminadas "de día"; esto las acerca al ambiente del fondo.
+    const sceneTint = (m: string): string => {
+      if (m === "amanecer") return "brightness(1.02) saturate(1.06) sepia(0.12)";
+      if (m === "atardecer") return "brightness(0.92) saturate(1.18) sepia(0.3) hue-rotate(-8deg)";
+      if (m === "noche") return "brightness(0.42) saturate(0.85) contrast(1.05) hue-rotate(6deg)";
+      return ""; // dia
+    };
+    const withTint = (tint: string, fx = ""): string =>
+      [tint, fx].filter(Boolean).join(" ") || "none";
+
     const drawLayeredCreature = (
       layer: LayeredCreature,
       frame: { x: number; y: number; sc: number },
       t: number,
+      tint = "",
     ) => {
       const img = layeredImgs[layer.asset];
       if (!imageReady(img)) return;
@@ -410,10 +423,12 @@ export default function LunaNegraBackground({
 
       ctx.save();
       if (!moving) {
-        // Estático: una sola pasada con sombra de contacto.
-        ctx.filter = layer.float ? "drop-shadow(0 8px 8px rgba(3,9,16,.2))" : "drop-shadow(0 12px 12px rgba(3,9,16,.22))";
+        // Estático: una sola pasada con sombra de contacto (+ tinte de ambiente).
+        const ds = layer.float ? "drop-shadow(0 8px 8px rgba(3,9,16,.2))" : "drop-shadow(0 12px 12px rgba(3,9,16,.22))";
+        ctx.filter = withTint(tint, ds);
         ctx.drawImage(img, left, top, dw, dh);
       } else {
+        if (tint) ctx.filter = tint;
         // Articulación falsa: cortamos el sprite en bandas horizontales y
         // desplazamos cada una en X según su altura. Las patas (abajo) quedan
         // fijas y el torso/extremidades superiores flexionan con una onda que
@@ -438,22 +453,23 @@ export default function LunaNegraBackground({
       ctx.restore();
     };
 
-    const drawLayeredDiaScene = (t: number, bg: HTMLImageElement | undefined) => {
+    const drawLayeredScene = (t: number, bg: HTMLImageElement | undefined) => {
       const frame = drawBackgroundImage(bg, mouse.x * -8, mouse.y * -5);
       if (!frame) return;
 
-      drawSceneRect(layeredImgs.pondGrass, frame, 238, 620, 470, 57, 11, 5, 0.48);
-      for (const layer of LAYERED_CREATURES) drawLayeredCreature(layer, frame, t);
-      drawSceneRect(layeredImgs.leftFoliage, frame, -110, 620, 520, 268, 34, 10, 0.98, "drop-shadow(0 16px 14px rgba(3,9,16,.24))");
-      drawSceneRect(layeredImgs.rightFoliage, frame, 875, 585, 430, 233, 30, 9, 0.96, "drop-shadow(0 14px 12px rgba(3,9,16,.2))");
+      const tint = sceneTint(tiempoNow);
+      drawSceneRect(layeredImgs.pondGrass, frame, 238, 620, 470, 57, 11, 5, 0.48, withTint(tint));
+      for (const layer of LAYERED_CREATURES) drawLayeredCreature(layer, frame, t, tint);
+      drawSceneRect(layeredImgs.leftFoliage, frame, -110, 620, 520, 268, 34, 10, 0.98, withTint(tint, "drop-shadow(0 16px 14px rgba(3,9,16,.24))"));
+      drawSceneRect(layeredImgs.rightFoliage, frame, 875, 585, 430, 233, 30, 9, 0.96, withTint(tint, "drop-shadow(0 14px 12px rgba(3,9,16,.2))"));
     };
 
     const draw = (t: number, dt: number, animalesOn: boolean, scrimOn: boolean, layeredOn: boolean) => {
       ctx.clearRect(0, 0, W, H);
       // fondo pintado del hero (cover-fit, leve parallax con el mouse)
       const bg = getBg(tiempoNow);
-      if (layeredOn && tiempoNow === "dia") {
-        drawLayeredDiaScene(t, bg);
+      if (layeredOn) {
+        drawLayeredScene(t, bg);
       } else {
         drawBackgroundImage(bg, mouse.x * -14, mouse.y * -10);
         if (animalesOn) drawCreatures(dt);
