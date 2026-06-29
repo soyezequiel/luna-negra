@@ -108,7 +108,7 @@ export default async function StorePage({
               aria-hidden
             />
             <div className="relative z-10 mx-auto flex h-[270px] max-w-[1240px] flex-col items-center px-[22px] pt-11 text-center ln:h-[305px] ln:pt-14">
-              <h1 className="summer-sale-title">Edicion Hackathon</h1>
+              <h1 className="summer-sale-title">Edicion Hackathon la crypta</h1>
               <p className="summer-sale-subtitle">DE LUNA NEGRA</p>
               <p className="summer-sale-ribbon">
                 JUEGOS WEB &middot; LIGHTNING &middot; NOSTR
