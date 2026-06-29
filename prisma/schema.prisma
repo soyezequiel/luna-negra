@@ -98,6 +98,7 @@ model Provider {
   gameLaunchListeners GameLaunchListener[]
   integrationPings    IntegrationPing[]
   playerCountSamples  PlayerCountSample[]
+  gamePlayClicks      GamePlayClick[]
 }
 
 // Muestra periódica del conteo de jugadores con presencia activa de un proveedor.
@@ -117,9 +118,38 @@ model PlayerCountSample {
   // por el punto, y distinguir las sesiones del dueño (para no inflar la curva con
   // las pruebas del propio proveedor). Capado a un máximo razonable por muestra.
   npubs      String[] @default([])
+  // Fuente del conteo de esta muestra:
+  //   "presence" → presencia real reportada por el game server (GamePresence).
+  //   "clicks"   → ESTIMACIÓN por clicks en "Jugar" (GamePlayClick), para juegos
+  //                que NO integraron la presencia (§3). Ver presence-sampler.ts.
+  source     String   @default("presence")
   sampledAt  DateTime @default(now())
 
   @@index([providerId, sampledAt])
+}
+
+// Click en "Jugar" desde la tienda, deduplicado por jugador con una ventana de
+// sesión asumida. Sirve para ESTIMAR la curva de "jugadores concurrentes" de los
+// juegos que NO integraron la presencia real (§3, POST /api/v1/presence): sin
+// heartbeat del game server no sabemos cuánto dura la sesión, así que al hacer
+// click marcamos al jugador como "jugando" por una ventana fija (PLAY_CLICK_TTL_MS)
+// y los re-clicks dentro de esa ventana solo la renuevan (no inflan el conteo).
+// Lo lee el sampler (presence-sampler.ts) SOLO para proveedores sin presencia
+// integrada; los que sí la integran usan GamePresence (fuente de verdad). Se
+// llavea por (gameId, npub) para granularidad por juego, pero el sampler dedup por
+// (providerId, npub) igual que la presencia real. Las filas vencidas se purgan.
+model GamePlayClick {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  gameId     String
+  npub       String
+  expiresAt  DateTime // now + PLAY_CLICK_TTL_MS (ventana de sesión asumida)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([gameId, npub])
+  @@index([providerId, expiresAt])
+  @@index([expiresAt])
 }
 
 // Telemetría de integración: registra que un endpoint del contrato público

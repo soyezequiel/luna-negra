@@ -169,7 +169,11 @@ export function GameStatsDashboard({
             <Kpi
               label="Jugadores ahora"
               value={String(stats.players.now)}
-              sub="presencia activa"
+              sub={
+                stats.players.source === "clicks"
+                  ? "estimado por clicks en Jugar"
+                  : "presencia activa"
+              }
               accent="var(--ln-aurora)"
             />
             <Kpi
@@ -230,15 +234,20 @@ export function GameStatsDashboard({
           <ChartCard
             title="Jugadores concurrentes"
             hint={
-              stats.players.sharedAcrossGames
-                ? "compartido entre los juegos del proveedor"
-                : "pasá el mouse para ver quién jugaba"
+              stats.players.source === "clicks"
+                ? stats.players.sharedAcrossGames
+                  ? "estimado por clicks en Jugar · compartido entre los juegos del proveedor"
+                  : "estimado por clicks en Jugar (este juego no integró presencia)"
+                : stats.players.sharedAcrossGames
+                  ? "compartido entre los juegos del proveedor"
+                  : "pasá el mouse para ver quién jugaba"
             }
           >
             {stats.players.samples.length === 0 ? (
               <p className="py-10 text-center text-sm text-ln-faint">
-                Todavía no hay muestras de presencia. La curva empieza a llenarse
-                a medida que haya gente jugando (se muestrea cada pocos minutos).
+                {stats.players.source === "clicks"
+                  ? "Todavía no hay clicks en Jugar. La curva se estima con los clicks en “Jugar” (este juego no integró la presencia) y empieza a llenarse a medida que haya gente abriendo el juego."
+                  : "Todavía no hay muestras de presencia. La curva empieza a llenarse a medida que haya gente jugando (se muestrea cada pocos minutos)."}
               </p>
             ) : (
               <>

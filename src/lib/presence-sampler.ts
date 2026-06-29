@@ -8,6 +8,15 @@
  *
  * OJO: `GamePresence` se llavea por (providerId, npub) — no tiene gameId —, así
  * que el conteo es POR PROVEEDOR. La serie arranca vacía y crece de aquí en más.
+ *
+ * FALLBACK POR CLICKS: los proveedores que NO integraron la presencia (§3) no
+ * tienen filas en `GamePresence`, así que su curva quedaría siempre vacía. Para
+ * esos, estimamos la concurrencia con los clicks en "Jugar" (`GamePlayClick`):
+ * cada click marca al jugador como "jugando" por una ventana fija y el sampler
+ * cuenta los clicks vigentes. La muestra se marca con `source: "clicks"` para que
+ * la UI la presente como estimación. Un proveedor se considera "con presencia
+ * integrada" si alguna vez pingeó el endpoint de presencia (`IntegrationPing`
+ * feature="presence"); a esos les creemos la presencia real aunque ahora sea 0.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -51,33 +60,80 @@ const MAX_NPUBS_PER_SAMPLE = 200;
 export async function samplePresence(): Promise<void> {
   const now = new Date();
 
-  // Un jugador = un npub distinto con presencia vigente. `GamePresence` ya tiene
-  // unique (providerId, npub), así que cada fila activa es un jugador distinto.
-  const rows = await prisma.gamePresence.findMany({
-    where: { expiresAt: { gt: now } },
-    select: { providerId: true, npub: true },
-  });
+  // Presencia real + clicks vigentes + qué proveedores integraron la presencia.
+  // Un jugador = un npub distinto con (providerId, npub) único en cada tabla.
+  const [presenceRows, clickRows, presenceIntegrations] = await Promise.all([
+    prisma.gamePresence.findMany({
+      where: { expiresAt: { gt: now } },
+      select: { providerId: true, npub: true },
+    }),
+    prisma.gamePlayClick.findMany({
+      where: { expiresAt: { gt: now } },
+      select: { providerId: true, npub: true },
+    }),
+    prisma.integrationPing.findMany({
+      where: { feature: "presence" },
+      select: { providerId: true },
+    }),
+  ]);
 
-  const byProvider = new Map<string, string[]>();
-  for (const r of rows) {
-    const list = byProvider.get(r.providerId);
-    if (list) list.push(r.npub);
-    else byProvider.set(r.providerId, [r.npub]);
+  // Proveedores que alguna vez reportaron presencia real: a esos les creemos la
+  // presencia (aunque ahora sea 0) y NO usamos el fallback por clicks.
+  const integrated = new Set(presenceIntegrations.map((p) => p.providerId));
+
+  // npubs reales por proveedor (presencia integrada).
+  const realByProvider = new Map<string, Set<string>>();
+  for (const r of presenceRows) {
+    let set = realByProvider.get(r.providerId);
+    if (!set) realByProvider.set(r.providerId, (set = new Set()));
+    set.add(r.npub);
   }
 
-  if (byProvider.size > 0) {
-    await prisma.playerCountSample.createMany({
-      data: [...byProvider.entries()].map(([providerId, npubs]) => ({
-        providerId,
-        count: npubs.length,
-        npubs: npubs.slice(0, MAX_NPUBS_PER_SAMPLE),
-        sampledAt: now,
-      })),
+  // npubs por clicks por proveedor (dedup por (providerId, npub) igual que la
+  // presencia real, aunque GamePlayClick se llavee por (gameId, npub)).
+  const clickByProvider = new Map<string, Set<string>>();
+  for (const r of clickRows) {
+    if (integrated.has(r.providerId)) continue; // tienen presencia real → ignora clicks
+    let set = clickByProvider.get(r.providerId);
+    if (!set) clickByProvider.set(r.providerId, (set = new Set()));
+    set.add(r.npub);
+  }
+
+  type SampleRow = {
+    providerId: string;
+    count: number;
+    npubs: string[];
+    source: string;
+    sampledAt: Date;
+  };
+  const data: SampleRow[] = [];
+  for (const [providerId, set] of realByProvider) {
+    data.push({
+      providerId,
+      count: set.size,
+      npubs: [...set].slice(0, MAX_NPUBS_PER_SAMPLE),
+      source: "presence",
+      sampledAt: now,
+    });
+  }
+  for (const [providerId, set] of clickByProvider) {
+    data.push({
+      providerId,
+      count: set.size,
+      npubs: [...set].slice(0, MAX_NPUBS_PER_SAMPLE),
+      source: "clicks",
+      sampledAt: now,
     });
   }
 
+  if (data.length > 0) {
+    await prisma.playerCountSample.createMany({ data });
+  }
+
   const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60_000);
-  await prisma.playerCountSample.deleteMany({
-    where: { sampledAt: { lt: cutoff } },
-  });
+  await Promise.all([
+    prisma.playerCountSample.deleteMany({ where: { sampledAt: { lt: cutoff } } }),
+    // Las filas de clicks vencidas ya no cuentan: purgarlas mantiene la tabla chica.
+    prisma.gamePlayClick.deleteMany({ where: { expiresAt: { lt: now } } }),
+  ]);
 }

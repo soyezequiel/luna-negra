@@ -77,6 +77,12 @@ export interface GameStats {
     samples: PlayerSample[];
     /** El proveedor tiene >1 juego: la curva es compartida (limitación de presencia). */
     sharedAcrossGames: boolean;
+    /**
+     * Origen de la curva: "presence" = presencia real reportada por el game server
+     * (§3); "clicks" = ESTIMACIÓN por clicks en "Jugar" para juegos que no integraron
+     * la presencia. La UI lo usa para aclarar que es una estimación.
+     */
+    source: "presence" | "clicks";
   };
   bets: {
     totalVolumeSats: number;
@@ -188,6 +194,8 @@ export async function buildGameStats(
     purchases,
     payoutGroups,
     presenceNow,
+    presenceIntegration,
+    clickNowRows,
     samples,
     bets,
     activeCount,
@@ -206,9 +214,20 @@ export async function buildGameStats(
     prisma.gamePresence.count({
       where: { providerId, expiresAt: { gt: now } },
     }),
+    // ¿El proveedor integró la presencia real (§3)? Si nunca pingeó el endpoint,
+    // la curva se estima por clicks en "Jugar".
+    prisma.integrationPing.findFirst({
+      where: { providerId, feature: "presence" },
+      select: { id: true },
+    }),
+    // npubs con click vigente (para el "ahora" estimado de juegos sin presencia).
+    prisma.gamePlayClick.findMany({
+      where: { providerId, expiresAt: { gt: now } },
+      select: { npub: true },
+    }),
     prisma.playerCountSample.findMany({
       where: { providerId, sampledAt: { gte: start } },
-      select: { count: true, npubs: true, sampledAt: true },
+      select: { count: true, npubs: true, source: true, sampledAt: true },
       orderBy: { sampledAt: "asc" },
     }),
     prisma.bet.findMany({
@@ -272,6 +291,14 @@ export async function buildGameStats(
     });
     for (const u of known) if (u.displayName) nameMap.set(u.npub, u.displayName);
   }
+  // Si el proveedor no integró la presencia real, la curva es estimada por clicks.
+  const playersSource: "presence" | "clicks" = presenceIntegration
+    ? "presence"
+    : "clicks";
+  const clickNow = new Set(clickNowRows.map((r) => r.npub)).size;
+  // "Ahora": presencia real si integró; si no, clicks vigentes distintos.
+  const nowCount = playersSource === "presence" ? presenceNow : clickNow;
+
   const viewerNpub = opts.viewerNpub;
   const playerSamples: PlayerSample[] = samples.map((s) => {
     const players: SamplePlayer[] = s.npubs.map((npub) => ({
@@ -289,7 +316,7 @@ export async function buildGameStats(
   });
   const peak = playerSamples.reduce(
     (max, s) => Math.max(max, s.count),
-    presenceNow,
+    nowCount,
   );
 
   // ── Apuestas ──
@@ -420,10 +447,11 @@ export async function buildGameStats(
       payout,
     },
     players: {
-      now: presenceNow,
+      now: nowCount,
       peak,
       samples: playerSamples,
       sharedAcrossGames: game.provider._count.games > 1,
+      source: playersSource,
     },
     bets: {
       totalVolumeSats: volTotal,

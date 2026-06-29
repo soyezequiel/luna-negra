@@ -8,6 +8,7 @@ import {
   newGuestIdentity,
   readGuestIdentity,
 } from "@/lib/guest-session";
+import { recordPlayClick } from "@/lib/play-click";
 
 // Crea una "sesión de juego": mintea el token de acceso (entitlement) para lanzar
 // el juego, si el jugador lo posee (o es gratis). Los juegos GRATIS también se
@@ -38,6 +39,8 @@ export async function POST(
       gameId: id,
       slug: game.slug,
     });
+    // Estima concurrencia por clicks si el juego no integra presencia (best-effort).
+    await recordPlayClick(game.providerId, id, guest.npub).catch(() => {});
     const res = NextResponse.json({ token, guest: true });
     // Persistir la identidad para que el navegador conserve el mismo npub entre
     // partidas (progreso del juego, etc.). No se mintea bet-session: apostar
@@ -67,6 +70,9 @@ export async function POST(
   await prisma.user
     .update({ where: { id: session.sub }, data: { lastPlayedAt: new Date() } })
     .catch(() => {});
+
+  // Estima concurrencia por clicks si el juego no integra presencia (best-effort).
+  await recordPlayClick(game.providerId, id, session.npub).catch(() => {});
 
   const token = await signEntitlement({
     npub: session.npub,
