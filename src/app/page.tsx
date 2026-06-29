@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import LunaNegraBackground from "@/components/LunaNegraBackground";
 import { GameCard } from "@/components/game-card";
 import { SocialRail } from "@/components/social-rail";
 import {
@@ -8,7 +9,7 @@ import {
   normalizeCategory,
   categoryLabel,
 } from "@/lib/categories";
-import { hueFromSlug, priceLabel } from "@/lib/format";
+import { hueFromSlug } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { getPublishedCatalog } from "@/lib/store-catalog";
 import { StoreUnavailable } from "@/components/store-unavailable";
@@ -28,9 +29,6 @@ export default async function StorePage({
   const cat = normalizeCategory(sp.cat);
   const page = Math.max(1, Number(sp.page) || 1);
 
-  // Catálogo publicado servido desde el Data Cache (ver store-catalog.ts): ya viene
-  // ordenado por más reciente y con el score de integración por juego. Filtramos,
-  // rankeamos y paginamos en memoria para no tocar Neon en cada render del Home.
   let catalog: Awaited<ReturnType<typeof getPublishedCatalog>>;
   try {
     catalog = await getPublishedCatalog();
@@ -38,6 +36,7 @@ export default async function StorePage({
     console.error("[home] no se pudo cargar el catálogo", err);
     return <StoreUnavailable />;
   }
+
   const ql = q.toLowerCase();
   const matched = catalog.filter(
     (g) =>
@@ -46,26 +45,19 @@ export default async function StorePage({
   );
   const total = matched.length;
 
-  // Prioridad: más interfaces de Luna Negra integradas → más arriba. Empate por
-  // más reciente (el catálogo ya viene ordenado por nuevo primero, sort estable).
   const ranked = [...matched].sort((a, b) => b.integration - a.integration);
   const games = ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Categorías con al menos un juego publicado: las vacías no se muestran en los
-  // chips. Se deriva del catálogo completo (no del filtrado por búsqueda) para que
-  // la lista de filtros refleje todo el inventario de la tienda.
   const usedCategories = new Set<string>();
   for (const g of catalog) {
     for (const c of g.categories) usedCategories.add(c);
   }
   const visibleCategories = CATEGORIES.filter((c) => usedCategories.has(c.slug));
 
-  // Hero destacado: el juego más nuevo, solo en la portada limpia (sin búsqueda
-  // ni filtro, página 1). Se quita de la grilla para no duplicarlo.
-  const hero = !q && !cat && page === 1 && games.length > 0 ? games[0] : null;
-  const gridGames = hero ? games.slice(1) : games;
+  const cleanHome = !q && !cat && page === 1;
+  const promoGames = cleanHome ? games.slice(0, Math.min(3, games.length)) : [];
+  const gridGames = cleanHome ? games.slice(promoGames.length) : games;
 
   const linkFor = (p: number) => {
     const params = new URLSearchParams();
@@ -76,7 +68,6 @@ export default async function StorePage({
     return qs ? `/?${qs}` : "/";
   };
 
-  // Link de un chip de categoría: setea cat (o la limpia con ""), preserva q, resetea page.
   const catLink = (slug: string) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -87,83 +78,89 @@ export default async function StorePage({
 
   return (
     <div className="mx-auto max-w-[1240px] px-[22px] py-8">
-      {/* Buscador full-width (solo móvil, al tope del Home) */}
-      <form action="/" method="get" className="mb-6 ln:hidden">
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Buscar juegos…"
-          aria-label="Buscar juegos"
-          className="h-[46px] w-full rounded-full border border-ln-border bg-ln-bg-deep px-5 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/20"
-        />
-      </form>
-
-      {hero ? (
-        <section
-          className="cover relative mb-9 animate-ln-rise overflow-hidden rounded-ln-xl border border-ln-border shadow-ln-card"
-          style={{ "--h": hueFromSlug(hero.slug) } as CSSProperties}
-        >
-          {hero.horizontalCoverUrl || hero.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={normalizeImageUrl(hero.horizontalCoverUrl ?? hero.coverUrl ?? "")}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : null}
-
-          {/* Corona decorativa arriba-derecha */}
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] animate-ln-corona rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle at 50% 50%, transparent 52%, rgba(255,182,72,.22) 56%, rgba(157,140,255,.14) 62%, transparent 72%)",
-            }}
-            aria-hidden
+      {!cleanHome ? (
+        <form action="/" method="get" className="mb-6 ln:hidden">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Buscar juegos..."
+            aria-label="Buscar juegos"
+            className="h-[46px] w-full rounded-full border border-ln-border bg-ln-bg-deep px-5 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/20"
           />
+        </form>
+      ) : null}
 
-          <div
-            className="relative flex min-h-[350px] flex-col justify-end gap-3 p-6 ln:min-h-[430px] ln:p-12"
-            style={{
-              background:
-                "linear-gradient(95deg, rgba(8,7,12,.96) 8%, rgba(8,7,12,.7) 42%, transparent 78%)",
-            }}
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="ln-label rounded-full bg-black/40 px-2.5 py-1 !text-ln-corona-bright">
-                ★ Destacado
-              </span>
-              {hero.categories.length > 0 ? (
-                <span className="flex items-center gap-1.5 text-[12px] text-ln-soft">
-                  {hero.categories.map((c) => categoryLabel(c)).join(" · ")}
-                </span>
-              ) : null}
-            </div>
-
-            <h1 className="max-w-2xl font-display text-[38px] font-extrabold leading-[1.04] tracking-tight text-white ln:text-[62px]">
-              {hero.title}
-            </h1>
-
-            {hero.description ? (
-              <p className="max-w-[480px] text-sm leading-relaxed text-ln-soft line-clamp-2">
-                {hero.description}
+      {cleanHome ? (
+        <section className="summer-promo-bleed relative -mt-8 mb-10 overflow-hidden">
+          <div className="relative h-[430px] overflow-hidden ln:h-[500px]">
+            <LunaNegraBackground
+              tiempo="dia"
+              densidad={0}
+              velocidad={0.45}
+              parallax={false}
+              scrim={false}
+            />
+            <div
+              className="absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.03)_48%,rgba(19,32,74,.36))]"
+              aria-hidden
+            />
+            <div className="relative z-10 mx-auto flex h-[270px] max-w-[1240px] flex-col items-center px-[22px] pt-11 text-center ln:h-[305px] ln:pt-14">
+              <h1 className="summer-sale-title">Edicion Hackathon</h1>
+              <p className="summer-sale-subtitle">DE LUNA NEGRA</p>
+              <p className="summer-sale-ribbon">
+                JUEGOS WEB &middot; LIGHTNING &middot; NOSTR
               </p>
-            ) : null}
-
-            <div className="mt-2 flex flex-wrap items-center gap-4">
-              <Link
-                href={`/game/${hero.slug}`}
-                className="btn btn-luna btn-xl shadow-ln-luna"
-              >
-                ▶ Ver juego
-              </Link>
-              <span className="font-mono text-sm text-ln-corona-bright">
-                {priceLabel(hero.priceSats)}{" "}
-                <span className="text-ln-faint">· Web · Lightning</span>
-              </span>
             </div>
           </div>
+
+          {promoGames.length > 0 ? (
+            <div className="relative z-20 mx-auto -mt-[126px] max-w-[1240px] px-[22px] ln:-mt-[134px]">
+              <div className="relative">
+                {promoGames.length > 1 ? (
+                  <>
+                    <span
+                      className="summer-carousel-arrow left-0 ln:left-3"
+                      aria-hidden
+                    >
+                      &lsaquo;
+                    </span>
+                    <span
+                      className="summer-carousel-arrow right-0 ln:right-3"
+                      aria-hidden
+                    >
+                      &rsaquo;
+                    </span>
+                  </>
+                ) : null}
+
+                <div className="summer-carousel-track flex snap-x justify-start gap-4 overflow-x-auto pb-3 pr-2 ln:justify-center ln:overflow-hidden ln:pb-0">
+                  {promoGames.map((g) => (
+                    <Link
+                      key={g.id}
+                      href={`/game/${g.slug}`}
+                      aria-label={`Ver ${g.title}`}
+                      className="summer-promo-card cover group relative block aspect-[3/4] w-[min(76vw,340px)] shrink-0 snap-center overflow-hidden rounded-[2px] bg-ln-bg-deep shadow-[0_18px_40px_rgba(0,0,0,.42)] transition-transform duration-150 hover:-translate-y-1 ln:w-[clamp(260px,23vw,360px)]"
+                      style={{ "--h": hueFromSlug(g.slug) } as CSSProperties}
+                    >
+                      {g.coverUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={normalizeImageUrl(g.coverUrl)}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center p-5 text-center font-display text-xl font-extrabold text-white">
+                          {g.title}
+                        </span>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : (
         <section className="mb-8">
@@ -176,10 +173,20 @@ export default async function StorePage({
         </section>
       )}
 
-      {/* Riel social "amigos jugando" (cliente) */}
+      {cleanHome ? (
+        <form action="/" method="get" className="mb-6 ln:hidden">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Buscar juegos..."
+            aria-label="Buscar juegos"
+            className="h-[46px] w-full rounded-full border border-ln-border bg-ln-bg-deep px-5 text-sm text-ln-text outline-none placeholder:text-ln-faint focus:ring-2 focus:ring-ln-luna/20"
+          />
+        </form>
+      ) : null}
+
       <SocialRail />
 
-      {/* Chips de categoría */}
       <nav className="mb-7 flex flex-wrap gap-2">
         {[{ slug: "", label: "Todas" }, ...visibleCategories].map((c) => {
           const active = (c.slug || null) === cat;
@@ -195,7 +202,7 @@ export default async function StorePage({
         })}
       </nav>
 
-      <section>
+      <section id="catalogo" className="scroll-mt-24">
         <div className="mb-4 flex items-baseline justify-between gap-3">
           <h2 className="text-[21px] font-semibold text-ln-text">
             {q
@@ -217,21 +224,23 @@ export default async function StorePage({
           </p>
         ) : (
           <>
-            <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(214px,1fr))]">
-              {gridGames.map((g) => (
-                <GameCard
-                  key={g.id}
-                  game={{
-                    slug: g.slug,
-                    title: g.title,
-                    coverUrl: g.coverUrl,
-                    priceSats: g.priceSats,
-                    categories: g.categories,
-                    integration: g.integration,
-                  }}
-                />
-              ))}
-            </div>
+            {gridGames.length > 0 ? (
+              <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(214px,1fr))]">
+                {gridGames.map((g) => (
+                  <GameCard
+                    key={g.id}
+                    game={{
+                      slug: g.slug,
+                      title: g.title,
+                      coverUrl: g.coverUrl,
+                      priceSats: g.priceSats,
+                      categories: g.categories,
+                      integration: g.integration,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
 
             {totalPages > 1 ? (
               <div className="mt-10 flex items-center justify-center gap-4 text-sm">
@@ -240,7 +249,7 @@ export default async function StorePage({
                     href={linkFor(page - 1)}
                     className="rounded-full border border-ln-border px-4 py-2 text-ln-text transition-colors hover:bg-white/5"
                   >
-                    ← Anterior
+                    &larr; Anterior
                   </Link>
                 ) : null}
                 <span className="text-ln-faint">
@@ -251,7 +260,7 @@ export default async function StorePage({
                     href={linkFor(page + 1)}
                     className="rounded-full border border-ln-border px-4 py-2 text-ln-text transition-colors hover:bg-white/5"
                   >
-                    Siguiente →
+                    Siguiente &rarr;
                   </Link>
                 ) : null}
               </div>

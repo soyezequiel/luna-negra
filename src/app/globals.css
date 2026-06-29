@@ -207,10 +207,23 @@ html {
 }
 
 body {
-  background: var(--ln-eclipse-bg);
+  /* Textura de animalitos tileable sobre navy (el hero animado vive solo en su
+     banda; el resto de la página usa este patrón). */
+  background: #13204a url("/luna-assets/texture.jpg") repeat;
+  background-size: 300px;
   background-attachment: fixed;
   color: var(--ln-text);
   font-family: var(--font-sans);
+}
+
+/* Velo que calma la textura detrás del contenido (todo el chrome va en z-10+). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(11, 14, 32, 0.42);
 }
 
 /* "Corona" decorativa: aro luminoso arriba-derecha con pulso suave. */
@@ -240,6 +253,132 @@ body::after {
 h1, h2, h3 {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
+}
+
+.summer-promo-bleed {
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+@media (min-width: 880px) {
+  .summer-promo-bleed {
+    margin-left: calc(50% - ((100vw - 308px) / 2));
+    margin-right: calc(50% - ((100vw - 308px) / 2));
+  }
+}
+
+.summer-sale-title {
+  margin: 0;
+  max-width: 100%;
+  color: #eb557d;
+  font-family: var(--font-bricolage), "Bricolage Grotesque", sans-serif;
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  text-wrap: balance;
+  -webkit-text-stroke: 2px #fff7cf;
+  paint-order: stroke fill;
+  text-shadow:
+    0 3px 0 rgba(153, 62, 91, 0.25),
+    0 0 12px rgba(255, 247, 207, 0.85);
+}
+.summer-sale-subtitle {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  border-radius: 12px;
+  background: #fff7cf;
+  padding: 1px 12px 4px;
+  color: #eb557d;
+  font-family: var(--font-bricolage), "Bricolage Grotesque", sans-serif;
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  box-shadow: 0 2px 10px rgba(255, 247, 207, 0.65);
+}
+.summer-sale-ribbon {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(100%, 760px);
+  margin-top: 12px;
+  border-radius: 999px;
+  background: rgba(255, 247, 207, 0.96);
+  padding: 5px 12px 6px;
+  color: #eb557d;
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(255, 247, 207, 0.55);
+}
+.summer-carousel-track {
+  scrollbar-width: none;
+}
+.summer-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+.summer-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  display: none;
+  width: 54px;
+  height: 86px;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.74);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 92px;
+  line-height: 0.6;
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.summer-promo-card {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+@media (min-width: 640px) {
+  .summer-sale-title {
+    font-size: 64px;
+    -webkit-text-stroke-width: 3px;
+  }
+  .summer-sale-subtitle {
+    font-size: 30px;
+    padding-inline: 14px;
+  }
+  .summer-sale-ribbon {
+    font-size: 13px;
+    padding-inline: 14px;
+  }
+}
+@media (min-width: 880px) {
+  .summer-carousel-arrow {
+    display: flex;
+  }
+}
+@media (min-width: 1100px) {
+  .summer-sale-title {
+    font-size: 82px;
+  }
+  .summer-sale-subtitle {
+    font-size: 38px;
+  }
+  .summer-sale-ribbon {
+    font-size: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .summer-promo-card {
+    transition: none;
+  }
+  .summer-promo-card:hover {
+    transform: none;
+  }
 }
 
 /* ============================================================
