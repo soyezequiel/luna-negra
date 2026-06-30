@@ -57,6 +57,7 @@ const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
   in_review: "En revisión",
   published: "Publicado",
+  admin_only: "Solo admin",
 };
 const PAYOUT_LABEL: Record<string, string> = {
   none: "—",
@@ -103,6 +104,7 @@ const STATUS_BADGE: Record<string, string> = {
   published: "bg-ln-aurora/15 text-ln-aurora",
   in_review: "bg-ln-corona/15 text-ln-corona",
   draft: "bg-white/10 text-ln-muted",
+  admin_only: "bg-btc/15 text-btc",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -389,6 +391,45 @@ export default function ProviderPage() {
     load();
   }
 
+  // Duplica un juego: crea una copia en borrador con la misma ficha (sin compras
+  // ni identidad en Nostr). Después se puede editar, enviar a revisión o, si sos
+  // admin, publicar como "solo admin".
+  async function duplicate(id: string) {
+    setMsg(null);
+    const r = await fetch(`/api/provider/games/${id}/duplicate`, {
+      method: "POST",
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg(d.error ?? "No se pudo duplicar");
+    setMsg("Copia creada como borrador.");
+    load();
+  }
+
+  // Acciones de admin (solo visibles si la sesión es admin): publican el juego en
+  // modo oculto (solo admin/dueño) o lo pasan a público. Reusan el endpoint de
+  // aprobación del admin, que opera sobre cualquier juego por id.
+  async function publishAdminOnly(id: string) {
+    setMsg(null);
+    const r = await fetch(`/api/admin/games/${id}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminOnly: true }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg(d.error ?? "No se pudo publicar como solo admin");
+    setMsg("Publicado en modo solo admin (oculto en la tienda).");
+    load();
+  }
+
+  async function makePublic(id: string) {
+    setMsg(null);
+    const r = await fetch(`/api/admin/games/${id}/approve`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg(d.error ?? "No se pudo publicar");
+    setMsg("Juego publicado al público.");
+    load();
+  }
+
   if (loading) return null;
 
   if (!user) {
@@ -649,6 +690,30 @@ export default function ProviderPage() {
                           Despublicar
                         </Button>
                       )}
+                      <Button variant="ghost" size="sm" onClick={() => duplicate(g.id)}>
+                        Duplicar
+                      </Button>
+                      {/* Acciones de admin: publicar oculto o pasar a público. */}
+                      {user?.isAdmin && g.status !== "admin_only" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => publishAdminOnly(g.id)}
+                          title="Publicar oculto: solo vos y el dueño pueden verlo"
+                        >
+                          🔒 Solo admin
+                        </Button>
+                      ) : null}
+                      {user?.isAdmin && g.status === "admin_only" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => makePublic(g.id)}
+                          title="Publicar al público y anunciar en Nostr"
+                        >
+                          Hacer público
+                        </Button>
+                      ) : null}
                       <Button variant="ghost" size="sm" onClick={() => remove(g.id)}>
                         Borrar
                       </Button>

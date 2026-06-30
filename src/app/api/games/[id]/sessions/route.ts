@@ -9,6 +9,7 @@ import {
   readGuestIdentity,
 } from "@/lib/guest-session";
 import { recordPlayClick } from "@/lib/play-click";
+import { ADMIN_ONLY_STATUS, canViewHiddenGame } from "@/lib/admin";
 
 // Crea una "sesión de juego": mintea el token de acceso (entitlement) para lanzar
 // el juego, si el jugador lo posee (o es gratis). Los juegos GRATIS también se
@@ -19,12 +20,42 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  const game = await prisma.game.findUnique({ where: { id } });
-  if (!game || game.status !== "published") {
+  const game = await prisma.game.findUnique({
+    where: { id },
+    include: { provider: true },
+  });
+  if (!game) {
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
   }
 
   const session = await getSession();
+
+  // Juego oculto (admin_only): solo lo lanzan el admin y el dueño, sin importar
+  // compra ni precio. Para cualquier otro (o anónimo) es como si no existiera.
+  if (game.status === ADMIN_ONLY_STATUS) {
+    if (
+      !session ||
+      !canViewHiddenGame(session.pubkey, session.sub, game.provider.ownerId)
+    ) {
+      return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
+    }
+    const token = await signEntitlement({
+      npub: session.npub,
+      pubkey: session.pubkey,
+      gameId: id,
+      slug: game.slug,
+    });
+    const betSession = await signBetSession({
+      sub: session.sub,
+      npub: session.npub,
+      pubkey: session.pubkey,
+    });
+    return NextResponse.json({ token, betSession });
+  }
+
+  if (game.status !== "published") {
+    return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
+  }
 
   // --- Invitado (sin cuenta Nostr): solo juegos gratis ---
   if (!session) {

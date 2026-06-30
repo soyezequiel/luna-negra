@@ -32,6 +32,8 @@ import {
   parseScreenshotUrls,
 } from "@/lib/game-media";
 import { getPublishedGameBySlug, getRelatedGames } from "@/lib/store-catalog";
+import { ADMIN_ONLY_STATUS, canViewHiddenGame } from "@/lib/admin";
+import { normalizeCategories } from "@/lib/categories";
 import { SITE_URL } from "@/lib/site";
 import { StoreUnavailable } from "@/components/store-unavailable";
 import {
@@ -119,14 +121,42 @@ export default async function GamePage({
     console.error("[game] no se pudo cargar la ficha", err);
     return <StoreUnavailable />;
   }
-  if (!game) notFound();
 
   const session = await getSession();
+
+  // Juego oculto (admin_only): no está en el catálogo cacheado, así que la lectura
+  // de arriba devuelve null. Lo cargamos sin caché y solo lo mostramos si el
+  // visitante es el admin o el proveedor dueño; para cualquier otro es un 404.
+  let isHidden = false;
+  if (!game && session) {
+    // Solo vale la pena consultar si hay sesión (anónimo nunca puede ver ocultos).
+    try {
+      const hidden = await prisma.game.findUnique({
+        where: { slug },
+        include: { provider: true },
+      });
+      if (
+        hidden &&
+        hidden.status === ADMIN_ONLY_STATUS &&
+        canViewHiddenGame(session.pubkey, session.sub, hidden.provider.ownerId)
+      ) {
+        game = { ...hidden, categories: normalizeCategories(hidden.categories) };
+        isHidden = true;
+      }
+    } catch (err) {
+      console.error("[game] no se pudo cargar la ficha oculta", err);
+      return <StoreUnavailable />;
+    }
+  }
+  if (!game) notFound();
+
   // ¿La cuenta logueada es la proveedora dueña de este juego? → mostrar el lápiz
   // de edición en la propia ficha de la tienda.
   const isOwner = Boolean(session) && game.provider.ownerId === session!.sub;
-  let owned = false;
-  if (session) {
+  // En un juego oculto el admin/dueño puede jugar siempre (sin compra): lo
+  // tratamos como "en biblioteca" para mostrar el botón de Jugar.
+  let owned = isHidden;
+  if (!owned && session) {
     const p = await prisma.purchase.findUnique({
       where: { userId_gameId: { userId: session.sub, gameId: game.id } },
     });
@@ -220,6 +250,11 @@ export default async function GamePage({
             {game.title}
           </h1>
         </EditableTitle>
+        {isHidden ? (
+          <span className="rounded-full bg-btc/15 px-2.5 py-1 text-xs font-semibold text-btc ring-1 ring-inset ring-btc/40">
+            🔒 Solo admin · oculto
+          </span>
+        ) : null}
         {mode === "library" ? (
           <span className="rounded-full bg-ln-aurora/15 px-2.5 py-1 text-xs font-semibold text-ln-aurora ring-1 ring-inset ring-ln-aurora/30">
             ✓ En tu biblioteca
