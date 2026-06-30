@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { runProbe } from "@/lib/integration-probe";
+import { probeGamesNostr } from "@/lib/integration-probe-2";
 import { siteUrl } from "@/lib/site-url";
 
 // Probador en vivo del proveedor logueado: golpea los endpoints reales del
@@ -19,6 +20,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No tenés un proveedor" }, { status: 404 });
   }
 
-  const results = await runProbe({ providerId: provider.id, origin: siteUrl(req) });
-  return NextResponse.json({ results });
+  const games = await prisma.game.findMany({
+    where: { providerId: provider.id },
+    select: { id: true, nostrCoord: true, nostrEventId: true },
+  });
+  const [results, nostr] = await Promise.all([
+    runProbe({ providerId: provider.id, origin: siteUrl(req) }),
+    probeGamesNostr(games),
+  ]);
+  return NextResponse.json({ results, nostr });
 }

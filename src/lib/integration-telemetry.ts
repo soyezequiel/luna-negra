@@ -462,6 +462,14 @@ export type GameRef = {
   supportsChallenges: boolean;
 };
 
+// Señales de uso de la interfaz 2.0 (Nostr) derivables de la DB, por juego:
+//   scores   → puntajes kind:31337 ya proyectados a Score (sourceEventId != null)
+//   zaps     → propinas/premios NIP-57 (tabla Zap)
+//   comments → reseñas/logros kind:1 colgando de la coordenada (GameComment)
+// Los retos NIP-17 NO entran acá: van cifrados E2E (capacidad declarada, no
+// observable). Ver src/lib/integration-2.ts.
+export type NostrSignals = Record<string, PingInfo | null>;
+
 export type IntegrationView = {
   provider: {
     id: string;
@@ -473,7 +481,11 @@ export type IntegrationView = {
   // juegos. La UI las muestra una vez y/o repetidas en cada juego.
   providerLevel: Record<string, PingInfo | null>;
   games: Array<
-    GameRef & { features: Record<string, PingInfo | null> }
+    GameRef & {
+      features: Record<string, PingInfo | null>;
+      // Evidencia 2.0 observada (null = sin telemetría 2.0 para este juego).
+      nostr?: NostrSignals | null;
+    }
   >;
 };
 
@@ -488,6 +500,7 @@ export function buildIntegrationView(
   provider: { id: string; name: string; webhookConfigured: boolean; apiKeys: number },
   games: GameRef[],
   byGame: Map<string, Map<string, PingInfo>>,
+  nostrByGame?: Map<string, NostrSignals>,
 ): IntegrationView {
   const providerPings = byGame.get("") ?? new Map<string, PingInfo>();
   const providerLevel: Record<string, PingInfo | null> = {};
@@ -503,7 +516,84 @@ export function buildIntegrationView(
       for (const f of GAME_FEATURES) {
         features[f.key] = gamePings.get(f.key) ?? null;
       }
-      return { ...g, features };
+      return { ...g, features, nostr: nostrByGame?.get(g.id) ?? null };
     }),
   };
+}
+
+/**
+ * Evidencia de uso de la interfaz 2.0 (Nostr) por juego: puntajes Nostr
+ * (Score.sourceEventId), zaps (NIP-57) y reseñas/comentarios (kind:1). Es lo
+ * análogo a deriveDomainEvidence pero para la 2.0; la 1.0 no la conoce. Devuelve
+ * un Map gameId→{scores,zaps,comments}; los juegos sin señal quedan fuera del Map.
+ */
+export async function readNostrEvidence(
+  gameIds: string[],
+): Promise<Map<string, NostrSignals>> {
+  const out = new Map<string, NostrSignals>();
+  if (gameIds.length === 0) return out;
+  const inGames = { gameId: { in: gameIds } };
+
+  const ensure = (gameId: string): NostrSignals => {
+    let r = out.get(gameId);
+    if (!r) out.set(gameId, (r = { scores: null, zaps: null, comments: null }));
+    return r;
+  };
+
+  const [zaps, comments, scores] = await Promise.all([
+    prisma.zap.groupBy({
+      by: ["gameId"],
+      where: inGames,
+      _count: { _all: true },
+      _min: { zappedAt: true },
+      _max: { zappedAt: true },
+    }),
+    prisma.gameComment.groupBy({
+      by: ["gameId"],
+      where: inGames,
+      _count: { _all: true },
+      _min: { createdAt: true },
+      _max: { createdAt: true },
+    }),
+    // Score no tiene gameId directo (cuelga de Leaderboard) y solo cuentan los de
+    // procedencia 2.0 (sourceEventId != null) → findMany + agrupado manual.
+    prisma.score.findMany({
+      where: { leaderboard: { gameId: { in: gameIds } }, sourceEventId: { not: null } },
+      select: {
+        createdAt: true,
+        updatedAt: true,
+        leaderboard: { select: { gameId: true } },
+      },
+    }),
+  ]);
+
+  for (const z of zaps) {
+    if (!z._min.zappedAt || !z._max.zappedAt) continue;
+    ensure(z.gameId).zaps = {
+      count: z._count._all,
+      firstSeenAt: iso(z._min.zappedAt),
+      lastSeenAt: iso(z._max.zappedAt),
+    };
+  }
+  for (const c of comments) {
+    if (!c._min.createdAt || !c._max.createdAt) continue;
+    ensure(c.gameId).comments = {
+      count: c._count._all,
+      firstSeenAt: iso(c._min.createdAt),
+      lastSeenAt: iso(c._max.createdAt),
+    };
+  }
+  const scoreAgg = new Map<string, PingInfo>();
+  for (const s of scores) {
+    const gid = s.leaderboard.gameId;
+    const info: PingInfo = {
+      count: 1,
+      firstSeenAt: iso(s.createdAt),
+      lastSeenAt: iso(s.updatedAt),
+    };
+    scoreAgg.set(gid, mergePing(scoreAgg.get(gid) ?? null, info) as PingInfo);
+  }
+  for (const [gid, info] of scoreAgg) ensure(gid).scores = info;
+
+  return out;
 }

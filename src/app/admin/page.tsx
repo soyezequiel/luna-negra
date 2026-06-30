@@ -14,7 +14,7 @@ import { categoryLabel } from "@/lib/categories";
 import {
   IntegrationMatrix,
   type IntegrationView,
-  type ProbeResult,
+  type ProbeResponse,
 } from "@/components/provider/integration-matrix";
 
 type Row = {
@@ -36,6 +36,18 @@ type ReviewGame = Row & {
   horizontalCoverUrl: string | null;
   screenshots: string; // JSON array de URLs
   createdAt: string;
+};
+type DraftGame = Omit<Row, "provider"> & {
+  description: string;
+  categories: string[];
+  gameUrl: string | null;
+  coverUrl: string | null;
+  horizontalCoverUrl: string | null;
+  createdAt: string;
+  provider: {
+    name: string;
+    owner: { displayName: string | null; npub: string };
+  };
 };
 type CatalogRow = Row & {
   owners: number;
@@ -73,6 +85,34 @@ const PAYOUT_LABEL: Record<string, string> = {
   failed: "Falló",
   skipped: "Sin dirección",
 };
+
+const ADMIN_DATE = new Intl.DateTimeFormat("es-AR", {
+  dateStyle: "medium",
+  timeZone: "America/Argentina/Buenos_Aires",
+});
+
+function shortNpub(npub: string): string {
+  return npub.length > 16 ? `${npub.slice(0, 10)}…${npub.slice(-4)}` : npub;
+}
+
+function draftAge(createdAt: string): string {
+  const days = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000),
+  );
+  if (days === 0) return "hoy";
+  if (days === 1) return "hace 1 día";
+  return `hace ${days} días`;
+}
+
+function missingDraftFields(game: DraftGame): string[] {
+  const missing: string[] = [];
+  if (!game.gameUrl?.trim()) missing.push("URL del juego");
+  if (!game.description.trim()) missing.push("descripción");
+  if (game.categories.length === 0) missing.push("categoría");
+  if (!game.coverUrl && !game.horizontalCoverUrl) missing.push("portada");
+  return missing;
+}
 
 function parseShots(raw: string): string[] {
   try {
@@ -430,6 +470,7 @@ function ReviewDetail({
 export default function AdminPage() {
   const { user, login, loading } = useSession();
   const [games, setGames] = useState<ReviewGame[] | null>(null);
+  const [drafts, setDrafts] = useState<DraftGame[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [unannounced, setUnannounced] = useState<Row[]>([]);
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
@@ -452,11 +493,13 @@ export default function AdminPage() {
     if (r.status === 403) {
       setForbidden(true);
       setGames([]);
+      setDrafts([]);
       return;
     }
     const d = await r.json();
     setForbidden(false);
     setGames(d.games ?? []);
+    setDrafts(d.drafts ?? []);
     setUnannounced(d.unannounced ?? []);
     setCatalog(d.catalog ?? []);
     const p = await fetch("/api/admin/payouts")
@@ -485,14 +528,14 @@ export default function AdminPage() {
   }, []);
 
   const probeProvider = useCallback(
-    async (providerId: string): Promise<ProbeResult[]> => {
+    async (providerId: string): Promise<ProbeResponse> => {
       const d = await fetch(
         `/api/admin/integracion/probe?providerId=${encodeURIComponent(providerId)}`,
         { method: "POST" },
       )
         .then((res) => res.json())
-        .catch(() => ({ results: [] }));
-      return d?.results ?? [];
+        .catch(() => ({ results: [], nostr: {} }));
+      return { results: d?.results ?? [], nostr: d?.nostr ?? {} };
     },
     [],
   );
@@ -644,8 +687,9 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Kpi label="En revisión" value={String(games?.length ?? 0)} sub="juegos" accent="var(--blue)" />
+        <Kpi label="Sin enviar" value={String(drafts?.length ?? 0)} sub="borradores" accent="var(--ln-corona)" />
         <Kpi label="Payouts a resolver" value={String(payouts.length)} sub={`${pendingPayoutSats.toLocaleString("es-AR")} sats`} accent="var(--btc)" />
         <Kpi label="Escrow retenido" value={escrowSats.toLocaleString("es-AR")} sub={`${activeBets.length} apuestas activas`} accent="var(--btc)" />
         <Kpi label="Apuestas" value={String(bets.length)} sub="en total" accent="var(--win)" />
@@ -758,6 +802,75 @@ export default function AdminPage() {
           </form>
         ) : (
           <p className="mt-4 text-sm text-faint">Cargando porcentajes...</p>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-1 font-semibold text-ink">Borradores sin enviar</h2>
+        <p className="mb-3 text-xs text-faint">
+          Juegos que ahora están fuera de revisión; incluye fichas nuevas o
+          devueltas a borrador. Los más antiguos aparecen primero.
+        </p>
+        {drafts === null ? (
+          <p className="text-sm text-faint">Cargando…</p>
+        ) : drafts.length === 0 ? (
+          <p className="text-muted">No hay borradores pendientes.</p>
+        ) : (
+          <ul className="space-y-2">
+            {drafts.map((g) => {
+              const missing = missingDraftFields(g);
+              const ownerLabel =
+                g.provider.owner.displayName?.trim() ||
+                shortNpub(g.provider.owner.npub);
+              return (
+                <li
+                  key={g.id}
+                  className="rounded-lg border border-line bg-panel px-4 py-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">
+                        {g.title}
+                      </p>
+                      <p className="mt-0.5 text-xs text-faint">
+                        {g.provider.name} · Dueño: {" "}
+                        <a
+                          href={`https://njump.me/${g.provider.owner.npub}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue hover:underline"
+                        >
+                          {ownerLabel}
+                        </a>
+                      </p>
+                      <p className="mt-1 text-[11px] text-faint">
+                        Creado {draftAge(g.createdAt)} · {" "}
+                        <time dateTime={g.createdAt}>
+                          {ADMIN_DATE.format(new Date(g.createdAt))}
+                        </time>
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        missing.length === 0
+                          ? "shrink-0 rounded border border-ln-corona/35 bg-ln-corona/10 px-2 py-1 text-[11px] font-medium text-ln-corona"
+                          : "shrink-0 rounded border border-line px-2 py-1 text-[11px] text-muted"
+                      }
+                    >
+                      {missing.length === 0
+                        ? "Parece listo para enviar"
+                        : `${4 - missing.length}/4 datos de ficha`}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-muted">
+                    {missing.length === 0
+                      ? "Tiene URL, descripción, categoría y portada."
+                      : `Pendiente: ${missing.join(", ")}.`}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
 
@@ -953,9 +1066,10 @@ export default function AdminPage() {
       <section className="mt-10">
         <h2 className="mb-1 font-semibold text-ink">Integración de juegos</h2>
         <p className="mb-4 text-xs text-faint">
-          Qué interfaces de Luna Negra (§1–§8) tiene cableada cada juego, según el
-          tráfico real recibido. Verde = con tráfico reciente; naranja = visto hace
-          tiempo o configurado sin uso; gris = no integrado.
+          Qué tiene cableada cada juego en tres columnas: solo 1.0 (REST), intermedio
+          (REST 1.0 ⇆ eventos Nostr 2.0) y solo 2.0 (Nostr). Verde = en uso reciente;
+          naranja = visto hace tiempo o configurado; azul = declarado/disponible (2.0);
+          gris = diseño o no integrado.
         </p>
         {integrations.length === 0 ? (
           <p className="text-muted">No hay proveedores.</p>

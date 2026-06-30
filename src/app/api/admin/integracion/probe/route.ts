@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { runProbe } from "@/lib/integration-probe";
+import { probeGamesNostr } from "@/lib/integration-probe-2";
 import { siteUrl } from "@/lib/site-url";
 
 // Probador en vivo de admin: corre la suite de health-check contra los endpoints
@@ -16,6 +18,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Falta providerId" }, { status: 400 });
   }
 
-  const results = await runProbe({ providerId, origin: siteUrl(req) });
-  return NextResponse.json({ results });
+  const games = await prisma.game.findMany({
+    where: { providerId },
+    select: { id: true, nostrCoord: true, nostrEventId: true },
+  });
+  const [results, nostr] = await Promise.all([
+    runProbe({ providerId, origin: siteUrl(req) }),
+    probeGamesNostr(games),
+  ]);
+  return NextResponse.json({ results, nostr });
 }

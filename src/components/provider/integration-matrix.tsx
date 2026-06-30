@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { featureMeta, type IntegrationFeature } from "@/lib/integration-features";
 import {
-  INTEGRATION_FEATURES,
-  type FeatureMeta,
-  type IntegrationFeature,
-} from "@/lib/integration-features";
+  INTEGRATION_COLUMNS,
+  type CapabilityRow,
+  type TwoZeroSide,
+} from "@/lib/integration-2";
 import { cn } from "@/lib/utils";
 
 // ── Tipos del lado cliente (forma JSON que devuelven las rutas) ──
@@ -24,16 +25,11 @@ export type IntegrationView = {
     status: string;
     supportsChallenges: boolean;
     features: Record<string, PingInfo | null>;
+    // Señales de uso 2.0 (Nostr): scores | zaps | comments.
+    nostr?: Record<string, PingInfo | null> | null;
   }>;
 };
 
-// Qué tiene que implementar el dev para que el reto 1v1 funcione (tooltip).
-const CHALLENGE_HELP =
-  "El reto le llega al otro jugador como DM cifrado (NIP-17) firmado por quien reta, " +
-  "con un tag que apunta a la coordenada Nostr de tu juego. Para que la partida arranque, " +
-  "tu juego debe: (1) detectar que lo abrieron desde un reto y (2) emparejar a los dos " +
-  "jugadores (retador + retado) en una partida 1v1. Si no lo implementás, el botón solo " +
-  "manda la notificación. Ver la guía /dev.";
 export type ProbeResult = {
   feature: IntegrationFeature;
   ok: boolean;
@@ -41,6 +37,23 @@ export type ProbeResult = {
   latencyMs: number | null;
   detail: string;
   skipped: boolean;
+};
+
+// Resultado del probador 2.0 (relays Nostr), por capacidad (CapabilityRow.key).
+// Forma espejo de la del server (src/lib/integration-probe-2.ts).
+export type NostrProbeResult = {
+  key: string;
+  found: number;
+  latencyMs: number | null;
+  detail: string;
+  skipped: boolean;
+};
+
+// Respuesta unificada del probador: 1.0 (endpoints REST, a nivel proveedor) +
+// 2.0 (relays Nostr, por juego).
+export type ProbeResponse = {
+  results: ProbeResult[];
+  nostr: Record<string, NostrProbeResult[]>;
 };
 
 function timeAgo(iso: string): string {
@@ -57,91 +70,205 @@ function timeAgo(iso: string): string {
 }
 
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+const isRecent = (iso: string) => Date.now() - new Date(iso).getTime() < RECENT_MS;
 
-type Level = "active" | "stale" | "configured" | "none";
-
-function levelFor(
-  feature: FeatureMeta,
-  ping: PingInfo | null,
-  webhookConfigured: boolean,
-): Level {
-  if (ping) {
-    return Date.now() - new Date(ping.lastSeenAt).getTime() < RECENT_MS
-      ? "active"
-      : "stale";
+function mergePings(...ps: Array<PingInfo | null | undefined>): PingInfo | null {
+  let acc: PingInfo | null = null;
+  for (const p of ps) {
+    if (!p) continue;
+    if (!acc) {
+      acc = p;
+      continue;
+    }
+    acc = {
+      count: acc.count + p.count,
+      firstSeenAt: acc.firstSeenAt < p.firstSeenAt ? acc.firstSeenAt : p.firstSeenAt,
+      lastSeenAt: acc.lastSeenAt > p.lastSeenAt ? acc.lastSeenAt : p.lastSeenAt,
+    };
   }
-  if (feature.key === "webhooks" && webhookConfigured) return "configured";
-  return "none";
+  return acc;
 }
 
-const LEVEL_STYLE: Record<Level, { dot: string; chip: string; label: string }> = {
+// ── Pata 1.0 (REST) ──
+type Level1 = "active" | "stale" | "configured" | "none";
+
+const LEVEL1_STYLE: Record<Level1, { dot: string; chip: string; label: string }> = {
   active: { dot: "bg-ln-aurora", chip: "bg-ln-aurora/15 text-ln-aurora", label: "Integrado" },
   stale: { dot: "bg-ln-corona", chip: "bg-ln-corona/15 text-ln-corona", label: "Sin tráfico reciente" },
-  configured: { dot: "bg-ln-corona", chip: "bg-ln-corona/15 text-ln-corona", label: "Configurado, sin entregas" },
+  configured: { dot: "bg-ln-corona", chip: "bg-ln-corona/15 text-ln-corona", label: "Configurado" },
   none: { dot: "bg-white/20", chip: "bg-white/10 text-ln-muted", label: "No integrado" },
 };
 
-function FeatureTile({
-  feature,
-  ping,
-  webhookConfigured,
-  probe,
-}: {
-  feature: FeatureMeta;
-  ping: PingInfo | null;
-  webhookConfigured: boolean;
-  probe?: ProbeResult;
-}) {
-  const level = levelFor(feature, ping, webhookConfigured);
-  const s = LEVEL_STYLE[level];
+function oneZeroPing(
+  row: CapabilityRow,
+  game: IntegrationView["games"][number],
+  providerLevel: Record<string, PingInfo | null>,
+): PingInfo | null {
+  return mergePings(
+    ...row.oneZero.map((k) =>
+      featureMeta(k).scope === "provider" ? providerLevel[k] : game.features[k],
+    ),
+  );
+}
+
+function level1For(
+  row: CapabilityRow,
+  ping: PingInfo | null,
+  webhookConfigured: boolean,
+): Level1 {
+  if (ping) return isRecent(ping.lastSeenAt) ? "active" : "stale";
+  if (row.oneZero.includes("webhooks") && webhookConfigured) return "configured";
+  return "none";
+}
+
+// ── Pata 2.0 (Nostr) ──
+type Level2 = "active" | "stale" | "declared" | "available" | "design" | "off";
+
+const LEVEL2_STYLE: Record<Level2, { dot: string; chip: string; label: string }> = {
+  active: { dot: "bg-ln-aurora", chip: "bg-ln-aurora/15 text-ln-aurora", label: "En uso" },
+  stale: { dot: "bg-ln-corona", chip: "bg-ln-corona/15 text-ln-corona", label: "Sin uso reciente" },
+  declared: { dot: "bg-blue", chip: "bg-blue/15 text-blue", label: "Declarado" },
+  available: { dot: "bg-blue/40", chip: "bg-blue/10 text-blue", label: "Disponible" },
+  design: { dot: "bg-white/15", chip: "bg-white/5 text-ln-faint", label: "Diseño" },
+  off: { dot: "bg-white/15", chip: "bg-white/5 text-ln-faint", label: "No declarado" },
+};
+
+function level2For(
+  side: TwoZeroSide,
+  ev: PingInfo | null,
+  supportsChallenges: boolean,
+): Level2 {
+  if (side.signal === "challenge") return supportsChallenges ? "declared" : "off";
+  if (ev) return isRecent(ev.lastSeenAt) ? "active" : "stale";
+  if (side.impl === "diseño") return "design";
+  return "available"; // implementado, sin señal por juego (login, reseñas sin datos)
+}
+
+// Un badge cuenta como "integrado" para el contador del juego si está vivo o
+// declarado (no si es solo diseño / disponible-sin-uso / no declarado).
+const LIVE1 = new Set<Level1>(["active", "stale", "configured"]);
+const LIVE2 = new Set<Level2>(["active", "stale", "declared"]);
+
+function Badge1({ level, ping, probe }: { level: Level1; ping: PingInfo | null; probe?: ProbeResult }) {
+  const s = LEVEL1_STYLE[level];
   return (
-    <div className="rounded-ln-lg border border-ln-border bg-ln-card/40 p-3" title={feature.desc}>
-      <div className="flex items-start gap-1.5">
-        <span className={cn("mt-[5px] inline-block h-2 w-2 shrink-0 rounded-full", s.dot)} />
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold leading-snug text-ln-text">
-            {feature.title}
-          </p>
-          <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wide text-ln-faint">
-            {feature.section}
-            {feature.scope === "provider" ? " · proveedor" : ""}
-            {feature.required ? " · mínimo" : ""}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-2.5">
-        <span className={cn("inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold", s.chip)}>
-          {s.label}
-        </span>
-      </div>
-
-      <p className="mt-1.5 text-[11px] text-ln-muted">
-        {ping ? `Visto ${timeAgo(ping.lastSeenAt)}` : "Nunca recibido"}
-      </p>
-
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+      <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ln-faint">
+        1.0
+      </span>
+      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold", s.chip)}>
+        <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
+        {s.label}
+      </span>
+      <span className="text-[10px] text-ln-faint">{ping ? timeAgo(ping.lastSeenAt) : "nunca"}</span>
       {probe ? (
-        <div
+        <span
           className={cn(
-            "mt-2 rounded-md px-2 py-1 text-[10.5px]",
-            probe.skipped
-              ? "bg-white/5 text-ln-faint"
-              : probe.ok
-                ? "bg-ln-aurora/10 text-ln-aurora"
-                : "text-[var(--lose)]",
+            "rounded px-1.5 py-0.5 text-[9.5px]",
+            probe.skipped ? "text-ln-faint" : probe.ok ? "text-ln-aurora" : "text-[var(--lose)]",
           )}
-          style={
-            !probe.skipped && !probe.ok
-              ? { backgroundColor: "color-mix(in srgb, var(--lose) 12%, transparent)" }
-              : undefined
-          }
           title={probe.detail}
         >
-          {probe.skipped ? "⏭ Omitido" : probe.ok ? "✓ Prueba OK" : "✗ Prueba falló"}
-          {probe.status != null ? ` · ${probe.status}` : ""}
+          {probe.skipped ? "⏭" : probe.ok ? "✓" : "✗"}
+          {probe.status != null ? ` ${probe.status}` : ""}
           {probe.latencyMs != null && !probe.skipped ? ` · ${probe.latencyMs}ms` : ""}
-        </div>
+        </span>
       ) : null}
+    </div>
+  );
+}
+
+function Badge2({ side, level, ev }: { side: TwoZeroSide; level: Level2; ev: PingInfo | null }) {
+  const s = LEVEL2_STYLE[level];
+  return (
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1" title={side.desc}>
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue">
+        2.0
+      </span>
+      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold", s.chip)}>
+        <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
+        {s.label}
+      </span>
+      <span className="font-mono text-[9.5px] text-ln-faint">{side.label}</span>
+      {ev ? <span className="text-[10px] text-ln-faint">{timeAgo(ev.lastSeenAt)}</span> : null}
+    </div>
+  );
+}
+
+function Probe2Chip({ r }: { r: NostrProbeResult }) {
+  const style = r.skipped
+    ? "bg-white/5 text-ln-faint"
+    : r.found > 0
+      ? "bg-ln-aurora/10 text-ln-aurora"
+      : "bg-white/5 text-ln-muted";
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px]", style)}
+      title={r.detail}
+    >
+      {r.skipped ? "⏭ no probable" : r.found > 0 ? `✓ ${r.found} en relays` : "0 en relays"}
+      {r.latencyMs != null && !r.skipped ? ` · ${r.latencyMs}ms` : ""}
+    </span>
+  );
+}
+
+function CapabilityTile({
+  row,
+  game,
+  providerLevel,
+  webhookConfigured,
+  probe,
+  nostrProbe,
+  editable,
+  challenges,
+  saving,
+  onToggleChallenges,
+}: {
+  row: CapabilityRow;
+  game: IntegrationView["games"][number];
+  providerLevel: Record<string, PingInfo | null>;
+  webhookConfigured: boolean;
+  probe?: Record<string, ProbeResult>;
+  nostrProbe?: Record<string, NostrProbeResult>;
+  editable?: boolean;
+  challenges: boolean;
+  saving: boolean;
+  onToggleChallenges: (next: boolean) => void;
+}) {
+  const ping1 = row.oneZero.length ? oneZeroPing(row, game, providerLevel) : null;
+  const lvl1 = row.oneZero.length ? level1For(row, ping1, webhookConfigured) : null;
+  // Anotación del probador: la del primer feature 1.0 que tenga resultado.
+  const probeHit = row.oneZero.map((k) => probe?.[k]).find(Boolean);
+
+  const side = row.twoZero;
+  const ev = side && side.signal !== "challenge" && side.signal !== "none"
+    ? game.nostr?.[side.signal] ?? null
+    : null;
+  const lvl2 = side ? level2For(side, ev, challenges) : null;
+  const isRetoToggle = side?.signal === "challenge";
+
+  return (
+    <div className="rounded-ln-md border border-ln-border bg-ln-card/40 p-2.5">
+      <p className="text-[12px] font-semibold leading-snug text-ln-text">{row.title}</p>
+      <div className="mt-2 flex flex-col gap-1.5">
+        {lvl1 ? <Badge1 level={lvl1} ping={ping1} probe={probeHit} /> : null}
+        {side && lvl2 ? <Badge2 side={side} level={lvl2} ev={ev} /> : null}
+        {side && nostrProbe?.[row.key] ? <Probe2Chip r={nostrProbe[row.key]} /> : null}
+        {isRetoToggle ? (
+          editable ? (
+            <label className="mt-0.5 inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-ln-muted">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-ln-aurora"
+                checked={challenges}
+                disabled={saving}
+                onChange={(e) => onToggleChallenges(e.target.checked)}
+              />
+              {saving ? "Guardando…" : "Declarar que mi juego lo soporta"}
+            </label>
+          ) : null
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -151,24 +278,17 @@ export function GameIntegrationCard({
   providerLevel,
   webhookConfigured,
   probe,
+  nostrProbe,
   editable,
 }: {
   game: IntegrationView["games"][number];
   providerLevel: Record<string, PingInfo | null>;
   webhookConfigured: boolean;
   probe?: Record<string, ProbeResult>;
+  nostrProbe?: Record<string, NostrProbeResult>;
   /** Solo el proveedor dueño puede togglear capacidades; admin lo ve read-only. */
   editable?: boolean;
 }) {
-  // Ping por feature: las de alcance "game" salen del juego; las "provider" del
-  // nivel proveedor (aplican a todos sus juegos).
-  function pingOf(f: FeatureMeta): PingInfo | null {
-    return f.scope === "provider" ? providerLevel[f.key] ?? null : game.features[f.key] ?? null;
-  }
-  const integrated = INTEGRATION_FEATURES.filter(
-    (f) => levelFor(f, pingOf(f), webhookConfigured) !== "none",
-  ).length;
-
   const [challenges, setChallenges] = useState(game.supportsChallenges);
   const [saving, setSaving] = useState(false);
   async function toggleChallenges(next: boolean) {
@@ -188,83 +308,70 @@ export function GameIntegrationCard({
     }
   }
 
+  // Capacidades "vivas" (en uso/declaradas) sobre el total del catálogo de 3 columnas.
+  const rows = INTEGRATION_COLUMNS.flatMap((c) => c.rows);
+  const live = rows.filter((row) => {
+    const ping1 = row.oneZero.length ? oneZeroPing(row, game, providerLevel) : null;
+    if (row.oneZero.length && LIVE1.has(level1For(row, ping1, webhookConfigured))) return true;
+    const side = row.twoZero;
+    if (side) {
+      const ev =
+        side.signal !== "challenge" && side.signal !== "none"
+          ? game.nostr?.[side.signal] ?? null
+          : null;
+      if (LIVE2.has(level2For(side, ev, challenges))) return true;
+    }
+    return false;
+  }).length;
+
   return (
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ln-text">{game.title}</p>
         <span className="text-[11px] text-ln-muted">
-          {integrated}/{INTEGRATION_FEATURES.length} interfaces
+          {live}/{rows.length} capacidades
         </span>
       </div>
 
-      {/* Capacidad declarada (no telemetría): retos 1v1 (interfaz 2.0, en construcción). */}
-      <div className="mt-3 rounded-ln-md border border-dashed border-ln-corona/40 bg-ln-bg-deep/50 px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex flex-wrap items-center gap-1.5 text-[13px] text-ln-text">
-            ⚔️ Permite retos 1v1
-            <span className="rounded-full bg-ln-corona/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ln-corona">
-              2.0 · en construcción
-            </span>
-            <span
-              className="cursor-help text-ln-faint"
-              title={CHALLENGE_HELP}
-              aria-label={CHALLENGE_HELP}
-            >
-              ⓘ
-            </span>
-          </span>
-          {editable ? (
-            <label className="inline-flex cursor-pointer items-center gap-2">
-              {saving ? (
-                <span className="text-[11px] text-ln-faint">Guardando…</span>
-              ) : null}
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-ln-aurora"
-                checked={challenges}
-                disabled={saving}
-                onChange={(e) => toggleChallenges(e.target.checked)}
-              />
-            </label>
-          ) : (
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                challenges ? "bg-ln-aurora/15 text-ln-aurora" : "bg-white/10 text-ln-muted",
-              )}
-            >
-              {challenges ? "Activado" : "Desactivado"}
-            </span>
-          )}
-        </div>
-        <p className="mt-1.5 text-[11px] text-ln-faint">
-          Parte de la <strong className="text-ln-muted">interfaz 2.0 (Nostr)</strong>, todavía
-          experimental y <strong className="text-ln-muted">no prometida</strong> — pensada para
-          después del hackathon, mientras seguimos desarrollando el proyecto. Hoy lo garantizado
-          es la <strong className="text-ln-muted">1.0 (§1–§8)</strong> de arriba; activar esto no
-          afecta tu integración 1.0.
-        </p>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {INTEGRATION_FEATURES.map((f) => (
-          <FeatureTile
-            key={f.key}
-            feature={f}
-            ping={pingOf(f)}
-            webhookConfigured={webhookConfigured}
-            probe={probe?.[f.key]}
-          />
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        {INTEGRATION_COLUMNS.map((col) => (
+          <div key={col.id} className="rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
+            <p className="text-[12px] font-bold uppercase tracking-wide text-ln-text">{col.title}</p>
+            <p className="mb-2 mt-0.5 text-[10px] leading-snug text-ln-faint">{col.subtitle}</p>
+            <div className="flex flex-col gap-2">
+              {col.rows.map((row) => (
+                <CapabilityTile
+                  key={row.key}
+                  row={row}
+                  game={game}
+                  providerLevel={providerLevel}
+                  webhookConfigured={webhookConfigured}
+                  probe={probe}
+                  nostrProbe={nostrProbe}
+                  editable={editable}
+                  challenges={challenges}
+                  saving={saving}
+                  onToggleChallenges={toggleChallenges}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
+
+      <p className="mt-3 text-[10.5px] leading-snug text-ln-faint">
+        Columna del medio = misma necesidad por dos caminos (REST 1.0 ⇆ eventos Nostr 2.0).
+        La 2.0 es experimental y no prometida; lo garantizado hoy es la 1.0 (§1–§8). Los retos
+        van cifrados E2E, así que su estado es la capacidad <em>declarada</em>, no tráfico observado.
+      </p>
     </div>
   );
 }
 
 /**
- * Matriz de integración de un proveedor: una tarjeta por juego con el estado
- * (observado) de cada interfaz §1–§8, más un botón para correr el probador en
- * vivo. `onProbe` devuelve los resultados; el componente los muestra inline.
+ * Matriz de integración de un proveedor: una tarjeta por juego con el estado de
+ * cada capacidad en las tres columnas (solo 1.0 · intermedio · solo 2.0), más un
+ * botón para correr el probador en vivo (solo ejercita los endpoints REST 1.0).
  */
 export function IntegrationMatrix({
   view,
@@ -273,20 +380,29 @@ export function IntegrationMatrix({
   editable,
 }: {
   view: IntegrationView;
-  onProbe?: () => Promise<ProbeResult[]>;
+  onProbe?: () => Promise<ProbeResponse>;
   compact?: boolean;
   /** Permite togglear capacidades por juego (solo el panel del proveedor dueño). */
   editable?: boolean;
 }) {
   const [probe, setProbe] = useState<Record<string, ProbeResult> | null>(null);
+  // Probe 2.0 indexado por juego → capacidad.
+  const [nostrProbe, setNostrProbe] = useState<
+    Record<string, Record<string, NostrProbeResult>> | null
+  >(null);
   const [running, setRunning] = useState(false);
 
   async function run() {
     if (!onProbe) return;
     setRunning(true);
     try {
-      const results = await onProbe();
+      const { results, nostr } = await onProbe();
       setProbe(Object.fromEntries(results.map((r) => [r.feature, r])));
+      const byGame: Record<string, Record<string, NostrProbeResult>> = {};
+      for (const [gameId, arr] of Object.entries(nostr ?? {})) {
+        byGame[gameId] = Object.fromEntries(arr.map((r) => [r.key, r]));
+      }
+      setNostrProbe(byGame);
     } finally {
       setRunning(false);
     }
@@ -296,16 +412,12 @@ export function IntegrationMatrix({
     <div className="space-y-3">
       {onProbe ? (
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={run}
-            disabled={running}
-            className="btn btn-outline"
-          >
+          <button type="button" onClick={run} disabled={running} className="btn btn-outline">
             {running ? "Probando…" : "Probar en vivo"}
           </button>
           <p className="text-[11px] text-ln-faint">
-            Golpea los endpoints reales de Luna Negra para verificar que responden ahora.
+            Golpea los endpoints REST 1.0 y consulta los relays Nostr 2.0 para ver qué
+            responde/existe ahora mismo.
           </p>
         </div>
       ) : null}
@@ -322,6 +434,7 @@ export function IntegrationMatrix({
             providerLevel={view.providerLevel}
             webhookConfigured={view.provider.webhookConfigured}
             probe={probe ?? undefined}
+            nostrProbe={nostrProbe?.[g.id]}
             editable={editable}
           />
         ))

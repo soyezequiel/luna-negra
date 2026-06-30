@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import {
   readIntegrationEvidence,
+  readNostrEvidence,
   buildIntegrationView,
   type IntegrationView,
 } from "@/lib/integration-telemetry";
@@ -33,10 +34,11 @@ export async function GET() {
 
   const views: IntegrationView[] = await Promise.all(
     providers.map(async (p) => {
-      const byGame = await readIntegrationEvidence(
-        p.id,
-        p.games.map((g) => g.id),
-      );
+      const gameIds = p.games.map((g) => g.id);
+      const [byGame, nostr] = await Promise.all([
+        readIntegrationEvidence(p.id, gameIds),
+        readNostrEvidence(gameIds),
+      ]);
       return buildIntegrationView(
         {
           id: p.id,
@@ -46,6 +48,7 @@ export async function GET() {
         },
         p.games,
         byGame,
+        nostr,
       );
     }),
   );

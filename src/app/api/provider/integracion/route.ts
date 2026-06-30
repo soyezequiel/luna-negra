@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
   readIntegrationEvidence,
+  readNostrEvidence,
   buildIntegrationView,
 } from "@/lib/integration-telemetry";
 
@@ -25,12 +26,11 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     select: { id: true, title: true, slug: true, status: true, supportsChallenges: true },
   });
-  const [byGame, apiKeys] = await Promise.all([
-    readIntegrationEvidence(
-      provider.id,
-      games.map((g) => g.id),
-    ),
+  const gameIds = games.map((g) => g.id);
+  const [byGame, apiKeys, nostr] = await Promise.all([
+    readIntegrationEvidence(provider.id, gameIds),
     prisma.apiKey.count({ where: { providerId: provider.id, revokedAt: null } }),
+    readNostrEvidence(gameIds),
   ]);
 
   const view = buildIntegrationView(
@@ -45,6 +45,7 @@ export async function GET() {
     },
     games,
     byGame,
+    nostr,
   );
   return NextResponse.json({ view });
 }
