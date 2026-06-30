@@ -52,22 +52,28 @@ function parseState(json: string | null): Record<string, unknown> | null {
   }
 }
 
-/** Registra/renueva la presencia de un jugador en el juego del proveedor. */
+/**
+ * Registra/renueva la presencia de un jugador en el juego del proveedor. `gameId`
+ * indica EN QUÉ juego está (lo manda el heartbeat como `game`); null = integración
+ * vieja que no lo reporta → presencia a nivel proveedor (curva compartida).
+ */
 export async function recordPresence(
   providerId: string,
   npub: string,
   status: "in-game" | "online",
   roomId: string | null,
   state?: Record<string, unknown> | null,
+  gameId?: string | null,
 ): Promise<void> {
   const expiresAt = new Date(Date.now() + PRESENCE_TTL_MS);
   // Cada latido es autoritativo: el `state` reemplaza al anterior (last-write-wins);
-  // si el juego no lo manda, se limpia.
+  // si el juego no lo manda, se limpia. Igual el `gameId`: el último latido manda
+  // (cubre que el jugador cambie de un juego del proveedor a otro).
   const stateJson = state && typeof state === "object" ? JSON.stringify(state) : null;
   await prisma.gamePresence.upsert({
     where: { providerId_npub: { providerId, npub } },
-    create: { providerId, npub, status, roomId, stateJson, expiresAt },
-    update: { status, roomId, stateJson, expiresAt },
+    create: { providerId, npub, gameId: gameId ?? null, status, roomId, stateJson, expiresAt },
+    update: { gameId: gameId ?? null, status, roomId, stateJson, expiresAt },
   });
   // Respaldo de "jugó alguna vez" (cubre relanzamientos que no pasan por la
   // tienda). Throttled a 10 min para no escribir en cada heartbeat de ~10s.

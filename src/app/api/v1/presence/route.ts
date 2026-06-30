@@ -1,4 +1,5 @@
 import { verifyApiKey } from "@/lib/api-keys";
+import { prisma } from "@/lib/prisma";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { recordPresence } from "@/lib/social";
 import { trackIntegration } from "@/lib/integration-telemetry";
@@ -51,6 +52,20 @@ export async function POST(req: Request) {
   const rawRoom = (body as { roomId?: unknown })?.roomId;
   const roomId = typeof rawRoom === "string" && rawRoom ? rawRoom.slice(0, 64) : null;
 
+  // En qué juego está el jugador. Opcional y retrocompatible: si no se manda (o no
+  // matchea un juego del proveedor), la presencia queda a nivel proveedor (gameId
+  // null) como antes. Si se manda, la curva de concurrentes se separa por juego.
+  // Aceptamos slug (lo natural para el game server) o el id del juego.
+  const rawGame = (body as { game?: unknown })?.game;
+  let gameId: string | null = null;
+  if (typeof rawGame === "string" && rawGame) {
+    const g = await prisma.game.findFirst({
+      where: { providerId, OR: [{ slug: rawGame }, { id: rawGame }] },
+      select: { id: true },
+    });
+    gameId = g?.id ?? null;
+  }
+
   // Bolsa libre opcional: el juego decide qué guarda (puntaje, vidas, equipo…).
   // Solo objetos planos; tope de 2KB para no abusar de la fila de presencia.
   const rawState = (body as { state?: unknown })?.state;
@@ -64,7 +79,9 @@ export async function POST(req: Request) {
 
   // El npub ya está normalizado desde el pubkey decodificado (defensa contra
   // formato raro).
-  await recordPresence(providerId, npub, rawStatus, roomId, state);
+  await recordPresence(providerId, npub, rawStatus, roomId, state, gameId);
+  // Telemetría a nivel proveedor (la presencia es feature de proveedor en el panel
+  // de integración). La atribución por juego de la CURVA sale de la presencia misma.
   trackIntegration("presence", { providerId });
   return apiOk({ ok: true });
 }

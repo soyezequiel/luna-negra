@@ -71,7 +71,9 @@ export async function recordPlayClick(
 
   // Punto discreto: "en este instante este jugador abrió el juego". No asumimos
   // cuánto duró la sesión (sin heartbeat no se sabe) → es un punto, no un bloque.
+  // Guardamos el gameId: las aperturas son por juego (no se mezclan entre juegos
+  // del mismo proveedor).
   await prisma.playerCountSample.create({
-    data: { providerId, count: 1, npubs: [npub], source: "clicks", sampledAt: now },
+    data: { providerId, gameId, count: 1, npubs: [npub], source: "clicks", sampledAt: now },
   });
 }

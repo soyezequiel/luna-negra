@@ -240,8 +240,8 @@ export async function buildGameStats(
   const [
     purchases,
     payoutGroups,
-    presenceNow,
-    presenceIntegration,
+    activePresence,
+    presenceGameEver,
     samples,
     bets,
     activeCount,
@@ -257,18 +257,26 @@ export async function buildGameStats(
       where: { gameId, status: "paid", paidAt: { gte: start } },
       _count: { _all: true },
     }),
-    prisma.gamePresence.count({
+    // Presencia activa (no vencida) del proveedor con su gameId, para contar el
+    // "ahora" por juego (gameId == este) y el legacy provider-wide (gameId null).
+    prisma.gamePresence.findMany({
       where: { providerId, expiresAt: { gt: now } },
+      select: { gameId: true },
     }),
-    // ¿El proveedor integró la presencia real (§3)? Si nunca pingeó el endpoint,
-    // la curva son puntos de apertura (clicks).
-    prisma.integrationPing.findFirst({
-      where: { providerId, feature: "presence" },
+    // ¿Este juego reportó presencia atribuida a él alguna vez (dentro de la
+    // retención)? Decide la fuente como "presence" aunque la ventana esté vacía.
+    prisma.playerCountSample.findFirst({
+      where: { providerId, gameId, source: "presence" },
       select: { id: true },
     }),
+    // Muestras de ESTE juego (gameId == este) + las provider-wide legacy (gameId null).
     prisma.playerCountSample.findMany({
-      where: { providerId, sampledAt: { gte: start } },
-      select: { count: true, npubs: true, source: true, sampledAt: true },
+      where: {
+        providerId,
+        sampledAt: { gte: start },
+        OR: [{ gameId }, { gameId: null }],
+      },
+      select: { gameId: true, count: true, npubs: true, source: true, sampledAt: true },
       orderBy: { sampledAt: "asc" },
     }),
     prisma.bet.findMany({
@@ -321,13 +329,55 @@ export async function buildGameStats(
   }
 
   // ── Jugadores ──
-  // Si el proveedor no integró la presencia real, la curva son puntos de apertura
-  // (clicks); si la integró, es la curva continua de presencia. Filtramos las
-  // muestras a esa fuente para no mezclar (p. ej. clicks viejos de antes de integrar).
-  const playersSource: "presence" | "clicks" = presenceIntegration
-    ? "presence"
-    : "clicks";
-  const sourceSamples = samples.filter((s) => s.source === playersSource);
+  // La presencia y las aperturas se atribuyen por juego (gameId). Preferimos los
+  // datos de ESTE juego; si no hay, caemos a las muestras legacy provider-wide
+  // (gameId null) de integraciones que todavía no mandan `game` (compatibilidad).
+  // Así dos juegos del mismo proveedor dejan de compartir la curva en cuanto el
+  // game server empieza a reportar a qué juego pertenece la presencia.
+  const presenceNowGame = activePresence.filter((p) => p.gameId === gameId).length;
+  const presenceNowProvider = activePresence.filter((p) => p.gameId === null).length;
+  const presenceGameSamples = samples.filter((s) => s.source === "presence" && s.gameId === gameId);
+  const presenceProviderSamples = samples.filter((s) => s.source === "presence" && s.gameId === null);
+  const clicksGameSamples = samples.filter((s) => s.source === "clicks" && s.gameId === gameId);
+  const clicksProviderSamples = samples.filter((s) => s.source === "clicks" && s.gameId === null);
+
+  // ¿Hay presencia atribuida a ESTE juego? (muestras en ventana, vivos ahora, o
+  // alguna vez dentro de la retención). Si sí → curva por juego; si solo hay legacy
+  // provider-wide → curva del proveedor (compartida); si no hay nada → aperturas.
+  const hasGamePresence =
+    presenceGameSamples.length > 0 || presenceNowGame > 0 || presenceGameEver != null;
+  // El legacy provider-wide solo cuenta mientras haya datos sin juego en la ventana
+  // (o vivos): así, cuando una integración migra a `game`, los otros juegos del
+  // proveedor dejan de heredar la curva en cuanto las muestras null salen del rango.
+  const hasProviderPresence =
+    presenceProviderSamples.length > 0 || presenceNowProvider > 0;
+  const providerHasMultipleGames = game.provider._count.games > 1;
+
+  let playersSource: "presence" | "clicks";
+  let sourceSamples: typeof samples;
+  let nowCount: number;
+  let sharedAcrossGames: boolean;
+  if (hasGamePresence) {
+    playersSource = "presence";
+    sourceSamples = presenceGameSamples;
+    nowCount = presenceNowGame;
+    sharedAcrossGames = false; // atribuida a este juego: ya no se comparte
+  } else if (hasProviderPresence) {
+    playersSource = "presence";
+    sourceSamples = presenceProviderSamples;
+    nowCount = presenceNowProvider; // legacy: presencia sin juego (curva del proveedor)
+    sharedAcrossGames = providerHasMultipleGames;
+  } else if (clicksGameSamples.length > 0) {
+    playersSource = "clicks";
+    sourceSamples = clicksGameSamples;
+    nowCount = 0; // sin presencia no se sabe quién juega AHORA → no se inventa
+    sharedAcrossGames = false;
+  } else {
+    playersSource = "clicks";
+    sourceSamples = clicksProviderSamples; // aperturas legacy sin gameId
+    nowCount = 0;
+    sharedAcrossGames = providerHasMultipleGames;
+  }
 
   // Resolvemos displayName de los npubs presentes en las muestras (los conocidos:
   // tienen cuenta en Luna Negra). Una sola query para todo el período.
@@ -340,11 +390,6 @@ export async function buildGameStats(
     });
     for (const u of known) if (u.displayName) nameMap.set(u.npub, u.displayName);
   }
-  // "Ahora": solo tiene sentido con presencia activa. Sin presencia integrada NO
-  // se puede saber quién está jugando AHORA (un click no dice cuánto se quedó), así
-  // que no inventamos un "ahora": para clicks se reporta 0 y la UI muestra el total
-  // de aperturas en su lugar.
-  const nowCount = playersSource === "presence" ? presenceNow : 0;
 
   const viewerNpub = opts.viewerNpub;
   const playerSamples: PlayerSample[] = sourceSamples.map((s) => {
@@ -512,7 +557,7 @@ export async function buildGameStats(
       peak,
       totalOpenings,
       samples: chartSamples,
-      sharedAcrossGames: game.provider._count.games > 1,
+      sharedAcrossGames,
       source: playersSource,
     },
     bets: {

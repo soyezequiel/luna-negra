@@ -100,8 +100,9 @@ Estado compartido de la sala para juegos **sin backend propio** (Luna Negra host
 
 ### `POST /api/v1/presence`
 Heartbeat de presencia del juego (~10 s, TTL ~30 s). Auth: API key.
-- **Body:** `{ "npub", "status": "in-game"|"online", "roomId"?, "state"? }`
+- **Body:** `{ "npub", "status": "in-game"|"online", "game"?, "roomId"?, "state"? }`
   - `status` es la clave **reservada** (la usa Luna Negra para "Jugando X"). `state` es una **bolsa libre** (objeto plano ≤2KB): el juego guarda lo que quiera (puntaje, vidas, equipo…). Cada latido reemplaza el `state` anterior.
+  - `game` (opcional, recomendado si tu API key cubre varios juegos): slug (o id) del juego en el que está el jugador. Con él, la curva de "jugadores concurrentes" se cuenta **por juego**; sin él, los juegos del proveedor comparten la curva. Si no matchea un juego tuyo, se ignora.
 - **200:** `{ "ok": true }` · **400** `INVALID_NPUB`/`INVALID_STATUS`/`STATE_TOO_LARGE` · **401** `INVALID_API_KEY`
 
 ### `GET /api/v1/friends`

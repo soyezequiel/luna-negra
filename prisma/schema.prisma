@@ -113,6 +113,11 @@ model PlayerCountSample {
   id         String   @id @default(cuid())
   providerId String
   provider   Provider @relation(fields: [providerId], references: [id])
+  // Juego al que se atribuye la muestra. null = a nivel proveedor (presencia legacy
+  // que no manda `game`, o providers de un solo juego): la curva se comparte entre
+  // los juegos del proveedor. Si viene seteado, la muestra es de ESE juego (la curva
+  // ya no se mezcla con los otros juegos del proveedor).
+  gameId     String?
   count      Int // npub distintos con presencia activa al momento del sample
   // npubs presentes en esa muestra: permite mostrar QUIÉN jugaba al pasar el mouse
   // por el punto, y distinguir las sesiones del dueño (para no inflar la curva con
@@ -120,12 +125,13 @@ model PlayerCountSample {
   npubs      String[] @default([])
   // Fuente del conteo de esta muestra:
   //   "presence" → presencia real reportada por el game server (GamePresence).
-  //   "clicks"   → ESTIMACIÓN por clicks en "Jugar" (GamePlayClick), para juegos
-  //                que NO integraron la presencia (§3). Ver presence-sampler.ts.
+  //   "clicks"   → puntos de apertura (GamePlayClick), para juegos que NO integraron
+  //                la presencia (§3). Ver presence-sampler.ts y play-click.ts.
   source     String   @default("presence")
   sampledAt  DateTime @default(now())
 
   @@index([providerId, sampledAt])
+  @@index([providerId, gameId, sampledAt])
 }
 
 // Click en "Jugar" desde la tienda, deduplicado por jugador con una ventana de
@@ -197,6 +203,11 @@ model GamePresence {
   providerId String
   provider   Provider @relation(fields: [providerId], references: [id])
   npub       String
+  // Juego en el que el jugador está presente AHORA. El heartbeat lo manda como
+  // `game` (slug); si no lo manda (integración vieja) queda null = "algún juego del
+  // proveedor". Un jugador está en un solo juego a la vez por proveedor, así que la
+  // unicidad sigue siendo (providerId, npub): al cambiar de juego se actualiza acá.
+  gameId     String?
   status     String // "in-game" | "online" (clave reservada de presentación)
   roomId     String?
   stateJson  String? // bolsa libre del juego (JSON serializado): puntaje, vidas, equipo…
@@ -205,6 +216,7 @@ model GamePresence {
 
   @@unique([providerId, npub])
   @@index([providerId])
+  @@index([providerId, gameId, expiresAt])
   @@index([expiresAt])
 }
 

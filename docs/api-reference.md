@@ -349,7 +349,8 @@ Heartbeat + roster de la sala (~2 s). Auth: Bearer invite.
 
 #### `POST /api/v1/presence`
 Heartbeat de presencia del juego (~10 s, TTL ~30 s). Auth: API key.
-- **Body:** `{ "npub", "status": "in-game"|"online", "roomId"?, "state"? }` (`status` reservado; `state` = bolsa libre ≤2KB, last-write-wins)
+- **Body:** `{ "npub", "status": "in-game"|"online", "game"?, "roomId"?, "state"? }` (`status` reservado; `state` = bolsa libre ≤2KB, last-write-wins)
+- `game` (opcional, recomendado): slug (o id) del juego en el que está el jugador. Si lo mandás, la curva de "jugadores concurrentes" se cuenta **por juego**; si lo omitís, la presencia queda a nivel proveedor y los juegos del proveedor comparten la curva (compat). Debe ser un juego tuyo; si no matchea, se ignora (cae a provider-wide).
 - **200:** `{ "ok": true }` · **400** `INVALID_NPUB`/`INVALID_STATUS` · **401** `INVALID_API_KEY`
 
 #### `GET /api/v1/friends`

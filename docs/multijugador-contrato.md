@@ -60,7 +60,9 @@ su presencia por la API** y Luna Negra deriva el estado social de ahí.
 Flujo:
 1. El juego late su presencia a Luna Negra cada ~10s mientras el jugador esté
    activo: `POST /api/v1/presence` (Bearer **API key** del proveedor, server-side)
-   con `{ npub, status, roomId }`. La presencia tiene TTL ~30s.
+   con `{ npub, status, game?, roomId }`. La presencia tiene TTL ~30s. `game` (slug
+   o id, opcional) separa la curva de concurrentes por juego cuando la API key cubre
+   varios; sin él, los juegos del proveedor comparten la curva.
 2. La pestaña de la tienda sondea su propia presencia: `GET /api/me/playing` (auth
    por cookie de sesión). Mientras la API confirme `playing: true`, **renueva** el
    estado NIP-38; cuando deja de confirmarlo (el juego cerró → la presencia

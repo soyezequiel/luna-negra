@@ -634,9 +634,14 @@ export default function AdminPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-3xl font-bold tracking-tight text-white">Admin</h1>
-        <Link href="/admin/stats" className="btn btn-ghost shrink-0">
-          Estadísticas
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link href="/admin/visitors" className="btn btn-ghost">
+            Quiénes entran
+          </Link>
+          <Link href="/admin/stats" className="btn btn-ghost">
+            Estadísticas
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

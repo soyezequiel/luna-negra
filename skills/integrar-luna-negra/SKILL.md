@@ -134,9 +134,14 @@ Reporta desde tu **game server** (API key) que un jugador está en partida; Luna
 Negra lo muestra como "Jugando <tu juego>" en su perfil NIP-38.
 
 - **`POST /api/v1/presence`** (API key) — heartbeat cada ~10 s, TTL ~30 s.
-  - Body: `{ npub, status: "in-game" | "online", roomId?, state? }`
+  - Body: `{ npub, status: "in-game" | "online", game?, roomId?, state? }`
   - `status` es la clave reservada (la usa Luna Negra). `state` es una **bolsa
     libre** (objeto plano ≤2 KB): puntaje, vidas, nivel… Cada latido la reemplaza.
+  - **`game`** (opcional pero recomendado): el **slug** (o id) del juego en el que
+    está el jugador. Mandalo si tu API key cubre **varios juegos**: con él la curva
+    de "jugadores concurrentes" se cuenta **por juego**; sin él, todos tus juegos
+    comparten la misma curva (la presencia queda a nivel proveedor). Si no matchea
+    un juego tuyo, se ignora (cae a provider-wide).
   - `200 { ok: true }` · errores `INVALID_NPUB`/`INVALID_STATUS`/`STATE_TOO_LARGE`.
   - **`403 NOT_A_PLAYER`:** solo podés reportar presencia de un `npub` que tenga
     acceso a alguno de tus juegos. No podés marcar como "in-game" a usuarios ajenos.
