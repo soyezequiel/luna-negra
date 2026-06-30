@@ -21,6 +21,9 @@ export async function GET() {
       title: p.game.title,
       coverUrl: p.game.coverUrl,
       gameUrl: p.game.gameUrl,
+      // Solo los entitlements gratuitos se pueden quitar de la biblioteca (un
+      // juego pagado con sats no, para no perder el acceso comprado).
+      free: p.amountSats === 0,
     })),
   });
 }

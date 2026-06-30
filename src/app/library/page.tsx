@@ -15,6 +15,7 @@ type LibraryGame = {
   title: string;
   coverUrl: string | null;
   gameUrl: string | null;
+  free: boolean;
 };
 
 function Cover({
@@ -70,6 +71,7 @@ function Cover({
 export default function LibraryPage() {
   const { user, login, loading } = useSession();
   const [games, setGames] = useState<LibraryGame[] | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -78,6 +80,22 @@ export default function LibraryPage() {
       .then((d) => setGames(d.games ?? []))
       .catch(() => setGames([]));
   }, [user]);
+
+  async function removeFromLibrary(g: LibraryGame) {
+    if (!confirm(`¿Quitar "${g.title}" de tu biblioteca?`)) return;
+    setRemoving(g.id);
+    try {
+      const r = await fetch(`/api/games/${g.id}/library`, { method: "DELETE" });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error ?? "No se pudo quitar");
+        return;
+      }
+      setGames((prev) => (prev ? prev.filter((x) => x.id !== g.id) : prev));
+    } finally {
+      setRemoving(null);
+    }
+  }
 
   if (loading) return null;
 
@@ -157,6 +175,16 @@ export default function LibraryPage() {
                     >
                       Ver
                     </Link>
+                    {g.free ? (
+                      <button
+                        type="button"
+                        onClick={() => removeFromLibrary(g)}
+                        disabled={removing === g.id}
+                        className="btn btn-ghost px-3 py-1.5 text-[13px] text-ln-faint hover:text-[var(--lose)]"
+                      >
+                        {removing === g.id ? "Quitando…" : "Quitar"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ))}

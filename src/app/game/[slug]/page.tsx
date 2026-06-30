@@ -8,6 +8,7 @@ import { BuyButton } from "@/components/buy-button";
 import { ZapButton } from "@/components/zap-button";
 import { ZapLeaderboard } from "@/components/zap-leaderboard";
 import { PlayButton } from "@/components/play-button";
+import { LibraryButton } from "@/components/library-button";
 import { GameBets } from "@/components/game-bets";
 import { MultiplayerPanel } from "@/components/multiplayer-panel";
 import { RegisterGame } from "@/providers/game-context";
@@ -153,20 +154,24 @@ export default async function GamePage({
   // ¿La cuenta logueada es la proveedora dueña de este juego? → mostrar el lápiz
   // de edición en la propia ficha de la tienda.
   const isOwner = Boolean(session) && game.provider.ownerId === session!.sub;
-  // En un juego oculto el admin/dueño puede jugar siempre (sin compra): lo
-  // tratamos como "en biblioteca" para mostrar el botón de Jugar.
-  let owned = isHidden;
-  if (!owned && session) {
+  let owned = false;
+  // ¿El entitlement es gratuito (amountSats 0)? Solo esos se pueden "quitar de la
+  // biblioteca"; un juego pagado con sats no se quita para no perder el acceso.
+  let ownedFree = false;
+  if (session) {
     const p = await prisma.purchase.findUnique({
       where: { userId_gameId: { userId: session.sub, gameId: game.id } },
     });
     owned = p?.status === "paid";
+    ownedFree = owned && p!.amountSats === 0;
   }
   // Solo se considera "en biblioteca" / jugable si el usuario realmente posee el
   // juego (entitlement pagado). Los juegos gratis NO son de tu propiedad hasta
   // que los agregás con "Agregar a la biblioteca" (entitlement inmediato), así
   // evitamos mostrar "✓ En tu biblioteca" a quien todavía no lo tiene.
-  const canPlay = owned;
+  // En un juego oculto el admin/dueño puede jugar aunque no lo haya agregado (el
+  // token de sesión se lo da igual), así que también puede lanzarlo.
+  const canPlay = owned || isHidden;
 
   // Modo de la ficha: biblioteca si el jugador es dueño (salvo que fuerce tienda
   // con ?view=store); si no, tienda. (Ver IMPLEMENTATION_PROMPT §3.2.)
@@ -357,6 +362,14 @@ export default async function GamePage({
                 >
                   Ver en la tienda
                 </Link>
+                {ownedFree ? (
+                  <LibraryButton
+                    gameId={game.id}
+                    owned
+                    variant="ghost"
+                    size="sm"
+                  />
+                ) : null}
               </div>
               {supportsRooms ? (
                 <p className="mt-3 text-center text-[11px] text-ln-faint">
@@ -385,6 +398,23 @@ export default async function GamePage({
                   >
                     Ir a tu biblioteca
                   </Link>
+                </div>
+              ) : isHidden ? (
+                // Juego oculto (admin_only): no se compra. El admin/dueño lo
+                // agrega a su biblioteca (entitlement gratis) y puede jugarlo ya.
+                <div className="space-y-2 [&>*]:w-full">
+                  {game.gameUrl ? (
+                    <PlayButton
+                      gameId={game.id}
+                      gameUrl={game.gameUrl}
+                      title={game.title}
+                      slug={game.slug}
+                      label="▶ Jugar"
+                      variant="play"
+                      size="xl"
+                    />
+                  ) : null}
+                  <LibraryButton gameId={game.id} owned={false} variant="luna" />
                 </div>
               ) : (
                 <div className="space-y-2 [&>button]:w-full">
