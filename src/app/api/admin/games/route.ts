@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { isAdmin, ADMIN_ONLY_STATUS } from "@/lib/admin";
+import { isAdmin } from "@/lib/admin";
 
 export async function GET() {
   const session = await getSession();
   if (!session || !isAdmin(session.pubkey)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
-  const [games, unannounced, published, hidden] = await Promise.all([
+  const [games, unannounced, published] = await Promise.all([
     prisma.game.findMany({
       where: { status: "in_review" },
       include: { provider: true },
@@ -29,12 +29,6 @@ export async function GET() {
       },
       orderBy: { createdAt: "desc" },
     }),
-    // Juegos ocultos (solo admin): publicados de forma privada, fuera del catálogo.
-    prisma.game.findMany({
-      where: { status: ADMIN_ONLY_STATUS },
-      include: { provider: true },
-      orderBy: { createdAt: "desc" },
-    }),
   ]);
   const catalog = published.map((g) => ({
     id: g.id,
@@ -45,12 +39,5 @@ export async function GET() {
     provider: { name: g.provider.name },
     owners: g._count.purchases,
   }));
-  const adminOnly = hidden.map((g) => ({
-    id: g.id,
-    title: g.title,
-    slug: g.slug,
-    priceSats: g.priceSats,
-    provider: { name: g.provider.name },
-  }));
-  return NextResponse.json({ games, unannounced, catalog, adminOnly });
+  return NextResponse.json({ games, unannounced, catalog });
 }

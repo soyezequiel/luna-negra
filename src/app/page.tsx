@@ -12,6 +12,8 @@ import {
 import { hueFromSlug } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { getPublishedCatalog } from "@/lib/store-catalog";
+import { getSession } from "@/lib/auth";
+import { userSeesBetaGames } from "@/lib/beta";
 import { StoreUnavailable } from "@/components/store-unavailable";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +38,13 @@ export default async function StorePage({
     console.error("[home] no se pudo cargar el catálogo", err);
     return <StoreUnavailable />;
   }
+
+  // Los juegos beta solo se muestran a quien activó "ver juegos beta" en su
+  // perfil. El catálogo se cachea igual para todos (incluye los beta); el filtro
+  // por preferencia es por usuario, así que va acá y no en la query cacheada.
+  const session = await getSession();
+  const seesBeta = await userSeesBetaGames(session?.sub);
+  if (!seesBeta) catalog = catalog.filter((g) => !g.isBeta);
 
   const ql = q.toLowerCase();
   const matched = catalog.filter(

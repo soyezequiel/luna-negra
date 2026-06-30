@@ -38,6 +38,7 @@ export type CatalogGame = {
   horizontalCoverUrl: string | null;
   createdAt: string; // ISO: ya serializado para el Data Cache
   integration: number; // 0–8 interfaces de Luna Negra cableadas
+  isBeta: boolean; // beta: la Home lo filtra salvo opt-in del usuario
 };
 
 async function loadCatalog(): Promise<CatalogGame[]> {
@@ -55,6 +56,7 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       coverUrl: true,
       horizontalCoverUrl: true,
       createdAt: true,
+      isBeta: true,
     },
   });
   const scores = await scoreGamesByIntegration(games);
@@ -69,6 +71,7 @@ async function loadCatalog(): Promise<CatalogGame[]> {
     horizontalCoverUrl: g.horizontalCoverUrl,
     createdAt: g.createdAt.toISOString(),
     integration: scores.get(g.id) ?? 0,
+    isBeta: g.isBeta,
   }));
 }
 

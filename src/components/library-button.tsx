@@ -20,7 +20,7 @@ type Props = {
 };
 
 // Agrega o quita un juego de la biblioteca (entitlement gratuito). Para juegos
-// gratis publicados y para juegos ocultos (admin_only) accesibles al usuario.
+// gratis publicados.
 export function LibraryButton({
   gameId,
   owned,

@@ -40,6 +40,10 @@ model User {
   // comentarios Nostr; las que tengan timestamp posterior a esta marca cuentan
   // como no leídas. Null = nunca abrió el panel (todo lo reciente es nuevo).
   notificationsSeenAt DateTime?
+  // Opt-in para ver juegos en beta (`Game.isBeta`). Por defecto los juegos beta
+  // quedan ocultos del catálogo y de la ficha; el usuario activa esto en su perfil
+  // para verlos y probarlos. El dueño del juego y el admin los ven siempre.
+  showBetaGames Boolean @default(false)
 
   providers         Provider[]
   purchases         Purchase[]
@@ -335,6 +339,12 @@ model Game {
   // Capacidad declarada por el proveedor: este juego soporta retos 1v1 (interfaz
   // 2.0, NIP-17). Solo si es true Luna Negra muestra el botón "Retar" en el juego.
   supportsChallenges Boolean  @default(false)
+  // Juego en beta: sigue siendo un juego normal (publicado, comprable, jugable y
+  // anunciado en Nostr), pero la tienda solo lo muestra a quien activó "ver juegos
+  // beta" en su perfil (`User.showBetaGames`), más el dueño y el admin. Es ortogonal
+  // a `status`: se marca/desmarca sin re-aprobar. Distinto de `admin_only` (oculto
+  // para todos salvo admin/dueño).
+  isBeta             Boolean  @default(false)
   revenueShare       Int      @default(70) // % para el proveedor
   // Override por juego del corte de Luna Negra en apuestas (admin). null = hereda
   // el global `PlatformSettings.betFeePct`.

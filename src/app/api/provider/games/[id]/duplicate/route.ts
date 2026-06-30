@@ -38,6 +38,7 @@ export async function POST(
       videos: src.videos,
       gameUrl: src.gameUrl,
       supportsChallenges: src.supportsChallenges,
+      isBeta: src.isBeta,
       revenueShare: src.revenueShare,
       betFeePct: src.betFeePct,
       betDevFeePct: src.betDevFeePct,

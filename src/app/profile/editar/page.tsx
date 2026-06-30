@@ -54,6 +54,7 @@ export default function EditProfilePage() {
         {user.custodial ? <CustodialKeySection /> : null}
         <NwcSection />
         <PayoutDestinationSection nostrLud16={profile?.lud16 ?? null} />
+        <BetaGamesSection />
         <section className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
           <h2 className="text-[15px] font-semibold text-ln-text">Permisos Nostr</h2>
           <div className="mt-3">
@@ -286,6 +287,78 @@ function PayoutDestinationSection({ nostrLud16 }: { nostrLud16: string | null })
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+// Opt-in para ver juegos en beta. Por defecto los juegos marcados beta no
+// aparecen en la tienda ni en su ficha; al activar esto el usuario los ve y
+// puede probarlos (la preferencia se guarda en `User.showBetaGames`).
+function BetaGamesSection() {
+  const { user, updateUser } = useSession();
+  const enabled = Boolean(user?.showBetaGames);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle() {
+    const next = !enabled;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/users/me/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showBetaGames: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "No se pudo guardar");
+      updateUser({ showBetaGames: next });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
+      <h2 className="text-[15px] font-semibold text-ln-text">Juegos en beta</h2>
+      <p className="mt-1 text-sm text-ln-muted">
+        Mostrá en la tienda los juegos marcados como beta. Son juegos todavía en
+        prueba: pueden tener errores o cambiar. Por defecto están ocultos.
+      </p>
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={saving}
+        className={`mt-4 flex w-full items-center justify-between gap-3 rounded-ln-md border p-3 text-left transition-colors ${
+          enabled
+            ? "border-ln-luna/60 bg-ln-luna/10"
+            : "border-ln-border bg-ln-bg-deep/40 hover:border-ln-border-strong"
+        } ${saving ? "opacity-60" : ""}`}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-ln-text">
+            Ver juegos beta
+          </span>
+          <span className="mt-0.5 block text-[12.5px] text-ln-muted">
+            {enabled ? "Activado" : "Desactivado"}
+          </span>
+        </span>
+        <span
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+            enabled ? "bg-ln-luna" : "bg-ln-border"
+          }`}
+          aria-hidden
+        >
+          <span
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+              enabled ? "translate-x-[22px]" : "translate-x-0.5"
+            }`}
+          />
+        </span>
+      </button>
+      {error ? <p className="mt-2 text-sm text-ln-danger">{error}</p> : null}
     </section>
   );
 }

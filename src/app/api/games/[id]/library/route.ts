@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { ADMIN_ONLY_STATUS, canViewHiddenGame } from "@/lib/admin";
 
 // Gestión de "mi biblioteca" (entitlement) por fuera del flujo de compra:
 //  - POST: agrega el juego a la biblioteca SIN pago (entitlement inmediato).
-//    Permitido solo cuando no hay que cobrar: juego gratis publicado, o juego
-//    oculto (admin_only) para el admin / el proveedor dueño. Un juego de pago
-//    publicado NO entra por acá: se usa el flujo de compra (/buy).
+//    Permitido solo para juegos gratis publicados. Un juego de pago NO entra
+//    por acá: se usa el flujo de compra (/buy).
 //  - DELETE: quita el juego de la biblioteca. Solo entitlements gratuitos
 //    (amountSats = 0); un juego que se pagó con sats no se quita acá para no
 //    perder, sin querer, un acceso comprado.
@@ -20,26 +18,13 @@ export async function POST(
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
   const { id } = await params;
-  const game = await prisma.game.findUnique({
-    where: { id },
-    include: { provider: true },
-  });
+  const game = await prisma.game.findUnique({ where: { id } });
   if (!game) {
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
   }
 
-  const isHidden = game.status === ADMIN_ONLY_STATUS;
-  const canAddHidden =
-    isHidden &&
-    canViewHiddenGame(session.pubkey, session.sub, game.provider.ownerId);
   const isFreePublished = game.status === "published" && game.priceSats === 0;
-
-  if (!canAddHidden && !isFreePublished) {
-    // Juego oculto que el usuario no puede ver → 404 (como si no existiera).
-    if (isHidden) {
-      return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
-    }
-    // Juego de pago: hay que comprarlo.
+  if (!isFreePublished) {
     return NextResponse.json(
       { error: "Este juego se agrega comprándolo." },
       { status: 400 },

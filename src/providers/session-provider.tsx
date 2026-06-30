@@ -33,6 +33,8 @@ export type SessionUser = {
   lud16?: string | null;
   /** Destino de cobros de premios: "address" (lud16) | "nwc" (wallet del navegador). */
   payoutMethod?: string | null;
+  /** Opt-in para ver juegos en beta en la tienda (`Game.isBeta`). */
+  showBetaGames?: boolean;
   isAdmin?: boolean;
 };
 

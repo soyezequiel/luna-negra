@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     avatarUrl?: string | null;
     lud16?: string | null;
     payoutMethod?: string;
+    showBetaGames?: boolean;
   } = {};
 
   if ("displayName" in body || "avatarUrl" in body) {
@@ -57,6 +58,10 @@ export async function POST(req: Request) {
       );
     }
     data.payoutMethod = body.payoutMethod;
+  }
+
+  if ("showBetaGames" in body) {
+    data.showBetaGames = Boolean(body.showBetaGames);
   }
 
   if (Object.keys(data).length === 0) {

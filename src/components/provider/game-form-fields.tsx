@@ -19,6 +19,9 @@ export type GameForm = {
   // Override del corte del dev en apuestas para este juego. "" = usar el default
   // del proveedor. Se acota al tope global del admin al guardar.
   betDevFeePct: string;
+  // Juego en beta: solo lo ven en la tienda quienes activaron "ver juegos beta"
+  // en su perfil (más el dueño y el admin).
+  isBeta: boolean;
 };
 
 export const emptyForm: GameForm = {
@@ -32,6 +35,7 @@ export const emptyForm: GameForm = {
   screenshots: [],
   videos: [],
   betDevFeePct: "",
+  isBeta: false,
 };
 
 export function parseShots(json: string): string[] {
@@ -130,6 +134,26 @@ export function GameFormFields({
           acota al tope que fija Luna Negra.
         </p>
       </div>
+      <label className="flex cursor-pointer items-start gap-3 rounded-ln-md border border-ln-border bg-ln-bg-deep/40 p-3">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 shrink-0 accent-ln-luna"
+          checked={form.isBeta}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, isBeta: e.target.checked }))
+          }
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-ln-text">
+            Marcar como beta
+          </span>
+          <span className="mt-0.5 block text-[11px] text-ln-faint">
+            En la tienda solo lo verán quienes activaron “ver juegos beta” en su
+            perfil (vos y el admin lo ven siempre). Se puede activar y desactivar
+            sin re-publicar.
+          </span>
+        </span>
+      </label>
       <div>
         <label className="block text-sm text-muted">
           Categorías <span className="text-ln-faint">(podés elegir varias)</span>

@@ -24,6 +24,7 @@ export async function GET() {
       avatarUrl: true,
       lud16: true,
       payoutMethod: true,
+      showBetaGames: true,
     },
   });
   if (!user) return NextResponse.json({ user: null, emailLogin });

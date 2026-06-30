@@ -433,7 +433,6 @@ export default function AdminPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [unannounced, setUnannounced] = useState<Row[]>([]);
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
-  const [adminOnly, setAdminOnly] = useState<Row[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [bets, setBets] = useState<BetRow[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationView[]>([]);
@@ -460,7 +459,6 @@ export default function AdminPage() {
     setGames(d.games ?? []);
     setUnannounced(d.unannounced ?? []);
     setCatalog(d.catalog ?? []);
-    setAdminOnly(d.adminOnly ?? []);
     const p = await fetch("/api/admin/payouts")
       .then((res) => res.json())
       .catch(() => ({ payouts: [] }));
@@ -509,47 +507,6 @@ export default function AdminPage() {
   async function approve(id: string) {
     await fetch(`/api/admin/games/${id}/approve`, { method: "POST" });
     load();
-  }
-
-  // Publica un juego en modo oculto: solo el admin y el dueño pueden verlo/jugarlo.
-  async function publishPrivate(id: string) {
-    setBusy(id);
-    try {
-      await fetch(`/api/admin/games/${id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminOnly: true }),
-      });
-      await load();
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  // Pasa un juego oculto a público: misma aprobación normal (publica + anuncia).
-  async function makePublic(id: string) {
-    setBusy(id);
-    try {
-      await fetch(`/api/admin/games/${id}/approve`, { method: "POST" });
-      await load();
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function removeHidden(g: Row) {
-    if (!confirm(`¿Borrar "${g.title}"? Esta acción es permanente.`)) return;
-    setBusy(g.id);
-    try {
-      const r = await fetch(`/api/admin/games/${g.id}`, { method: "DELETE" });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        alert(d.error ?? "No se pudo borrar el juego");
-      }
-      await load();
-    } finally {
-      setBusy(null);
-    }
   }
 
   async function saveEconomy(e: FormEvent<HTMLFormElement>) {
@@ -839,14 +796,6 @@ export default function AdminPage() {
                     </button>
                     <div className="flex shrink-0 gap-2">
                       <Button onClick={() => approve(g.id)}>Aprobar</Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => publishPrivate(g.id)}
-                        disabled={busy === g.id}
-                        title="Publicar oculto: solo vos y el dueño pueden verlo"
-                      >
-                        {busy === g.id ? "Publicando…" : "Solo yo"}
-                      </Button>
                       <Button variant="ghost" onClick={() => reject(g.id)}>
                         Rechazar
                       </Button>
@@ -886,55 +835,6 @@ export default function AdminPage() {
                 <Button onClick={() => announce(g.id)} disabled={busy === g.id}>
                   {busy === g.id ? "Anunciando…" : "Anunciar en Nostr"}
                 </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {adminOnly.length > 0 ? (
-        <section className="mt-10">
-          <h2 className="mb-1 font-semibold text-ink">Solo admin (ocultos)</h2>
-          <p className="mb-3 text-xs text-faint">
-            Juegos publicados de forma privada: no aparecen en la tienda ni se
-            anuncian en Nostr. Solo vos y el dueño pueden abrir la ficha y jugar.
-          </p>
-          <ul className="space-y-2">
-            {adminOnly.map((g) => (
-              <li
-                key={g.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-btc/40 bg-panel px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    <span className="mr-1.5">🔒</span>
-                    {g.title}
-                  </p>
-                  <p className="text-xs text-faint">
-                    {g.provider.name} ·{" "}
-                    {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Link href={`/game/${g.slug}`} className="btn btn-ghost">
-                    Abrir ficha
-                  </Link>
-                  <Button
-                    variant="outline"
-                    onClick={() => makePublic(g.id)}
-                    disabled={busy === g.id}
-                    title="Publicar al público y anunciar en Nostr"
-                  >
-                    {busy === g.id ? "Publicando…" : "Hacer público"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => removeHidden(g)}
-                    disabled={busy === g.id}
-                  >
-                    Borrar
-                  </Button>
-                </div>
               </li>
             ))}
           </ul>

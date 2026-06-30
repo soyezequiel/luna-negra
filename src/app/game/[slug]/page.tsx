@@ -33,8 +33,8 @@ import {
   parseScreenshotUrls,
 } from "@/lib/game-media";
 import { getPublishedGameBySlug, getRelatedGames } from "@/lib/store-catalog";
-import { ADMIN_ONLY_STATUS, canViewHiddenGame } from "@/lib/admin";
-import { normalizeCategories } from "@/lib/categories";
+import { isAdmin } from "@/lib/admin";
+import { userSeesBetaGames } from "@/lib/beta";
 import { SITE_URL } from "@/lib/site";
 import { StoreUnavailable } from "@/components/store-unavailable";
 import {
@@ -123,37 +123,18 @@ export default async function GamePage({
     return <StoreUnavailable />;
   }
 
-  const session = await getSession();
-
-  // Juego oculto (admin_only): no está en el catálogo cacheado, así que la lectura
-  // de arriba devuelve null. Lo cargamos sin caché y solo lo mostramos si el
-  // visitante es el admin o el proveedor dueño; para cualquier otro es un 404.
-  let isHidden = false;
-  if (!game && session) {
-    // Solo vale la pena consultar si hay sesión (anónimo nunca puede ver ocultos).
-    try {
-      const hidden = await prisma.game.findUnique({
-        where: { slug },
-        include: { provider: true },
-      });
-      if (
-        hidden &&
-        hidden.status === ADMIN_ONLY_STATUS &&
-        canViewHiddenGame(session.pubkey, session.sub, hidden.provider.ownerId)
-      ) {
-        game = { ...hidden, categories: normalizeCategories(hidden.categories) };
-        isHidden = true;
-      }
-    } catch (err) {
-      console.error("[game] no se pudo cargar la ficha oculta", err);
-      return <StoreUnavailable />;
-    }
-  }
   if (!game) notFound();
+
+  const session = await getSession();
 
   // ¿La cuenta logueada es la proveedora dueña de este juego? → mostrar el lápiz
   // de edición en la propia ficha de la tienda.
   const isOwner = Boolean(session) && game.provider.ownerId === session!.sub;
+  const isAdminUser = isAdmin(session?.pubkey);
+  // Beta: la ficha solo es accesible para el dueño, el admin, o quien activó "ver
+  // juegos beta" en su perfil. Para el resto (incluido anónimo) es un 404.
+  const seesBeta = isOwner || isAdminUser || (await userSeesBetaGames(session?.sub));
+  if (game.isBeta && !seesBeta) notFound();
   let owned = false;
   // ¿El entitlement es gratuito (amountSats 0)? Solo esos se pueden "quitar de la
   // biblioteca"; un juego pagado con sats no se quita para no perder el acceso.
@@ -169,9 +150,7 @@ export default async function GamePage({
   // juego (entitlement pagado). Los juegos gratis NO son de tu propiedad hasta
   // que los agregás con "Agregar a la biblioteca" (entitlement inmediato), así
   // evitamos mostrar "✓ En tu biblioteca" a quien todavía no lo tiene.
-  // En un juego oculto el admin/dueño puede jugar aunque no lo haya agregado (el
-  // token de sesión se lo da igual), así que también puede lanzarlo.
-  const canPlay = owned || isHidden;
+  const canPlay = owned;
 
   // Modo de la ficha: biblioteca si el jugador es dueño (salvo que fuerce tienda
   // con ?view=store); si no, tienda. (Ver IMPLEMENTATION_PROMPT §3.2.)
@@ -236,6 +215,9 @@ export default async function GamePage({
   let related: Awaited<ReturnType<typeof getRelatedGames>> = [];
   try {
     related = await getRelatedGames(game.id, game.categories);
+    // No filtrar beta en relacionados para quien no opta: solo aparecen si el
+    // visitante ve beta (mismo criterio que el catálogo).
+    if (!seesBeta) related = related.filter((g) => !g.isBeta);
   } catch (err) {
     console.error("[game] no se pudieron cargar los relacionados", err);
   }
@@ -255,9 +237,9 @@ export default async function GamePage({
             {game.title}
           </h1>
         </EditableTitle>
-        {isHidden ? (
-          <span className="rounded-full bg-btc/15 px-2.5 py-1 text-xs font-semibold text-btc ring-1 ring-inset ring-btc/40">
-            🔒 Solo admin · oculto
+        {game.isBeta ? (
+          <span className="rounded-full bg-ln-luna/15 px-2.5 py-1 text-xs font-semibold text-ln-luna ring-1 ring-inset ring-ln-luna/40">
+            Beta
           </span>
         ) : null}
         {mode === "library" ? (
@@ -398,23 +380,6 @@ export default async function GamePage({
                   >
                     Ir a tu biblioteca
                   </Link>
-                </div>
-              ) : isHidden ? (
-                // Juego oculto (admin_only): no se compra. El admin/dueño lo
-                // agrega a su biblioteca (entitlement gratis) y puede jugarlo ya.
-                <div className="space-y-2 [&>*]:w-full">
-                  {game.gameUrl ? (
-                    <PlayButton
-                      gameId={game.id}
-                      gameUrl={game.gameUrl}
-                      title={game.title}
-                      slug={game.slug}
-                      label="▶ Jugar"
-                      variant="play"
-                      size="xl"
-                    />
-                  ) : null}
-                  <LibraryButton gameId={game.id} owned={false} variant="luna" />
                 </div>
               ) : (
                 <div className="space-y-2 [&>button]:w-full">
