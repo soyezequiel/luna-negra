@@ -54,7 +54,6 @@ export async function PATCH(
     );
   if (typeof body.supportsChallenges === "boolean")
     data.supportsChallenges = body.supportsChallenges;
-  if (typeof body.isBeta === "boolean") data.isBeta = body.isBeta;
   // Override por juego del corte del dev en apuestas: null/"" = usar el default del
   // proveedor. Se acota al tope global (la misma cota se reaplica al crear apuestas).
   if (body.betDevFeePct !== undefined) {

@@ -83,7 +83,6 @@ export async function POST(req: Request) {
       status: "draft",
       revenueShare: economy.providerRevenueShare,
       betDevFeePct,
-      isBeta: body.isBeta === true,
     },
   });
 

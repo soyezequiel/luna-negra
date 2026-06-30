@@ -36,6 +36,7 @@ type ReviewGame = Row & {
   horizontalCoverUrl: string | null;
   screenshots: string; // JSON array de URLs
   createdAt: string;
+  isBeta: boolean;
 };
 type DraftGame = Omit<Row, "provider"> & {
   description: string;
@@ -53,6 +54,7 @@ type CatalogRow = Row & {
   owners: number;
   revenueShare: number;
   betFeePct: number | null;
+  isBeta: boolean;
 };
 type Payout = {
   id: string;
@@ -344,6 +346,55 @@ function BetFeeControl({
   );
 }
 
+function IsBetaControl({
+  gameId,
+  isBeta,
+  onSaved,
+}: {
+  gameId: string;
+  isBeta: boolean;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/games/${gameId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isBeta: !isBeta }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(d.error ?? "No se pudo cambiar estado beta");
+        return;
+      }
+      await onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="checkbox"
+          className="accent-blue"
+          checked={isBeta}
+          onChange={toggle}
+          disabled={saving}
+        />
+        <span className="text-[11px] font-medium text-ink">Beta</span>
+      </label>
+      {error ? <span className="text-[11px] text-[var(--lose)]">{error}</span> : null}
+    </span>
+  );
+}
+
 function ReviewDetail({
   g,
   betFeeFallback,
@@ -400,6 +451,12 @@ function ReviewDetail({
           <dt className="text-faint">Creado</dt>
           <dd className="text-ink">
             {new Date(g.createdAt).toLocaleString("es-AR")}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-faint">Estado Beta</dt>
+          <dd className="text-ink">
+            <IsBetaControl gameId={g.id} isBeta={g.isBeta} onSaved={onSaved} />
           </dd>
         </div>
         <div>
@@ -976,13 +1033,15 @@ export default function AdminPage() {
                     {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`} ·{" "}
                     {g.owners} en biblioteca
                   </p>
-                  <div className="mt-1 text-xs text-faint">
+                  <div className="mt-1 text-xs text-faint flex gap-3 items-center">
                     <RevenueShareControl
                       gameId={g.id}
                       revenueShare={g.revenueShare}
                       onSaved={load}
                       compact
                     />
+                    <div className="w-[1px] h-3 bg-line"></div>
+                    <IsBetaControl gameId={g.id} isBeta={g.isBeta} onSaved={load} />
                   </div>
                 </div>
                 <Button

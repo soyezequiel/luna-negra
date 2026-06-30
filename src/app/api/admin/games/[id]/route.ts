@@ -32,8 +32,11 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
-  const data: { revenueShare?: number; betFeePct?: number | null } = {};
+  const data: { revenueShare?: number; betFeePct?: number | null; isBeta?: boolean } = {};
   try {
+    if (typeof body.isBeta === "boolean") {
+      data.isBeta = body.isBeta;
+    }
     if (body.storeFeePct !== undefined) {
       const storeFeePct = normalizePercent(body.storeFeePct, "La comision de tienda");
       data.revenueShare = providerShareFromStoreFee(storeFeePct);

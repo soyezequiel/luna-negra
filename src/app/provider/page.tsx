@@ -326,7 +326,6 @@ export default function ProviderPage() {
       screenshots: parseShots(g.screenshots),
       videos: parseShots(g.videos),
       betDevFeePct: g.betDevFeePct == null ? "" : String(g.betDevFeePct),
-      isBeta: g.isBeta,
     });
     setMsg(null);
   }

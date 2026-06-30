@@ -20,9 +20,6 @@ export type GameForm = {
   // Override del corte del dev en apuestas para este juego. "" = usar el default
   // del proveedor. Se acota al tope global del admin al guardar.
   betDevFeePct: string;
-  // Juego en beta: solo lo ven en la tienda quienes activaron "ver juegos beta"
-  // en su perfil (mas el dueno y el admin).
-  isBeta: boolean;
 };
 
 export const emptyForm: GameForm = {
@@ -36,7 +33,6 @@ export const emptyForm: GameForm = {
   screenshots: [],
   videos: [],
   betDevFeePct: "",
-  isBeta: false,
 };
 
 export function parseShots(json: string): string[] {
@@ -586,7 +582,7 @@ export function GameFormFields({
 
       <ProgressiveSection
         title="Opciones avanzadas"
-        summary="Beta y corte especial de apuestas. Normalmente podés dejarlas como están."
+        summary="Corte especial de apuestas. Normalmente podés dejarlo como está."
         defaultOpen={defaultOpen}
       >
         <FieldBlock
@@ -613,28 +609,6 @@ export function GameFormFields({
             <span className="text-sm text-ln-faint">%</span>
           </div>
         </FieldBlock>
-
-        <label className="flex cursor-pointer items-start gap-3 border-t border-ln-border pt-4">
-          <input
-            id={`${idBase}-is-beta`}
-            name="isBeta"
-            type="checkbox"
-            className="mt-0.5 h-4 w-4 shrink-0 accent-ln-luna"
-            checked={form.isBeta}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, isBeta: e.target.checked }))
-            }
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-ln-soft">
-              Marcar como beta
-            </span>
-            <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ln-faint">
-              Solo lo ven quienes activaron juegos beta; vos y el admin lo ven
-              siempre.
-            </span>
-          </span>
-        </label>
       </ProgressiveSection>
     </div>
   );

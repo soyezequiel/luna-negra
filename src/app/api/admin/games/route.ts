@@ -62,6 +62,7 @@ export async function GET() {
     revenueShare: g.revenueShare,
     provider: { name: g.provider.name },
     owners: g._count.purchases,
+    isBeta: g.isBeta,
   }));
   return NextResponse.json({ games, drafts, unannounced, catalog });
 }
