@@ -521,29 +521,44 @@ export default function ProviderPage() {
               size="sm"
               onClick={() => setShowNewGame((v) => !v)}
             >
-              {showNewGame ? "Cancelar" : "+ Nuevo juego"}
+              {showNewGame ? "Cerrar" : "Nuevo juego"}
             </Button>
           </div>
 
           {showNewGame ? (
             <form
               onSubmit={createGame}
-              className="mb-5 space-y-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5"
+              className="mb-5 space-y-5 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5"
             >
-              <h3 className="font-semibold">Nuevo juego</h3>
-              <p className="text-xs text-ln-faint">
-                Se crea como <strong>borrador</strong> (no visible en la tienda).
-                Después tenés que <strong>enviarlo a revisión</strong>: un admin
-                lo aprueba y recién ahí se publica.
-              </p>
+              <div className="flex flex-col gap-3 border-b border-ln-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="font-semibold text-ln-text">
+                    Registrar nuevo juego
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ln-faint">
+                    Empezás creando un borrador privado. Después lo completás y
+                    lo enviás a revisión cuando la ficha esté lista.
+                  </p>
+                </div>
+                <span className="w-fit rounded-full border border-ln-luna/25 bg-ln-luna/10 px-3 py-1 text-[10.5px] font-semibold uppercase text-ln-luna">
+                  1 dato obligatorio
+                </span>
+              </div>
               <GameFormFields
                 form={newForm}
                 setForm={setNewForm}
                 uploadFile={uploadFile}
                 uploading={uploading}
                 devFeeDefault={provider.betDevFeePct ?? 0}
+                mode="create"
               />
-              <Button type="submit">Crear borrador</Button>
+              <div className="flex flex-wrap items-center gap-3 border-t border-ln-border pt-4">
+                <Button type="submit">Crear borrador privado</Button>
+                <p className="max-w-md text-xs leading-relaxed text-ln-faint">
+                  El borrador queda en tu lista de juegos para seguir editándolo
+                  antes de enviarlo a revisión.
+                </p>
+              </div>
             </form>
           ) : null}
 

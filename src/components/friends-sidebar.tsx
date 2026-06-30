@@ -80,16 +80,14 @@ export function FriendsSidebar() {
   const { friends, refresh, refreshing } = useFriends();
   const router = useRouter();
 
-  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(() =>
-    getActiveRoom(),
-  );
+  const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
   // Retos 1v1 (interfaz 2.0): a quién le mandé reto y quién me retó a mí.
   const [challengingPk, setChallengingPk] = useState<string | null>(null);
   const [challenged, setChallenged] = useState<Set<string>>(new Set());
   const [pendingChallenges, setPendingChallenges] = useState<PendingChallenge[]>(
-    () => getPendingChallenges(),
+    [],
   );
   // Amigo cuyo chat está abierto (panel dinámico; null = vista de lista).
   const [chatWith, setChatWith] = useState<{
@@ -100,9 +98,7 @@ export function FriendsSidebar() {
     online?: boolean;
   } | null>(null);
   // Invitaciones recibidas (DMs): anclan al amigo arriba con opción de unirse.
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>(() =>
-    getPendingInvites(),
-  );
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   // Roster indexado por sala para no mostrar datos de una sala anterior.
   const [roster, setRoster] = useState<{
     roomId: string;
@@ -119,17 +115,42 @@ export function FriendsSidebar() {
   const [onlyMembers, setOnlyMembers] = useOnlyMembers();
 
   useEffect(() => {
-    return onActiveRoomChange(() => setActiveRoomState(getActiveRoom()));
+    let cancelled = false;
+    const sync = () => {
+      if (!cancelled) setActiveRoomState(getActiveRoom());
+    };
+    const unsubscribe = onActiveRoomChange(sync);
+    queueMicrotask(sync);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    return onPendingInvitesChange(() => setPendingInvites(getPendingInvites()));
+    let cancelled = false;
+    const sync = () => {
+      if (!cancelled) setPendingInvites(getPendingInvites());
+    };
+    const unsubscribe = onPendingInvitesChange(sync);
+    queueMicrotask(sync);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    return onPendingChallengesChange(() =>
-      setPendingChallenges(getPendingChallenges()),
-    );
+    let cancelled = false;
+    const sync = () => {
+      if (!cancelled) setPendingChallenges(getPendingChallenges());
+    };
+    const unsubscribe = onPendingChallengesChange(sync);
+    queueMicrotask(sync);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   // Al cambiar de juego, reseteamos a quién marcamos como invitado. Lo hacemos
