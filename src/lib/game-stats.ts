@@ -10,6 +10,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { msatToSats } from "@/lib/money";
+import { PRESENCE_SAMPLE_INTERVAL_MS } from "@/lib/presence-sampler";
 
 export type StatsRange = "24h" | "7d" | "30d" | "all";
 export type Granularity = "hour" | "day";
@@ -72,15 +73,26 @@ export interface GameStats {
     payout: { paid: number; pending: number; failed: number; none: number };
   };
   players: {
+    /**
+     * "Ahora": presencia → npubs con presencia activa; clicks → npubs que abrieron
+     * en la última ventana de dedup (`PLAY_CLICK_TTL_MS`), o sea "aperturas recientes".
+     */
     now: number;
+    /** Pico de concurrentes en el período. Solo tiene sentido para `source:"presence"`. */
     peak: number;
+    /**
+     * Total de aperturas (clicks en "Jugar") en el período. Solo para
+     * `source:"clicks"`: cada punto de la curva es una apertura, no concurrencia.
+     */
+    totalOpenings: number;
     samples: PlayerSample[];
     /** El proveedor tiene >1 juego: la curva es compartida (limitación de presencia). */
     sharedAcrossGames: boolean;
     /**
      * Origen de la curva: "presence" = presencia real reportada por el game server
-     * (§3); "clicks" = ESTIMACIÓN por clicks en "Jugar" para juegos que no integraron
-     * la presencia. La UI lo usa para aclarar que es una estimación.
+     * (§3) → curva CONTINUA (sabemos hasta cuándo siguió abierto). "clicks" = juegos
+     * que NO integraron presencia → PUNTOS discretos en el momento de cada apertura;
+     * sin heartbeat no sabemos cuánto duró la sesión, así que no se dibuja como bloque.
      */
     source: "presence" | "clicks";
   };
@@ -162,6 +174,41 @@ function enumerateBuckets(start: Date, end: Date, g: Granularity): string[] {
 }
 
 /**
+ * La curva continua de presencia NO debe "puentear" huecos: el sampler solo escribe
+ * una fila cuando hay alguien jugando, así que entre dos sesiones lejanas el área
+ * uniría los puntos en una banda plana (parecería concurrencia constante que nunca
+ * existió). Insertamos ceros alrededor de cada hueco —y uno final hasta "ahora" si
+ * la última muestra quedó vieja— para que la curva baje a 0 cuando no hay nadie.
+ */
+function insertZeroGaps(
+  rows: PlayerSample[],
+  nowMs: number,
+  gapMs: number,
+): PlayerSample[] {
+  if (rows.length === 0) return rows;
+  const zero = (ms: number): PlayerSample => ({
+    t: new Date(ms).toISOString(),
+    count: 0,
+    ownerCount: 0,
+    players: [],
+  });
+  const out: PlayerSample[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const cur = rows[i];
+    out.push(cur);
+    const curMs = Date.parse(cur.t);
+    const nextMs = i + 1 < rows.length ? Date.parse(rows[i + 1].t) : nowMs;
+    if (nextMs - curMs > gapMs) {
+      // Baja a 0 apenas termina esta muestra y se mantiene en 0 hasta justo antes
+      // de la próxima (o hasta "ahora" si es la última).
+      out.push(zero(curMs + 1000));
+      out.push(zero(nextMs - 1000));
+    }
+  }
+  return out;
+}
+
+/**
  * Arma las estadísticas de un juego para la ventana pedida. Asume que el llamador
  * ya validó permisos sobre `gameId`. Devuelve null si el juego no existe.
  */
@@ -195,7 +242,6 @@ export async function buildGameStats(
     payoutGroups,
     presenceNow,
     presenceIntegration,
-    clickNowRows,
     samples,
     bets,
     activeCount,
@@ -215,15 +261,10 @@ export async function buildGameStats(
       where: { providerId, expiresAt: { gt: now } },
     }),
     // ¿El proveedor integró la presencia real (§3)? Si nunca pingeó el endpoint,
-    // la curva se estima por clicks en "Jugar".
+    // la curva son puntos de apertura (clicks).
     prisma.integrationPing.findFirst({
       where: { providerId, feature: "presence" },
       select: { id: true },
-    }),
-    // npubs con click vigente (para el "ahora" estimado de juegos sin presencia).
-    prisma.gamePlayClick.findMany({
-      where: { providerId, expiresAt: { gt: now } },
-      select: { npub: true },
     }),
     prisma.playerCountSample.findMany({
       where: { providerId, sampledAt: { gte: start } },
@@ -280,9 +321,17 @@ export async function buildGameStats(
   }
 
   // ── Jugadores ──
+  // Si el proveedor no integró la presencia real, la curva son puntos de apertura
+  // (clicks); si la integró, es la curva continua de presencia. Filtramos las
+  // muestras a esa fuente para no mezclar (p. ej. clicks viejos de antes de integrar).
+  const playersSource: "presence" | "clicks" = presenceIntegration
+    ? "presence"
+    : "clicks";
+  const sourceSamples = samples.filter((s) => s.source === playersSource);
+
   // Resolvemos displayName de los npubs presentes en las muestras (los conocidos:
   // tienen cuenta en Luna Negra). Una sola query para todo el período.
-  const sampleNpubs = [...new Set(samples.flatMap((s) => s.npubs))];
+  const sampleNpubs = [...new Set(sourceSamples.flatMap((s) => s.npubs))];
   const nameMap = new Map<string, string>();
   if (sampleNpubs.length > 0) {
     const known = await prisma.user.findMany({
@@ -291,16 +340,14 @@ export async function buildGameStats(
     });
     for (const u of known) if (u.displayName) nameMap.set(u.npub, u.displayName);
   }
-  // Si el proveedor no integró la presencia real, la curva es estimada por clicks.
-  const playersSource: "presence" | "clicks" = presenceIntegration
-    ? "presence"
-    : "clicks";
-  const clickNow = new Set(clickNowRows.map((r) => r.npub)).size;
-  // "Ahora": presencia real si integró; si no, clicks vigentes distintos.
-  const nowCount = playersSource === "presence" ? presenceNow : clickNow;
+  // "Ahora": solo tiene sentido con presencia activa. Sin presencia integrada NO
+  // se puede saber quién está jugando AHORA (un click no dice cuánto se quedó), así
+  // que no inventamos un "ahora": para clicks se reporta 0 y la UI muestra el total
+  // de aperturas en su lugar.
+  const nowCount = playersSource === "presence" ? presenceNow : 0;
 
   const viewerNpub = opts.viewerNpub;
-  const playerSamples: PlayerSample[] = samples.map((s) => {
+  const playerSamples: PlayerSample[] = sourceSamples.map((s) => {
     const players: SamplePlayer[] = s.npubs.map((npub) => ({
       npub,
       name: nameMap.get(npub) ?? null,
@@ -314,10 +361,24 @@ export async function buildGameStats(
       players,
     };
   });
-  const peak = playerSamples.reduce(
-    (max, s) => Math.max(max, s.count),
-    nowCount,
-  );
+  // Pico de concurrentes: solo aplica a presencia (los clicks son puntos sueltos).
+  const peak =
+    playersSource === "presence"
+      ? playerSamples.reduce((max, s) => Math.max(max, s.count), nowCount)
+      : 0;
+  // Total de aperturas en el período (cada punto de clicks es una apertura).
+  const totalOpenings =
+    playersSource === "clicks"
+      ? playerSamples.reduce((sum, s) => sum + s.count, 0)
+      : 0;
+  // Para la curva continua (presencia), rellenamos los huecos con ceros para que no
+  // se dibuje una banda plana entre sesiones lejanas. Los clicks son puntos sueltos
+  // (scatter): no se puentean, así que no necesitan ceros.
+  const gapMs = Math.max(3 * PRESENCE_SAMPLE_INTERVAL_MS, 180_000);
+  const chartSamples =
+    playersSource === "presence"
+      ? insertZeroGaps(playerSamples, now.getTime(), gapMs)
+      : playerSamples;
 
   // ── Apuestas ──
   const volByBucket = new Map<string, VolumeBucket>(
@@ -449,7 +510,8 @@ export async function buildGameStats(
     players: {
       now: nowCount,
       peak,
-      samples: playerSamples,
+      totalOpenings,
+      samples: chartSamples,
       sharedAcrossGames: game.provider._count.games > 1,
       source: playersSource,
     },

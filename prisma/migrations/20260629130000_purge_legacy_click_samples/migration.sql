@@ -1,0 +1,12 @@
+-- Purga única de las muestras de clicks "sostenidas" del sampler viejo.
+--
+-- Antes, los juegos sin presencia integrada estimaban la concurrencia muestreando
+-- los clicks vigentes cada ~60s: un solo click generaba una fila de PlayerCountSample
+-- (source='clicks') POR MINUTO durante toda su ventana de 10 min → la curva mostraba
+-- "1" sostenido y, dibujada como puntos, daba una cadencia constante e irreal.
+--
+-- Ese muestreo se eliminó: ahora cada apertura se guarda como UN punto discreto en el
+-- instante del click (ver play-click.ts). Todas las filas source='clicks' que existen
+-- hoy son artefactos del sampler viejo, así que se borran de una. De aquí en más la
+-- tabla solo acumula aperturas reales.
+DELETE FROM "PlayerCountSample" WHERE "source" = 'clicks';

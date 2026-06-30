@@ -9,14 +9,12 @@
  * OJO: `GamePresence` se llavea por (providerId, npub) — no tiene gameId —, así
  * que el conteo es POR PROVEEDOR. La serie arranca vacía y crece de aquí en más.
  *
- * FALLBACK POR CLICKS: los proveedores que NO integraron la presencia (§3) no
- * tienen filas en `GamePresence`, así que su curva quedaría siempre vacía. Para
- * esos, estimamos la concurrencia con los clicks en "Jugar" (`GamePlayClick`):
- * cada click marca al jugador como "jugando" por una ventana fija y el sampler
- * cuenta los clicks vigentes. La muestra se marca con `source: "clicks"` para que
- * la UI la presente como estimación. Un proveedor se considera "con presencia
- * integrada" si alguna vez pingeó el endpoint de presencia (`IntegrationPing`
- * feature="presence"); a esos les creemos la presencia real aunque ahora sea 0.
+ * Esto SOLO muestrea presencia real (curva continua "jugadores concurrentes"). Los
+ * juegos que NO integraron la presencia (§3) no se estiman acá: cada apertura se
+ * guarda como un punto discreto en el momento del click (`recordPlayClick` en
+ * play-click.ts), porque sin heartbeat no sabemos cuánto duró la sesión y no
+ * queremos fabricar concurrencia. Este sampler igual purga los `GamePlayClick`
+ * vencidos (que solo sirven para dedup y para el KPI "aperturas recientes").
  */
 
 import { prisma } from "@/lib/prisma";
@@ -55,47 +53,23 @@ const MAX_NPUBS_PER_SAMPLE = 200;
  * proveedor e inserta una fila por proveedor con al menos un jugador, guardando
  * el conteo real + la lista de npubs (para mostrar QUIÉN jugaba). Los proveedores
  * sin jugadores no generan fila (hueco = 0 al graficar). Después purga muestras
- * más viejas que la retención.
+ * más viejas que la retención y los clicks vencidos.
  */
 export async function samplePresence(): Promise<void> {
   const now = new Date();
 
-  // Presencia real + clicks vigentes + qué proveedores integraron la presencia.
-  // Un jugador = un npub distinto con (providerId, npub) único en cada tabla.
-  const [presenceRows, clickRows, presenceIntegrations] = await Promise.all([
-    prisma.gamePresence.findMany({
-      where: { expiresAt: { gt: now } },
-      select: { providerId: true, npub: true },
-    }),
-    prisma.gamePlayClick.findMany({
-      where: { expiresAt: { gt: now } },
-      select: { providerId: true, npub: true },
-    }),
-    prisma.integrationPing.findMany({
-      where: { feature: "presence" },
-      select: { providerId: true },
-    }),
-  ]);
-
-  // Proveedores que alguna vez reportaron presencia real: a esos les creemos la
-  // presencia (aunque ahora sea 0) y NO usamos el fallback por clicks.
-  const integrated = new Set(presenceIntegrations.map((p) => p.providerId));
+  // Presencia real (no vencida). Un jugador = un npub distinto con (providerId,
+  // npub) único.
+  const presenceRows = await prisma.gamePresence.findMany({
+    where: { expiresAt: { gt: now } },
+    select: { providerId: true, npub: true },
+  });
 
   // npubs reales por proveedor (presencia integrada).
   const realByProvider = new Map<string, Set<string>>();
   for (const r of presenceRows) {
     let set = realByProvider.get(r.providerId);
     if (!set) realByProvider.set(r.providerId, (set = new Set()));
-    set.add(r.npub);
-  }
-
-  // npubs por clicks por proveedor (dedup por (providerId, npub) igual que la
-  // presencia real, aunque GamePlayClick se llavee por (gameId, npub)).
-  const clickByProvider = new Map<string, Set<string>>();
-  for (const r of clickRows) {
-    if (integrated.has(r.providerId)) continue; // tienen presencia real → ignora clicks
-    let set = clickByProvider.get(r.providerId);
-    if (!set) clickByProvider.set(r.providerId, (set = new Set()));
     set.add(r.npub);
   }
 
@@ -113,15 +87,6 @@ export async function samplePresence(): Promise<void> {
       count: set.size,
       npubs: [...set].slice(0, MAX_NPUBS_PER_SAMPLE),
       source: "presence",
-      sampledAt: now,
-    });
-  }
-  for (const [providerId, set] of clickByProvider) {
-    data.push({
-      providerId,
-      count: set.size,
-      npubs: [...set].slice(0, MAX_NPUBS_PER_SAMPLE),
-      source: "clicks",
       sampledAt: now,
     });
   }

@@ -10,7 +10,7 @@ import { useState } from "react";
 import { satsLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { GameStats, StatsRange, Granularity } from "@/lib/game-stats";
-import { AreaTrend, BarTrend, PlayersAreaChart } from "./charts";
+import { AreaTrend, BarTrend, PlayersAreaChart, PlayersScatterChart } from "./charts";
 
 const RANGES: { id: StatsRange; label: string }[] = [
   { id: "24h", label: "24 h" },
@@ -166,22 +166,29 @@ export function GameStatsDashboard({
               sub={`${stats.bets.activeCount} activas · ${stats.bets.settledCount} resueltas`}
               accent="var(--blue)"
             />
-            <Kpi
-              label="Jugadores ahora"
-              value={String(stats.players.now)}
-              sub={
-                stats.players.source === "clicks"
-                  ? "estimado por clicks en Jugar"
-                  : "presencia activa"
-              }
-              accent="var(--ln-aurora)"
-            />
-            <Kpi
-              label="Pico de jugadores"
-              value={String(stats.players.peak)}
-              sub="en el período"
-              accent="var(--ln-aurora)"
-            />
+            {stats.players.source === "clicks" ? (
+              <Kpi
+                label="Aperturas en el período"
+                value={String(stats.players.totalOpenings)}
+                sub="veces que abrieron el juego (sin presencia integrada)"
+                accent="var(--ln-aurora)"
+              />
+            ) : (
+              <>
+                <Kpi
+                  label="Jugadores ahora"
+                  value={String(stats.players.now)}
+                  sub="presencia activa"
+                  accent="var(--ln-aurora)"
+                />
+                <Kpi
+                  label="Pico de jugadores"
+                  value={String(stats.players.peak)}
+                  sub="en el período"
+                  accent="var(--ln-aurora)"
+                />
+              </>
+            )}
           </div>
 
           {/* Ganancias de Luna Negra (la casa) — solo admin */}
@@ -230,14 +237,22 @@ export function GameStatsDashboard({
             </ChartCard>
           ) : null}
 
-          {/* Curva de jugadores (la estrella estilo SteamDB) */}
+          {/* Curva de jugadores (la estrella estilo SteamDB).
+              · Con presencia integrada: curva CONTINUA (sabemos hasta cuándo siguió
+                abierto el juego).
+              · Sin presencia: PUNTOS de apertura en su momento exacto (no inventamos
+                la duración de la sesión). */}
           <ChartCard
-            title="Jugadores concurrentes"
+            title={
+              stats.players.source === "clicks"
+                ? "Aperturas del juego"
+                : "Jugadores concurrentes"
+            }
             hint={
               stats.players.source === "clicks"
                 ? stats.players.sharedAcrossGames
-                  ? "estimado por clicks en Jugar · compartido entre los juegos del proveedor"
-                  : "estimado por clicks en Jugar (este juego no integró presencia)"
+                  ? "cada punto = una apertura · compartido entre los juegos del proveedor"
+                  : "cada punto = una apertura (este juego no integró presencia)"
                 : stats.players.sharedAcrossGames
                   ? "compartido entre los juegos del proveedor"
                   : "pasá el mouse para ver quién jugaba"
@@ -246,7 +261,7 @@ export function GameStatsDashboard({
             {stats.players.samples.length === 0 ? (
               <p className="py-10 text-center text-sm text-ln-faint">
                 {stats.players.source === "clicks"
-                  ? "Todavía no hay clicks en Jugar. La curva se estima con los clicks en “Jugar” (este juego no integró la presencia) y empieza a llenarse a medida que haya gente abriendo el juego."
+                  ? "Todavía no hay aperturas registradas. Este juego no integró la presencia, así que mostramos un punto por cada vez que alguien abre el juego (no sabemos cuánto dura cada sesión sin presencia integrada)."
                   : "Todavía no hay muestras de presencia. La curva empieza a llenarse a medida que haya gente jugando (se muestrea cada pocos minutos)."}
               </p>
             ) : (
@@ -262,12 +277,28 @@ export function GameStatsDashboard({
                     Excluir las sesiones del dueño (no inflar con sus pruebas)
                   </label>
                 ) : null}
-                <PlayersAreaChart
-                  data={stats.players.samples}
-                  xFormat={(iso) => sampleLabel(iso, g)}
-                  excludeOwner={excludeOwner}
-                  height={260}
-                />
+                {stats.players.source === "clicks" ? (
+                  <PlayersScatterChart
+                    data={stats.players.samples}
+                    xFormat={(iso) => sampleLabel(iso, g)}
+                    excludeOwner={excludeOwner}
+                    height={260}
+                  />
+                ) : (
+                  <PlayersAreaChart
+                    data={stats.players.samples}
+                    xFormat={(iso) => sampleLabel(iso, g)}
+                    excludeOwner={excludeOwner}
+                    height={260}
+                  />
+                )}
+                {stats.players.source === "clicks" ? (
+                  <p className="mt-2 text-[11px] text-ln-faint">
+                    Cada punto es una apertura en el momento exacto en que alguien abrió
+                    el juego. Sin presencia integrada no sabemos cuánto duró la sesión,
+                    así que no dibujamos una curva continua (sería inventar concurrencia).
+                  </p>
+                ) : null}
               </>
             )}
           </ChartCard>

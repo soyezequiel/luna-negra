@@ -13,6 +13,8 @@ import {
   BarChart,
   CartesianGrid,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -317,6 +319,74 @@ export function PlayersAreaChart({
           isAnimationActive={false}
         />
       </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+/**
+ * Aperturas como PUNTOS discretos (juegos que NO integraron presencia). Cada punto
+ * es una apertura en su momento exacto: no se conectan ni se rellenan, porque sin
+ * heartbeat no sabemos cuánto duró la sesión y dibujar un bloque fabricaría
+ * concurrencia inexistente. Eje X temporal real (ms) para ubicar cada punto en su
+ * instante. El tooltip lista QUIÉN abrió.
+ */
+export function PlayersScatterChart({
+  data,
+  xFormat,
+  excludeOwner,
+  height = 260,
+}: {
+  data: PlayerSample[];
+  xFormat: (s: string) => string;
+  excludeOwner: boolean;
+  height?: number;
+}) {
+  const color = "var(--ln-aurora)";
+  const rows = data
+    .map((s) => ({
+      ...s,
+      tMs: Date.parse(s.t),
+      value: excludeOwner ? Math.max(0, s.count - s.ownerCount) : s.count,
+    }))
+    // Con "excluir dueño", una apertura del propio dueño queda en 0 → no se grafica.
+    .filter((r) => r.value > 0);
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ScatterChart margin={{ top: 6, right: 10, bottom: 0, left: -6 }}>
+        <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
+        <XAxis
+          dataKey="tMs"
+          type="number"
+          domain={["dataMin", "dataMax"]}
+          tickFormatter={(ms: number) => xFormat(new Date(ms).toISOString())}
+          tick={{ fill: AXIS, fontSize: 11 }}
+          tickLine={false}
+          axisLine={{ stroke: GRID }}
+          minTickGap={36}
+        />
+        <YAxis
+          dataKey="value"
+          type="number"
+          domain={[0, (max: number) => Math.max(2, max)]}
+          tick={{ fill: AXIS, fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          width={48}
+          allowDecimals={false}
+        />
+        <Tooltip
+          cursor={{ stroke: GRID, strokeDasharray: "3 3" }}
+          content={(p) => (
+            <PlayersTooltip
+              {...(p as unknown as { active?: boolean; payload?: { payload?: PlayerRow }[] })}
+              labelFormat={xFormat}
+              excludeOwner={excludeOwner}
+              color={color}
+            />
+          )}
+        />
+        <Scatter data={rows} fill={color} isAnimationActive={false} />
+      </ScatterChart>
     </ResponsiveContainer>
   );
 }
