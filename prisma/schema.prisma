@@ -220,6 +220,34 @@ model GamePresence {
   @@index([expiresAt])
 }
 
+// Presencia "online en la tienda": el cliente (navegador logueado) manda un
+// heartbeat mientras tiene la web abierta y visible. Keyed por usuario (pubkey),
+// TTL ~75s (>2× del heartbeat de 30s, para tolerar un ping perdido). Sirve para
+// contar usuarios concurrentes NAVEGANDO la tienda — distinto de GamePresence,
+// que es "jugando X". La pobla POST /api/me/presence (cookie de sesión). Ver
+// src/lib/store-presence.ts.
+model StorePresence {
+  pubkey    String   @id // hex; un usuario = una fila
+  npub      String
+  expiresAt DateTime // now + STORE_PRESENCE_TTL_MS
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
+// Muestreo del conteo de usuarios online en la tienda (StorePresence) para
+// dibujar la curva "usuarios concurrentes en el tiempo" en el admin. Lo escribe
+// el tick in-process (instrumentation.ts) cada minuto; las tomas sin nadie online
+// no escriben fila (hueco = 0 al graficar). Mismo patrón que PlayerCountSample.
+model StorePresenceSample {
+  id        String   @id @default(cuid())
+  count     Int // usuarios distintos online al momento de la muestra
+  npubs     String[] @default([]) // quiénes (capado), para el tooltip "quién estaba"
+  sampledAt DateTime @default(now())
+
+  @@index([sampledAt])
+}
+
 // Buzón de invitaciones a sala que el proveedor envía vía POST /api/v1/invites;
 // Luna Negra se las muestra al invitado (toast in-app). TTL ~1h, como las
 // invitaciones por DM existentes.

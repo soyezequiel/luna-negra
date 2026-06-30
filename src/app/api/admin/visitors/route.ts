@@ -71,8 +71,36 @@ function buildGrowthSeries(
   return { granularity, points };
 }
 
+// Ventana y bucket de la curva de concurrentes. Mostramos el PICO de usuarios
+// online por hora en los últimos 7 días (≤168 puntos): la concurrencia es un
+// máximo, no un promedio, así que agregamos por pico.
+const CONCURRENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const CONCURRENT_BUCKET_MS = 60 * 60 * 1000; // 1 hora
+
 /**
- * Endpoint de "quiénes entran" + crecimiento de usuarios. Solo admin.
+ * Curva de usuarios concurrentes online: pico por bucket horario. Rellena los
+ * huecos con 0 para que la línea sea continua desde la primera muestra.
+ */
+function buildConcurrentSeries(
+  samples: { sampledAt: Date; count: number }[],
+): { t: string; count: number }[] {
+  if (samples.length === 0) return [];
+  const peak = new Map<number, number>();
+  for (const s of samples) {
+    const bucket = Math.floor(s.sampledAt.getTime() / CONCURRENT_BUCKET_MS) * CONCURRENT_BUCKET_MS;
+    peak.set(bucket, Math.max(peak.get(bucket) ?? 0, s.count));
+  }
+  const start = Math.floor(samples[0].sampledAt.getTime() / CONCURRENT_BUCKET_MS) * CONCURRENT_BUCKET_MS;
+  const end = Math.floor(Date.now() / CONCURRENT_BUCKET_MS) * CONCURRENT_BUCKET_MS;
+  const points: { t: string; count: number }[] = [];
+  for (let b = start; b <= end; b += CONCURRENT_BUCKET_MS) {
+    points.push({ t: new Date(b).toISOString(), count: peak.get(b) ?? 0 });
+  }
+  return points;
+}
+
+/**
+ * Endpoint de "quiénes entran" + crecimiento + concurrentes online. Solo admin.
  */
 export async function GET() {
   const session = await getSession();
@@ -110,7 +138,23 @@ export async function GET() {
     }),
   ]);
 
+  // Concurrentes online: cuántos hay AHORA (presencia no vencida) + la curva
+  // muestreada de los últimos 7 días.
+  const [onlineNow, concurrentSamples] = await Promise.all([
+    prisma.storePresence.count({ where: { expiresAt: { gt: new Date(now) } } }),
+    prisma.storePresenceSample.findMany({
+      where: { sampledAt: { gte: new Date(now - CONCURRENT_WINDOW_MS) } },
+      orderBy: { sampledAt: "asc" },
+      select: { sampledAt: true, count: true },
+    }),
+  ]);
+
   const growth = buildGrowthSeries(signups.map((u) => u.createdAt));
+  const concurrent = {
+    onlineNow,
+    peak: concurrentSamples.reduce((m, s) => Math.max(m, s.count), 0),
+    points: buildConcurrentSeries(concurrentSamples),
+  };
 
   // Distribución para la gráfica: cuántos entraron en cada ventana (excluyentes)
   // + los inactivos (último login hace más de 30 días).
@@ -123,6 +167,7 @@ export async function GET() {
 
   return NextResponse.json({
     summary: { total, active1d, active7d, active30d },
+    concurrent,
     growth,
     distribution,
     visitors: recent.map((u) => ({

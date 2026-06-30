@@ -14,6 +14,7 @@ import { FriendsSidebar } from "@/components/friends-sidebar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { LoginModal } from "@/components/login-modal";
 import { FreshGuard } from "@/components/fresh-guard";
+import { StorePresenceBeacon } from "@/components/store-presence-beacon";
 import { BUILD_ID } from "@/lib/build-id";
 import { SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 
@@ -75,6 +76,7 @@ export default function RootLayout({
             animada (selva + animales) vive solo en la banda hero del Home. */}
         <FreshGuard version={BUILD_ID} />
         <SessionProvider>
+          <StorePresenceBeacon />
           <WalletProvider>
           <NotificationsProvider>
             <GameContextProvider>

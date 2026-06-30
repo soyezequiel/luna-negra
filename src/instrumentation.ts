@@ -11,6 +11,7 @@ export async function register() {
     await startGameSync();
     await startScoreSync();
     await startPresenceSampler();
+    await startStorePresenceSampler();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
@@ -210,6 +211,38 @@ async function startPresenceSampler() {
   // Primera muestra poco después del arranque, luego periódica.
   setTimeout(tick, 20_000).unref?.();
   setInterval(tick, PRESENCE_SAMPLE_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Muestreo IN-PROCESS de presencia ONLINE EN LA TIENDA: cada minuto guarda el
+ * conteo de usuarios con la web abierta y logueada en `StorePresenceSample`, para
+ * la curva "usuarios concurrentes en el tiempo" del admin. Mismo patrón que el
+ * sampler de presencia de juegos. Ver src/lib/store-presence-sampler.ts.
+ */
+async function startStorePresenceSampler() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { STORE_PRESENCE_SAMPLE_INTERVAL_MS } = await import("./lib/store-presence-sampler");
+  if (!STORE_PRESENCE_SAMPLE_INTERVAL_MS || STORE_PRESENCE_SAMPLE_INTERVAL_MS <= 0) return;
+
+  const { sampleStorePresence } = await import("./lib/store-presence-sampler");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await sampleStorePresence();
+    } catch (err) {
+      console.error("[store-presence-sampler] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primera muestra poco después del arranque, luego periódica.
+  setTimeout(tick, 23_000).unref?.();
+  setInterval(tick, STORE_PRESENCE_SAMPLE_INTERVAL_MS).unref?.();
 }
 
 // Captura errores no manejados de route handlers y server components.

@@ -11,6 +11,11 @@ import { AreaTrend } from "@/components/stats/charts";
 type Granularity = "day" | "week" | "month";
 type GrowthPoint = { t: string; new: number; total: number };
 type Growth = { granularity: Granularity; points: GrowthPoint[] };
+type Concurrent = {
+  onlineNow: number;
+  peak: number;
+  points: { t: string; count: number }[];
+};
 
 type Visitor = {
   npub: string;
@@ -34,6 +39,7 @@ type Distribution = {
 };
 type Payload = {
   summary: Summary;
+  concurrent: Concurrent;
   growth: Growth;
   distribution: Distribution;
   visitors: Visitor[];
@@ -53,6 +59,16 @@ const GRANULARITY_LABEL: Record<Granularity, string> = {
   week: "por semana",
   month: "por mes",
 };
+
+/** Etiqueta del eje X de la curva de concurrentes (ISO horario). */
+function concurrentLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+  });
+}
 
 /** Etiqueta del eje X de la curva de crecimiento ("YYYY-MM-DD"). */
 function growthLabel(key: string, g: Granularity): string {
@@ -259,6 +275,60 @@ export default function AdminVisitorsPage() {
               sub="registrados en total"
               accent="var(--ln-luna)"
             />
+          </div>
+
+          {/* Curva de usuarios concurrentes online (tracking en vivo) */}
+          <div className="mt-5 rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
+            <div className="mb-3 flex items-baseline justify-between gap-2">
+              <h3 className="font-display text-[15px] font-bold text-ln-text">
+                Usuarios concurrentes
+              </h3>
+              <span className="text-[11px] text-ln-faint">
+                online en la tienda · pico por hora · 7 días
+              </span>
+            </div>
+            <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Kpi
+                label="Online ahora"
+                value={String(data.concurrent.onlineNow)}
+                sub="con la tienda abierta"
+                accent="var(--ln-aurora)"
+              />
+              <Kpi
+                label="Pico (7 días)"
+                value={String(data.concurrent.peak)}
+                sub="máximo concurrente"
+                accent="var(--blue)"
+              />
+            </div>
+            {data.concurrent.points.length === 0 ? (
+              <p className="py-10 text-center text-sm text-ln-faint">
+                Todavía no hay muestras de concurrencia. La curva se llena de aquí
+                en más: se muestrea cada minuto a quienes tienen la tienda abierta
+                y logueada (no hay forma de reconstruir la concurrencia pasada).
+              </p>
+            ) : (
+              <>
+                <AreaTrend
+                  data={data.concurrent.points}
+                  xKey="t"
+                  xFormat={concurrentLabel}
+                  series={[
+                    {
+                      key: "count",
+                      label: "Online",
+                      color: "var(--ln-aurora)",
+                      format: (n) => n.toLocaleString("es-AR"),
+                    },
+                  ]}
+                  height={240}
+                />
+                <p className="mt-2 text-[11px] text-ln-faint">
+                  Pico de usuarios con la tienda abierta en cada hora. Cuenta
+                  usuarios logueados; no incluye visitantes anónimos.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Curva de crecimiento de usuarios (altas acumuladas) */}
