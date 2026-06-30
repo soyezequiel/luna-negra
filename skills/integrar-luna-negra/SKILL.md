@@ -7,8 +7,10 @@ description: >-
   compartido, invitaciones, amigos, marcadores, apuestas/escrow, webhooks y el
   SDK de TypeScript. Usar cuando el usuario quiere integrar su juego con Luna
   Negra, agregar login con Nostr, cobrar/apostar en sats o Lightning, hacer
-  multijugador, presencia, invitaciones o marcadores. No hace falta aplicar todo:
-  cada bloque es independiente y se adopta por separado.
+  multijugador, presencia, invitaciones o marcadores. Incluye además una capa 2.0
+  opcional y experimental sobre eventos Nostr (login NIP-07/46, presencia NIP-38,
+  reto/invitación NIP-17, marcador kind:31337, zaps NIP-57, reseñas NIP-23). No
+  hace falta aplicar todo: cada bloque es independiente y se adopta por separado.
 license: MIT
 ---
 
@@ -31,6 +33,9 @@ dice quién es el jugador y le ofrece estos servicios por HTTP.
 
 1. **Pregunta primero qué quiere integrar.** Ofrece el menú (§1–§8) y deja que el
    usuario elija. No implementes apuestas/escrow ni webhooks "por las dudas".
+   **Por defecto, integrá con la 1.0 REST (§1–§8): es lo estable y garantizado.** La
+   capa 2.0 (Nostr) es experimental y opcional — proponela solo si el usuario quiere
+   resiliencia/interoperabilidad Nostr, y nunca para escrow (§7) ni pago (§2).
 2. **Averigua la URL del deploy de Luna Negra** (la base URL). En esta guía
    aparece como `__LUNA_NEGRA_BASE__`. Si el instalador la rellenó, ya está la
    real; si ves el placeholder, **pregunta al usuario** cuál es su deploy
@@ -363,6 +368,102 @@ proyecto si el paquete no está publicado en npm).
 
 ---
 
+## Interfaz 2.0 (Nostr-nativa)  ·  *experimental, no prometida*
+
+> ⚠️ Todo lo de esta sección es una mejora **experimental post-hackathon**: `kind`
+> propuestos que **pueden cambiar** y, salvo el **marcador (kind:31337)** y el
+> **reto 1v1 (NIP-17)**, es **diseño, no código**. **Lo garantizado hoy es la 1.0
+> REST (§1–§8).** Implementá la 2.0 solo si querés resiliencia/interoperabilidad
+> Nostr — **nunca** como reemplazo de lo que necesita custodia (escrow §7) o
+> verificación de pago (§2): eso se queda siempre en la 1.0.
+
+La 2.0 cubre la **misma capa social/identidad/reputación** que partes de la 1.0,
+pero con **eventos Nostr firmados** en vez de REST: lo que publica el juego/jugador
+lo lee cualquier cliente Nostr y sobrevive aunque Luna Negra caiga. Anclas:
+**identidad del juego** = su coordenada `gameCoord` (`30023:<tienda>:<slug>`, viene
+de `GET /api/v1/session`, §1); **identidad del jugador** = su `pubkey` (firma con
+NIP-07/46). El **dinero y la custodia se quedan en la 1.0**.
+
+| Capacidad | 1.0 (REST) | 2.0 (Nostr) | Estado 2.0 |
+|---|---|---|---|
+| Identidad | §1 SSO (`lnToken`) | login NIP-07/46 | disponible |
+| Marcador | §6 leaderboards | `kind:31337` (ver §6) | implementado |
+| Presencia | §3 REST | NIP-38 (`kind:30315`) | diseño |
+| Salas / estado | §4 REST | grupo NIP-29 + jugadas | diseño |
+| Invitación / reto | §5 invites | NIP-17 (gift-wrap) | reto 1v1 implementado |
+| Reseñas / logros | — | NIP-23 / `kind:1` | implementado |
+| Propinas / premios | — | zaps NIP-57 | implementado |
+| Marcador verificado | — | `kind:31338` (oráculo) | diseño |
+
+### Marcador (kind:31337)
+Es la **única pieza nueva que la spec define** (el resto reusa NIPs estándar). Ya
+está documentada arriba en **§6 → Camino Nostr (2.0)**: el jugador firma su puntaje
+y Luna Negra lo proyecta al mismo ranking que el camino REST.
+
+### Presencia "jugando X" (NIP-38) · *diseño*
+En vez de reportar por REST (§3), el **propio jugador** firma su estado (no hace
+falta game server):
+
+```jsonc
+{ "kind": 30315,
+  "tags": [["d", "general"], ["a", gameCoord], ["expiration", "<unix + ~60s>"]],
+  "content": "Jugando Pac-Toshi 🎮" }
+```
+
+Luna Negra y cualquier cliente derivan "Jugando X" del evento.
+
+### Invitación / reto 1v1 (NIP-17) · *reto implementado*
+En la 2.0 **la invitación ES el reto**: un DM cifrado (gift-wrap NIP-17) que solo
+*apunta* a un juego (y opcionalmente a una sala), **sin token de acceso**. El rumor
+interno es un `kind:14`:
+
+```jsonc
+{ "kind": 14, "pubkey": "<retador>",
+  "tags": [["p", "<invitado>"], ["game", gameCoord],
+           ["room", "<groupId>", "wss://relay…"],   // opcional (omitir = 1v1 puro)
+           ["url", "https://tu-juego.com/?room=…"], ["expiration", "<unix>"]],
+  "content": "¡Te reto a una partida! 🎲" }
+```
+
+Va **cifrado E2E** (el server no lo puede leer). Para que la partida arranque, tu
+juego debe **detectar que lo abrieron desde un reto y emparejar a los dos
+jugadores**. En el panel de integración esto es "Invitaciones y amigos"; declarás el
+soporte con el toggle de retos 1v1. Para 1v1 puro omitís `room` (no necesita relay
+NIP-29). Necesita un signer con **NIP-44** (extensión moderna o clave local).
+
+### Salas con estado (NIP-29) · *diseño*
+Para juegos **por turnos determinísticos**, la sala es un grupo NIP-29 (un relay
+*group-aware* ordena los eventos y controla el acceso por membresía) y **cada
+jugada es un evento firmado** (`kind:9421` propuesto, tags `h`=groupId,
+`a`=gameCoord, `seq`/`prev`); el estado se reconstruye plegando las jugadas. Tiempo
+real, info oculta y azar quedan **fuera** (usá la 1.0 §4 o un árbitro). Niveles de
+adopción: **M0** reto 1v1 (NIP-17, sin sala) → **M1** sala por turnos → **M2**
+snapshots.
+
+### Reseñas y logros (NIP-23 / kind:1) · *implementado*
+Reseñas, comentarios y logros cuelgan de la coordenada del juego: un **`kind:1` con
+tag `a`=gameCoord**. Luna Negra ya los lee y muestra; cualquier cliente Nostr
+también.
+
+### Propinas y premios (zaps NIP-57) · *implementado*
+Para juegos gratis o premiar al ganador: **zap** (NIP-57) firmado por el usuario al
+dev o al ganador. Los recibos (`kind:9735`) verificados alimentan el "top de
+zappers" por juego y por dev. Es NIP-57 estándar; no requiere nada propio de Luna
+Negra.
+
+### Marcador verificado por oráculo (kind:31338) · *diseño*
+Para rankings con dinero: un oráculo (tu game server, o Luna Negra) co-firma una
+**atestación** que referencia el score del jugador (`kind:31338` propuesto, tags
+`a`=gameCoord, `e`=id del evento de score, `p`=jugador, `status: verified|rejected`).
+Conviven un **tier abierto** (firmado por el jugador, social, falsificable) y un
+**tier verificado** (firmado por el oráculo, para stakes) — enlaza con el escrow 1.0
+(§7).
+
+> Spec completa de la 2.0: `docs/perfil-juego-nostr.md` y
+> `docs/perfil-juego-nostr-salas-invitaciones.md` en el repo de Luna Negra.
+
+---
+
 ## Reglas de oro (errores comunes)
 
 1. **La API key (`ln_sk_…`) nunca va al navegador.** Solo en tu game server. Todo
@@ -391,6 +492,8 @@ proyecto si el paquete no está publicado en npm).
 - [ ] (opc.) §6 Marcadores.
 - [ ] (opc.) §7 Apuestas/escrow desde el backend.
 - [ ] (opc.) §8 Webhook registrado y firma HMAC verificada.
+- [ ] (opc., experimental) Capa 2.0 Nostr: marcador `kind:31337`, presencia NIP-38,
+      reto/invitación NIP-17, zaps NIP-57, reseñas `kind:1`. Nunca para escrow/pago.
 - [ ] API key solo en el servidor; nada de secretos en el cliente.
 
 ## Dónde seguir
