@@ -119,12 +119,23 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
       {
         key: "salas",
         title: "Salas y estado",
-        oneZero: ["rooms", "social"],
+        oneZero: ["rooms"],
         twoZero: {
           label: "NIP-29",
           impl: "diseño",
           signal: "none",
           desc: "Sala con estado compartido como grupo NIP-29. Diseñado; hoy las salas con estado en vivo se hacen por la REST 1.0 (§4).",
+        },
+      },
+      {
+        key: "invitaciones",
+        title: "Invitaciones y amigos",
+        oneZero: ["social"],
+        twoZero: {
+          label: "NIP-17",
+          impl: "declarado",
+          signal: "challenge",
+          desc: "En la 2.0 la invitación a jugar ES el reto 1v1 por DM cifrado (NIP-17, gift-wrap). Cifrado E2E → el estado refleja la capacidad declarada con el toggle de abajo, no tráfico observado.",
         },
       },
     ],
@@ -134,17 +145,6 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
     title: "Solo 2.0",
     subtitle: "Nostr-nativo",
     rows: [
-      {
-        key: "reto",
-        title: "Reto 1v1",
-        oneZero: [],
-        twoZero: {
-          label: "NIP-17",
-          impl: "declarado",
-          signal: "challenge",
-          desc: "Invitación 1v1 por DM cifrado E2E (gift-wrap). El servidor no la puede observar: el estado refleja la capacidad declarada por el dev, no tráfico.",
-        },
-      },
       {
         key: "zaps",
         title: "Propinas y premios",

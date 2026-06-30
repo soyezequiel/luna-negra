@@ -245,7 +245,9 @@ function CapabilityTile({
     ? game.nostr?.[side.signal] ?? null
     : null;
   const lvl2 = side ? level2For(side, ev, challenges) : null;
-  const isRetoToggle = side?.signal === "challenge";
+  // El toggle "declarar soporte de retos 1v1" vive en la fila "Invitaciones y
+  // amigos" (su pata 2.0 es el reto NIP-17, gobernado por supportsChallenges).
+  const isRetoToggle = row.key === "invitaciones";
 
   return (
     <div className="rounded-ln-md border border-ln-border bg-ln-card/40 p-2.5">
@@ -264,7 +266,7 @@ function CapabilityTile({
                 disabled={saving}
                 onChange={(e) => onToggleChallenges(e.target.checked)}
               />
-              {saving ? "Guardando…" : "Declarar que mi juego lo soporta"}
+              {saving ? "Guardando…" : "Declarar soporte de retos 1v1 (NIP-17)"}
             </label>
           ) : null
         ) : null}
