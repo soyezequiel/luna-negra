@@ -103,6 +103,68 @@ export async function submitScore(
   return { ok: true, score: best, rank: better + 1, improved };
 }
 
+/**
+ * Entrada del marcador para la vista PÚBLICA de la tienda (página del juego).
+ * Igual que `LeaderboardEntry` pero sin resolver `displayName` (lo hace el cliente
+ * vía Nostr, como el top de zappers) y con `viaNostr` para distinguir la
+ * procedencia 2.0 (kind:31337) de la REST 1.0.
+ */
+export type PublicScoreEntry = {
+  npub: string;
+  score: number;
+  rank: number;
+  viaNostr: boolean;
+};
+
+export type GameLeaderboard = {
+  name: string;
+  entries: PublicScoreEntry[];
+};
+
+const PUBLIC_TOP_LIMIT = 10; // filas por tabla en la vista de la tienda
+const MAX_BOARDS = 12; // tope de tablas por juego (defensivo)
+
+/**
+ * Lee TODOS los marcadores de un juego para mostrarlos en su página de la tienda.
+ * Una fila por jugador y tabla (se queda el mejor), top-N por tabla. No resuelve
+ * nombres/avatares: devuelve el `npub` y el cliente los resuelve por Nostr. A
+ * diferencia de `readLeaderboard` (gateado por entitlement, para el juego), esto es
+ * para la UI pública de Luna Negra. Juego sin marcadores → `[]`.
+ */
+export async function readGameLeaderboards(
+  gameId: string,
+  topN = PUBLIC_TOP_LIMIT,
+): Promise<GameLeaderboard[]> {
+  const boards = await prisma.leaderboard.findMany({
+    where: { gameId },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+    take: MAX_BOARDS,
+  });
+  if (boards.length === 0) return [];
+
+  const out: GameLeaderboard[] = [];
+  for (const board of boards) {
+    const rows = await prisma.score.findMany({
+      where: { leaderboardId: board.id },
+      orderBy: [{ score: "desc" }, { updatedAt: "asc" }],
+      take: topN,
+      select: { npub: true, score: true, sourceEventId: true },
+    });
+    if (rows.length === 0) continue; // no mostramos tablas vacías
+    out.push({
+      name: board.name,
+      entries: rows.map((r, i) => ({
+        npub: r.npub,
+        score: r.score,
+        rank: i + 1,
+        viaNostr: r.sourceEventId != null,
+      })),
+    });
+  }
+  return out;
+}
+
 export type ReadLeaderboardOptions = {
   window: "all" | "week";
   view: "top" | "around";

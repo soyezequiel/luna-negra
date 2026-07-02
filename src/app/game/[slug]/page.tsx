@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth";
 import { BuyButton } from "@/components/buy-button";
 import { ZapButton } from "@/components/zap-button";
 import { ZapLeaderboard } from "@/components/zap-leaderboard";
+import { ScoreLeaderboard } from "@/components/score-leaderboard";
 import { PlayButton } from "@/components/play-button";
 import { LibraryButton } from "@/components/library-button";
 import { GameBets } from "@/components/game-bets";
@@ -423,6 +424,10 @@ export default async function GamePage({
               />
             ) : null}
           </div>
+
+          {/* Marcador del juego (tabla `Score`: REST 1.0 + Nostr 2.0 kind:31337).
+              Se auto-oculta si el juego no tiene puntajes. */}
+          <ScoreLeaderboard gameId={game.id} />
 
           {/* Top de zappers del juego (sale de los recibos 9735 verificados). */}
           {game.priceSats === 0 && game.nostrEventId ? (
