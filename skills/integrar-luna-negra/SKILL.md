@@ -436,6 +436,18 @@ jugadores**. En el panel de integración esto es "Invitaciones y amigos"; declar
 soporte con el toggle de retos 1v1. Para 1v1 puro omitís `room` (no necesita relay
 NIP-29). Necesita un signer con **NIP-44** (extensión moderna o clave local).
 
+**Recibir el reto (lado invitado).** El reto llega como gift-wrap `kind:1059` con
+`#p`=tu pubkey; tu juego se suscribe a esos eventos, desenvuelve las tres capas
+(gift-wrap → seal `kind:13` → rumor `kind:14`) y verifica que el autor del rumor sea
+quien firmó el seal (anti-suplantación NIP-59). **Punto crítico que rompe la entrega:
+publicá y escuchá en el MISMO conjunto de relays.** El emisor publica en la bandeja
+NIP-17 del destinatario = tu **fallback de relays de DM ∪ los `kind:10050` del
+invitado**; si tu receptor escucha solo un set fijo e ignora los `kind:10050` propios
+del usuario, el reto aterriza en la bandeja que el invitado declaró en OTRO cliente
+(Amethyst/Damus) y tu juego **nunca lo lee** (dice "reto enviado" pero no llega). Usá
+**la misma función de resolución de relays en los dos lados**. Ver *Gotchas de la 2.0*
+#8.
+
 ### Salas con estado (NIP-29) · *diseño*
 Para juegos **por turnos determinísticos**, la sala es un grupo NIP-29 (un relay
 *group-aware* ordena los eventos y controla el acceso por membresía) y **cada
@@ -510,6 +522,27 @@ cualquier evento anclado al juego (presencia, marcador, reseñas):
 7. **Los `board`/tablas del `kind:31337` deben coincidir con las del camino REST §6**
    (mismo nombre y mismas unidades — p.ej. `victorias`, o ms para tiempo) o
    alimentarán un ranking distinto en vez de fusionarse.
+8. **NIP-17: publicá y escuchá en el MISMO set de relays, o el reto se pierde en
+   silencio.** El emisor debe publicar el gift-wrap en la bandeja del destinatario =
+   *tu fallback de DM ∪ los `kind:10050` del destinatario*, y el receptor debe
+   suscribirse a **exactamente ese mismo set** (sus propios `kind:10050` incluidos), no
+   a una lista fija. Si el receptor solo mira relays fijos, cualquier usuario que haya
+   declarado su bandeja de DMs en otro cliente Nostr **no recibe el reto** aunque el
+   emisor vea "enviado" (basta con que UN relay acepte la publicación). Síntoma:
+   "mando el reto y no llega". Fix: **una sola función `resolveDmRelays(pubkey)` usada
+   por ambos lados.** (Aparte, tené presente que algunos relays de DM exigen **NIP-42
+   AUTH** para servir/aceptar `kind:1059`; si usás una lib que no autentica, medí las
+   aceptaciones por-relay antes de dar el envío por bueno.)
+9. **La extensión inyecta `window.nostr` de forma ASÍNCRONA — esperala al restaurar
+   la sesión.** nos2x/Alby inyectan `window.nostr` un instante DESPUÉS de cargar la
+   página. Si al reabrir la pestaña restaurás el signer NIP-07 con un
+   `if (!window.nostr) return null` inmediato, te rendís antes de que exista y
+   **cualquier feature gateada por el firmante (buzón de retos, presencia, marcador)
+   no arranca** hasta un re-login MANUAL. Síntoma exacto: "los retos solo llegan si
+   cierro sesión y vuelvo a entrar; tras recargar la pestaña dejan de llegar". Fix:
+   **sondeá `window.nostr` unos segundos** (p.ej. cada 100 ms hasta ~3 s) antes de
+   crear el signer NIP-07, o reintentá el arranque de esas features cuando la extensión
+   aparezca. No afecta a clave local ni bunker NIP-46 (no dependen de `window.nostr`).
 
 ---
 
