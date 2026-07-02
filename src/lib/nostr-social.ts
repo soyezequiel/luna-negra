@@ -72,6 +72,40 @@ function hasLunaNegraLabel(ev: { tags: string[][] }): boolean {
   return ev.tags.some((t) => t[0] === "l" && t[1] === LN_STATUS_LABEL);
 }
 
+// Presencia 2.0 (NIP-38 auto-firmada por el juego, sin pasar por la tienda): en
+// vez de la etiqueta `l:luna-negra` la ancla un tag `a` con la coordenada del
+// juego (`30023:<pubkey-tienda>:<slug>`). La reconocemos como "jugando un juego de
+// ESTA tienda" solo si esa coordenada la firma la tienda (su `<pubkey>`), para no
+// mostrar la presencia 2.0 de otra plataforma Nostr como si fuera de acá.
+function hasStoreGameCoord(
+  ev: { tags: string[][] },
+  storePubkey?: string | null,
+): boolean {
+  if (!storePubkey) return false;
+  const prefix = `30023:${storePubkey}:`;
+  return ev.tags.some(
+    (t) => t[0] === "a" && typeof t[1] === "string" && t[1].startsWith(prefix),
+  );
+}
+
+// Cache en módulo del pubkey de la tienda (público, estable). Solo se resuelve en
+// el navegador vía una URL relativa; en el server (donde no hay base URL) queda
+// null y `fetchStatuses` cae al criterio de la etiqueta `l:luna-negra`.
+let _storePubkey: string | null | undefined;
+async function resolveStorePubkey(): Promise<string | null> {
+  if (_storePubkey !== undefined) return _storePubkey;
+  if (typeof window === "undefined") return (_storePubkey = null);
+  try {
+    const res = await fetch("/api/store/pubkey");
+    const data = res.ok ? await res.json() : null;
+    _storePubkey = typeof data?.pubkey === "string" ? data.pubkey : null;
+  } catch {
+    _storePubkey = null;
+  }
+  // `?? null`: TS pierde el narrowing del `let` de módulo tras el `await`.
+  return _storePubkey ?? null;
+}
+
 export function npubOf(pubkey: string): string {
   return nip19.npubEncode(pubkey);
 }
@@ -465,6 +499,7 @@ type StatusEvent = Pick<Event, "pubkey" | "created_at" | "tags" | "content">;
 export function selectFreshStatuses(
   evs: StatusEvent[],
   nowSec: number = now(),
+  storePubkey?: string | null,
 ): Record<string, Status> {
   const latest = new Map<string, StatusEvent>();
   for (const ev of evs) {
@@ -475,9 +510,12 @@ export function selectFreshStatuses(
   const map: Record<string, Status> = {};
   for (const [pubkey, ev] of latest) {
     if (!ev.content) continue;
-    // Solo presencia originada en Luna Negra: ignoramos estados `general`
-    // seteados por otras apps Nostr (el `d:"general"` es compartido).
-    if (!hasLunaNegraLabel(ev)) continue;
+    // Aceptamos la presencia por DOS vías (el estado `d:"general"` es compartido
+    // entre apps Nostr, así que ignoramos lo ajeno como "Accounts" de nostr.build):
+    //  1.0 → la publicó la tienda con la etiqueta `l:luna-negra`.
+    //  2.0 → la firmó el propio juego y la ancló a la coordenada de un juego de
+    //        esta tienda (tag `a` = 30023:<pubkey-tienda>:<slug>).
+    if (!hasLunaNegraLabel(ev) && !hasStoreGameCoord(ev, storePubkey)) continue;
 
     const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
     if (exp) {
@@ -497,12 +535,15 @@ export async function fetchStatuses(
   pubkeys: string[],
 ): Promise<Record<string, Status>> {
   if (pubkeys.length === 0) return {};
-  const evs = await querySyncByAuthors(pubkeys, {
-    kinds: [30315],
-    "#d": ["general"],
-    "#l": [LN_STATUS_LABEL],
-  });
-  return selectFreshStatuses(evs);
+  // No filtramos por `#l` en el relay: la presencia 2.0 (auto-firmada por el
+  // juego) no lleva esa etiqueta, la ancla la coordenada `a`. Traemos todos los
+  // estados `d:general` de los contactos y `selectFreshStatuses` decide cuáles son
+  // de esta tienda (por etiqueta o por coordenada del juego).
+  const [evs, storePubkey] = await Promise.all([
+    querySyncByAuthors(pubkeys, { kinds: [30315], "#d": ["general"] }),
+    resolveStorePubkey(),
+  ]);
+  return selectFreshStatuses(evs, undefined, storePubkey);
 }
 
 export async function publishStatus(content: string): Promise<void> {

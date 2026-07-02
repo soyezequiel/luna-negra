@@ -120,6 +120,70 @@ describe("NIP-38 presence freshness", () => {
     expect(result.a).toBeUndefined();
   });
 
+  const STORE_PK = "ed13c471be6bff9195a6261d8cbd6c7ab6efe79a7947b208d2b6f066b99cc4d3";
+
+  it("accepts coord-anchored 2.0 presence signed by the game (no luna-negra label)", () => {
+    const result = selectFreshStatuses(
+      [
+        statusEvent({
+          pubkey: "a",
+          createdAt: now - 1,
+          content: "Jugando TETRA",
+          tags: [
+            ["d", "general"],
+            ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+            ["expiration", String(now + 60)],
+          ],
+        }),
+      ],
+      now,
+      STORE_PK,
+    );
+
+    expect(result.a?.content).toBe("Jugando TETRA");
+  });
+
+  it("ignores coord-anchored presence whose coord is NOT signed by this store", () => {
+    const result = selectFreshStatuses(
+      [
+        statusEvent({
+          pubkey: "a",
+          createdAt: now - 1,
+          content: "Jugando OtraTienda",
+          tags: [
+            ["d", "general"],
+            ["a", "30023:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef:otro"],
+            ["expiration", String(now + 60)],
+          ],
+        }),
+      ],
+      now,
+      STORE_PK,
+    );
+
+    expect(result.a).toBeUndefined();
+  });
+
+  it("without a store pubkey, coord-anchored presence is not recognized", () => {
+    const result = selectFreshStatuses(
+      [
+        statusEvent({
+          pubkey: "a",
+          createdAt: now - 1,
+          content: "Jugando TETRA",
+          tags: [
+            ["d", "general"],
+            ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+            ["expiration", String(now + 60)],
+          ],
+        }),
+      ],
+      now,
+    );
+
+    expect(result.a).toBeUndefined();
+  });
+
   it("lets a newer clear event override an older playing event", () => {
     const result = selectFreshStatuses(
       [

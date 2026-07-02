@@ -111,9 +111,9 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         oneZero: ["presence"],
         twoZero: {
           label: "NIP-38",
-          impl: "diseño",
+          impl: "implementado",
           signal: "none",
-          desc: "El propio jugador firma su estado 'jugando X' (kind:30315), sin que el game server lo reporte. Diseñado, todavía sin implementar.",
+          desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego, sin que el game server lo reporte. El riel de amigos lo reconoce por la coordenada (tag `a`).",
         },
       },
       {
