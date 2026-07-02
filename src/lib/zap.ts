@@ -59,22 +59,21 @@ function lnurlpUrl(address: string): string | null {
 }
 
 /** Codifica una URL LNURL-pay como bech32 (lnurl1…), como pide NIP-57. */
-function encodeLnurl(url: string): string {
+export function encodeLnurl(url: string): string {
   const words = bech32.toWords(new TextEncoder().encode(url));
   // Límite alto: las URLs LNURL superan el default de 90 chars de bech32.
   return bech32.encode("lnurl", words, 2000);
 }
 
 /**
- * Resuelve el endpoint de zap del dev de un juego, o `null` si su wallet no
- * soporta zaps NIP-57 (sin `allowsNostr`/`nostrPubkey`) o no se pudo contactar.
- * Cuando devuelve null, NO se ofrece zap (no hay fallback a propina plana).
+ * Resuelve una Lightning Address (`name@domain`) a su `ZapEndpoint` NIP-57, o
+ * `null` si el wallet no soporta zaps (sin `allowsNostr`/`nostrPubkey`) o no se
+ * pudo contactar. Es la parte agnóstica del destinatario: la usa el zap del dev
+ * (vía `resolveZapEndpoint`) y el motor de payouts v2 (que zapea al ganador).
  */
-export async function resolveZapEndpoint(
-  providerId: string,
+export async function resolveZapEndpointForAddress(
+  address: string,
 ): Promise<ZapEndpoint | null> {
-  const address = await resolveTipDestination(providerId);
-  if (!address) return null;
   const url = lnurlpUrl(address);
   if (!url) return null;
 
@@ -104,6 +103,19 @@ export async function resolveZapEndpoint(
     minSendable: Number(body.minSendable ?? 1000),
     maxSendable: Number(body.maxSendable ?? 1_000_000_000),
   };
+}
+
+/**
+ * Resuelve el endpoint de zap del dev de un juego, o `null` si su wallet no
+ * soporta zaps NIP-57 (sin `allowsNostr`/`nostrPubkey`) o no se pudo contactar.
+ * Cuando devuelve null, NO se ofrece zap (no hay fallback a propina plana).
+ */
+export async function resolveZapEndpoint(
+  providerId: string,
+): Promise<ZapEndpoint | null> {
+  const address = await resolveTipDestination(providerId);
+  if (!address) return null;
+  return resolveZapEndpointForAddress(address);
 }
 
 export type UnsignedZapRequest = {

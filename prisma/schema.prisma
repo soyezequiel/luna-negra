@@ -50,6 +50,8 @@ model User {
   reviews           Review[]
   betParticipations BetParticipant[]
   ledgerEntries     LedgerEntry[]
+  zapBetParticipations ZapBetParticipant[]
+  zapLedgerEntries     ZapLedgerEntry[]
   dismissedNotifications DismissedNotification[]
 }
 
@@ -95,6 +97,7 @@ model Provider {
 
   games               Game[]
   bets                Bet[]
+  zapBets             ZapBet[]
   apiKeys             ApiKey[]
   gamePresence        GamePresence[]
   gameInvites         GameInvite[]
@@ -376,6 +379,7 @@ model Game {
   purchases Purchase[]
   reviews   Review[]
   bets      Bet[]
+  zapBets   ZapBet[]
   zaps      Zap[]
   comments  GameComment[]
 }
@@ -648,6 +652,98 @@ model LedgerEntry {
   status         String   @default("pending") // pending | settled | failed
   paymentHash    String?
   idempotencyKey String   @unique // {kind}:{betId}:{userId} → guard anti-doble-gasto
+  createdAt      DateTime @default(now())
+
+  @@index([betId])
+}
+
+// ─────────────── Apuestas v2 (zaps NIP-57) — convive con v1 ────────────────
+// Espejo de Bet/BetParticipant/LedgerEntry, pero TODO el dinero se mueve por
+// zaps públicos anclados (tag `e`) al evento del contrato (`anchorEventId`). La
+// lógica pura (economía, hash, estados, invariante del ledger) se reutiliza de
+// v1; acá solo cambian los rieles de pago (zap entrante/saliente) y la auditoría
+// pública (recibos 9735 + nota de liquidación kind:1).
+
+model ZapBet {
+  id               String    @id @default(cuid())
+  gameId           String
+  game             Game      @relation(fields: [gameId], references: [id])
+  providerId       String
+  provider         Provider  @relation(fields: [providerId], references: [id])
+  // Mismos estados que Bet (bet-state.ts): created | pending_deposits | ready |
+  // settling | settled | refunding | cancelled_incomplete | cancelled_admin |
+  // refunded_timeout | voided
+  status           String    @default("created")
+  stakeMsat        BigInt // monto por jugador (msat)
+  feePct           Int       @default(5) // corte de Luna Negra (fijado por la casa)
+  devFeePct        Int       @default(0) // corte del dev (proveedor), resuelto al crear
+  victoryCondition String    @default("")
+  roomId           String? // sala multijugador del juego (correlación, opcional)
+  metadataJson     String? // metadata libre del proveedor (JSON serializado, opcional)
+  depositDeadline  DateTime? // +10 min al crear
+  resolveDeadline  DateTime? // +15 min al quedar ready
+  anchorEventId    String?   @unique // evento Nostr del contrato = ancla de TODOS los zaps
+  contractHash     String? // huella sha256 de los términos (idéntica a v1, CONTRACT_MISMATCH)
+  resultEventId    String? // evento Nostr del resultado firmado
+  settleNoteId     String? // nota de liquidación kind:1 (resumen público anclado)
+  createdAt        DateTime  @default(now())
+  readyAt          DateTime?
+  settledAt        DateTime?
+
+  participants ZapBetParticipant[]
+  ledger       ZapLedgerEntry[]
+
+  @@index([status])
+  @@index([depositDeadline])
+  @@index([resolveDeadline])
+}
+
+model ZapBetParticipant {
+  id                 String    @id @default(cuid())
+  betId              String
+  bet                ZapBet    @relation(fields: [betId], references: [id])
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  npub               String // denormalizado para el contrato/display
+  pubkey             String // hex denormalizado (v2 lo necesita para tags p/e)
+  // Depósito (zap entrante que Luna Negra recibe como receptor NIP-57)
+  depositStatus      String    @default("pending") // pending | paid | refunded | failed
+  depositZapRequest  String? // JSON del 9734 FIRMADO por el apostador (va en description del 9735)
+  depositInvoice     String? // bolt11 emitido por el NWC del server
+  depositPaymentHash String?   @unique
+  depositReceiptId   String?   @unique // id del 9735 que Luna Negra firmó y publicó
+  depositReceiptJson String? // recibo 9735 firmado completo (re-publicar si 0 relays)
+  depositReceiptOk   Boolean   @default(false) // >=1 relay aceptó el recibo (retry en tick si false)
+  // Resultado / payout (zap saliente que Luna Negra firma hacia el receptor)
+  result             String    @default("pending") // pending | won | lost | tie
+  payoutStatus       String    @default("none") // none|pending|paid|failed|withdraw_pending|claimed|forfeited
+  payoutMsat         BigInt?
+  payoutDestination  String? // lud16 / LN address / null
+  payoutKind         String? // zap | lnurl | withdraw (cómo salió la plata)
+  payoutZapRequestId String? // id del 9734 firmado por Luna Negra (si payoutKind=zap)
+  payoutReceiptId    String? // id del 9735 emitido por el wallet del receptor (lo levanta el sync)
+  withdrawDeadline   DateTime? // +60 min para el QR de retiro
+  createdAt          DateTime  @default(now())
+  paidAt             DateTime?
+  settledAt          DateTime?
+
+  @@unique([betId, userId]) // una participación por usuario y apuesta
+  @@index([betId])
+}
+
+model ZapLedgerEntry {
+  id             String   @id @default(cuid())
+  betId          String
+  bet            ZapBet   @relation(fields: [betId], references: [id])
+  userId         String? // null = movimiento de la casa (fee/forfeit)
+  user           User?    @relation(fields: [userId], references: [id])
+  kind           String // deposit | payout | refund | fee | dev_fee | forfeit
+  amountMsat     BigInt
+  status         String   @default("pending") // pending | settled | failed
+  paymentHash    String?
+  zapRequestId   String? // id del 9734 del movimiento
+  zapReceiptId   String? // id del 9735 del movimiento
+  idempotencyKey String   @unique // claves canónicas como v1: {kind}:{betId}[:{userId}]
   createdAt      DateTime @default(now())
 
   @@index([betId])

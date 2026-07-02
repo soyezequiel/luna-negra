@@ -7,6 +7,7 @@ export async function register() {
     await import("./sentry.server.config");
     await startEscrowTick();
     await startZapSync();
+    await startZapBetSync();
     await startCommentSync();
     await startGameSync();
     await startScoreSync();
@@ -33,6 +34,9 @@ async function startEscrowTick() {
   if (!ESCROW_TICK_INTERVAL_MS || ESCROW_TICK_INTERVAL_MS <= 0) return;
 
   const { runTick } = await import("./lib/escrow-tick");
+  // Apuestas v2 (zaps): mismo scheduler, gateado por BETS_V2_ENABLED. Corre tras
+  // el tick v1 en la misma pasada (comparten intervalo y guard `running`).
+  const { BETS_V2_ENABLED } = await import("./lib/escrow-v2-config");
 
   let running = false;
   const tick = async () => {
@@ -40,6 +44,10 @@ async function startEscrowTick() {
     running = true;
     try {
       await runTick();
+      if (BETS_V2_ENABLED) {
+        const { runTickV2 } = await import("./lib/escrow-v2-tick");
+        await runTickV2();
+      }
     } catch (err) {
       console.error("[escrow-tick] falló:", err);
     } finally {
@@ -82,6 +90,38 @@ async function startZapSync() {
   // Primer sync poco después del arranque, luego periódico.
   setTimeout(tick, 8_000).unref?.();
   setInterval(tick, ZAP_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de recibos de PAYOUT de apuestas v2 (kind:9735): levanta de
+ * relays los recibos que emiten los wallets de los ganadores cuando Luna Negra les
+ * zapea el premio, y completa `payoutReceiptId` (auditoría del zap saliente). Mismo
+ * patrón que zap-sync. Gateado por BETS_V2_ENABLED. Ver src/lib/zap-bet-sync.ts.
+ */
+async function startZapBetSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { BETS_V2_ENABLED, ZAP_BET_SYNC_INTERVAL_MS } = await import("./lib/escrow-v2-config");
+  if (!BETS_V2_ENABLED || !ZAP_BET_SYNC_INTERVAL_MS || ZAP_BET_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncZapBetReceipts } = await import("./lib/zap-bet-sync");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncZapBetReceipts();
+    } catch (err) {
+      console.error("[zap-bet-sync] falló:", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 26_000).unref?.();
+  setInterval(tick, ZAP_BET_SYNC_INTERVAL_MS).unref?.();
 }
 
 /**

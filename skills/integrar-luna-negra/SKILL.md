@@ -304,6 +304,50 @@ POST /api/v1/bets/{id}/cancel
 - El resultado puede venir por **API key** (Luna Negra firma con el oráculo
   gestionado) o por **evento Nostr firmado** por tu oráculo (avanzado).
 
+### §7·bis. Apuestas v2 por zaps (NIP-57)  ·  *experimental, opt-in*
+
+> ⚠️ **Experimental y conviven las dos.** La v2 es una variante de este mismo escrow
+> donde **todo el dinero se mueve por zaps NIP-57 públicos** anclados al contrato en
+> Nostr (depósitos, premio, corte de la casa y del dev). **Sigue siendo custodial y
+> server-to-server** —Luna Negra retiene el pozo y vos creás/resolvés con la API key
+> igual que en la 1.0—; lo nuevo es el **riel** (zaps) y que **cada movimiento queda
+> auditable en relays**. Para algo productivo hoy usá la **§7 (v1)**; la v2 es opt-in
+> y puede estar apagada en el deploy (flag `BETS_V2_ENABLED`). No la asumas
+> disponible: si `POST /api/v2/bets` da `503 BETS_V2_DISABLED`, este deploy no la tiene.
+
+**Desde tu game server no cambia casi nada.** Mismo flujo que §7 bajo `/api/v2/bets`:
+
+```ts
+POST /api/v2/bets            // mismo body que v1
+// 201 → { betId, apiVersion: 2, anchorEventId, depositDeadline, potTargetSats,
+//         feeSats, netPayoutSats, participants: [{ seat, npub, participantId }], … }
+GET  /api/v2/bets/{id}       // status igual que v1 + anchorEventId, y por participante
+                             //   { participantId, depositStatus, depositReceiptId,
+                             //     payoutStatus, payoutKind, payoutReceiptId, lnurl, payUrl }
+POST /api/v2/bets/{id}/result   { "winners": ["npub1…"] }   // [] = empate → reembolso
+POST /api/v2/bets/{id}/cancel
+```
+
+**La diferencia está en el depósito: lo paga el JUGADOR con un zap** (no un invoice
+LNURL plano). Dos formas de que deposite:
+
+- **Sin construir UI:** mandá al jugador a la página de Luna Negra
+  `__LUNA_NEGRA_BASE__/apuestas/{betId}` (firma el zap, paga con NWC/extensión/QR y ve
+  el estado). Es lo más simple.
+- **UI propia (sesión del jugador, no API key):** `POST /api/v2/bets/{id}/deposit/prepare`
+  → 9734 sin firmar; el jugador lo firma (NIP-07/46) y `POST …/deposit/invoice` con
+  `{ signedZapRequest }` → `{ invoice }`; pollea `GET /api/v2/bets/{id}/mine` hasta
+  `depositStatus: "paid"`. También hay un LNURL-pay por asiento en el `lnurl` que trae
+  el `GET` (pagable desde cualquier wallet).
+
+**Auditabilidad:** el `anchorEventId` es el contrato (kind:1) en Nostr; cada depósito
+tiene su recibo `kind:9735` (`depositReceiptId`), y al liquidar se publica una **nota
+de liquidación** con ganadores, montos y recibos. Abrí cualquiera con `njump.me/<id>`.
+
+Webhooks: los mismos eventos que §8 con `apiVersion: 2` y `anchorEventId` en `data`
+(no tenés que re-mapear tipos). El resultado y los invariantes (contrato firmado,
+`CONTRACT_MISMATCH`, idempotencia, reembolso en empate/timeout) son **idénticos a v1**.
+
 ---
 
 ## §8. Webhooks
@@ -470,7 +514,10 @@ dev o al ganador. Los recibos (`kind:9735`) verificados alimentan el "top de
 zappers" por juego y por dev. Es NIP-57 estándar; no requiere nada propio de Luna
 Negra. **Alternativa:** si ya cobrás por Lightning con la 1.0, podés dejar los premios
 en la **1.0 REST** (§7 escrow / payout) y saltarte NIP-57 — elegí una sola vía para
-no duplicar el flujo de dinero.
+no duplicar el flujo de dinero. Si querés **apuestas** (no propina) con la plata
+moviéndose por zaps públicos pero manteniendo custodia, eso es la **§7·bis (apuestas
+v2)**, no esta sección: acá el zap lo firma el usuario sin escrow; allá Luna Negra
+custodia el pozo y liquida.
 
 ### Marcador verificado por oráculo (kind:31338) · *diseño*
 Para rankings con dinero: un oráculo (tu game server, o Luna Negra) co-firma una
@@ -585,6 +632,7 @@ cualquier evento anclado al juego (presencia, marcador, reseñas):
 - [ ] (opc.) §5 Invitaciones / amigos.
 - [ ] (opc.) §6 Marcadores.
 - [ ] (opc.) §7 Apuestas/escrow desde el backend.
+- [ ] (opc., experimental) §7·bis Apuestas v2 por zaps (`/api/v2/bets`, opt-in `BETS_V2_ENABLED`).
 - [ ] (opc.) §8 Webhook registrado y firma HMAC verificada.
 - [ ] (opc., experimental) Capa 2.0 Nostr: marcador `kind:31337`, presencia NIP-38,
       reto/invitación NIP-17, zaps NIP-57, reseñas `kind:1`. Nunca para escrow/pago.

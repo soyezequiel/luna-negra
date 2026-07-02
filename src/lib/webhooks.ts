@@ -1,4 +1,4 @@
-import type { Bet } from "@prisma/client";
+import type { Bet, ZapBet } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { msatToSats } from "@/lib/money";
@@ -306,5 +306,147 @@ export async function emitBetRefunded(
     reason,
     refunds,
     ...correlation(bet),
+  });
+}
+
+// ───────────────────────── Webhooks de apuestas v2 (zaps) ─────────────────────
+// Mismos NOMBRES de evento que v1 (el proveedor no re-mapea tipos), con campos
+// extra: `apiVersion: 2`, `anchorEventId` (evento del contrato) y, cuando aplica,
+// `receiptId`/`payoutReceiptId` para que el proveedor pueda linkear el zap público.
+
+/** Correlación v2: ZapBet comparte roomId/metadataJson con Bet pero es otro tipo. */
+function correlationV2(bet: ZapBet): { roomId: string | null; metadata: unknown } {
+  let metadata: unknown = null;
+  if (bet.metadataJson) {
+    try {
+      metadata = JSON.parse(bet.metadataJson);
+    } catch {
+      /* metadata corrupta → null */
+    }
+  }
+  return { roomId: bet.roomId ?? null, metadata };
+}
+
+const v2Base = (bet: ZapBet) => ({
+  betId: bet.id,
+  gameId: bet.gameId,
+  apiVersion: 2 as const,
+  anchorEventId: bet.anchorEventId,
+});
+
+/** Un participante depositó su stake (zap entrante); informa pozo y progreso. */
+export async function emitDepositReceivedV2(
+  betId: string,
+  npub: string,
+): Promise<void> {
+  const bet = await prisma.zapBet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  const paid = bet.participants.filter((p) => p.depositStatus === "paid");
+  const part = bet.participants.find((p) => p.npub === npub);
+  await deliver(bet.providerId, "deposit.received", {
+    ...v2Base(bet),
+    npub,
+    receiptId: part?.depositReceiptId ?? null,
+    amountSats: sats(bet.stakeMsat),
+    potSats: sats(bet.stakeMsat) * paid.length,
+    potTargetSats: sats(bet.stakeMsat) * bet.participants.length,
+    depositsReceived: paid.length,
+    depositsTotal: bet.participants.length,
+    ...correlationV2(bet),
+  });
+}
+
+/** El pozo se completó (todos depositaron). */
+export async function emitBetFundedV2(betId: string): Promise<void> {
+  const bet = await prisma.zapBet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  await deliver(bet.providerId, "bet.funded", {
+    ...v2Base(bet),
+    potSats: sats(bet.stakeMsat) * bet.participants.length,
+    participants: bet.participants.map((p) => p.npub),
+    ...correlationV2(bet),
+  });
+}
+
+export async function emitBetSettledV2(betId: string): Promise<void> {
+  const bet = await prisma.zapBet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  const won = bet.participants.filter((p) => p.result === "won" || p.result === "tie");
+  const payouts = won
+    .filter((p) => p.payoutMsat != null)
+    .map((p) => ({
+      npub: p.npub,
+      amountSats: sats(p.payoutMsat as bigint),
+      payoutKind: p.payoutKind,
+      payoutReceiptId: p.payoutReceiptId,
+    }));
+  const [fee, devFee] = await Promise.all([
+    prisma.zapLedgerEntry.findFirst({ where: { betId: bet.id, kind: "fee" } }),
+    prisma.zapLedgerEntry.findFirst({ where: { betId: bet.id, kind: "dev_fee" } }),
+  ]);
+  await deliver(bet.providerId, "bet.settled", {
+    ...v2Base(bet),
+    winners: won.map((p) => p.npub),
+    payouts,
+    feeSats: fee ? sats(fee.amountMsat) : 0,
+    devFeeSats: devFee ? sats(devFee.amountMsat) : 0,
+    settleNoteId: bet.settleNoteId,
+    ...correlationV2(bet),
+  });
+}
+
+/** El proveedor canceló la apuesta v2 antes de resolverse. */
+export async function emitBetCancelledV2(betId: string): Promise<void> {
+  const bet = await prisma.zapBet.findUnique({ where: { id: betId } });
+  if (!bet) return;
+  await deliver(bet.providerId, "bet.cancelled", {
+    ...v2Base(bet),
+    reason: "provider_cancel",
+    ...correlationV2(bet),
+  });
+}
+
+/** Venció el plazo de depósito v2 sin completarse el pozo. */
+export async function emitBetExpiredV2(betId: string): Promise<void> {
+  const bet = await prisma.zapBet.findUnique({ where: { id: betId } });
+  if (!bet) return;
+  await deliver(bet.providerId, "bet.expired", {
+    ...v2Base(bet),
+    reason: "deposit_timeout",
+    ...correlationV2(bet),
+  });
+}
+
+/** Se reembolsaron depósitos v2 (refund por zap). */
+export async function emitBetRefundedV2(
+  betId: string,
+  reason: "cancelled" | "expired" | "void" | "resolve_timeout",
+): Promise<void> {
+  const bet = await prisma.zapBet.findUnique({
+    where: { id: betId },
+    include: { participants: true },
+  });
+  if (!bet) return;
+  const refunds = bet.participants
+    .filter((p) => p.depositStatus === "refunded")
+    .map((p) => ({
+      npub: p.npub,
+      amountSats: sats(bet.stakeMsat),
+      payoutReceiptId: p.payoutReceiptId,
+    }));
+  await deliver(bet.providerId, "bet.refunded", {
+    ...v2Base(bet),
+    reason,
+    refunds,
+    ...correlationV2(bet),
   });
 }

@@ -2,6 +2,7 @@ import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import { RELAYS, gameTag } from "./constants";
 import { buildResultEventTemplate } from "./escrow";
+import { buildResultEventTemplateV2 } from "./escrow-v2";
 import {
   buildGameArticleTemplate,
   gameArticleCoord,
@@ -95,6 +96,109 @@ export function signResultEvent(
   winnerNpubs: string[],
 ): Event {
   return finalizeEvent(buildResultEventTemplate({ betId, winnerNpubs }), sk);
+}
+
+/** Igual que signResultEvent pero anclado (`e`) al contrato v2 (apuestas v2). */
+export function signResultEventV2(
+  sk: Uint8Array,
+  betId: string,
+  winnerNpubs: string[],
+  anchorEventId: string | null,
+): Event {
+  return finalizeEvent(
+    buildResultEventTemplateV2({ betId, winnerNpubs, anchorEventId }),
+    sk,
+  );
+}
+
+/** Re-publica un evento ya firmado y devuelve cuántos relays lo aceptaron. Lo usa
+ *  el tick v2 para reintentar la publicación de un recibo 9735 propio que ningún
+ *  relay aceptó en su momento (`depositReceiptOk = false`). */
+export async function republishEvent(ev: Event): Promise<number> {
+  return publishToRelays(ev).catch(() => 0);
+}
+
+// ───────────────────────────── Zaps v2 (NIP-57) ─────────────────────────────
+
+/**
+ * Firma un zap request (kind 9734) con la clave de la tienda. Lo usa el motor de
+ * payouts v2: Luna Negra es la que zapea al ganador / dev / refund, así que el
+ * 9734 lo firma la tienda (`p` = receptor, `e` = ancla). Null si no hay nsec.
+ */
+export function signZapRequest(unsigned: {
+  kind: 9734;
+  created_at: number;
+  content: string;
+  tags: string[][];
+}): Event | null {
+  const sk = getSecretKey();
+  if (!sk) return null;
+  return finalizeEvent(unsigned, sk);
+}
+
+/**
+ * Construye, firma (con la clave de la tienda) y publica el recibo de zap (kind
+ * 9735) de un depósito. Luna Negra actúa como wallet receptor NIP-57: emite el
+ * recibo público del zap entrante, anclado (`e`) al contrato. El firmante del
+ * 9735 es la tienda, así que terceros lo validan contra `getStorePubkey()`.
+ *
+ * Devuelve el evento firmado + cuántos relays lo aceptaron (para el retry del
+ * tick), o null si no hay nsec configurado (dev sin claves).
+ */
+export async function publishZapReceipt(opts: {
+  anchorEventId: string;
+  bolt11: string;
+  /** JSON del 9734 (firmado por el apostador, o sintético de la tienda para invitados). */
+  descriptionZapRequest: string;
+  /** Pubkey del apostador (tag `P`), si firmó su propio depósito. */
+  zapperPubkey?: string | null;
+  preimage?: string | null;
+}): Promise<{ event: Event; accepted: number } | null> {
+  const sk = getSecretKey();
+  if (!sk) return null;
+  const storePubkey = getPublicKey(sk);
+  const tags: string[][] = [
+    ["p", storePubkey], // receptor del zap = la tienda (custodia del pozo)
+    ["e", opts.anchorEventId], // ancla del contrato
+    ["bolt11", opts.bolt11],
+    ["description", opts.descriptionZapRequest],
+  ];
+  if (opts.zapperPubkey) tags.push(["P", opts.zapperPubkey]); // emisor (mayúscula, NIP-57)
+  if (opts.preimage) tags.push(["preimage", opts.preimage]);
+  const ev = finalizeEvent(
+    { kind: 9735, created_at: Math.floor(Date.now() / 1000), tags, content: "" },
+    sk,
+  );
+  const accepted = await publishToRelays(ev).catch(() => 0);
+  if (accepted === 0) {
+    console.error("[nostr] el recibo de zap no fue aceptado por ningún relay:", ev.id);
+  }
+  return { event: ev, accepted };
+}
+
+/**
+ * Firma y publica una nota de liquidación (kind:1) que resume públicamente cómo
+ * se repartió el pozo de una apuesta v2 (ganadores, montos, ids de recibos, fees),
+ * anclada (`e`) al contrato. Aporta auditabilidad cuando un payout salió por un
+ * riel sin recibo 9735 (fallback LNURL) o para el corte de la casa. Devuelve el
+ * id si algún relay la aceptó; null si no hay nsec o ningún relay la aceptó.
+ */
+export async function publishSettleNote(
+  content: string,
+  tags: string[][],
+): Promise<string | null> {
+  const sk = getSecretKey();
+  if (!sk) return null;
+  const ev = finalizeEvent(
+    { kind: 1, created_at: Math.floor(Date.now() / 1000), tags, content },
+    sk,
+  );
+  const accepted = await publishToRelays(ev).catch(() => 0);
+  if (accepted === 0) {
+    console.error("[nostr] la nota de liquidación no fue aceptada:", ev.id);
+    return null;
+  }
+  return ev.id;
 }
 
 /**
