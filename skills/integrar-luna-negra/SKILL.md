@@ -388,7 +388,7 @@ NIP-07/46). El **dinero y la custodia se quedan en la 1.0**.
 |---|---|---|---|
 | Identidad | §1 SSO (`lnToken`) | login NIP-07/46 | disponible |
 | Marcador | §6 leaderboards | `kind:31337` (ver §6) | implementado |
-| Presencia | §3 REST | NIP-38 (`kind:30315`) | diseño |
+| Presencia | §3 REST | NIP-38 (`kind:30315`) | implementado |
 | Salas / estado | §4 REST | grupo NIP-29 + jugadas | diseño |
 | Invitación / reto | §5 invites | NIP-17 (gift-wrap) | reto 1v1 implementado |
 | Reseñas / logros | — | NIP-23 / `kind:1` | implementado |
@@ -400,17 +400,22 @@ Es la **única pieza nueva que la spec define** (el resto reusa NIPs estándar).
 está documentada arriba en **§6 → Camino Nostr (2.0)**: el jugador firma su puntaje
 y Luna Negra lo proyecta al mismo ranking que el camino REST.
 
-### Presencia "jugando X" (NIP-38) · *diseño*
+### Presencia "jugando X" (NIP-38) · *implementado*
 En vez de reportar por REST (§3), el **propio jugador** firma su estado (no hace
 falta game server):
 
 ```jsonc
 { "kind": 30315,
   "tags": [["d", "general"], ["a", gameCoord], ["expiration", "<unix + ~60s>"]],
-  "content": "Jugando Pac-Toshi 🎮" }
+  "content": "Jugando Pac-Toshi" }
 ```
 
-Luna Negra y cualquier cliente derivan "Jugando X" del evento.
+Luna Negra y cualquier cliente derivan "Jugando X" del evento. **El `content` va
+"pelado"** (sin emoji/prefijo): la tienda antepone su propio ícono al mostrarlo, así
+que si lo incluís queda duplicado. **Cada heartbeat es una firma** (con bunker NIP-46
+= un prompt al usuario): no firmes en cada latido, re-firmá solo si cambió el estado
+o pasaron ~2 min, y poné un `expiration` mayor que tu intervalo (ver *Gotchas de la
+2.0* más abajo).
 
 ### Invitación / reto 1v1 (NIP-17) · *reto implementado*
 En la 2.0 **la invitación ES el reto**: un DM cifrado (gift-wrap NIP-17) que solo
@@ -443,13 +448,17 @@ snapshots.
 ### Reseñas y logros (NIP-23 / kind:1) · *implementado*
 Reseñas, comentarios y logros cuelgan de la coordenada del juego: un **`kind:1` con
 tag `a`=gameCoord**. Luna Negra ya los lee y muestra; cualquier cliente Nostr
-también.
+también. Del lado del juego **con publicar alcanza** (firmar el `kind:1` y mandarlo a
+los relays): las reseñas aparecen en la ficha de la tienda sin que construyas UI de
+lectura. Solo agregá una vista propia si querés mostrarlas *dentro* del juego.
 
 ### Propinas y premios (zaps NIP-57) · *implementado*
 Para juegos gratis o premiar al ganador: **zap** (NIP-57) firmado por el usuario al
 dev o al ganador. Los recibos (`kind:9735`) verificados alimentan el "top de
 zappers" por juego y por dev. Es NIP-57 estándar; no requiere nada propio de Luna
-Negra.
+Negra. **Alternativa:** si ya cobrás por Lightning con la 1.0, podés dejar los premios
+en la **1.0 REST** (§7 escrow / payout) y saltarte NIP-57 — elegí una sola vía para
+no duplicar el flujo de dinero.
 
 ### Marcador verificado por oráculo (kind:31338) · *diseño*
 Para rankings con dinero: un oráculo (tu game server, o Luna Negra) co-firma una
@@ -461,6 +470,46 @@ Conviven un **tier abierto** (firmado por el jugador, social, falsificable) y un
 
 > Spec completa de la 2.0: `docs/perfil-juego-nostr.md` y
 > `docs/perfil-juego-nostr-salas-invitaciones.md` en el repo de Luna Negra.
+
+### Gotchas de la 2.0 (no repitas estos errores)
+
+Errores reales que costaron horas al integrar la 2.0. Leelos **antes** de publicar
+cualquier evento anclado al juego (presencia, marcador, reseñas):
+
+1. **El `gameCoord` real ≠ un placeholder.** El `a` tag debe ser el coord REAL
+   `30023:<pubkeyDeLaTienda>:<slug>`, no un `30023:tu-juego:tu-juego` inventado.
+   Sacalo de `GET /api/v1/session` (§1) o consultando el `kind:30023` real en relays
+   (`{ kinds:[30023], "#d":["<slug>"] }`). Ojo: el **`slug` no es el nombre visible**
+   del juego (suele diferir). Si el `a` tag no matchea el coord real, **Luna filtra
+   por coord y no encuentra nada — 0 matches, sin ningún error** ("publico presencia
+   pero no me detecta"). Verificá el round-trip: publicá y buscá con el mismo filtro
+   `#a` que usa la tienda.
+2. **No publiques a relays de solo lectura.** Algunos relays son indexadores
+   read-only (p.ej. `relay.nostr.band`) y **rechazan escrituras en silencio**. Mantené
+   una lista de relays de ESCRITURA separada de los de lectura/perfiles, o el evento
+   parece publicado pero no queda en ninguno.
+3. **Cada latido de presencia es una FIRMA.** Con bunker NIP-46 eso dispara un prompt
+   al usuario cada vez. Throttleá: re-firmá solo si **cambió el estado** o pasaron
+   **~2 min**, y sellá el "último publicado" solo en publicación exitosa. El
+   `expiration` debe ser mayor que tu intervalo de heartbeat (latís cada 10s → TTL
+   ~60–240s) o la presencia titila.
+4. **No metas emoji/prefijo en el `content`** si la tienda ya lo antepone: queda
+   duplicado. Publicá el estado "pelado" ("Jugando TETRA") y dejá que el cliente lo
+   decore.
+5. **Leer contactos/perfiles a escala es frágil** (reto NIP-17 o cualquier lista de
+   amigos): (a) leé el `kind:3`/`kind:10002` también de los relays de ESCRITURA del
+   usuario (modelo **outbox**, tags `r`), no solo de tu set fijo; (b) traé los
+   `kind:0` en **lotes (~100)** en paralelo — una sola sub con cientos de autores
+   pierde eventos (~límite 500/sub); (c) **no truncar la lista de follows** por debajo
+   de lo que la gente realmente sigue.
+6. **Lado tienda: aceptá eventos anclados por coord.** Si mantenés Luna, el riel que
+   consume presencia/marcador debe aceptar el evento por su tag `a`=coord (verificando
+   que el coord lo firme tu tienda), **no** exigir una etiqueta privada propia
+   (`l:"luna-negra"`) que solo pone la tienda: la presencia 2.0 la firma el juego y
+   nunca lleva esa etiqueta.
+7. **Los `board`/tablas del `kind:31337` deben coincidir con las del camino REST §6**
+   (mismo nombre y mismas unidades — p.ej. `victorias`, o ms para tiempo) o
+   alimentarán un ranking distinto en vez de fusionarse.
 
 ---
 
