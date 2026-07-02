@@ -27,7 +27,13 @@ export async function GET() {
       _count: { select: { apiKeys: { where: { revokedAt: null } } } },
       games: {
         orderBy: { createdAt: "desc" },
-        select: { id: true, title: true, slug: true, status: true, supportsChallenges: true },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          status: true,
+          manualCaps: true,
+        },
       },
     },
   });
@@ -46,7 +52,10 @@ export async function GET() {
           webhookConfigured: !!p.webhookUrl && !!p.webhookSecret,
           apiKeys: p._count.apiKeys,
         },
-        p.games,
+        p.games.map((g) => ({
+          ...g,
+          manualCaps: (g.manualCaps as Record<string, boolean> | null) ?? null,
+        })),
         byGame,
         nostr,
       );

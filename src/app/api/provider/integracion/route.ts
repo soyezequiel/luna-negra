@@ -24,7 +24,13 @@ export async function GET() {
   const games = await prisma.game.findMany({
     where: { providerId: provider.id },
     orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, slug: true, status: true, supportsChallenges: true },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      status: true,
+      manualCaps: true,
+    },
   });
   const gameIds = games.map((g) => g.id);
   const [byGame, apiKeys, nostr] = await Promise.all([
@@ -43,7 +49,10 @@ export async function GET() {
       webhookConfigured: !!provider.webhookUrl && !!provider.webhookSecret,
       apiKeys,
     },
-    games,
+    games.map((g) => ({
+      ...g,
+      manualCaps: (g.manualCaps as Record<string, boolean> | null) ?? null,
+    })),
     byGame,
     nostr,
   );

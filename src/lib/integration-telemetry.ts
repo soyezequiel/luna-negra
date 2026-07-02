@@ -459,7 +459,9 @@ export type GameRef = {
   title: string;
   slug: string;
   status: string;
-  supportsChallenges: boolean;
+  // Declaración manual de capacidades 2.0 no observables (Game.manualCaps). JSON
+  // { [capKey]: boolean }; ver MANUAL_CAP_KEYS en src/lib/integration-2.ts.
+  manualCaps?: Record<string, boolean> | null;
 };
 
 // Señales de uso de la interfaz 2.0 (Nostr) derivables de la DB, por juego:

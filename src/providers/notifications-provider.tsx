@@ -27,8 +27,6 @@ import {
   inviteHref,
   addPendingInvite,
 } from "@/lib/invite";
-import { fetchChallenges } from "@/lib/game-challenge";
-import { addPendingChallenge, slugFromCoord } from "@/lib/challenge-inbox";
 import {
   joinRoomAndPlay,
   POPUP_BLOCKED_BODY,
@@ -260,56 +258,6 @@ export function NotificationsProvider({
     }
 
     return () => sub.close();
-  }, [user, notify, fireDesktop, nameOf]);
-
-  // Retos 1v1 entrantes (interfaz 2.0, NIP-17). Sondeo periódico: los gift-wraps
-  // van cifrados a mí, así que solo mi cliente los puede abrir. Si el signer no
-  // soporta NIP-44 (p. ej. NIP-46), fetchChallenges lanza y reintentamos luego.
-  useEffect(() => {
-    if (!user) return;
-    const myPubkey = user.pubkey;
-    let stopped = false;
-
-    const poll = async () => {
-      let challenges;
-      try {
-        challenges = await fetchChallenges(myPubkey);
-      } catch {
-        return; // sin NIP-44 / relays caídos: el próximo tick reintenta
-      }
-      for (const ch of challenges) {
-        if (stopped) return;
-        if (seen.current.has(ch.wrapId)) continue;
-        seen.current.add(ch.wrapId);
-        const slug = slugFromCoord(ch.game);
-        if (!slug) continue;
-        const added = addPendingChallenge({
-          fromPubkey: ch.from,
-          game: ch.game,
-          slug,
-          message: ch.message,
-          url: ch.url,
-          wrapId: ch.wrapId,
-          at: Date.now(),
-        });
-        if (!added) continue; // ya estaba anclado o el usuario lo descartó
-        const name = await nameOf(ch.from);
-        const title = `⚔️ ${name} te retó`;
-        const body = ch.message || "Te retó a una partida";
-        const href = `/game/${slug}`;
-        notify({ title, body, href, kind: "play", actionLabel: "Ver reto" });
-        fireDesktop(title, body, href);
-      }
-    };
-
-    void poll();
-    const id = setInterval(() => {
-      if (!stopped) void poll();
-    }, 25_000);
-    return () => {
-      stopped = true;
-      clearInterval(id);
-    };
   }, [user, notify, fireDesktop, nameOf]);
 
   // Muestra como toast una invitación a sala recibida del buzón first-party

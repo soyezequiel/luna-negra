@@ -32,7 +32,7 @@ export const NIP46_RELAYS = [
 const QR_TIMEOUT_MS = 5 * 60_000;
 
 // Kinds que la app llega a firmar — refleja SIGN_KINDS en nostr-social.ts más el
-// kind:13 (seal NIP-17) que firma el reto 1v1 (game-challenge.ts):
+// kind:13 (seal NIP-17, para DMs cifrados / invitaciones 2.0):
 // 1=comentarios/reseñas, 3=contactos NIP-02, 4=DM NIP-04, 13=seal NIP-17,
 // 27235=login, 30315=presencia NIP-38.
 const NIP46_SIGN_KINDS = [1, 3, 4, 13, 27235, 30315];

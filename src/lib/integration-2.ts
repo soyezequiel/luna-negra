@@ -24,15 +24,19 @@ export type Column = "solo-1.0" | "intermedio" | "solo-2.0";
 //   "diseño"       → especificado en la spec, todavía sin código.
 export type TwoZeroImpl = "implementado" | "declarado" | "diseño";
 
-// Señal de uso 2.0 derivable de la DB. "challenge" = flag Game.supportsChallenges
-// (los retos son cifrados, no hay telemetría). "none" = sin señal por juego.
-export type TwoZeroSignal = "scores" | "zaps" | "comments" | "challenge" | "none";
+// Señal de uso 2.0 derivable de la DB. "none" = sin señal por juego (login,
+// presencia, invitaciones: van cifradas o no dejan rastro).
+export type TwoZeroSignal = "scores" | "zaps" | "comments" | "none";
 
 export type TwoZeroSide = {
   label: string; // estándar visible: "kind:31337", "NIP-38", …
   impl: TwoZeroImpl;
   signal: TwoZeroSignal;
   desc: string;
+  // La pata está implementada pero NO deja señal observable por juego (el probador
+  // no puede verificarla): el proveedor declara manualmente si la integró. Se
+  // persiste en Game.manualCaps[key].
+  manual?: boolean;
 };
 
 export type CapabilityRow = {
@@ -91,6 +95,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-07/46",
           impl: "implementado",
           signal: "none",
+          manual: true,
           desc: "El jugador se identifica con su pubkey (NIP-07/46) sin canjear lnToken. Es el login estándar de Luna Negra; no deja rastro por juego.",
         },
       },
@@ -113,6 +118,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-38",
           impl: "implementado",
           signal: "none",
+          manual: true,
           desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego, sin que el game server lo reporte. El riel de amigos lo reconoce por la coordenada (tag `a`).",
         },
       },
@@ -124,7 +130,8 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-29",
           impl: "diseño",
           signal: "none",
-          desc: "Sala con estado compartido como grupo NIP-29. Diseñado; hoy las salas con estado en vivo se hacen por la REST 1.0 (§4).",
+          manual: true,
+          desc: "Sala con estado compartido como grupo NIP-29. No observable desde el server (vive en el relay del grupo): el proveedor declara si la integró. Hoy las salas con estado en vivo se hacen por la REST 1.0 (§4).",
         },
       },
       {
@@ -133,9 +140,10 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         oneZero: ["social"],
         twoZero: {
           label: "NIP-17",
-          impl: "declarado",
-          signal: "challenge",
-          desc: "En la 2.0 la invitación a jugar ES el reto 1v1 por DM cifrado (NIP-17, gift-wrap). Cifrado E2E → el estado refleja la capacidad declarada con el toggle de abajo, no tráfico observado.",
+          impl: "diseño",
+          signal: "none",
+          manual: true,
+          desc: "Invitación general a jugar por DM cifrado (NIP-17, gift-wrap): apunta a la coordenada del juego (y opcionalmente a una sala), sin otorgar acceso. Cifrada E2E → no observable desde el server: el proveedor declara si la integró. Hoy las invitaciones van por la REST 1.0 (§5).",
         },
       },
     ],
@@ -181,3 +189,10 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
     ],
   },
 ];
+
+// Claves de capacidad cuya pata 2.0 se declara manualmente (Game.manualCaps).
+// Derivadas del catálogo: son las que marcamos `manual: true`. Sirve para validar
+// en el server qué claves acepta el PATCH y de allowlist en el cliente.
+export const MANUAL_CAP_KEYS: string[] = INTEGRATION_COLUMNS.flatMap((c) =>
+  c.rows.filter((r) => r.twoZero?.manual).map((r) => r.key),
+);

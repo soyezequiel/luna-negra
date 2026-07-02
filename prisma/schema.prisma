@@ -338,7 +338,11 @@ model Game {
   status             String   @default("draft") // draft | in_review | published
   // Capacidad declarada por el proveedor: este juego soporta retos 1v1 (interfaz
   // 2.0, NIP-17). Solo si es true Luna Negra muestra el botón "Retar" en el juego.
-  supportsChallenges Boolean  @default(false)
+  // Declaración manual de capacidades 2.0 NO observables por el server (login
+  // NIP-07/46, presencia NIP-38): el probador no puede verificarlas, así que el
+  // proveedor declara si las integró. Mapa { [capKey]: boolean }; ver
+  // MANUAL_CAP_KEYS en src/lib/integration-2.ts.
+  manualCaps         Json?
   // Juego en beta: sigue siendo un juego normal (publicado, comprable, jugable y
   // anunciado en Nostr), pero la tienda solo lo muestra a quien activó "ver juegos
   // beta" en su perfil (`User.showBetaGames`), más el dueño y el admin. Es ortogonal

@@ -8,6 +8,7 @@ import { normalizeImageUrl } from "@/lib/game-media";
 import { revalidateCatalog } from "@/lib/store-catalog";
 import { syncGameToNostr } from "@/lib/announce-game";
 import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
+import { MANUAL_CAP_KEYS } from "@/lib/integration-2";
 
 export async function PATCH(
   req: Request,
@@ -52,8 +53,19 @@ export async function PATCH(
         .map((s: string) => (s as string).trim())
         .filter((s: string) => s !== ""),
     );
-  if (typeof body.supportsChallenges === "boolean")
-    data.supportsChallenges = body.supportsChallenges;
+  // Declaración manual de una capacidad 2.0 no observable (login, presencia): se
+  // fusiona sobre el mapa existente. Solo se aceptan claves de MANUAL_CAP_KEYS.
+  if (body.manualCap && typeof body.manualCap === "object") {
+    const { key, value } = body.manualCap as { key?: unknown; value?: unknown };
+    if (typeof key !== "string" || !MANUAL_CAP_KEYS.includes(key)) {
+      return NextResponse.json({ error: "Capacidad no declarable" }, { status: 400 });
+    }
+    const current =
+      owned.game.manualCaps && typeof owned.game.manualCaps === "object"
+        ? (owned.game.manualCaps as Record<string, boolean>)
+        : {};
+    data.manualCaps = { ...current, [key]: !!value };
+  }
   // Override por juego del corte del dev en apuestas: null/"" = usar el default del
   // proveedor. Se acota al tope global (la misma cota se reaplica al crear apuestas).
   if (body.betDevFeePct !== undefined) {

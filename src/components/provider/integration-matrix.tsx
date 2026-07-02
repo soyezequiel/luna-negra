@@ -23,7 +23,8 @@ export type IntegrationView = {
     title: string;
     slug: string;
     status: string;
-    supportsChallenges: boolean;
+    // Declaración manual de capacidades 2.0 no observables (login, presencia).
+    manualCaps?: Record<string, boolean> | null;
     features: Record<string, PingInfo | null>;
     // Señales de uso 2.0 (Nostr): scores | zaps | comments.
     nostr?: Record<string, PingInfo | null> | null;
@@ -122,7 +123,7 @@ function level1For(
 }
 
 // ── Pata 2.0 (Nostr) ──
-type Level2 = "active" | "stale" | "declared" | "available" | "design" | "off";
+type Level2 = "active" | "stale" | "declared" | "available" | "design";
 
 const LEVEL2_STYLE: Record<Level2, { dot: string; chip: string; label: string }> = {
   active: { dot: "bg-ln-aurora", chip: "bg-ln-aurora/15 text-ln-aurora", label: "En uso" },
@@ -130,24 +131,127 @@ const LEVEL2_STYLE: Record<Level2, { dot: string; chip: string; label: string }>
   declared: { dot: "bg-blue", chip: "bg-blue/15 text-blue", label: "Declarado" },
   available: { dot: "bg-blue/40", chip: "bg-blue/10 text-blue", label: "Disponible" },
   design: { dot: "bg-white/15", chip: "bg-white/5 text-ln-faint", label: "Diseño" },
-  off: { dot: "bg-white/15", chip: "bg-white/5 text-ln-faint", label: "No declarado" },
 };
 
+// `declared` = capacidad declarada manualmente por el proveedor (patas `manual`:
+// login, presencia) desde Game.manualCaps[key]. Ver declaredFor().
 function level2For(
   side: TwoZeroSide,
   ev: PingInfo | null,
-  supportsChallenges: boolean,
+  declared: boolean,
 ): Level2 {
-  if (side.signal === "challenge") return supportsChallenges ? "declared" : "off";
   if (ev) return isRecent(ev.lastSeenAt) ? "active" : "stale";
+  // Pata implementada pero no observable (login, presencia): manda la declaración.
+  if (side.manual) return declared ? "declared" : "available";
   if (side.impl === "diseño") return "design";
-  return "available"; // implementado, sin señal por juego (login, reseñas sin datos)
+  return "available"; // implementado, sin señal por juego (reseñas sin datos)
+}
+
+// ¿El proveedor declaró integrada la pata 2.0 (manual) de esta capacidad?
+function declaredFor(
+  row: CapabilityRow,
+  manualCaps: Record<string, boolean> | null | undefined,
+): boolean {
+  const side = row.twoZero;
+  if (!side || !side.manual) return false;
+  return !!manualCaps?.[row.key];
 }
 
 // Un badge cuenta como "integrado" para el contador del juego si está vivo o
 // declarado (no si es solo diseño / disponible-sin-uso / no declarado).
 const LIVE1 = new Set<Level1>(["active", "stale", "configured"]);
 const LIVE2 = new Set<Level2>(["active", "stale", "declared"]);
+
+// ¿Esta capacidad está integrada por el juego? (misma definición que usa el
+// contador "X/11 capacidades": alguna de sus patas cuenta como viva/declarada).
+// Fuente única para el contador y para el acento visual de cada tarjeta.
+function isRowLive(
+  row: CapabilityRow,
+  game: IntegrationView["games"][number],
+  providerLevel: Record<string, PingInfo | null>,
+  webhookConfigured: boolean,
+  manualCaps: Record<string, boolean> | null | undefined,
+): boolean {
+  if (row.oneZero.length) {
+    const ping1 = oneZeroPing(row, game, providerLevel);
+    if (LIVE1.has(level1For(row, ping1, webhookConfigured))) return true;
+  }
+  const side = row.twoZero;
+  if (side) {
+    const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
+    if (LIVE2.has(level2For(side, ev, declaredFor(row, manualCaps)))) return true;
+  }
+  return false;
+}
+
+// Estado de la pata 2.0 desde la óptica de MIGRACIÓN (no solo "vive o no"):
+//   "live"      → ya adoptada (en uso / declarada).
+//   "adoptable" → implementada en la plataforma, sin adoptar por el juego (podés pasarte).
+//   "design"    → todavía en spec, no se puede adoptar.
+//   "none"      → esta capacidad no tiene equivalente 2.0 (solo-1.0).
+function leg2State(
+  side: TwoZeroSide | null,
+  ev: PingInfo | null,
+  declared: boolean,
+): "live" | "adoptable" | "design" | "none" {
+  if (!side) return "none";
+  const lvl = level2For(side, ev, declared);
+  if (LIVE2.has(lvl)) return "live";
+  if (lvl === "design") return "design";
+  return "adoptable"; // available | off (p. ej. reto NIP-17 sin declarar)
+}
+
+// Semáforo por tarjeta pensado para quien está pasando de la 1.0 a la 2.0.
+//   on2   → 2.0 adoptada.        migrate/adopt → 2.0 disponible/declarable sin adoptar.
+//   on1   → integrada, sin 2.0 (solo-1.0).
+//   off   → nada integrado.
+type TileKind = "on2" | "migrate" | "adopt" | "on1" | "off";
+
+const TILE_PRES: Record<
+  TileKind,
+  { ring: string; chip: string; dot: string; label: string }
+> = {
+  on2: {
+    ring: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
+    chip: "bg-ln-aurora/15 text-ln-aurora",
+    dot: "bg-ln-aurora",
+    label: "En 2.0",
+  },
+  on1: {
+    ring: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
+    chip: "bg-ln-aurora/15 text-ln-aurora",
+    dot: "bg-ln-aurora",
+    label: "Integrado",
+  },
+  migrate: {
+    ring: "border-ln-corona/50 bg-ln-corona/[0.07]",
+    chip: "bg-ln-corona/20 text-ln-corona",
+    dot: "bg-ln-corona",
+    label: "Pasá a 2.0",
+  },
+  adopt: {
+    ring: "border-ln-corona/40 bg-ln-corona/[0.05]",
+    chip: "bg-ln-corona/15 text-ln-corona",
+    dot: "bg-ln-corona",
+    label: "Disponible 2.0",
+  },
+  off: {
+    ring: "border-ln-border/50 bg-ln-card/15 opacity-70",
+    chip: "bg-white/5 text-ln-faint",
+    dot: "bg-white/25",
+    label: "No integrado",
+  },
+};
+
+// Deriva el estado de migración de una tarjeta cruzando su pata 1.0 (¿integrada?)
+// con el estado de adopción de su pata 2.0.
+function tileKind(leg1Live: boolean, s2: ReturnType<typeof leg2State>): TileKind {
+  if (s2 === "live") return "on2";
+  if (s2 === "adoptable") return leg1Live ? "migrate" : "adopt";
+  // "design" (no declarable, p. ej. oráculo) o "none" (solo-1.0): no hay 2.0 que
+  // adoptar hoy → solo importa si la 1.0 corre.
+  return leg1Live ? "on1" : "off";
+}
 
 function Badge1({ level, ping, probe }: { level: Level1; ping: PingInfo | null; probe?: ProbeResult }) {
   const s = LEVEL1_STYLE[level];
@@ -220,9 +324,9 @@ function CapabilityTile({
   probe,
   nostrProbe,
   editable,
-  challenges,
+  manualCaps,
   saving,
-  onToggleChallenges,
+  onToggleManual,
 }: {
   row: CapabilityRow;
   game: IntegrationView["games"][number];
@@ -231,9 +335,9 @@ function CapabilityTile({
   probe?: Record<string, ProbeResult>;
   nostrProbe?: Record<string, NostrProbeResult>;
   editable?: boolean;
-  challenges: boolean;
+  manualCaps: Record<string, boolean> | null | undefined;
   saving: boolean;
-  onToggleChallenges: (next: boolean) => void;
+  onToggleManual: (key: string, next: boolean) => void;
 }) {
   const ping1 = row.oneZero.length ? oneZeroPing(row, game, providerLevel) : null;
   const lvl1 = row.oneZero.length ? level1For(row, ping1, webhookConfigured) : null;
@@ -241,34 +345,61 @@ function CapabilityTile({
   const probeHit = row.oneZero.map((k) => probe?.[k]).find(Boolean);
 
   const side = row.twoZero;
-  const ev = side && side.signal !== "challenge" && side.signal !== "none"
-    ? game.nostr?.[side.signal] ?? null
-    : null;
-  const lvl2 = side ? level2For(side, ev, challenges) : null;
-  // El toggle "declarar soporte de retos 1v1" vive en la fila "Invitaciones y
-  // amigos" (su pata 2.0 es el reto NIP-17, gobernado por supportsChallenges).
-  const isRetoToggle = row.key === "invitaciones";
+  const ev =
+    side && side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
+  // ¿Declaró integrada la pata 2.0? (login/presencia → manualCaps). Manda la
+  // declaración cuando la capacidad no es observable por el probador.
+  const declared = declaredFor(row, manualCaps);
+  const lvl2 = side ? level2For(side, ev, declared) : null;
+
+  // Capacidades declarables manualmente (el probador no las puede verificar):
+  // login/presencia (side.manual) → Game.manualCaps[key].
+  const isManualToggle = !!side?.manual;
+  const toggleLabel =
+    row.key === "identidad"
+      ? "Declaro que integré el login Nostr (NIP-07/46)"
+      : row.key === "presencia"
+        ? "Declaro que uso la presencia en vivo (NIP-38)"
+        : row.key === "salas"
+          ? "Declaro que integré salas Nostr (NIP-29)"
+          : row.key === "invitaciones"
+            ? "Declaro que integré invitaciones Nostr (NIP-17)"
+            : `Declaro que integré ${side?.label ?? "esta capacidad"}`;
+
+  // Estado de un vistazo desde la óptica de migración 1.0 → 2.0.
+  const leg1Live = lvl1 != null && LIVE1.has(lvl1);
+  const kind = tileKind(leg1Live, leg2State(side, ev, declared));
+  const pres = TILE_PRES[kind];
 
   return (
-    <div className="rounded-ln-md border border-ln-border bg-ln-card/40 p-2.5">
-      <p className="text-[12px] font-semibold leading-snug text-ln-text">{row.title}</p>
+    <div className={cn("rounded-ln-md border p-2.5 transition-colors", pres.ring)}>
+      <div className="flex items-start justify-between gap-1.5">
+        <p className="text-[12px] font-semibold leading-snug text-ln-text">{row.title}</p>
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide",
+            pres.chip,
+          )}
+        >
+          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", pres.dot)} />
+          {pres.label}
+        </span>
+      </div>
       <div className="mt-2 flex flex-col gap-1.5">
         {lvl1 ? <Badge1 level={lvl1} ping={ping1} probe={probeHit} /> : null}
         {side && lvl2 ? <Badge2 side={side} level={lvl2} ev={ev} /> : null}
         {side && nostrProbe?.[row.key] ? <Probe2Chip r={nostrProbe[row.key]} /> : null}
-        {isRetoToggle ? (
-          editable ? (
-            <label className="mt-0.5 inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-ln-muted">
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 accent-ln-aurora"
-                checked={challenges}
-                disabled={saving}
-                onChange={(e) => onToggleChallenges(e.target.checked)}
-              />
-              {saving ? "Guardando…" : "Declarar soporte de retos 1v1 (NIP-17)"}
-            </label>
-          ) : null
+        {editable && isManualToggle ? (
+          <label className="mt-0.5 inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-ln-muted">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-ln-aurora"
+              checked={declared}
+              disabled={saving}
+              onChange={(e) => onToggleManual(row.key, e.target.checked)}
+            />
+            {saving ? "Guardando…" : toggleLabel}
+          </label>
         ) : null}
       </div>
     </div>
@@ -291,20 +422,23 @@ export function GameIntegrationCard({
   /** Solo el proveedor dueño puede togglear capacidades; admin lo ve read-only. */
   editable?: boolean;
 }) {
-  const [challenges, setChallenges] = useState(game.supportsChallenges);
+  const [manualCaps, setManualCaps] = useState<Record<string, boolean>>(
+    game.manualCaps ?? {},
+  );
   const [saving, setSaving] = useState(false);
-  async function toggleChallenges(next: boolean) {
-    setChallenges(next); // optimista
+  // Declara/desmarca una capacidad 2.0 no observable (login, presencia).
+  async function toggleManual(key: string, next: boolean) {
+    setManualCaps((m) => ({ ...m, [key]: next })); // optimista
     setSaving(true);
     try {
       const r = await fetch(`/api/provider/games/${game.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supportsChallenges: next }),
+        body: JSON.stringify({ manualCap: { key, value: next } }),
       });
       if (!r.ok) throw new Error();
     } catch {
-      setChallenges(!next); // revertir si falló
+      setManualCaps((m) => ({ ...m, [key]: !next })); // revertir si falló
     } finally {
       setSaving(false);
     }
@@ -312,27 +446,36 @@ export function GameIntegrationCard({
 
   // Capacidades "vivas" (en uso/declaradas) sobre el total del catálogo de 3 columnas.
   const rows = INTEGRATION_COLUMNS.flatMap((c) => c.rows);
-  const live = rows.filter((row) => {
-    const ping1 = row.oneZero.length ? oneZeroPing(row, game, providerLevel) : null;
-    if (row.oneZero.length && LIVE1.has(level1For(row, ping1, webhookConfigured))) return true;
-    const side = row.twoZero;
-    if (side) {
-      const ev =
-        side.signal !== "challenge" && side.signal !== "none"
-          ? game.nostr?.[side.signal] ?? null
-          : null;
-      if (LIVE2.has(level2For(side, ev, challenges))) return true;
-    }
-    return false;
+  const live = rows.filter((row) =>
+    isRowLive(row, game, providerLevel, webhookConfigured, manualCaps),
+  ).length;
+
+  // Progreso de migración: de las capacidades con camino 2.0, ¿cuántas ya están en Nostr?
+  const with2 = rows.filter((r) => r.twoZero);
+  const on2 = with2.filter((row) => {
+    const side = row.twoZero!;
+    const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
+    return leg2State(side, ev, declaredFor(row, manualCaps)) === "live";
   }).length;
 
   return (
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ln-text">{game.title}</p>
-        <span className="text-[11px] text-ln-muted">
-          {live}/{rows.length} capacidades
-        </span>
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5" title="Capacidades con camino 2.0 ya migradas a Nostr">
+            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-ln-aurora transition-all"
+                style={{ width: `${Math.round((on2 / with2.length) * 100)}%` }}
+              />
+            </div>
+            <span className="text-[11px] text-ln-muted">
+              <span className="font-semibold text-ln-text">{on2}</span> de {with2.length} en 2.0
+            </span>
+          </div>
+          <span className="text-[11px] text-ln-faint">· {live}/{rows.length} integradas</span>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -351,9 +494,9 @@ export function GameIntegrationCard({
                   probe={probe}
                   nostrProbe={nostrProbe}
                   editable={editable}
-                  challenges={challenges}
+                  manualCaps={manualCaps}
                   saving={saving}
-                  onToggleChallenges={toggleChallenges}
+                  onToggleManual={toggleManual}
                 />
               ))}
             </div>
@@ -361,10 +504,29 @@ export function GameIntegrationCard({
         ))}
       </div>
 
-      <p className="mt-3 text-[10.5px] leading-snug text-ln-faint">
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-ln-faint">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
+          <strong className="font-semibold text-ln-aurora">En 2.0</strong> · ya en Nostr
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-corona" />
+          <strong className="font-semibold text-ln-corona">Pasá a 2.0</strong> · corre en 1.0, falta migrar
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
+          <strong className="font-semibold text-ln-aurora">Integrado</strong> · solo-1.0, sin 2.0 que migrar
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/25" />
+          No integrado todavía
+        </span>
+      </div>
+      <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
         Columna del medio = misma necesidad por dos caminos (REST 1.0 ⇆ eventos Nostr 2.0).
-        La 2.0 es experimental y no prometida; lo garantizado hoy es la 1.0 (§1–§8). Los retos
-        van cifrados E2E, así que su estado es la capacidad <em>declarada</em>, no tráfico observado.
+        La 2.0 es experimental y no prometida; lo garantizado hoy es la 1.0 (§1–§8). El
+        <em> «no probable»</em> es solo de la pata 2.0 (login/presencia/diseño): no se puede
+        verificar desde el server, no que falte la 1.0.
       </p>
     </div>
   );

@@ -35,7 +35,7 @@ const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
 // Filas 2.0 que NO se pueden probar en vivo, con el porqué (siempre se reportan
 // como `skipped` para que la UI lo explique en vez de mostrar un falso fallo).
 const UNPROBEABLE: Array<{ key: string; reason: string }> = [
-  { key: "invitaciones", reason: "Las invitaciones 2.0 son retos NIP-17 cifrados E2E: no observables desde el server." },
+  { key: "invitaciones", reason: "Las invitaciones 2.0 son DMs NIP-17 cifrados E2E: no observables desde el server." },
   { key: "identidad", reason: "El login NIP-07/46 no deja un evento por juego que consultar." },
   { key: "salas", reason: "Las salas con estado (NIP-29) no se anclan a la coordenada del juego." },
 ];
