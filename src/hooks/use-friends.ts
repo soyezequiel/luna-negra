@@ -44,6 +44,12 @@ type Known = {
 // volver, mientras se refresca en segundo plano desde los relays. ---
 const cacheKey = (pubkey: string) => `friends:${pubkey}`;
 
+// Cadencia del poll de estados NIP-38. El juego re-publica su presencia cada
+// ~120s (TTL 240s), así que 30s da una detección de ~medio minuto en el peor
+// caso sin castigar los relays (una query por tick, sólo si la pestaña está
+// visible y hay contactos cargados).
+const STATUS_POLL_MS = 30_000;
+
 function readCache(pubkey: string): Friend[] | null {
   try {
     const raw = localStorage.getItem(cacheKey(pubkey));
@@ -128,10 +134,13 @@ export function useFriendsData(): FriendsValue {
   const [refreshing, setRefreshing] = useState(false);
   const loadingRef = useRef(false);
   const lastLoadRef = useRef(0);
+  // Contactos de la última carga completa, para el poll liviano de estados.
+  const contactsRef = useRef<string[]>([]);
 
   const load = useCallback(async () => {
     if (!user) {
       setFriends(null);
+      contactsRef.current = [];
       return;
     }
     if (loadingRef.current) return;
@@ -151,9 +160,11 @@ export function useFriendsData(): FriendsValue {
       if (rawContacts.length === 0) {
         setFriends([]);
         writeCache(user.pubkey, []);
+        contactsRef.current = [];
         return;
       }
       const contacts = clampContacts(rawContacts);
+      contactsRef.current = contacts;
 
       const cachedByPk = new Map((cached ?? []).map((f) => [f.pubkey, f]));
       let list: Friend[] = contacts.map((pk) => {
@@ -224,6 +235,31 @@ export function useFriendsData(): FriendsValue {
       cancelled = true;
     };
   }, [load]);
+
+  // Poll liviano de estados NIP-38: la presencia "jugando" cambia mucho más
+  // rápido que la lista de amigos, y sin esto el riel sólo se enteraba al montar
+  // o al volver el foco (throttle 60s) — un amigo que abría el juego tardaba
+  // minutos en aparecer como jugando. Consulta SOLO kind:30315 de los contactos
+  // ya cargados (una query a relays); no re-descarga contactos ni perfiles.
+  useEffect(() => {
+    if (!user) return;
+    const tick = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (loadingRef.current) return;
+      const contacts = contactsRef.current;
+      if (contacts.length === 0) return;
+      try {
+        const statuses = await fetchStatuses(contacts);
+        setFriends((prev) =>
+          prev ? sortFriends(applyFreshStatuses(prev, statuses)) : prev,
+        );
+      } catch {
+        /* best-effort: el próximo tick o el refresco por foco lo cubren */
+      }
+    };
+    const id = window.setInterval(() => void tick(), STATUS_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [user]);
 
   // Refresco al volver a la pestaña (p. ej. después de seguir a alguien en otro
   // cliente), con throttle para no golpear los relays en cada alt-tab.
