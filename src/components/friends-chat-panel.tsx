@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useDmThread } from "@/hooks/use-dm-thread";
-import { parseInvite, type Invite } from "@/lib/invite";
+import { parseInvite, latestJoinableInviteId, type Invite } from "@/lib/invite";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDayLabel, formatTime, sameDay } from "@/lib/format-chat";
 import { cn } from "@/lib/utils";
@@ -77,13 +77,11 @@ export function FriendsChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // La última invitación recibida es la única válida (las previas quedan superadas).
-  const latestInviteId = useMemo(() => {
-    let id: string | null = null;
-    for (const m of messages ?? []) {
-      if (!m.fromMe && parseInvite(m.text)) id = m.id;
-    }
-    return id;
-  }, [messages]);
+  // Cubre invitaciones NIP-04 (link en el texto) y retos NIP-17 (gameUrl).
+  const latestInviteId = useMemo(
+    () => latestJoinableInviteId(messages ?? []),
+    [messages],
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -114,7 +112,7 @@ export function FriendsChatPanel({
               className="h-1.5 w-1.5 rounded-full"
               style={{ background: online ? "var(--online)" : "var(--faint)" }}
             />
-            {presence || (online ? "en línea" : "desconectado")}
+            {presence || (online ? "conectado" : "desconectado")}
           </p>
         </div>
         {canInvite ? (
@@ -180,17 +178,24 @@ export function FriendsChatPanel({
                       </div>
                     ) : m.gameUrl ? (
                       // Reto NIP-17: el link de sala vive en el tag `url` del rumor.
-                      // Abre el juego en la sala del reto (pestaña nueva, externa).
+                      // Solo el reto más nuevo de este usuario ofrece entrar; los
+                      // anteriores quedan superados (la partida vieja ya no vale).
                       <div className="flex flex-col gap-2">
                         <span>{m.text}</span>
-                        <a
-                          href={m.gameUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
-                        >
-                          🎮 Unirse a la partida
-                        </a>
+                        {!m.fromMe && m.id !== latestInviteId ? (
+                          <span className="self-start rounded-sm bg-white/5 px-2.5 py-1 text-xs text-faint line-through">
+                            Reto reemplazado por uno más nuevo
+                          </span>
+                        ) : (
+                          <a
+                            href={m.gameUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
+                          >
+                            🎮 Unirse a la partida
+                          </a>
+                        )}
                       </div>
                     ) : (
                       m.text

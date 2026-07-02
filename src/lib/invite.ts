@@ -49,6 +49,22 @@ export function inviteHref({ slug, roomId }: Invite): string {
   return `/game/${slug}?room=${encodeURIComponent(roomId)}`;
 }
 
+/**
+ * Id del último mensaje RECIBIDO que es una invitación válida (invitación a sala
+ * NIP-04 en el texto, o reto NIP-17 con `gameUrl`), sobre un hilo ordenado
+ * ascendente por fecha. Solo esa —la más nueva del interlocutor— debe ofrecer
+ * "entrar"; las anteriores quedan superadas. Devuelve null si no hay ninguna.
+ */
+export function latestJoinableInviteId(
+  messages: { id: string; fromMe: boolean; text: string; gameUrl?: string }[],
+): string | null {
+  let id: string | null = null;
+  for (const m of messages) {
+    if (!m.fromMe && (parseInvite(m.text) || m.gameUrl)) id = m.id;
+  }
+  return id;
+}
+
 // --- Sala activa (la que el host creó y tiene abierta) ---
 // Se guarda en localStorage para que otras páginas (p. ej. /friends) puedan
 // invitar a esa sala. Expira igual que la presencia NIP-38 (1h).

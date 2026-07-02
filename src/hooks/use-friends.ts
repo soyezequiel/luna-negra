@@ -28,6 +28,14 @@ export type Friend = {
   isMember: boolean;
   games: { slug: string; title: string }[];
   status?: Status;
+  /**
+   * El servidor lo ve activo ahora (respuesta de /api/users/online): tiene la web
+   * abierta (`StorePresence`) o está jugando algún juego detectado por la API
+   * (`GamePresence`, sobrevive con la tienda cerrada). Efímero como `status`: no se
+   * persiste en el caché de localStorage. "Conectado" = status (jugando vía NIP-38)
+   * o esto.
+   */
+  onlineInStore?: boolean;
   /** Última vez que jugó en Luna Negra (epoch ms) o null si nunca. */
   lastPlayedAt: number | null;
 };
@@ -76,6 +84,7 @@ export function stripVolatileStatuses(friends: Friend[]): Friend[] {
   return friends.map((friend) => {
     const cached = { ...friend };
     delete cached.status;
+    delete cached.onlineInStore;
     return cached;
   });
 }
@@ -88,6 +97,32 @@ export function applyFreshStatuses(
     ...friend,
     status: statuses[friend.pubkey],
   }));
+}
+
+/** Marca `onlineInStore` según el set de pubkeys con la tienda abierta ahora. */
+export function applyOnlineInStore(
+  friends: Friend[],
+  online: Set<string>,
+): Friend[] {
+  return friends.map((friend) => ({
+    ...friend,
+    onlineInStore: online.has(friend.pubkey),
+  }));
+}
+
+/** Consulta a /api/users/online: de los contactos, cuáles tienen la web abierta. */
+async function fetchOnlineInStore(contacts: string[]): Promise<Set<string>> {
+  try {
+    const res = await fetch("/api/users/online", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pubkeys: contacts }),
+    });
+    const data = await res.json();
+    return new Set<string>(Array.isArray(data.online) ? data.online : []);
+  } catch {
+    return new Set<string>();
+  }
 }
 
 function sortFriends(list: Friend[]): Friend[] {
@@ -218,8 +253,11 @@ export function useFriendsData(): FriendsValue {
             };
           });
         });
+      const pOnline = fetchOnlineInStore(contacts).then((online) => {
+        merge((f) => ({ ...f, onlineInStore: online.has(f.pubkey) }));
+      });
 
-      await Promise.allSettled([pProfiles, pStatuses, pKnown]);
+      await Promise.allSettled([pProfiles, pStatuses, pKnown, pOnline]);
     } finally {
       loadingRef.current = false;
       setRefreshing(false);
@@ -249,9 +287,16 @@ export function useFriendsData(): FriendsValue {
       const contacts = contactsRef.current;
       if (contacts.length === 0) return;
       try {
-        const statuses = await fetchStatuses(contacts);
+        // "Jugando" (NIP-38) y "conectado" (web abierta) se refrescan a la misma
+        // cadencia. Ninguno reordena la lista (sortFriends sólo mira "jugando").
+        const [statuses, online] = await Promise.all([
+          fetchStatuses(contacts),
+          fetchOnlineInStore(contacts),
+        ]);
         setFriends((prev) =>
-          prev ? sortFriends(applyFreshStatuses(prev, statuses)) : prev,
+          prev
+            ? sortFriends(applyOnlineInStore(applyFreshStatuses(prev, statuses), online))
+            : prev,
         );
       } catch {
         /* best-effort: el próximo tick o el refresco por foco lo cubren */

@@ -320,16 +320,24 @@ export default function FriendsPage() {
               </p>
             ) : (
           <ul className="space-y-2">
-            {shown.map((f) => (
+            {shown.map((f) => {
+              const online = Boolean(f.status) || Boolean(f.onlineInStore);
+              return (
               <li
                 key={f.pubkey}
                 className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3"
               >
-                <Avatar
-                  src={f.profile?.picture}
-                  seed={profileName(f.profile, shortId(f.npub))}
-                  className="h-10 w-10 shrink-0"
-                />
+                <span className="relative shrink-0">
+                  <Avatar
+                    src={f.profile?.picture}
+                    seed={profileName(f.profile, shortId(f.npub))}
+                    className="h-10 w-10"
+                  />
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg-1"
+                    style={{ background: online ? "var(--online)" : "var(--faint)" }}
+                  />
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium">
@@ -355,6 +363,8 @@ export default function FriendsPage() {
                         </button>
                       ) : null}
                     </div>
+                  ) : f.onlineInStore ? (
+                    <p className="truncate text-xs text-faint">conectado</p>
                   ) : null}
                   {f.games.length > 0 ? (
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -396,7 +406,8 @@ export default function FriendsPage() {
                   </Link>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
             );
           })()}

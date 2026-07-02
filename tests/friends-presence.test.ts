@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyFreshStatuses,
+  applyOnlineInStore,
   stripVolatileStatuses,
   type Friend,
 } from "@/hooks/use-friends";
@@ -47,10 +48,39 @@ describe("friend presence cache", () => {
     expect(cached[0].status).toBeUndefined();
   });
 
+  it("does not persist volatile store presence in the friends cache", () => {
+    const [cached] = stripVolatileStatuses([
+      { ...friend("a"), onlineInStore: true },
+    ]);
+
+    expect(cached.onlineInStore).toBeUndefined();
+  });
+
   it("clears old status when the fresh status result has no entry", () => {
     const [updated] = applyFreshStatuses([friend("a")], {});
 
     expect(updated.status).toBeUndefined();
+  });
+});
+
+describe("store presence (web abierta)", () => {
+  it("marks online only the friends in the set", () => {
+    const [a, b] = applyOnlineInStore(
+      [friend("a"), friend("b")],
+      new Set(["a"]),
+    );
+
+    expect(a.onlineInStore).toBe(true);
+    expect(b.onlineInStore).toBe(false);
+  });
+
+  it("clears store presence when the friend drops out of the set", () => {
+    const [updated] = applyOnlineInStore(
+      [{ ...friend("a"), onlineInStore: true }],
+      new Set<string>(),
+    );
+
+    expect(updated.onlineInStore).toBe(false);
   });
 });
 

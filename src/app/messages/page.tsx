@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
-import { parseInvite, type Invite } from "@/lib/invite";
+import { parseInvite, latestJoinableInviteId, type Invite } from "@/lib/invite";
 import {
   joinRoomAndPlay,
   POPUP_BLOCKED_BODY,
@@ -145,13 +145,9 @@ export default function MessagesPage() {
   // Solo la última invitación recibida en este chat es válida; las anteriores
   // quedan invalidadas. El hilo está ordenado ascendente, así que la última que
   // coincide es la más nueva. (Se aplica a las recibidas, no a las que envié yo.)
-  const latestInviteId = useMemo(() => {
-    let id: string | null = null;
-    for (const m of thread) {
-      if (!m.fromMe && parseInvite(m.text)) id = m.id;
-    }
-    return id;
-  }, [thread]);
+  // Invitación NIP-04 (link en el texto) o reto NIP-17 (gameUrl): solo la más nueva
+  // de este usuario sigue siendo válida para entrar.
+  const latestInviteId = useMemo(() => latestJoinableInviteId(thread), [thread]);
 
   async function send() {
     if (!selected || !text.trim()) return;
@@ -281,17 +277,24 @@ export default function MessagesPage() {
                           </div>
                         ) : m.gameUrl ? (
                           // Reto NIP-17: el link de sala vive en el tag `url` del
-                          // rumor. Abre el juego en la sala (pestaña nueva, externa).
+                          // rumor. Solo el reto más nuevo de este usuario deja entrar;
+                          // los anteriores quedan superados.
                           <div className="flex flex-col gap-2">
                             <span>{m.text}</span>
-                            <a
-                              href={m.gameUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="self-start rounded-sm bg-green/20 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/30"
-                            >
-                              🎮 Unirse a la partida
-                            </a>
+                            {!m.fromMe && m.id !== latestInviteId ? (
+                              <span className="self-start rounded-sm bg-white/5 px-3 py-1.5 text-xs font-medium text-faint line-through">
+                                Reto reemplazado por uno más nuevo
+                              </span>
+                            ) : (
+                              <a
+                                href={m.gameUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="self-start rounded-sm bg-green/20 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/30"
+                              >
+                                🎮 Unirse a la partida
+                              </a>
+                            )}
                           </div>
                         ) : (
                           m.text

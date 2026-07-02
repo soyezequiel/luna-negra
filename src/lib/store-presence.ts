@@ -27,3 +27,17 @@ export async function recordStorePresence(pubkey: string, npub: string): Promise
     create: { pubkey, npub, expiresAt },
   });
 }
+
+/**
+ * De un conjunto de pubkeys, los que tienen Luna Negra abierta ahora (presencia
+ * no vencida). "Conectado" para la lista de amigos = tener la web abierta, esté
+ * jugando o no (distinto de la presencia NIP-38 "jugando X").
+ */
+export async function onlinePubkeys(pubkeys: string[]): Promise<string[]> {
+  if (pubkeys.length === 0) return [];
+  const rows = await prisma.storePresence.findMany({
+    where: { pubkey: { in: pubkeys }, expiresAt: { gt: new Date() } },
+    select: { pubkey: true },
+  });
+  return rows.map((r) => r.pubkey);
+}

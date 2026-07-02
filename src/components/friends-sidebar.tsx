@@ -561,7 +561,10 @@ export function FriendsSidebar() {
                   const name = profileName(f.profile, shortId(f.npub));
                   const invite = roomInvite(f.status);
                   const pending = inviteByPk.get(f.pubkey);
-                  const online = Boolean(f.status);
+                  // "Conectado" = jugando (NIP-38) o con la web abierta
+                  // (StorePresence). El OR cubre al jugador que tiene sólo la
+                  // ventana del juego abierta y no la de la tienda.
+                  const online = Boolean(f.status) || Boolean(f.onlineInStore);
                   return (
                     <li
                       key={f.pubkey}
@@ -614,6 +617,10 @@ export function FriendsSidebar() {
                             {f.status ? (
                               <span className="block truncate text-[11px] text-green">
                                 🎮 {f.status.content}
+                              </span>
+                            ) : f.onlineInStore ? (
+                              <span className="block truncate text-[11px] text-faint">
+                                conectado
                               </span>
                             ) : null}
                           </span>

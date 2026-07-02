@@ -140,6 +140,28 @@ export async function getOwnPresence(
   };
 }
 
+/**
+ * De un set de pubkeys, cuáles el servidor detecta jugando AHORA en cualquier
+ * juego del catálogo (presencia `GamePresence` vigente, reportada por el juego vía
+ * `POST /api/v1/presence`). A diferencia del estado NIP-38 —que sólo publica la
+ * pestaña de la tienda mientras está abierta y expira al cerrarla—, esta señal
+ * sobrevive con la tienda cerrada, así que sirve para marcar "conectado" a quien
+ * está jugando aunque no tenga la web abierta. `GamePresence` se llavea por npub;
+ * mapeamos ida y vuelta para responder en pubkeys.
+ */
+export async function playingPubkeys(pubkeys: string[]): Promise<string[]> {
+  if (pubkeys.length === 0) return [];
+  const npubToPk = new Map(pubkeys.map((pk) => [npubOf(pk), pk]));
+  const rows = await prisma.gamePresence.findMany({
+    where: { npub: { in: [...npubToPk.keys()] }, expiresAt: { gt: new Date() } },
+    select: { npub: true },
+    distinct: ["npub"],
+  });
+  return rows
+    .map((r) => npubToPk.get(r.npub))
+    .filter((pk): pk is string => Boolean(pk));
+}
+
 const RANK: Record<Presence, number> = { "in-game": 0, online: 1, offline: 2 };
 
 /**
