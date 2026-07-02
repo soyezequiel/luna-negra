@@ -29,6 +29,19 @@ export async function recordStorePresence(pubkey: string, npub: string): Promise
 }
 
 /**
+ * Marca al usuario offline YA: vence su presencia sin esperar al TTL. Lo llama el
+ * beacon de cierre de pestaña (`pagehide` → sendBeacon) para que los amigos lo
+ * vean desconectarse casi en vivo, en vez de arrastrar el heartbeat hasta ~75s.
+ * Best-effort: si no había fila, no hace nada.
+ */
+export async function clearStorePresence(pubkey: string): Promise<void> {
+  await prisma.storePresence.updateMany({
+    where: { pubkey },
+    data: { expiresAt: new Date() },
+  });
+}
+
+/**
  * De un conjunto de pubkeys, los que tienen Luna Negra abierta ahora (presencia
  * no vencida). "Conectado" para la lista de amigos = tener la web abierta, esté
  * jugando o no (distinto de la presencia NIP-38 "jugando X").

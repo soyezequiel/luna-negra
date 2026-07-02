@@ -6,6 +6,7 @@ import {
   type Friend,
 } from "@/hooks/use-friends";
 import {
+  isLingeringPlayingStatus,
   selectFreshStatuses,
   STATUS_FALLBACK_TTL_SECONDS,
 } from "@/lib/nostr-social";
@@ -213,6 +214,72 @@ describe("NIP-38 presence freshness", () => {
 
     expect(result.a).toBeUndefined();
   });
+});
+
+describe("isLingeringPlayingStatus (limpieza de presencia colgada)", () => {
+  const now = 1_000;
+
+  it("flags a still-valid Luna Negra playing status as lingering", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      tags: [
+        ["d", "general"],
+        ["l", "luna-negra"],
+        ["r", "https://luna/game/tetra"],
+        ["expiration", String(now + 60)],
+      ],
+    });
+
+    expect(isLingeringPlayingStatus(ev, null, now)).toBe(true);
+  });
+
+  it("does NOT flag an expired playing status (already invisible)", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 200,
+      tags: [
+        ["d", "general"],
+        ["l", "luna-negra"],
+        ["expiration", String(now - 1)],
+      ],
+    });
+
+    expect(isLingeringPlayingStatus(ev, null, now)).toBe(false);
+  });
+
+  it("does NOT flag a free-text manual status (no expiration/r, not 'Jugando …')", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "En una reunión",
+      tags: [
+        ["d", "general"],
+        ["l", "luna-negra"],
+      ],
+    });
+
+    expect(isLingeringPlayingStatus(ev, null, now)).toBe(false);
+  });
+
+  it("does NOT flag a foreign status without the Luna Negra label/coord", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "Jugando otra cosa en Luna Negra",
+      tags: [["d", "general"]],
+    });
+
+    expect(isLingeringPlayingStatus(ev, null, now)).toBe(false);
+  });
+
+  it("returns false for no event", () => {
+    expect(isLingeringPlayingStatus(undefined, null, now)).toBe(false);
+  });
+});
+
+describe("NIP-38 clear override (kept)", () => {
+  const now = 1_000;
 
   it("lets a newer clear event override an older playing event", () => {
     const result = selectFreshStatuses(

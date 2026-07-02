@@ -58,6 +58,12 @@ const cacheKey = (pubkey: string) => `friends:${pubkey}`;
 // visible y hay contactos cargados).
 const STATUS_POLL_MS = 30_000;
 
+// Cadencia del poll de "conectado" (StorePresence/GamePresence). Va contra
+// nuestra propia DB (una query indexada, barata), no contra relays, así que lo
+// consultamos más seguido que el estado NIP-38 para que conectarse/desconectarse
+// se vea casi en vivo sin tener que refrescar el navegador.
+const PRESENCE_POLL_MS = 10_000;
+
 function readCache(pubkey: string): Friend[] | null {
   try {
     const raw = localStorage.getItem(cacheKey(pubkey));
@@ -287,22 +293,40 @@ export function useFriendsData(): FriendsValue {
       const contacts = contactsRef.current;
       if (contacts.length === 0) return;
       try {
-        // "Jugando" (NIP-38) y "conectado" (web abierta) se refrescan a la misma
-        // cadencia. Ninguno reordena la lista (sortFriends sólo mira "jugando").
-        const [statuses, online] = await Promise.all([
-          fetchStatuses(contacts),
-          fetchOnlineInStore(contacts),
-        ]);
+        const statuses = await fetchStatuses(contacts);
         setFriends((prev) =>
-          prev
-            ? sortFriends(applyOnlineInStore(applyFreshStatuses(prev, statuses), online))
-            : prev,
+          prev ? sortFriends(applyFreshStatuses(prev, statuses)) : prev,
         );
       } catch {
         /* best-effort: el próximo tick o el refresco por foco lo cubren */
       }
     };
     const id = window.setInterval(() => void tick(), STATUS_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [user]);
+
+  // Poll de "conectado" (StorePresence/GamePresence), separado del de NIP-38: va
+  // contra nuestra DB (barato), así que corre más seguido para que el puntito
+  // verde reaccione casi en vivo a que un amigo abra/cierre la tienda o entre a
+  // un juego, sin obligar a refrescar el navegador. Sólo toca `onlineInStore`, no
+  // reordena (sortFriends sólo mira "jugando"), así no pelea con el poll NIP-38.
+  useEffect(() => {
+    if (!user) return;
+    const tick = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (loadingRef.current) return;
+      const contacts = contactsRef.current;
+      if (contacts.length === 0) return;
+      try {
+        const online = await fetchOnlineInStore(contacts);
+        setFriends((prev) =>
+          prev ? applyOnlineInStore(prev, online) : prev,
+        );
+      } catch {
+        /* best-effort: el próximo tick lo cubre */
+      }
+    };
+    const id = window.setInterval(() => void tick(), PRESENCE_POLL_MS);
     return () => window.clearInterval(id);
   }, [user]);
 

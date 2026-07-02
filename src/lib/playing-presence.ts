@@ -11,7 +11,11 @@
  * Ver `docs/multijugador-contrato.md`.
  */
 
-import { publishPlayingStatus, clearPlayingStatus } from "@/lib/nostr-social";
+import {
+  publishPlayingStatus,
+  clearPlayingStatus,
+  hasStalePlayingStatus,
+} from "@/lib/nostr-social";
 
 // Cada cuánto la tienda consulta su propia presencia y renueva el estado NIP-38.
 const POLL_INTERVAL_MS = 8_000;
@@ -26,6 +30,37 @@ const STARTUP_GRACE_MS = 30_000;
 
 // Una sola sesión de presencia activa a la vez (un juego abierto por vez).
 let activeStop: (() => void) | null = null;
+
+// Reconciliación una vez por carga de página: evita re-consultar relays en cada
+// re-render del componente que la dispara.
+let reconciledThisLoad = false;
+
+/**
+ * Al abrir la tienda: si quedó colgado un estado NIP-38 "jugando X" de una sesión
+ * previa (p. ej. se cerró la pestaña de golpe y el `clearPlayingStatus` nunca
+ * salió, o expira recién en ~2min), lo pisa con un clear — PERO sólo si la API
+ * confirma que el jugador NO está jugando ahora. Así un amigo deja de verte como
+ * "Jugando X" apenas reabrís la tienda, sin tener que esperar la expiración ni
+ * refrescar. No toca un estado manual ni una sesión de juego real en curso.
+ */
+export async function reconcilePlayingPresence(pubkey: string): Promise<void> {
+  if (reconciledThisLoad) return;
+  reconciledThisLoad = true;
+  // Si hay una sesión de presencia activa en ESTA pestaña, ella gobierna: no tocar.
+  if (activeStop) return;
+  try {
+    // Si de verdad está jugando (el juego lo reporta por la API), no tocamos nada.
+    const res = await fetch("/api/me/playing", { credentials: "same-origin" });
+    if (!res.ok) return; // sin confirmación no arriesgamos borrar algo legítimo
+    if (Boolean((await res.json())?.playing)) return;
+  } catch {
+    return;
+  }
+  if (activeStop) return; // se abrió un juego mientras consultábamos
+  if (await hasStalePlayingStatus(pubkey).catch(() => false)) {
+    await clearPlayingStatus().catch(() => {});
+  }
+}
 
 /**
  * Empieza a manejar la presencia "Jugando `title`" leyendo la presencia que el

@@ -584,6 +584,60 @@ export async function publishPlayingStatus(
 }
 
 /**
+ * ¿El usuario tiene colgado un estado NIP-38 "jugando X" de ESTA tienda que
+ * todavía se ve fresco? Sirve para detectar presencias que quedaron vivas cuando
+ * la pestaña de la tienda se cerró de golpe y el `clearPlayingStatus` nunca salió.
+ *
+ * Distingue una PRESENCIA DE JUEGO (marca luna-negra o coordenada del juego, con
+ * forma de "jugando": expiración NIP-40, tag `r` de link, o el texto "Jugando … en
+ * Luna Negra") de un ESTADO MANUAL de texto libre (`publishStatus`), que NO hay que
+ * tocar. Sólo devuelve true para lo primero, así el reconciliador no borra un
+ * estado que el usuario puso a mano.
+ */
+export async function hasStalePlayingStatus(pubkey: string): Promise<boolean> {
+  const [evs, storePubkey] = await Promise.all([
+    querySyncByAuthors([pubkey], { kinds: [30315], "#d": ["general"] }),
+    resolveStorePubkey(),
+  ]);
+  let latest: StatusEvent | undefined;
+  for (const ev of evs) {
+    if (!latest || ev.created_at > latest.created_at) latest = ev;
+  }
+  return isLingeringPlayingStatus(latest, storePubkey);
+}
+
+/**
+ * Decisión pura: ¿este es el último estado y es una presencia de juego de esta
+ * tienda todavía vigente (no un estado manual, no vencido)? Extraído para poder
+ * testearlo sin tocar relays.
+ */
+export function isLingeringPlayingStatus(
+  latest: StatusEvent | undefined,
+  storePubkey?: string | null,
+  nowSec: number = now(),
+): boolean {
+  if (!latest || !latest.content) return false;
+  if (!hasLunaNegraLabel(latest) && !hasStoreGameCoord(latest, storePubkey)) return false;
+
+  // Vigencia (misma regla que selectFreshStatuses): si ya venció no se muestra,
+  // así que no hace falta limpiarlo.
+  const exp = latest.tags.find((t) => t[0] === "expiration")?.[1];
+  if (exp) {
+    const expiresAt = Number(exp);
+    if (!Number.isFinite(expiresAt) || expiresAt <= nowSec) return false;
+  } else if (latest.created_at + STATUS_FALLBACK_TTL_SECONDS <= nowSec) {
+    return false;
+  }
+
+  // Forma de "jugando" (no un estado manual libre).
+  return (
+    latest.tags.some((t) => t[0] === "expiration") ||
+    latest.tags.some((t) => t[0] === "r") ||
+    /jugando .+ en luna negra/i.test(latest.content)
+  );
+}
+
+/**
  * Limpia la presencia "jugando" (NIP-38): publica un estado vacío con
  * expiración inmediata para que los amigos dejen de ver el juego como abierto
  * (`fetchStatuses` ignora los estados sin contenido). Best-effort.
