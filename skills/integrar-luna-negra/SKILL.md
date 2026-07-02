@@ -543,6 +543,18 @@ cualquier evento anclado al juego (presencia, marcador, reseñas):
    **sondeá `window.nostr` unos segundos** (p.ej. cada 100 ms hasta ~3 s) antes de
    crear el signer NIP-07, o reintentá el arranque de esas features cuando la extensión
    aparezca. No afecta a clave local ni bunker NIP-46 (no dependen de `window.nostr`).
+10. **NIP-17 (`kind:1059`) y NIP-04 (`kind:4`) son bandejas DISTINTAS: un chat que
+    solo lee una no ve la otra.** El reto/invitación 2.0 viaja como gift-wrap NIP-17;
+    un chat legacy que consulta solo `kind:4` (NIP-04) **jamás lo muestra**, aunque
+    llegue bien a los relays. Síntoma: "mando el reto y el invitado no lo ve al abrir
+    el chat de la tienda". No es de relays: es de protocolo. Fix (lado lector): que el
+    chat consulte **también** `kind:1059 #p=<yo>`, desenvuelva las tres capas
+    (gift-wrap → seal `kind:13` → rumor `kind:14`, verificando `rumor.pubkey ===
+    seal.pubkey`) y fusione esos rumores con los `kind:4`. Dos gotchas al hacerlo: (a)
+    el gift-wrap lleva `created_at` **aleatorizado al pasado** (NIP-59) → no lo filtres
+    con `since: now()` en la suscripción en vivo o perdés mensajes nuevos; filtrá por la
+    hora REAL del `rumor.created_at` tras desenvolver; (b) resolvé los relays con el
+    mismo `resolveDmRelays` del gotcha #8 (tus `kind:10050`), no un set fijo.
 
 ---
 

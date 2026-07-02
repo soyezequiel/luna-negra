@@ -19,6 +19,7 @@ import {
   npubOf,
   pubkeyFromNpub,
   shortId,
+  challengeUrlFromEvent,
   type Profile,
 } from "@/lib/nostr-social";
 import {
@@ -222,6 +223,17 @@ export function NotificationsProvider({
       const senderPubkey = ev.pubkey;
       const name = await nameOf(senderPubkey);
       const npub = npubOf(senderPubkey);
+
+      // Reto NIP-17 (rumor kind:14 con tag `url`): toast accionable que abre el
+      // juego en la sala del reto, sin pasar por el chat.
+      const challengeUrl = challengeUrlFromEvent(ev);
+      if (challengeUrl) {
+        const title = `🎮 ${name} te retó a jugar`;
+        const body = "Tocá para unirte a la partida";
+        notify({ title, body, href: challengeUrl, kind: "join" });
+        fireDesktop(title, body, challengeUrl);
+        return;
+      }
 
       // Intentar descifrar para detectar invitación; si falla, DM genérico.
       let plain = "";

@@ -21,6 +21,8 @@ export type DmMessage = {
   fromMe: boolean;
   text: string;
   created_at: number;
+  /** Link de sala si el mensaje es un reto/invitación NIP-17 (tag `url`). */
+  gameUrl?: string;
 };
 
 const THREAD_PREFIX = "ln_dm_thread_";

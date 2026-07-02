@@ -774,12 +774,15 @@ export { gameNoteText };
 // --- Chat (NIP-04, kind:4) ---
 
 export async function fetchDmEvents(myPubkey: string): Promise<Event[]> {
-  const [recv, sent] = await Promise.all([
+  const [recv, sent, nip17] = await Promise.all([
     pool().querySync(RELAYS, { kinds: [4], "#p": [myPubkey] }),
     pool().querySync(RELAYS, { kinds: [4], authors: [myPubkey] }),
+    // NIP-17 (kind:14 ya desenvueltos). Best-effort: si el firmante no soporta
+    // NIP-44 o los relays fallan, el chat sigue con solo los NIP-04.
+    fetchNip17Rumors(myPubkey).catch(() => [] as Event[]),
   ]);
   const map = new Map<string, Event>();
-  for (const e of [...recv, ...sent]) map.set(e.id, e);
+  for (const e of [...recv, ...sent, ...nip17]) map.set(e.id, e);
   return [...map.values()].sort((a, b) => a.created_at - b.created_at);
 }
 
@@ -791,6 +794,9 @@ export function dmCounterpart(ev: Event, myPubkey: string): string {
 }
 
 export async function decryptDm(ev: Event, myPubkey: string): Promise<string> {
+  // NIP-17: el rumor kind:14 ya viene descifrado (unwrapGiftWrap dejó el content
+  // en claro), no pasa por NIP-04.
+  if (ev.kind === NIP17_RUMOR_KIND) return ev.content;
   try {
     const signer = await requireSigner();
     return await signer.nip04Decrypt(dmCounterpart(ev, myPubkey), ev.content);
@@ -809,11 +815,41 @@ export function subscribeDms(
   onEvent: (ev: Event) => void,
   since: number = now(),
 ): SubCloser {
-  return pool().subscribe(
+  const nip04Sub = pool().subscribe(
     RELAYS,
     { kinds: [4], "#p": [myPubkey], since },
     { onevent: onEvent },
   );
+  // NIP-17: el gift-wrap lleva created_at aleatorizado al pasado (NIP-59), así que
+  // NO podemos filtrar por `since` como en kind:4 sin perder mensajes nuevos —
+  // usamos la ventana de lookback y, tras desenvolver, emitimos solo los rumores
+  // cuya hora REAL (rumor.created_at) es ≥ el arranque de la sub. Así el consumidor
+  // (chat / notificaciones) ve los nuevos sin re-disparar el histórico del replay.
+  const nip17Sub = pool().subscribe(
+    RELAYS,
+    { kinds: [NIP17_WRAP_KIND], "#p": [myPubkey], since: now() - NIP17_LOOKBACK },
+    {
+      onevent: (ev) => {
+        void unwrapGiftWrap(ev).then((rumor) => {
+          if (rumor && rumor.created_at >= since - 60) onEvent(rumor);
+        });
+      },
+    },
+  );
+  return {
+    close: () => {
+      try {
+        nip04Sub.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        nip17Sub.close();
+      } catch {
+        /* ignore */
+      }
+    },
+  };
 }
 
 export async function sendDm(
@@ -839,4 +875,144 @@ export async function sendDm(
       content: ciphertext,
     }),
   );
+}
+
+// --- Chat NIP-17 (gift-wrap kind:1059 → seal kind:13 → rumor kind:14) ---
+//
+// El chat legacy de arriba es NIP-04 (kind:4). NIP-17 es el DM moderno: cifrado
+// con NIP-44 y envuelto en tres capas para no filtrar metadatos. Leerlo acá hace
+// que mensajes/retos enviados por clientes modernos —p. ej. el reto 1v1 que manda
+// un juego integrado (TETRA)— aparezcan en el chat de Luna Negra junto a los
+// NIP-04, en vez de quedar invisibles porque solo consultábamos kind:4.
+
+const NIP17_RUMOR_KIND = 14;
+const NIP17_SEAL_KIND = 13;
+const NIP17_WRAP_KIND = 1059;
+// Los gift-wrap llevan created_at aleatorizado hasta ~2 días atrás (NIP-59), así
+// que la ventana de lectura mira algo más para no perder mensajes recientes.
+const NIP17_LOOKBACK = 3 * 24 * 60 * 60;
+// Tope de sobres a desenvolver por carga (cada uno son 2 descifrados NIP-44).
+const NIP17_MAX_UNWRAP = 200;
+
+// Caché de desenvoltura por id de gift-wrap (incluye negativos): evita re-descifrar
+// el mismo sobre en cada refresco de la sesión.
+const nip17UnwrapCache = new Map<string, Event | null>();
+
+/** Purga la caché de rumores NIP-17 descifrados (llamar al cerrar sesión). */
+export function clearNip17Cache(): void {
+  nip17UnwrapCache.clear();
+}
+
+/** Signer activo si soporta NIP-44 (necesario para NIP-17), o null. */
+async function dmSigner(): Promise<LunaSigner | null> {
+  const signer = getActiveSigner() ?? (await restoreSigner());
+  return signer?.nip44Decrypt ? signer : null;
+}
+
+/**
+ * Relays de la bandeja de DM del usuario: RELAYS ∪ sus `kind:10050` (NIP-17).
+ * DEBE ser el mismo set en el que un emisor publica hacia él, o el DM aterriza en
+ * un relay que no leemos (asimetría que hace "el mensaje no llega"). Best-effort.
+ */
+async function dmInboxRelays(pubkey: string): Promise<string[]> {
+  const relays = new Set(RELAYS);
+  try {
+    const evs = await pool().querySync(
+      RELAYS,
+      { kinds: [10050], authors: [pubkey] },
+      { maxWait: MAX_WAIT },
+    );
+    if (evs.length) {
+      const newest = evs.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+      for (const t of newest.tags) {
+        if (t[0] === "relay" && typeof t[1] === "string") relays.add(t[1]);
+      }
+    }
+  } catch {
+    /* sin lista propia: solo el fallback */
+  }
+  return [...relays];
+}
+
+/**
+ * Desenvuelve un gift-wrap a su rumor `kind:14` (con `content` en claro), o null.
+ * Verifica que el autor del rumor sea quien firmó el seal (anti-suplantación
+ * NIP-59). Best-effort, cacheado por id, nunca lanza. Exportado para testear.
+ */
+export async function unwrapGiftWrap(wrap: Event): Promise<Event | null> {
+  if (wrap.kind !== NIP17_WRAP_KIND) return null;
+  const cached = nip17UnwrapCache.get(wrap.id);
+  if (cached !== undefined) return cached;
+  let rumor: Event | null = null;
+  try {
+    const signer = await dmSigner();
+    if (signer?.nip44Decrypt) {
+      const seal = JSON.parse(
+        await signer.nip44Decrypt(wrap.pubkey, wrap.content),
+      ) as Event;
+      if (seal && seal.kind === NIP17_SEAL_KIND && typeof seal.pubkey === "string") {
+        const inner = JSON.parse(
+          await signer.nip44Decrypt(seal.pubkey, seal.content),
+        ) as Event;
+        if (
+          inner &&
+          inner.kind === NIP17_RUMOR_KIND &&
+          inner.pubkey === seal.pubkey
+        ) {
+          // El rumor no va firmado (NIP-59): puede no traer id. Le damos uno estable
+          // (el del sobre) para dedup/keys aguas abajo.
+          if (!inner.id) inner.id = wrap.id;
+          rumor = inner;
+        }
+      }
+    }
+  } catch {
+    rumor = null;
+  }
+  nip17UnwrapCache.set(wrap.id, rumor);
+  return rumor;
+}
+
+/**
+ * Si el evento es un reto/invitación NIP-17 (rumor kind:14 con un tag `url`
+ * http(s)), devuelve ese link de sala; si no, null. El chat lo usa para pintar un
+ * botón "Unirse a la partida" que abre el juego directo en la sala del reto.
+ */
+export function challengeUrlFromEvent(ev: Event): string | null {
+  if (ev.kind !== NIP17_RUMOR_KIND) return null;
+  const url = ev.tags.find((t) => t[0] === "url")?.[1];
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  return url;
+}
+
+/**
+ * Trae los rumores NIP-17 (kind:14, `content` en claro) dirigidos a `myPubkey`.
+ * Se mezclan con los kind:4 en `fetchDmEvents`; `decryptDm` los pasa tal cual.
+ */
+async function fetchNip17Rumors(myPubkey: string): Promise<Event[]> {
+  const signer = await dmSigner();
+  if (!signer) return [];
+  const relays = await dmInboxRelays(myPubkey);
+  let wraps: Event[];
+  try {
+    wraps = await pool().querySync(
+      relays,
+      { kinds: [NIP17_WRAP_KIND], "#p": [myPubkey], since: now() - NIP17_LOOKBACK },
+      { maxWait: MAX_WAIT },
+    );
+  } catch {
+    return [];
+  }
+  // Dedup por id (multi-relay) y desenvolvemos los más recientes primero.
+  const byId = new Map<string, Event>();
+  for (const w of wraps) byId.set(w.id, w);
+  const recent = [...byId.values()]
+    .sort((a, b) => b.created_at - a.created_at)
+    .slice(0, NIP17_MAX_UNWRAP);
+  const rumors: Event[] = [];
+  for (const w of recent) {
+    const r = await unwrapGiftWrap(w);
+    if (r) rumors.push(r);
+  }
+  return rumors;
 }

@@ -8,6 +8,7 @@ import {
   decryptDm,
   sendDm,
   subscribeDms,
+  challengeUrlFromEvent,
 } from "@/lib/nostr-social";
 import {
   getCachedThread,
@@ -78,6 +79,7 @@ export function useDmThread(counterpart: string | null) {
           fromMe: e.pubkey === user.pubkey,
           text,
           created_at: e.created_at,
+          gameUrl: challengeUrlFromEvent(e) ?? undefined,
         });
       }
       if (freshlyDecrypted.length) cacheDecryptions(user.pubkey, freshlyDecrypted);

@@ -20,11 +20,19 @@ import {
   npubOf,
   shortId,
   pubkeyFromNpub,
+  challengeUrlFromEvent,
   type Profile,
 } from "@/lib/nostr-social";
 import type { Event } from "nostr-tools";
 
-type Msg = { id: string; fromMe: boolean; text: string; created_at: number };
+type Msg = {
+  id: string;
+  fromMe: boolean;
+  text: string;
+  created_at: number;
+  /** Link de sala si el mensaje es un reto/invitación NIP-17. */
+  gameUrl?: string;
+};
 
 export default function MessagesPage() {
   const { user, login, loading } = useSession();
@@ -120,6 +128,7 @@ export default function MessagesPage() {
           fromMe: e.pubkey === user.pubkey,
           text: await decryptDm(e, user.pubkey),
           created_at: e.created_at,
+          gameUrl: challengeUrlFromEvent(e) ?? undefined,
         });
       }
       if (!cancelled) {
@@ -269,6 +278,20 @@ export default function MessagesPage() {
                                 Unirse a la sala
                               </button>
                             )}
+                          </div>
+                        ) : m.gameUrl ? (
+                          // Reto NIP-17: el link de sala vive en el tag `url` del
+                          // rumor. Abre el juego en la sala (pestaña nueva, externa).
+                          <div className="flex flex-col gap-2">
+                            <span>{m.text}</span>
+                            <a
+                              href={m.gameUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="self-start rounded-sm bg-green/20 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/30"
+                            >
+                              🎮 Unirse a la partida
+                            </a>
                           </div>
                         ) : (
                           m.text

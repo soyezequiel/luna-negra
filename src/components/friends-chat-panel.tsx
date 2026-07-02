@@ -178,6 +178,20 @@ export function FriendsChatPanel({
                           </button>
                         )}
                       </div>
+                    ) : m.gameUrl ? (
+                      // Reto NIP-17: el link de sala vive en el tag `url` del rumor.
+                      // Abre el juego en la sala del reto (pestaña nueva, externa).
+                      <div className="flex flex-col gap-2">
+                        <span>{m.text}</span>
+                        <a
+                          href={m.gameUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
+                        >
+                          🎮 Unirse a la partida
+                        </a>
+                      </div>
                     ) : (
                       m.text
                     )}

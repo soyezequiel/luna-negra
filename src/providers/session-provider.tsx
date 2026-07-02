@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { fetchProfile, profileName } from "@/lib/nostr";
-import { getNostrPermsMode, warmUpPermissions } from "@/lib/nostr-social";
+import { clearNip17Cache, getNostrPermsMode, warmUpPermissions } from "@/lib/nostr-social";
 import { notifyOpenGameWindowsLogout } from "@/lib/room-launch";
 import { clearDmCache } from "@/lib/dm-cache";
 import {
@@ -181,6 +181,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Los DMs descifrados quedan en localStorage: al salir, los purgamos para no
     // dejar mensajes privados accesibles a la próxima cuenta en este navegador.
     clearDmCache();
+    clearNip17Cache();
     setUser(null);
   }, []);
 
