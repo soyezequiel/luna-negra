@@ -71,6 +71,42 @@ function Kpi({
   );
 }
 
+/**
+ * Resumen de una apuesta cerrada para el historial. La idea es bajar la carga
+ * cognitiva: solo ganaste/perdiste resaltan (signo + color); canceladas,
+ * reembolsos y empates quedan apagados porque no cambiaron tu saldo.
+ */
+function outcomeMeta(b: Row): {
+  label: string;
+  amount: string;
+  amountClass: string;
+} {
+  if (b.status === "settled" && b.result === "won") {
+    return {
+      label: "Ganaste",
+      amount: `+${satsLabel(b.payoutSats ?? b.stakeSats)}`,
+      amountClass: "text-ln-aurora-bright",
+    };
+  }
+  if (b.status === "settled" && b.result === "lost") {
+    return {
+      label: "Perdiste",
+      amount: `−${satsLabel(b.stakeSats)}`,
+      amountClass: "text-ln-danger",
+    };
+  }
+  // Empate, cancelada, reembolsada, anulada: tu saldo no se movió → sin énfasis.
+  const label =
+    b.status === "settled" && b.result === "tie"
+      ? "Empate"
+      : betStatusLabel(b.status);
+  return {
+    label,
+    amount: satsLabel(b.stakeSats),
+    amountClass: "text-ln-faint",
+  };
+}
+
 /** CTA contextual según el estado real de la apuesta y mi depósito. */
 function ctaFor(b: Row): { label: string; play?: boolean } {
   if (b.status === "pending_deposits" && b.depositStatus !== "paid") {
@@ -273,11 +309,15 @@ export default function BetsPage() {
           <ul className="space-y-2">
             {shown.map((b) => {
               const tone = betTone(b.status, b.result);
+              const o = outcomeMeta(b);
+              const decided = tone === "won" || tone === "lost";
               return (
                 <li key={b.id}>
                   <Link
                     href={betHref(b)}
-                    className="flex items-center justify-between gap-3 rounded-ln-md border border-ln-border border-l-[3px] bg-ln-card/60 px-4 py-3 transition-colors hover:bg-white/[.02]"
+                    className={`flex items-center justify-between gap-3 rounded-ln-md border border-ln-border border-l-[3px] bg-ln-card/60 px-4 py-3 transition-colors hover:bg-white/[.02] ${
+                      decided ? "" : "opacity-70"
+                    }`}
                     style={{ borderLeftColor: toneAccent(tone) }}
                   >
                     <div className="flex min-w-0 items-center gap-3">
@@ -286,34 +326,13 @@ export default function BetsPage() {
                         <p className="truncate text-sm font-medium text-ln-text">
                           {b.gameTitle}
                         </p>
-                        <p className="mt-0.5 text-xs text-ln-faint">
-                          {betStatusLabel(b.status)}
-                          {b.status === "settled" && b.result === "won"
-                            ? " · ganaste"
-                            : b.status === "settled" && b.result === "lost"
-                              ? " · perdiste"
-                              : b.status === "settled" && b.result === "tie"
-                                ? " · empate"
-                                : ""}
-                        </p>
-                        {b.payoutStatus === "paid" &&
-                        b.payoutDestination &&
-                        b.payoutDestination !== "lnurl-withdraw" ? (
-                          <p className="mt-0.5 truncate text-[11px] text-ln-faint">
-                            💸 Premio a{" "}
-                            <span className="font-mono text-ln-muted">
-                              {b.payoutDestination}
-                            </span>
-                          </p>
-                        ) : b.payoutStatus === "claimed" ? (
-                          <p className="mt-0.5 text-[11px] text-ln-faint">
-                            🎟️ Cobrado por QR (retiro)
-                          </p>
-                        ) : null}
+                        <p className="mt-0.5 text-xs text-ln-faint">{o.label}</p>
                       </div>
                     </div>
-                    <span className="shrink-0 font-mono text-sm font-semibold text-ln-corona-bright">
-                      {satsLabel(b.stakeSats)} sats
+                    <span
+                      className={`shrink-0 font-mono text-sm font-semibold ${o.amountClass}`}
+                    >
+                      {o.amount} sats
                     </span>
                   </Link>
                 </li>
