@@ -202,12 +202,37 @@ export async function createInvoice(
   amountSats: number,
   description: string,
 ): Promise<CreatedInvoice> {
+  return createInvoiceFromNwc(amountSats, { description });
+}
+
+/**
+ * Crea un invoice cuyo BOLT11 compromete el hash SHA-256 de una descripcion
+ * externa. NIP-57 exige este formato para los recibos kind:9735.
+ */
+export async function createDescriptionHashInvoice(
+  amountSats: number,
+  descriptionHash: string,
+): Promise<CreatedInvoice> {
+  if (!/^[a-f0-9]{64}$/i.test(descriptionHash)) {
+    throw new Error("descriptionHash debe ser un SHA-256 hexadecimal");
+  }
+  return createInvoiceFromNwc(amountSats, {
+    description_hash: descriptionHash.toLowerCase(),
+  });
+}
+
+async function createInvoiceFromNwc(
+  amountSats: number,
+  description:
+    | { description: string }
+    | { description_hash: string },
+): Promise<CreatedInvoice> {
   return withFailover(
     "makeInvoice",
     async (client) => {
       const tx = await client.makeInvoice({
         amount: amountSats * 1000,
-        description,
+        ...description,
         expiry: 60 * 15,
       });
       return {

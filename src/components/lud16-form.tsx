@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
+import { publishProfile } from "@/lib/nostr-social";
 
 /**
  * Formulario de Lightning Address (lud16) de cobro. Vive en el panel de
@@ -30,17 +31,20 @@ export function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
     setStatus("saving");
     setError(null);
     const trimmed = value.trim();
+    const normalized = trimmed ? trimmed.toLowerCase() : null;
     try {
+      if (!user) throw new Error("No autenticado");
+      await publishProfile(user.pubkey, { lud16: normalized ?? undefined });
       const res = await fetch("/api/users/me/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lud16: trimmed }),
+        body: JSON.stringify({ lud16: normalized }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar");
       // Refleja el valor normalizado (minúsculas, o null si quedó vacío) en la
       // sesión, para que el contexto no quede desincronizado con la DB.
-      updateUser({ lud16: trimmed ? trimmed.toLowerCase() : null });
+      updateUser({ lud16: normalized });
       setStatus("saved");
     } catch (err) {
       setStatus("error");
@@ -51,15 +55,15 @@ export function Lud16Form({ nostrLud16 }: { nostrLud16: string | null }) {
   return (
     <div>
       <p className="text-sm text-ln-muted">
-        Dirección donde recibís tus pagos y premios. Si la dejás vacía, usamos la
-        de tu perfil Nostr
+        Dirección donde recibís tus pagos y premios. También se publica en tu
+        perfil Nostr para que otros clientes puedan validar el zap
         {nostrLud16 ? (
           <>
             {" "}
             (<span className="font-mono text-ln-text">{nostrLud16}</span>)
           </>
         ) : null}
-        ; si tampoco hay, vas a cobrar escaneando un QR.
+        . Si la dejás vacía, vas a cobrar escaneando un QR.
       </p>
 
       <form onSubmit={save} className="mt-4 flex flex-col gap-3">

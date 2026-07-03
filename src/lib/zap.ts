@@ -136,6 +136,7 @@ export function buildUnsignedZapRequest(opts: {
   comment?: string;
   recipientPubkey: string;
   eventId?: string | null;
+  eventKind?: number | null;
   lnurl: string;
   relays?: string[];
 }): UnsignedZapRequest {
@@ -146,6 +147,9 @@ export function buildUnsignedZapRequest(opts: {
     ["p", opts.recipientPubkey],
   ];
   if (opts.eventId) tags.push(["e", opts.eventId]);
+  if (opts.eventId && opts.eventKind != null) {
+    tags.push(["k", String(opts.eventKind)]);
+  }
   return {
     kind: 9734,
     created_at: Math.floor(Date.now() / 1000),

@@ -8,6 +8,7 @@ import {
   gameArticleCoord,
   type GameArticleInput,
 } from "./game-article";
+import { storeLightningAddress } from "./site-url";
 
 // Identidad Nostr de Luna Negra (server) para firmar el contrato.
 function getSecretKey(): Uint8Array | null {
@@ -33,6 +34,74 @@ function getSecretKey(): Uint8Array | null {
 export function getStorePubkey(): string | null {
   const sk = getSecretKey();
   return sk ? getPublicKey(sk) : null;
+}
+
+let ensuredStoreProfileAddress: string | null = null;
+
+/**
+ * Publica la Lightning Address estable de Luna Negra en su kind:0, preservando
+ * el resto del perfil. Los clientes usan este metadata para autorizar los
+ * recibos kind:9735 de los depositos.
+ */
+export async function ensureStoreZapProfile(baseUrl: string): Promise<boolean> {
+  const sk = getSecretKey();
+  if (!sk) return process.env.NODE_ENV !== "production";
+
+  const lud16 = storeLightningAddress(baseUrl);
+  if (!lud16) return false;
+  if (ensuredStoreProfileAddress === lud16) return true;
+
+  const pubkey = getPublicKey(sk);
+  const readPool = new SimplePool();
+  let latest: Event | null = null;
+  try {
+    const events = await readPool.querySync(RELAYS, {
+      kinds: [0],
+      authors: [pubkey],
+      limit: 20,
+    });
+    latest = events.sort((a, b) => b.created_at - a.created_at)[0] ?? null;
+  } catch {
+    latest = null;
+  } finally {
+    readPool.close(RELAYS);
+  }
+  if (!latest) return false;
+
+  let metadata: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(latest.content) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+    metadata = parsed as Record<string, unknown>;
+  } catch {
+    return false;
+  }
+  if (metadata.lud16 === lud16) {
+    ensuredStoreProfileAddress = lud16;
+    return true;
+  }
+  if (typeof metadata.lud16 === "string" && metadata.lud16.trim()) {
+    return false;
+  }
+
+  metadata.lud16 = lud16;
+  const ev = finalizeEvent(
+    {
+      kind: 0,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1000),
+        (latest?.created_at ?? 0) + 1,
+      ),
+      tags: [],
+      content: JSON.stringify(metadata),
+    },
+    sk,
+  );
+  const accepted = await publishToRelays(ev).catch(() => 0);
+  if (accepted > 0) ensuredStoreProfileAddress = lud16;
+  return accepted > 0;
 }
 
 /**
@@ -160,6 +229,7 @@ export async function publishZapReceipt(opts: {
   const tags: string[][] = [
     ["p", storePubkey], // receptor del zap = la tienda (custodia del pozo)
     ["e", opts.anchorEventId], // ancla del contrato
+    ["k", "1"],
     ["bolt11", opts.bolt11],
     ["description", opts.descriptionZapRequest],
   ];

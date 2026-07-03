@@ -11,8 +11,14 @@ import {
 } from "@/lib/escrow-v2";
 import { computeEconomics } from "@/lib/escrow-math";
 import { getEconomySettings, resolveBetFees } from "@/lib/economy-settings";
-import { publishContract, getStorePubkey } from "@/lib/nostr-server";
+import {
+  ensureStoreZapProfile,
+  publishContract,
+  getStorePubkey,
+} from "@/lib/nostr-server";
 import { msatToSats } from "@/lib/money";
+import { RELAYS } from "@/lib/constants";
+import { siteUrl } from "@/lib/site-url";
 import {
   BET_MIN_SATS,
   BET_MAX_SATS,
@@ -58,7 +64,11 @@ async function publishBetAnchor(
 }
 
 // Lógica de crear apuesta v2, devuelve {status, body} (para idempotencia).
-async function createZapBet(bodyText: string, providerId: string): Promise<Result> {
+async function createZapBet(
+  bodyText: string,
+  providerId: string,
+  baseUrl: string,
+): Promise<Result> {
   let body: unknown;
   try {
     body = JSON.parse(bodyText);
@@ -79,6 +89,14 @@ async function createZapBet(bodyText: string, providerId: string): Promise<Resul
   if (!game) return err("GAME_NOT_FOUND", "Juego no encontrado", 404);
   if (game.providerId !== providerId) {
     return err("NOT_GAME_OWNER", "El juego no es de tu proveedor", 403);
+  }
+
+  if (!(await ensureStoreZapProfile(baseUrl))) {
+    return err(
+      "STORE_ZAP_PROFILE_FAILED",
+      "No se pudo publicar la Lightning Address de Luna Negra en Nostr",
+      503,
+    );
   }
 
   // Participantes EN ORDEN (asiento 1..N): npub registrado o identidad efímera.
@@ -174,10 +192,14 @@ async function createZapBet(bodyText: string, providerId: string): Promise<Resul
     feeMinSats: BET_FEE_MIN_SATS,
     providerName: game.provider.name,
   });
+  const storePubkey = getStorePubkey();
   const tags = buildContractTagsV2({
     betId: bet.id,
     contractHash,
     pubkeys: participantSeats.map((p) => p.pubkey),
+    zapReceiver: storePubkey
+      ? { pubkey: storePubkey, relay: RELAYS[RELAYS.length - 1] }
+      : null,
   });
   const anchor = await publishBetAnchor(content, tags);
   if (!anchor) {
@@ -283,7 +305,7 @@ export async function POST(req: Request) {
 
   // 3) Crear la apuesta
   const bodyText = await req.text();
-  const result = await createZapBet(bodyText, providerId);
+  const result = await createZapBet(bodyText, providerId, siteUrl(req));
 
   // 4) Guardar la respuesta (éxito) o liberar la key (error → permite reintento).
   if (idem && idem.kind === "fresh") {

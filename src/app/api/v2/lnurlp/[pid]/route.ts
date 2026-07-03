@@ -14,8 +14,13 @@ import { siteUrl } from "@/lib/site-url";
 // Permite pagar el depósito por QR desde wallets LNURL con NIP-57 o desde la UI web
 // de Luna Negra, y deja los recibos verificables por terceros.
 
+const LNURL_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Cache-Control": "no-store",
+};
+
 const lnurlError = (reason: string) =>
-  NextResponse.json({ status: "ERROR", reason });
+  NextResponse.json({ status: "ERROR", reason }, { headers: LNURL_HEADERS });
 
 type SignedZapRequest = {
   kind: number;
@@ -40,18 +45,17 @@ export async function GET(
   if (!part) return lnurlError("Participante no encontrado");
 
   const bet = part.bet;
-  const open =
-    bet.status === "pending_deposits" &&
-    (bet.depositDeadline == null || bet.depositDeadline > new Date());
-  if (!open) return lnurlError("El depósito está cerrado");
-  if (part.depositStatus === "paid") return lnurlError("Ya depositaste");
-
   const amountMsat = Number(bet.stakeMsat);
   const url = new URL(req.url);
   const amount = url.searchParams.get("amount");
 
   // Paso 2: el wallet pide el invoice por el monto exacto y con un 9734 firmado.
   if (amount != null) {
+    const open =
+      bet.status === "pending_deposits" &&
+      (bet.depositDeadline == null || bet.depositDeadline > new Date());
+    if (!open) return lnurlError("El depósito está cerrado");
+    if (part.depositStatus === "paid") return lnurlError("Ya depositaste");
     if (Number(amount) !== amountMsat) {
       return lnurlError(`Monto debe ser exactamente ${amountMsat} msat`);
     }
@@ -66,11 +70,14 @@ export async function GET(
     } catch {
       return lnurlError("Zap request inválido");
     }
-    const validation = validateDepositZapRequest(bet, part, signed);
+    const validation = validateDepositZapRequest(bet, part, signed, siteUrl(req));
     if (!validation.ok) return lnurlError(validation.error);
     try {
       const inv = await ensureDepositInvoiceV2(bet, part, signed);
-      return NextResponse.json({ pr: inv.invoice, routes: [] });
+      return NextResponse.json(
+        { pr: inv.invoice, routes: [] },
+        { headers: LNURL_HEADERS },
+      );
     } catch (e) {
       return lnurlError(
         e instanceof Error ? e.message : "No se pudo generar el invoice",
@@ -96,5 +103,5 @@ export async function GET(
     res.allowsNostr = true;
     res.nostrPubkey = storePubkey;
   }
-  return NextResponse.json(res);
+  return NextResponse.json(res, { headers: LNURL_HEADERS });
 }

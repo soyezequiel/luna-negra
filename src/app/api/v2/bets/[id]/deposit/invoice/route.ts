@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { validateDepositZapRequest, ensureDepositInvoiceV2 } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
+import { siteUrl } from "@/lib/site-url";
 
 // Paso 2 del depósito por zap (v2): recibe el 9734 firmado, lo valida contra el
 // contrato (anti-tampering) y emite el invoice con el NWC de la tienda. El recibo
@@ -69,7 +70,7 @@ export async function POST(
     return NextResponse.json({ error: "Ya depositaste" }, { status: 409 });
   }
 
-  const check = validateDepositZapRequest(bet, part, signed);
+  const check = validateDepositZapRequest(bet, part, signed, siteUrl(req));
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 });
 
   try {

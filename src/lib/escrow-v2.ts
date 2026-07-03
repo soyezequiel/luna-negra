@@ -46,11 +46,15 @@ export function buildContractTagsV2(p: {
   betId: string;
   contractHash: string;
   pubkeys: string[];
+  zapReceiver?: { pubkey: string; relay: string } | null;
 }): string[][] {
   return [
     ["t", BET_V2_CONTRACT_TAG],
     ["bet", p.betId],
     ["terms", p.contractHash],
+    ...(p.zapReceiver
+      ? [["zap", p.zapReceiver.pubkey, p.zapReceiver.relay]]
+      : []),
     ...p.pubkeys.map((pk) => ["p", pk]),
   ];
 }

@@ -90,7 +90,11 @@ export function ZapDepositCard({ betId, stakeSats }: Props) {
 
       setInvoice(inv.invoice);
       setQr(
-        await QRCode.toDataURL(inv.invoice, { margin: 2, width: 288, errorCorrectionLevel: "M" }),
+        await QRCode.toDataURL(inv.invoice.toUpperCase(), {
+          margin: 4,
+          width: 384,
+          errorCorrectionLevel: "L",
+        }),
       );
       setPhase("pending");
       startPolling();
@@ -178,7 +182,11 @@ export function ZapDepositCard({ betId, stakeSats }: Props) {
           <p className="mt-1 text-xs text-ln-muted">Escaneá o copiá el invoice</p>
           {qr ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={qr} alt="QR del invoice" className="mx-auto mt-3 rounded-lg bg-white p-2" />
+            <img
+              src={qr}
+              alt="QR del invoice"
+              className="mx-auto mt-3 aspect-square w-full max-w-[22rem] rounded-lg bg-white p-3"
+            />
           ) : null}
           {nwcConnected ? (
             <Button

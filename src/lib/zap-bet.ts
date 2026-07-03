@@ -2,7 +2,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { nip57 } from "nostr-tools";
 import type { ZapBet, ZapBetParticipant } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { createInvoice, isInvoicePaid, lightningConfigured } from "@/lib/lightning";
+import {
+  createDescriptionHashInvoice,
+  isInvoicePaid,
+  lightningConfigured,
+} from "@/lib/lightning";
 import {
   buildUnsignedZapRequest,
   encodeLnurl,
@@ -16,6 +20,7 @@ import { recordDepositV2 } from "@/lib/ledger-v2";
 import { RESOLVE_WINDOW_MS } from "@/lib/escrow-v2-config";
 import { emitDepositReceivedV2, emitBetFundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
+import { storeLnurlUrl } from "@/lib/site-url";
 
 // Depósito por zap (v2). Luna Negra actúa como receptor NIP-57: el apostador firma
 // un zap request (9734) con su identidad, la tienda emite el invoice con su NWC,
@@ -44,12 +49,12 @@ export function participantLnurlUrl(baseUrl: string, participantId: string): str
 /**
  * Arma el zap request (9734) SIN firmar del depósito de un participante. `p` = la
  * tienda (custodia del pozo), `e` = ancla del contrato, monto = stake fijo,
- * `lnurl` = bech32 del endpoint LNURL-pay del participante. Lo firma el cliente
- * con su signer (así el 9735 identifica quién depositó).
+ * `lnurl` = endpoint estable publicado en el perfil de Luna Negra. Lo firma el
+ * cliente con su signer y el callback resuelve el asiento por contrato + pubkey.
  */
 export function buildDepositZapRequest(
   bet: ZapBet,
-  part: ZapBetParticipant,
+  _part: ZapBetParticipant,
   baseUrl: string,
 ): UnsignedZapRequest {
   const storePubkey = getStorePubkey();
@@ -59,7 +64,8 @@ export function buildDepositZapRequest(
     amountSats: Number(msatToSats(bet.stakeMsat)),
     recipientPubkey: storePubkey,
     eventId: bet.anchorEventId.startsWith("dev-anchor-") ? null : bet.anchorEventId,
-    lnurl: encodeLnurl(participantLnurlUrl(baseUrl, part.id)),
+    eventKind: 1,
+    lnurl: encodeLnurl(storeLnurlUrl(baseUrl)),
   });
 }
 
@@ -77,6 +83,7 @@ export function validateDepositZapRequest(
   bet: ZapBet,
   part: ZapBetParticipant,
   signed: SignedZapRequest,
+  baseUrl?: string,
 ): DepositValidation {
   const invalid = nip57.validateZapRequest(JSON.stringify(signed));
   if (invalid || signed.kind !== 9734) return { ok: false, error: "Zap request inválido" };
@@ -87,11 +94,19 @@ export function validateDepositZapRequest(
   const storePubkey = getStorePubkey();
   const anchor = bet.anchorEventId;
   const anchorIsReal = !!anchor && !anchor.startsWith("dev-anchor-");
+  const requestLnurl = tagValue(signed, "lnurl");
+  const allowedLnurls = baseUrl
+    ? new Set([
+        encodeLnurl(storeLnurlUrl(baseUrl)),
+        encodeLnurl(participantLnurlUrl(baseUrl, part.id)),
+      ])
+    : null;
   const ok =
     Number.isInteger(amountMsat) &&
     BigInt(amountMsat) === bet.stakeMsat &&
     tagValue(signed, "p") === storePubkey &&
-    (anchorIsReal ? tagValue(signed, "e") === anchor : true);
+    (anchorIsReal ? tagValue(signed, "e") === anchor : true) &&
+    (!allowedLnurls || (!!requestLnurl && allowedLnurls.has(requestLnurl)));
   return ok ? { ok: true } : { ok: false, error: "El zap request no coincide con la apuesta" };
 }
 
@@ -138,17 +153,18 @@ export async function ensureDepositInvoiceV2(
   }
 
   const sats = Number(msatToSats(bet.stakeMsat));
-  // El invoice lo emite el NWC de la tienda; la `description` on-chain es el hash
-  // del 9734 (el JSON completo vive en DB). En dev, placeholder no pagable.
-  const desc = zapReqJson
-    ? `Luna Negra · apuesta ${bet.id} · ${createHash("sha256").update(zapReqJson).digest("hex").slice(0, 16)}`
-    : `Luna Negra · apuesta ${bet.id}`;
+  if (!zapReqJson && !devMode) {
+    throw new Error("Falta el zap request firmado para emitir el invoice NIP-57");
+  }
+  const descriptionHash = zapReqJson
+    ? createHash("sha256").update(zapReqJson).digest("hex")
+    : null;
   const inv = devMode
     ? {
         invoice: `lnbc-dev-${randomBytes(12).toString("hex")}`,
         paymentHash: `dev-${randomBytes(16).toString("hex")}`,
       }
-    : await createInvoice(sats, desc);
+    : await createDescriptionHashInvoice(sats, descriptionHash!);
 
   await prisma.zapBetParticipant.update({
     where: { id: part.id },

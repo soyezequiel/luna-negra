@@ -9,6 +9,24 @@ export function siteUrl(req: Request): string {
   return base.replace(/\/$/, "");
 }
 
+export const STORE_LNURL_USERNAME = "luna";
+
+/** Endpoint LNURL-pay estable publicado en el perfil Nostr de Luna Negra. */
+export function storeLnurlUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/.well-known/lnurlp/${STORE_LNURL_USERNAME}`;
+}
+
+/** Lightning Address publica de Luna Negra, derivada del dominio canonico. */
+export function storeLightningAddress(baseUrl: string): string | null {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "https:" || !url.hostname) return null;
+    return `${STORE_LNURL_USERNAME}@${url.hostname}`;
+  } catch {
+    return null;
+  }
+}
+
 /** URL absoluta a la ficha de un juego. */
 export function gamePageUrl(req: Request, slug: string): string {
   return `${siteUrl(req)}/game/${slug}`;
