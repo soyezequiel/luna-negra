@@ -16,6 +16,7 @@ import {
   type IntegrationView,
   type ProbeResponse,
 } from "@/components/provider/integration-matrix";
+import { BetDetail } from "@/components/admin/bet-detail";
 
 type Row = {
   id: string;
@@ -554,6 +555,7 @@ export default function AdminPage() {
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [bets, setBets] = useState<BetRow[]>([]);
+  const [expandedBet, setExpandedBet] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationView[]>([]);
   const [economy, setEconomy] = useState<EconomySettings | null>(null);
   const [economyDraft, setEconomyDraft] = useState({
@@ -1287,14 +1289,23 @@ export default function AdminPage() {
           <p className="text-muted">No hay apuestas.</p>
         ) : (
           <ul className="space-y-2">
-            {bets.map((b) => (
+            {bets.map((b) => {
+              const key = `${b.version}:${b.id}`;
+              const open = expandedBet === key;
+              return (
               <li
-                key={`${b.version}:${b.id}`}
+                key={key}
                 className="rounded-lg border border-line bg-panel px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setExpandedBet(open ? null : key)}
+                    aria-expanded={open}
+                  >
                     <p className="text-sm font-medium">
+                      <span className="mr-1 inline-block text-faint">{open ? "▾" : "▸"}</span>
                       {b.gameTitle}
                       {b.version === 2 ? (
                         <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-muted">
@@ -1306,14 +1317,15 @@ export default function AdminPage() {
                       {BET_STATUS[b.status] ?? b.status} · {b.stakeSats} sats ·{" "}
                       {b.paid}/{b.total} pagaron
                     </p>
-                  </div>
+                  </button>
                   {b.status === "pending_deposits" ? (
                     <Button variant="ghost" onClick={() => cancelBet(b.id, b.version)}>
                       Cancelar
                     </Button>
                   ) : null}
                 </div>
-                {b.payouts.length > 0 ? (
+                {open ? <BetDetail betId={b.id} version={b.version} /> : null}
+                {!open && b.payouts.length > 0 ? (
                   <ul className="mt-2 space-y-1 border-t border-line pt-2">
                     {b.payouts.map((p) => (
                       <li key={p.npub} className="text-[11px] text-faint">
@@ -1338,7 +1350,8 @@ export default function AdminPage() {
                   </ul>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

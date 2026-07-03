@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
@@ -11,7 +11,6 @@ import { fetchProfile, profileName, type NostrProfile } from "@/lib/nostr";
 import { Button } from "@/components/ui/button";
 import { satsLabel, hueFromSlug } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
-import { ACTIVE_BET_STATUSES } from "@/lib/bet-ui";
 import { NostrPermsSection } from "@/components/nostr-perms-section";
 
 type LibGame = { id: string; slug: string; title: string; coverUrl: string | null };
@@ -76,27 +75,6 @@ export default function ProfilePage() {
       .catch(() => {});
   }, [user]);
 
-  const stats = useMemo(() => {
-    const settled = bets.filter((b) => b.status === "settled");
-    const won = settled.filter((b) => b.result === "won").length;
-    const escrowSats = bets
-      .filter((b) => ACTIVE_BET_STATUSES.has(b.status))
-      .reduce((s, b) => s + b.stakeSats, 0);
-    const netSats = settled.reduce(
-      (s, b) =>
-        b.result === "won"
-          ? s + b.stakeSats
-          : b.result === "lost"
-            ? s - b.stakeSats
-            : s,
-      0,
-    );
-    const winRate = settled.length
-      ? Math.round((won / settled.length) * 100)
-      : 0;
-    return { won, settledTotal: settled.length, escrowSats, netSats, winRate };
-  }, [bets]);
-
   if (loading) return null;
 
   if (!user) {
@@ -116,7 +94,9 @@ export default function ProfilePage() {
   }
 
   const name = profileName(profile) ?? "Anónimo";
-  const recentSettled = bets.filter((b) => b.status === "settled").slice(0, 6);
+  const settledBets = bets.filter((b) => b.status === "settled");
+  const recentSettled = settledBets.slice(0, 3);
+  const wonCount = settledBets.filter((b) => b.result === "won").length;
   const friendCount = friends?.length ?? 0;
 
   async function share() {
@@ -170,7 +150,7 @@ export default function ProfilePage() {
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-aurora/15 px-2.5 py-1 text-[11px] font-medium text-ln-aurora">
-                {stats.won} victorias
+                {wonCount} victorias
               </span>
               {nwcConnected ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 font-mono text-[11px] font-semibold text-ln-corona-bright">
@@ -211,20 +191,9 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* Stats (datos reales) */}
-      <div className="mt-6 grid grid-cols-2 gap-3 ln:grid-cols-4">
-        <Kpi
-          label="Victorias"
-          value={`${stats.won} / ${stats.settledTotal}`}
-          sub={`${stats.winRate}% efectividad`}
-          accent="var(--ln-aurora)"
-        />
-        <Kpi
-          label="En escrow"
-          value={satsLabel(stats.escrowSats)}
-          sub="sats en juego"
-          accent="var(--ln-corona)"
-        />
+      {/* Stats (datos reales). Las métricas de apuestas (victorias, escrow) viven
+          en /bets para no duplicar; acá solo lo propio del perfil. */}
+      <div className="mt-6 grid grid-cols-2 gap-3">
         <Kpi
           label="Juegos"
           value={String(games.length)}
@@ -243,11 +212,25 @@ export default function ProfilePage() {
         {/* Izquierda: actividad reciente */}
         <div className="min-w-0 space-y-8">
           <section>
-            <h2 className="mb-3 text-[17px] font-semibold text-ln-text">
-              Actividad reciente
-            </h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-[17px] font-semibold text-ln-text">
+                Apuestas recientes
+              </h2>
+              <Link
+                href="/bets"
+                className="text-[13px] font-medium text-ln-luna hover:underline"
+              >
+                Ver todas →
+              </Link>
+            </div>
             {recentSettled.length === 0 ? (
-              <p className="text-sm text-ln-faint">Sin actividad todavía.</p>
+              <p className="text-sm text-ln-faint">
+                Sin apuestas todavía.{" "}
+                <Link href="/bets" className="text-ln-luna hover:underline">
+                  Ir a tus apuestas
+                </Link>
+                .
+              </p>
             ) : (
               <ul className="space-y-2">
                 {recentSettled.map((b) => {

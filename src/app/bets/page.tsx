@@ -12,18 +12,16 @@ import {
   betTone,
   toneAccent,
 } from "@/lib/bet-ui";
+import type { MyBetRow } from "@/app/api/me/bets/route";
 
-type Row = {
-  id: string;
-  gameTitle: string;
-  gameSlug: string;
-  status: string;
-  stakeSats: number;
-  depositStatus: string;
-  result: string;
-  payoutStatus: string;
-  payoutDestination: string | null;
-};
+// Fila unificada v1+v2 (misma forma que el endpoint /api/me/bets).
+type Row = MyBetRow;
+
+// El detalle vive en rutas distintas según la versión: v2 (zaps) en /apuestas,
+// v1 (escrow) en /bets.
+function betHref(b: Row): string {
+  return b.version === 2 ? `/apuestas/${b.id}` : `/bets/${b.id}`;
+}
 
 function Kpi({
   label,
@@ -66,7 +64,7 @@ function DuelCard({ b }: { b: Row }) {
   const cta = ctaFor(b);
   return (
     <Link
-      href={`/bets/${b.id}`}
+      href={betHref(b)}
       className="group flex flex-col gap-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 transition-[transform,border-color] duration-150 hover:-translate-y-[3px] hover:border-ln-luna/40"
     >
       <div className="flex items-center gap-3">
@@ -124,7 +122,7 @@ export default function BetsPage() {
 
   useEffect(() => {
     if (!user) return;
-    fetch("/api/escrow/bets/mine")
+    fetch("/api/me/bets")
       .then((r) => r.json())
       .then((d) => setBets(d.bets ?? []))
       .catch(() => setBets([]));
@@ -258,7 +256,7 @@ export default function BetsPage() {
               return (
                 <li key={b.id}>
                   <Link
-                    href={`/bets/${b.id}`}
+                    href={betHref(b)}
                     className="flex items-center justify-between gap-3 rounded-ln-md border border-ln-border border-l-[3px] bg-ln-card/60 px-4 py-3 transition-colors hover:bg-white/[.02]"
                     style={{ borderLeftColor: toneAccent(tone) }}
                   >
