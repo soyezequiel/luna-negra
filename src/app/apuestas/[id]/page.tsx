@@ -8,6 +8,7 @@ import { BET_FEE_MIN_MSAT } from "@/lib/escrow-v2-config";
 import { RELAYS } from "@/lib/constants";
 import { msatToSats } from "@/lib/money";
 import { ZapDepositCard } from "@/components/zap-deposit-card";
+import { BetLiveRefresh } from "@/components/bet-live-refresh";
 
 // Página de una apuesta v2 (namespace propio, no choca con /bets/[id] de v1).
 // Depósitos: zaps públicos anclados al contrato. Premio: profile-zap al ganador.
@@ -62,6 +63,16 @@ export default async function ApuestaV2Page({
     (bet.depositDeadline == null || bet.depositDeadline > new Date());
   const anchorReal = !!bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-");
 
+  // Mientras la apuesta esté en curso (juntando depósitos o en juego), o
+  // liquidada con premios aún por pagar/retirar, refrescamos el RSC cada pocos
+  // segundos para que el estado de los participantes se actualice solo.
+  const live =
+    ["created", "pending_deposits", "ready", "settling"].includes(bet.status) ||
+    (status === "settled" &&
+      bet.participants.some((p) =>
+        ["pending", "withdraw_pending", "failed"].includes(p.payoutStatus ?? ""),
+      ));
+
   // El evento de resultado es kind:30078 (direccionable, firmado por el oráculo
   // del proveedor). Lo linkeamos como `nevent` con relay-hints + autor + kind: así
   // njump lo trae directo del relay en vez de depender de su indexador, que no
@@ -77,6 +88,7 @@ export default async function ApuestaV2Page({
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
+      <BetLiveRefresh active={live} />
       <div className="rounded-ln-xl border border-ln-border bg-ln-card p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
