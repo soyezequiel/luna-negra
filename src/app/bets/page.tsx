@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { satsLabel, hueFromSlug } from "@/lib/format";
+import { normalizeImageUrl } from "@/lib/game-media";
 import {
   ACTIVE_BET_STATUSES,
   betStatusLabel,
@@ -21,6 +22,28 @@ type Row = MyBetRow;
 // v1 (escrow) en /bets.
 function betHref(b: Row): string {
   return b.version === 2 ? `/apuestas/${b.id}` : `/bets/${b.id}`;
+}
+
+/** Portada del juego con fallback al gradiente por slug si no hay imagen. */
+function GameCover({ b, size }: { b: Row; size: "sm" | "md" }) {
+  const dim = size === "md" ? "h-12 w-12 rounded-ln-md" : "h-9 w-9 rounded-ln-sm";
+  if (b.gameCoverUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={normalizeImageUrl(b.gameCoverUrl)}
+        alt={b.gameTitle}
+        referrerPolicy="no-referrer"
+        className={`${dim} shrink-0 object-cover`}
+      />
+    );
+  }
+  return (
+    <span
+      className={`cover ${dim} shrink-0`}
+      style={{ "--h": hueFromSlug(b.gameSlug) } as CSSProperties}
+    />
+  );
 }
 
 function Kpi({
@@ -68,10 +91,7 @@ function DuelCard({ b }: { b: Row }) {
       className="group flex flex-col gap-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 transition-[transform,border-color] duration-150 hover:-translate-y-[3px] hover:border-ln-luna/40"
     >
       <div className="flex items-center gap-3">
-        <span
-          className="cover h-12 w-12 shrink-0 rounded-ln-md"
-          style={{ "--h": hueFromSlug(b.gameSlug) } as CSSProperties}
-        />
+        <GameCover b={b} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ln-text">
             {b.gameTitle}
@@ -261,12 +281,7 @@ export default function BetsPage() {
                     style={{ borderLeftColor: toneAccent(tone) }}
                   >
                     <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className="cover h-9 w-9 shrink-0 rounded-ln-sm"
-                        style={
-                          { "--h": hueFromSlug(b.gameSlug) } as CSSProperties
-                        }
-                      />
+                      <GameCover b={b} size="sm" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-ln-text">
                           {b.gameTitle}

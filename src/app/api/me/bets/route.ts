@@ -15,6 +15,7 @@ export type MyBetRow = {
   version: 1 | 2;
   gameSlug: string;
   gameTitle: string;
+  gameCoverUrl: string | null;
   status: string;
   stakeSats: number;
   depositStatus: string;
@@ -37,13 +38,13 @@ export async function GET() {
   const [v1, v2] = await Promise.all([
     prisma.betParticipant.findMany({
       where: { userId: session.sub },
-      include: { bet: { include: { game: { select: { slug: true, title: true } } } } },
+      include: { bet: { include: { game: { select: { slug: true, title: true, coverUrl: true } } } } },
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
     prisma.zapBetParticipant.findMany({
       where: { userId: session.sub },
-      include: { bet: { include: { game: { select: { slug: true, title: true } } } } },
+      include: { bet: { include: { game: { select: { slug: true, title: true, coverUrl: true } } } } },
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
@@ -56,6 +57,7 @@ export async function GET() {
         version: 1,
         gameSlug: p.bet.game.slug,
         gameTitle: p.bet.game.title,
+        gameCoverUrl: p.bet.game.coverUrl,
         status: p.bet.status,
         stakeSats: Number(msatToSats(p.bet.stakeMsat)),
         depositStatus: p.depositStatus,
@@ -73,6 +75,7 @@ export async function GET() {
         version: 2,
         gameSlug: p.bet.game.slug,
         gameTitle: p.bet.game.title,
+        gameCoverUrl: p.bet.game.coverUrl,
         status: p.bet.status,
         stakeSats: Number(msatToSats(p.bet.stakeMsat)),
         depositStatus: p.depositStatus,
