@@ -170,6 +170,12 @@ export default function ProviderPage() {
   const [provider, setProvider] = useState<Provider | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [betEarnings, setBetEarnings] = useState<{
+    totalSats: number;
+    settledSats: number;
+    pendingSats: number;
+    failedSats: number;
+  } | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
   const [keyName, setKeyName] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -206,10 +212,11 @@ export default function ProviderPage() {
   }
 
   const load = useCallback(async () => {
-    const [d, s, k] = await Promise.all([
+    const [d, s, k, e] = await Promise.all([
       fetch("/api/provider").then((r) => r.json()).catch(() => null),
       fetch("/api/provider/sales").then((r) => r.json()).catch(() => ({ sales: [] })),
       fetch("/api/provider/api-keys").then((r) => r.json()).catch(() => ({ keys: [] })),
+      fetch("/api/provider/earnings").then((r) => r.json()).catch(() => ({ earnings: null })),
     ]);
     if (d?.provider) {
       setProvider(d.provider);
@@ -223,6 +230,7 @@ export default function ProviderPage() {
     setGames(d?.games ?? []);
     setSales(s?.sales ?? []);
     setApiKeys(k?.keys ?? []);
+    setBetEarnings(e?.earnings ?? null);
   }, []);
 
   async function createKey() {
@@ -496,11 +504,19 @@ export default function ProviderPage() {
       </div>
 
       {/* KPIs */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Ingresos pagados" value={satsLabel(paidSats)} sub="sats" accent="var(--btc)" />
-        <Kpi label="Pendiente de cobro" value={satsLabel(pendingSats)} sub="sats" accent="var(--btc)" />
-        <Kpi label="Juegos publicados" value={String(publishedCount)} sub={`${games.length} en total`} accent="var(--blue)" />
-        <Kpi label="Ventas" value={String(sales.length)} sub="transacciones" accent="var(--win)" />
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Kpi label="Ingresos por ventas" value={satsLabel(paidSats)} sub={`${satsLabel(pendingSats)} sats por cobrar`} accent="var(--btc)" />
+        <Kpi
+          label="Ganado en apuestas"
+          value={satsLabel(betEarnings?.totalSats ?? 0)}
+          sub={
+            betEarnings
+              ? `${satsLabel(betEarnings.settledSats)} cobrados · ${satsLabel(betEarnings.pendingSats)} por cobrar`
+              : "tu corte (dev_fee)"
+          }
+          accent="var(--win)"
+        />
+        <Kpi label="Juegos publicados" value={String(publishedCount)} sub={`${games.length} en total · ${sales.length} ventas`} accent="var(--blue)" />
       </div>
 
       {/* Tabs */}

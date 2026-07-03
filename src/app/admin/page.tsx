@@ -564,6 +564,11 @@ export default function AdminPage() {
     betDevFeeMaxPct: "",
   });
   const [economyMsg, setEconomyMsg] = useState<string | null>(null);
+  const [houseEarnings, setHouseEarnings] = useState<{
+    totalSats: number;
+    betFeeSats: number;
+    storeCommissionSats: number;
+  } | null>(null);
   const [treasury, setTreasury] = useState<TreasuryInfo | null>(null);
   const [treasuryDraft, setTreasuryDraft] = useState({ minSats: "", maxSats: "" });
   const [treasuryMsg, setTreasuryMsg] = useState<string | null>(null);
@@ -618,6 +623,10 @@ export default function AdminPage() {
         maxSats: String(t.settings.maxSats),
       });
     }
+    const earn = await fetch("/api/admin/earnings")
+      .then((res) => res.json())
+      .catch(() => ({ earnings: null }));
+    setHouseEarnings(earn?.earnings ?? null);
   }, []);
 
   const probeProvider = useCallback(
@@ -810,7 +819,26 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div
+        className="mt-6 rounded-lg border border-line bg-panel p-5"
+        style={{ borderLeft: "3px solid var(--win)" }}
+      >
+        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+          Ganancias Luna Negra
+        </p>
+        <p className="mt-1 text-[34px] font-bold leading-none text-ink">
+          {houseEarnings
+            ? `${houseEarnings.totalSats.toLocaleString("es-AR")} sats`
+            : "—"}
+        </p>
+        <p className="mt-1.5 text-[11.5px] text-muted">
+          {houseEarnings
+            ? `${houseEarnings.betFeeSats.toLocaleString("es-AR")} sats de apuestas · ${houseEarnings.storeCommissionSats.toLocaleString("es-AR")} sats de comisión de ventas`
+            : "Cargando…"}
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Kpi label="En revisión" value={String(games?.length ?? 0)} sub="juegos" accent="var(--blue)" />
         <Kpi label="Sin enviar" value={String(drafts?.length ?? 0)} sub="borradores" accent="var(--ln-corona)" />
         <Kpi label="Payouts a resolver" value={String(payouts.length)} sub={`${pendingPayoutSats.toLocaleString("es-AR")} sats`} accent="var(--btc)" />
