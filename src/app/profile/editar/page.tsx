@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Lud16Form } from "@/components/lud16-form";
 import { NostrProfileForm } from "@/components/nostr-profile-form";
 import { NostrPermsSection } from "@/components/nostr-perms-section";
+import { ZapReadinessCard } from "@/components/zap-readiness-card";
 import { fetchProfile, type NostrProfile } from "@/lib/nostr";
 import { satsLabel } from "@/lib/format";
 
@@ -54,6 +55,7 @@ export default function EditProfilePage() {
         {user.custodial ? <CustodialKeySection /> : null}
         <NwcSection />
         <PayoutDestinationSection nostrLud16={profile?.lud16 ?? null} />
+        <ZapReadinessCard />
         <BetaGamesSection />
         <section className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
           <h2 className="text-[15px] font-semibold text-ln-text">Permisos Nostr</h2>

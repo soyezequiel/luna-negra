@@ -66,22 +66,33 @@ export function encodeLnurl(url: string): string {
 }
 
 /**
- * Resuelve una Lightning Address (`name@domain`) a su `ZapEndpoint` NIP-57, o
- * `null` si el wallet no soporta zaps (sin `allowsNostr`/`nostrPubkey`) o no se
- * pudo contactar. Es la parte agnóstica del destinatario: la usa el zap del dev
- * (vía `resolveZapEndpoint`) y el motor de payouts v2 (que zapea al ganador).
+ * Motivo por el que una Lightning Address NO puede recibir zaps NIP-57:
+ *  - `bad_address`: no es un `name@domain` válido.
+ *  - `unreachable`: no se pudo contactar el `.well-known/lnurlp` (temporal).
+ *  - `no_nip57`: responde, pero no anuncia `allowsNostr`/`nostrPubkey` válidos.
  */
-export async function resolveZapEndpointForAddress(
+export type ZapEndpointFailure = "bad_address" | "unreachable" | "no_nip57";
+
+export type ZapEndpointInspection =
+  | { ok: true; endpoint: ZapEndpoint }
+  | { ok: false; reason: ZapEndpointFailure };
+
+/**
+ * Sondea el LNURL-pay de una Lightning Address y dice si sirve para zaps NIP-57,
+ * con un motivo granular cuando no (para poder guiar al usuario). Es la fuente de
+ * verdad del chequeo de aptitud (ver src/lib/zap-readiness.ts).
+ */
+export async function inspectZapEndpoint(
   address: string,
-): Promise<ZapEndpoint | null> {
+): Promise<ZapEndpointInspection> {
   const url = lnurlpUrl(address);
-  if (!url) return null;
+  if (!url) return { ok: false, reason: "bad_address" };
 
   let body: Record<string, unknown>;
   try {
     body = await fetchJson(url);
   } catch {
-    return null;
+    return { ok: false, reason: "unreachable" };
   }
 
   const callback = body.callback;
@@ -92,17 +103,33 @@ export async function resolveZapEndpointForAddress(
     typeof nostrPubkey !== "string" ||
     !/^[a-f0-9]{64}$/.test(nostrPubkey)
   ) {
-    return null;
+    return { ok: false, reason: "no_nip57" };
   }
 
   return {
-    address,
-    callback,
-    lnurl: encodeLnurl(url),
-    nostrPubkey,
-    minSendable: Number(body.minSendable ?? 1000),
-    maxSendable: Number(body.maxSendable ?? 1_000_000_000),
+    ok: true,
+    endpoint: {
+      address,
+      callback,
+      lnurl: encodeLnurl(url),
+      nostrPubkey,
+      minSendable: Number(body.minSendable ?? 1000),
+      maxSendable: Number(body.maxSendable ?? 1_000_000_000),
+    },
   };
+}
+
+/**
+ * Resuelve una Lightning Address (`name@domain`) a su `ZapEndpoint` NIP-57, o
+ * `null` si el wallet no soporta zaps (sin `allowsNostr`/`nostrPubkey`) o no se
+ * pudo contactar. Es la parte agnóstica del destinatario: la usa el zap del dev
+ * (vía `resolveZapEndpoint`) y el motor de payouts v2 (que zapea al ganador).
+ */
+export async function resolveZapEndpointForAddress(
+  address: string,
+): Promise<ZapEndpoint | null> {
+  const inspection = await inspectZapEndpoint(address);
+  return inspection.ok ? inspection.endpoint : null;
 }
 
 /**
