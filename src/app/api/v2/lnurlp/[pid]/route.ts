@@ -4,6 +4,7 @@ import { getStorePubkey } from "@/lib/nostr-server";
 import { ensureDepositInvoiceV2, validateDepositZapRequest } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { siteUrl } from "@/lib/site-url";
+import { notifyOperationalError } from "@/lib/discord";
 
 // LNURL-pay (LUD-06) + NIP-57 para el depósito de un participante v2. Dos pasos:
 //   1) GET sin `?amount`  → payRequest (callback + min/max = stake fijo) con
@@ -79,6 +80,12 @@ export async function GET(
         { headers: LNURL_HEADERS },
       );
     } catch (e) {
+      await notifyOperationalError({
+        source: "lnurl-participant-deposit-invoice",
+        error: e,
+        fingerprint: `lnurl-participant-deposit-invoice:${part.id}`,
+        context: { betId: bet.id, participantId: part.id, amountMsat: amount },
+      });
       return lnurlError(
         e instanceof Error ? e.message : "No se pudo generar el invoice",
       );

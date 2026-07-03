@@ -5,6 +5,7 @@ import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { validateDepositZapRequest, ensureDepositInvoiceV2 } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { siteUrl } from "@/lib/site-url";
+import { notifyOperationalError } from "@/lib/discord";
 
 // Paso 2 del depósito por zap (v2): recibe el 9734 firmado, lo valida contra el
 // contrato (anti-tampering) y emite el invoice con el NWC de la tienda. El recibo
@@ -77,6 +78,12 @@ export async function POST(
     const inv = await ensureDepositInvoiceV2(bet, part, signed);
     return NextResponse.json({ invoice: inv.invoice, paymentHash: inv.paymentHash });
   } catch (e) {
+    await notifyOperationalError({
+      source: "api-v2-deposit-invoice",
+      error: e,
+      fingerprint: `api-v2-deposit-invoice:${part.id}`,
+      context: { betId: bet.id, participantId: part.id },
+    });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "No se pudo generar el invoice" },
       { status: 502 },

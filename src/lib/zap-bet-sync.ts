@@ -2,6 +2,9 @@ import { SimplePool, nip57, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { getStorePubkey } from "./nostr-server";
+import { notifyOperationalError, notifyNonSocialZap } from "./discord";
+
+const MISSING_RECEIPT_GRACE_MS = 10 * 60_000;
 
 /**
  * Reconciliación de recibos de PAYOUT de apuestas v2. Cuando Luna Negra zapea al
@@ -25,7 +28,15 @@ function pool(): SimplePool {
 
 export async function syncZapBetReceipts(): Promise<void> {
   const storePubkey = getStorePubkey();
-  if (!storePubkey) return; // sin identidad de la tienda no firmamos 9734 salientes
+  if (!storePubkey) {
+    await notifyOperationalError({
+      source: "zap-bet-sync-config",
+      error: new Error("Falta LUNA_NEGRA_NSEC: no se pueden auditar payouts por zap"),
+      fingerprint: "zap-bet-sync:missing-store-key",
+      cooldownMs: 60 * 60_000,
+    });
+    return;
+  }
 
   // Participantes con payout por zap todavía sin recibo.
   const pending = await prisma.zapBetParticipant.findMany({
@@ -65,16 +76,51 @@ export async function syncZapBetReceipts(): Promise<void> {
       { kinds: [9735], "#p": [...recipientPubkeys], since },
       { maxWait: 5000 },
     );
-  } catch {
+  } catch (error) {
+    await notifyOperationalError({
+      source: "zap-bet-sync-relays",
+      error,
+      fingerprint: "zap-bet-sync:relay-query",
+      cooldownMs: 10 * 60_000,
+      context: { pendingPayouts: pending.length, relays: RELAYS },
+    });
     return; // relays caídos: reintentamos en el próximo tick
   }
 
+  const resolvedRequestIds = new Set<string>();
   for (const receipt of receipts) {
     try {
-      await recordPayoutReceipt(receipt, byRequestId, storePubkey);
-    } catch {
-      /* recibo inválido o ya registrado: seguimos con el resto */
+      const requestId = await recordPayoutReceipt(receipt, byRequestId, storePubkey);
+      if (requestId) resolvedRequestIds.add(requestId);
+    } catch (error) {
+      await notifyOperationalError({
+        source: "zap-bet-sync-database",
+        error,
+        fingerprint: `zap-bet-sync:receipt:${receipt.id}`,
+        context: { receiptId: receipt.id },
+      });
     }
+  }
+
+  const staleBefore = Date.now() - MISSING_RECEIPT_GRACE_MS;
+  for (const part of pending) {
+    if (!part.payoutZapRequestId || resolvedRequestIds.has(part.payoutZapRequestId)) continue;
+    const payoutTime = (part.settledAt ?? part.createdAt).getTime();
+    if (payoutTime > staleBefore) continue;
+    await notifyNonSocialZap({
+      flow: "payout al ganador (recibo faltante)",
+      reason:
+        "El payout se pagó como zap NIP-57 pero el recibo kind:9735 del receptor no aparece en los relays tras la ventana de gracia. Puede que el wallet del ganador no publique recibos: el pago no se ve como zap social en Nostr.",
+      fingerprint: `zap-bet-sync:missing:${part.id}`,
+      cooldownMs: 30 * 60_000,
+      context: {
+        betId: part.betId,
+        participantId: part.id,
+        recipientPubkey: part.pubkey,
+        payoutZapRequestId: part.payoutZapRequestId,
+        waitingMinutes: Math.floor((Date.now() - payoutTime) / 60_000),
+      },
+    });
   }
 }
 
@@ -82,25 +128,25 @@ async function recordPayoutReceipt(
   receipt: Event,
   byRequestId: Map<string, { id: string; betId: string; userId: string; pubkey: string }>,
   storePubkey: string,
-): Promise<void> {
-  if (receipt.kind !== 9735) return;
+): Promise<string | null> {
+  if (receipt.kind !== 9735) return null;
 
   // El 9734 embebido (description) es el que FIRMAMOS nosotros para pagar el zap.
   const desc = receipt.tags.find((t) => t[0] === "description")?.[1];
-  if (!desc || nip57.validateZapRequest(desc)) return;
+  if (!desc || nip57.validateZapRequest(desc)) return null;
 
   let zr: { id?: string; pubkey?: string };
   try {
     zr = JSON.parse(desc);
   } catch {
-    return;
+    return null;
   }
   // Debe estar firmado por la tienda y su id debe corresponder a un payout pendiente.
-  if (zr.pubkey !== storePubkey || !zr.id) return;
+  if (zr.pubkey !== storePubkey || !zr.id) return null;
   const part = byRequestId.get(zr.id);
-  if (!part) return;
+  if (!part) return null;
   const recipient = receipt.tags.find((t) => t[0] === "p")?.[1];
-  if (recipient !== part.pubkey) return;
+  if (recipient !== part.pubkey) return null;
 
   // Completa la auditoría: recibo en el participante y en el asiento del ledger.
   await prisma.zapBetParticipant.update({
@@ -116,4 +162,5 @@ async function recordPayoutReceipt(
     },
     data: { zapReceiptId: receipt.id },
   });
+  return zr.id;
 }

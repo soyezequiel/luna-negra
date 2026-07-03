@@ -5,6 +5,7 @@ import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { buildDepositZapRequest } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { siteUrl } from "@/lib/site-url";
+import { notifyOperationalError } from "@/lib/discord";
 
 // Paso 1 del depósito por zap (v2): arma el zap request (9734) SIN firmar para que
 // el apostador lo firme con su identidad. Requiere sesión y que el que pide sea el
@@ -52,6 +53,12 @@ export async function POST(
     const unsignedZapRequest = buildDepositZapRequest(bet, part, siteUrl(req));
     return NextResponse.json({ participantId: part.id, unsignedZapRequest });
   } catch (e) {
+    await notifyOperationalError({
+      source: "api-v2-deposit-prepare",
+      error: e,
+      fingerprint: `api-v2-deposit-prepare:${part.id}`,
+      context: { betId: bet.id, participantId: part.id },
+    });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "No se pudo preparar el depósito" },
       { status: 503 },

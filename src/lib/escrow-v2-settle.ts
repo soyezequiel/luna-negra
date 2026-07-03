@@ -25,6 +25,7 @@ import {
 } from "@/lib/escrow-v2-config";
 import { emitBetSettledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
+import { notifyOperationalError } from "@/lib/discord";
 
 export type ZapBetWithRelations = ZapBet & {
   provider: Provider & { owner: User };
@@ -80,6 +81,12 @@ export async function settleZapBetWithResult(args: {
       .catch(() => {});
     Sentry.captureException(err, { level: "error", tags: { flow: "escrow-v2-settle", betId } });
     console.error(`[escrow-v2] falló la liquidación de ${betId}; revertido a ready:`, err);
+    await notifyOperationalError({
+      source: "escrow-v2-settle",
+      error: err,
+      fingerprint: `escrow-v2-settle:${betId}`,
+      context: { betId, winnerNpubs },
+    });
     return {
       ok: false,
       code: "SETTLE_FAILED",
@@ -119,6 +126,13 @@ async function runSettlement(args: {
       console.error(
         `[escrow-v2] términos alterados en ${betId}: contrato=${bet.contractHash} vivo=${liveHash}`,
       );
+      await notifyOperationalError({
+        source: "escrow-v2-contract-mismatch",
+        error: new Error("Los términos vivos no coinciden con el contrato firmado"),
+        fingerprint: `escrow-v2-contract-mismatch:${betId}`,
+        cooldownMs: 60 * 60_000,
+        context: { betId, contractHash: bet.contractHash, liveHash },
+      });
       return {
         ok: false,
         code: "CONTRACT_MISMATCH",
@@ -136,7 +150,15 @@ async function runSettlement(args: {
       await prisma.zapBetParticipant.update({ where: { id: p.id }, data: { result: "tie" } });
       await payParticipantV2({ bet, participant: p, amountMsat: bet.stakeMsat, kind: "refund" });
     }
-    const noteId = await publishSettleNoteFor(bet, [], 0n, 0n).catch(() => null);
+    const noteId = await publishSettleNoteFor(bet, [], 0n, 0n).catch(async (error) => {
+      await notifyOperationalError({
+        source: "escrow-v2-settle-note",
+        error,
+        fingerprint: `escrow-v2-settle-note:${betId}`,
+        context: { betId, result: "void" },
+      });
+      return null;
+    });
     await prisma.zapBet.update({
       where: { id: betId },
       data: {
@@ -206,7 +228,15 @@ async function runSettlement(args: {
     fresh.filter((p) => winners.some((w) => w.id === p.id)),
     feeMsat + dust,
     devFeeMsat,
-  ).catch(() => null);
+  ).catch(async (error) => {
+    await notifyOperationalError({
+      source: "escrow-v2-settle-note",
+      error,
+      fingerprint: `escrow-v2-settle-note:${betId}`,
+      context: { betId, result: "settled" },
+    });
+    return null;
+  });
 
   await prisma.zapBet.update({
     where: { id: betId },

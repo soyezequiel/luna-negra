@@ -21,6 +21,7 @@ import { RESOLVE_WINDOW_MS } from "@/lib/escrow-v2-config";
 import { emitDepositReceivedV2, emitBetFundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { storeLnurlUrl } from "@/lib/site-url";
+import { notifyNonSocialZap } from "@/lib/discord";
 
 // Depósito por zap (v2). Luna Negra actúa como receptor NIP-57: el apostador firma
 // un zap request (9734) con su identidad, la tienda emite el invoice con su NWC,
@@ -190,6 +191,7 @@ export async function settleDepositV2(
   let depositReceiptId: string | null = null;
   let depositReceiptJson: string | null = null;
   let depositReceiptOk = false;
+  let receiptFailure: unknown = null;
   if (bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-") && part.depositInvoice) {
     // Si el apostador firmó su 9734 lo usamos como `description` (identifica al
     // emisor con el tag `P`). Sin firma no publicamos un 9735: los clientes Nostr
@@ -209,13 +211,46 @@ export async function settleDepositV2(
         bolt11: part.depositInvoice,
         descriptionZapRequest,
         zapperPubkey: signerPubkey,
-      }).catch(() => null);
+      }).catch((error) => {
+        receiptFailure = error;
+        return null;
+      });
       if (receipt) {
         depositReceiptId = receipt.event.id;
         depositReceiptJson = JSON.stringify(receipt.event);
         depositReceiptOk = receipt.accepted > 0;
       }
+    } else {
+      receiptFailure = new Error("El depósito pagado no conserva un zap request 9734 válido");
     }
+  }
+
+  const expectsReceipt = Boolean(
+    bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-"),
+  );
+  if (expectsReceipt && !depositReceiptOk) {
+    const failureMsg =
+      receiptFailure instanceof Error
+        ? receiptFailure.message
+        : receiptFailure != null
+          ? String(receiptFailure)
+          : depositReceiptJson
+            ? "Ningún relay aceptó el recibo kind:9735 del depósito"
+            : "No se pudo construir el recibo kind:9735 del depósito";
+    await notifyNonSocialZap({
+      flow: "depósito de apuesta (zap entrante)",
+      reason: `El depósito se cobró pero no quedó como zap social: ${failureMsg}. Sin recibo 9735 firmado y aceptado por relays, el aporte no es visible en Nostr.`,
+      fingerprint: `zap-deposit-receipt:${part.id}`,
+      cooldownMs: 30 * 60_000,
+      context: {
+        betId: bet.id,
+        participantId: part.id,
+        anchorEventId: bet.anchorEventId,
+        hasInvoice: Boolean(part.depositInvoice),
+        hasZapRequest: Boolean(part.depositZapRequest),
+        receiptId: depositReceiptId,
+      },
+    });
   }
 
   // 2) Estado + ledger. `depositReceiptId` es @unique: si otro proceso ya settleó

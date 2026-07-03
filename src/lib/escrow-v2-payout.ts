@@ -9,6 +9,7 @@ import { lightningConfigured } from "@/lib/lightning";
 import { getStorePubkey } from "@/lib/nostr-server";
 import { sendZapPayout } from "@/lib/zap-payout";
 import { LUNA_FEE_LUD16, WITHDRAW_WINDOW_MS } from "@/lib/escrow-v2-config";
+import { notifyOperationalError } from "@/lib/discord";
 
 // Payouts de apuestas v2: Luna Negra ZAPEA al ganador / refund / dev fee (o cae a
 // LNURL / QR de retiro). Espejo de escrow-payout.ts sobre el ledger v2, con la
@@ -37,7 +38,18 @@ export async function payParticipantV2(args: {
     amountMsat,
     idempotencyKey,
   });
-  if (!rec.ok) return; // duplicate (ya procesado) o insolvent (no debería)
+  if (!rec.ok) {
+    if (rec.reason === "insolvent") {
+      await notifyOperationalError({
+        source: "escrow-v2-insolvent-payout",
+        error: new Error("El ledger rechazó el payout por fondos insuficientes"),
+        fingerprint: `escrow-v2-insolvent:${idempotencyKey}`,
+        cooldownMs: 60 * 60_000,
+        context: { betId: bet.id, participantId: participant.id, kind, amountMsat },
+      });
+    }
+    return;
+  }
 
   const dest = await resolveDestination(participant.npub);
 
@@ -133,7 +145,18 @@ export async function payProviderFeeV2(args: {
     amountMsat,
     idempotencyKey,
   });
-  if (!rec.ok) return;
+  if (!rec.ok) {
+    if (rec.reason === "insolvent") {
+      await notifyOperationalError({
+        source: "escrow-v2-insolvent-dev-fee",
+        error: new Error("El ledger rechazó el corte del proveedor por fondos insuficientes"),
+        fingerprint: `escrow-v2-insolvent:${idempotencyKey}`,
+        cooldownMs: 60 * 60_000,
+        context: { betId: bet.id, providerId: bet.providerId, amountMsat },
+      });
+    }
+    return;
+  }
 
   const dest =
     bet.provider.lightningAddress ??
@@ -150,7 +173,16 @@ export async function payProviderFeeV2(args: {
     await markPaid("dev-preimage");
     return;
   }
-  if (!dest) return; // asiento pending = deuda con el dev
+  if (!dest) {
+    await notifyOperationalError({
+      source: "escrow-v2-dev-fee-destination",
+      error: new Error("El proveedor no tiene una Lightning Address para cobrar su corte"),
+      fingerprint: `escrow-v2-dev-fee-destination:${bet.providerId}`,
+      cooldownMs: 60 * 60_000,
+      context: { betId: bet.id, providerId: bet.providerId, amountMsat },
+    });
+    return; // asiento pending = deuda con el dev
+  }
 
   const res = await sendZapPayout({
     anchorEventId: bet.anchorEventId,
@@ -189,7 +221,18 @@ export async function payHouseFeeV2(args: {
     amountMsat,
     idempotencyKey,
   });
-  if (!rec.ok) return;
+  if (!rec.ok) {
+    if (rec.reason === "insolvent") {
+      await notifyOperationalError({
+        source: "escrow-v2-insolvent-house-fee",
+        error: new Error("El ledger rechazó la comisión de la casa por fondos insuficientes"),
+        fingerprint: `escrow-v2-insolvent:${idempotencyKey}`,
+        cooldownMs: 60 * 60_000,
+        context: { betId: bet.id, amountMsat },
+      });
+    }
+    return;
+  }
 
   const storePubkey = getStorePubkey();
   // Zap real solo si hay un wallet de fee DISTINTO configurado y NWC disponible.
@@ -253,7 +296,16 @@ export async function retryFailedPayoutV2(
     where: { betId: part.betId },
     select: { kind: true, amountMsat: true, status: true },
   });
-  if (!canPayout(entries, amountMsat)) return "skipped";
+  if (!canPayout(entries, amountMsat)) {
+    await notifyOperationalError({
+      source: "escrow-v2-insolvent-retry",
+      error: new Error("El ledger no permite reintentar el payout por fondos insuficientes"),
+      fingerprint: `escrow-v2-insolvent-retry:${entry.id}`,
+      cooldownMs: 60 * 60_000,
+      context: { betId: part.betId, participantId: part.id, amountMsat },
+    });
+    return "skipped";
+  }
 
   const dest = await resolveDestination(part.npub);
   if (!dest) {

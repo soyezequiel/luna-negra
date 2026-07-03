@@ -11,6 +11,7 @@ import {
   emitBetExpiredV2,
   emitBetRefundedV2,
 } from "@/lib/webhooks";
+import { notifyOperationalError } from "@/lib/discord";
 
 /**
  * Ciclo de vida de las apuestas v2 (in-process, cada ~1 min). Espejo de runTick:
@@ -49,7 +50,16 @@ export async function runTickV2(): Promise<{
           p.depositPaymentHash &&
           !p.depositPaymentHash.startsWith("dev-")
         ) {
-          const paid = await isInvoicePaid(p.depositPaymentHash).catch(() => false);
+          const paid = await isInvoicePaid(p.depositPaymentHash).catch(async (error) => {
+            await notifyOperationalError({
+              source: "zap-deposit-invoice-lookup",
+              error,
+              fingerprint: `zap-deposit-invoice-lookup:${p.depositPaymentHash}`,
+              cooldownMs: 10 * 60_000,
+              context: { betId: bet.id, participantId: p.id },
+            });
+            return false;
+          });
           if (paid) {
             await settleDepositV2(bet, p, now);
             deposits++;
@@ -141,7 +151,16 @@ export async function runTickV2(): Promise<{
       select: { id: true },
     });
     for (const { id } of failedPayouts) {
-      const res = await retryFailedPayoutV2(id).catch(() => "failed" as const);
+      const res = await retryFailedPayoutV2(id).catch(async (error) => {
+        await notifyOperationalError({
+          source: "zap-payout-retry",
+          error,
+          fingerprint: `zap-payout-retry:${id}`,
+          cooldownMs: 10 * 60_000,
+          context: { participantId: id },
+        });
+        return "failed" as const;
+      });
       if (res === "paid" || res === "withdraw_pending") retried++;
     }
   }
@@ -149,7 +168,7 @@ export async function runTickV2(): Promise<{
   // G) Reintentar la publicación de recibos 9735 propios que ningún relay aceptó.
   const pendingReceipts = await prisma.zapBetParticipant.findMany({
     where: { depositStatus: "paid", depositReceiptOk: false, depositReceiptJson: { not: null } },
-    select: { id: true, depositReceiptJson: true },
+    select: { id: true, betId: true, depositReceiptJson: true },
   });
   for (const p of pendingReceipts) {
     if (!p.depositReceiptJson) continue;
@@ -162,9 +181,23 @@ export async function runTickV2(): Promise<{
           data: { depositReceiptOk: true },
         });
         receiptsRepublished++;
+      } else {
+        await notifyOperationalError({
+          source: "zap-deposit-receipt-relays",
+          error: new Error("Ningún relay aceptó el recibo kind:9735 del depósito"),
+          fingerprint: `zap-deposit-receipt-relays:${p.id}`,
+          cooldownMs: 30 * 60_000,
+          context: { betId: p.betId, participantId: p.id, receiptId: ev.id },
+        });
       }
-    } catch {
-      /* recibo corrupto en DB → se ignora */
+    } catch (error) {
+      await notifyOperationalError({
+        source: "zap-deposit-receipt-retry",
+        error,
+        fingerprint: `zap-deposit-receipt-retry:${p.id}`,
+        cooldownMs: 30 * 60_000,
+        context: { betId: p.betId, participantId: p.id },
+      });
     }
   }
 

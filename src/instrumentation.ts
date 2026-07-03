@@ -1,6 +1,13 @@
 // Instrumentación de servidor (Next 16): se ejecuta una vez al arrancar cada
 // instancia. Carga el init de Sentry según el runtime.
 import * as Sentry from "@sentry/nextjs";
+import type { Instrumentation } from "next";
+import { notifyOperationalError } from "@/lib/discord";
+
+async function reportBackgroundFailure(source: string, error: unknown): Promise<void> {
+  console.error(`[${source}] fallo:`, error);
+  await notifyOperationalError({ source, error });
+}
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
@@ -49,7 +56,7 @@ async function startEscrowTick() {
         await runTickV2();
       }
     } catch (err) {
-      console.error("[escrow-tick] falló:", err);
+      await reportBackgroundFailure("escrow-tick", err);
     } finally {
       running = false;
     }
@@ -81,7 +88,7 @@ async function startZapSync() {
     try {
       await syncZapReceipts();
     } catch (err) {
-      console.error("[zap-sync] falló:", err);
+      await reportBackgroundFailure("zap-sync", err);
     } finally {
       running = false;
     }
@@ -113,7 +120,7 @@ async function startZapBetSync() {
     try {
       await syncZapBetReceipts();
     } catch (err) {
-      console.error("[zap-bet-sync] falló:", err);
+      await reportBackgroundFailure("zap-bet-sync", err);
     } finally {
       running = false;
     }
@@ -145,7 +152,7 @@ async function startCommentSync() {
     try {
       await syncGameComments();
     } catch (err) {
-      console.error("[comment-sync] falló:", err);
+      await reportBackgroundFailure("comment-sync", err);
     } finally {
       running = false;
     }
@@ -177,7 +184,7 @@ async function startGameSync() {
     try {
       await syncGames();
     } catch (err) {
-      console.error("[game-sync] falló:", err);
+      await reportBackgroundFailure("game-sync", err);
     } finally {
       running = false;
     }
@@ -209,7 +216,7 @@ async function startScoreSync() {
     try {
       await syncScores();
     } catch (err) {
-      console.error("[score-sync] falló:", err);
+      await reportBackgroundFailure("score-sync", err);
     } finally {
       running = false;
     }
@@ -242,7 +249,7 @@ async function startPresenceSampler() {
     try {
       await samplePresence();
     } catch (err) {
-      console.error("[presence-sampler] falló:", err);
+      await reportBackgroundFailure("presence-sampler", err);
     } finally {
       running = false;
     }
@@ -274,7 +281,7 @@ async function startStorePresenceSampler() {
     try {
       await sampleStorePresence();
     } catch (err) {
-      console.error("[store-presence-sampler] falló:", err);
+      await reportBackgroundFailure("store-presence-sampler", err);
     } finally {
       running = false;
     }
@@ -285,5 +292,27 @@ async function startStorePresenceSampler() {
   setInterval(tick, STORE_PRESENCE_SAMPLE_INTERVAL_MS).unref?.();
 }
 
-// Captura errores no manejados de route handlers y server components.
-export const onRequestError = Sentry.captureRequestError;
+// Captura errores no manejados de route handlers, actions y server components.
+export const onRequestError: Instrumentation.onRequestError = async (
+  error,
+  request,
+  context,
+) => {
+  Sentry.captureRequestError(error, request, context);
+  const digest =
+    error && typeof error === "object" && "digest" in error
+      ? String(error.digest)
+      : undefined;
+  await notifyOperationalError({
+    source: `next-${context.routeType}`,
+    error,
+    fingerprint: digest ? `next:${digest}` : undefined,
+    context: {
+      method: request.method,
+      path: request.path.split("?", 1)[0],
+      routePath: context.routePath,
+      routerKind: context.routerKind,
+      ...(digest ? { digest } : {}),
+    },
+  });
+};

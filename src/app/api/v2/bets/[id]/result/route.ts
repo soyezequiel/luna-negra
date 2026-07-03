@@ -7,6 +7,7 @@ import { settleZapBetWithResult, type SettleResult } from "@/lib/escrow-v2-settl
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
+import { notifyOperationalError } from "@/lib/discord";
 
 const MAX_AGE = 1800; // 30 min
 
@@ -46,6 +47,12 @@ export async function POST(
     return await handleSignedEvent(betId, body);
   } catch (err) {
     console.error(`[bet-v2-result] error inesperado liquidando ${betId}:`, err);
+    await notifyOperationalError({
+      source: "api-v2-bet-result",
+      error: err,
+      fingerprint: `api-v2-bet-result:${betId}`,
+      context: { betId },
+    });
     return apiError(
       "SETTLE_ERROR",
       err instanceof Error ? err.message : "Error inesperado al liquidar la apuesta",
@@ -89,6 +96,12 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
     }
   } catch (err) {
     console.error(`[bet-v2-result] no se pudo acceder a la clave de oráculo de ${providerId}:`, err);
+    await notifyOperationalError({
+      source: "api-v2-oracle-key",
+      error: err,
+      fingerprint: `api-v2-oracle-key:${providerId}`,
+      context: { betId, providerId },
+    });
     return apiError(
       "ORACLE_KEY_ERROR",
       "No se pudo acceder a la clave de oráculo del proveedor (revisá ORACLE_ENC_KEY en el servidor)",

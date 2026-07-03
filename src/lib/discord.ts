@@ -1,10 +1,3 @@
-// Notificaciones a Discord vía webhook entrante. Se usa para avisar al equipo de
-// eventos operativos (p. ej. un juego nuevo enviado a revisión).
-//
-// Patrón igual que email.ts: si no hay `DISCORD_WEBHOOK_URL`, en dev se loguea a
-// la consola y en prod es un no-op. NUNCA lanza: una notificación que falla no
-// debe romper la acción del usuario que la disparó.
-
 import { categoryLabel } from "@/lib/categories";
 
 type DiscordEmbedField = { name: string; value: string; inline?: boolean };
@@ -18,9 +11,127 @@ type DiscordEmbed = {
   timestamp?: string;
 };
 
-const VIOLETA = 0x7c3aed; // acento de marca de Luna Negra
+type OperationalErrorArgs = {
+  source: string;
+  error: unknown;
+  context?: Record<string, unknown>;
+  fingerprint?: string;
+  cooldownMs?: number;
+};
 
-/** Envía un mensaje con embeds al webhook de Discord, si está configurado. */
+type NonSocialZapArgs = {
+  /** Flujo donde ocurrió: "depósito", "payout al ganador", "refund", "corte del dev"… */
+  flow: string;
+  /** Explicación en lenguaje claro de por qué el zap NO fue social (sin recibo 9735). */
+  reason: string;
+  context?: Record<string, unknown>;
+  fingerprint?: string;
+  cooldownMs?: number;
+};
+
+const VIOLETA = 0x7c3aed;
+const ROJO = 0xdc2626;
+const AMBAR = 0xf59e0b;
+const DEFAULT_ALERT_COOLDOWN_MS = 5 * 60_000;
+const alertTimestamps = new Map<string, number>();
+
+function truncate(text: string, max: number): string {
+  const value = text.trim();
+  return value.length > max ? `${value.slice(0, max - 3).trimEnd()}...` : value;
+}
+
+function redactSecrets(text: string): string {
+  return text
+    .replace(
+      /https:\/\/(?:canary\.)?(?:discord(?:app)?\.com)\/api\/webhooks\/\d+\/[^\s"']+/gi,
+      "[discord-webhook-redacted]",
+    )
+    .replace(/\bBearer\s+[^\s"']+/gi, "Bearer [redacted]")
+    .replace(/\b(?:nsec1|ln_sk_)[a-z0-9_-]+/gi, "[secret-redacted]")
+    .replace(/nostr\+walletconnect:\/\/[^\s"']+/gi, "[nwc-redacted]");
+}
+
+function serializeContext(context: Record<string, unknown>): string {
+  const seen = new WeakSet<object>();
+  try {
+    return redactSecrets(
+      JSON.stringify(
+        context,
+        (_key, value: unknown) => {
+          if (typeof value === "bigint") return value.toString();
+          if (value instanceof Error) {
+            return { name: value.name, message: value.message };
+          }
+          if (value && typeof value === "object") {
+            if (seen.has(value)) return "[circular]";
+            seen.add(value);
+          }
+          return value;
+        },
+        2,
+      ),
+    );
+  } catch {
+    return redactSecrets(String(context));
+  }
+}
+
+function errorDetails(error: unknown): { name: string; message: string; stack?: string } {
+  if (error instanceof Error) {
+    return {
+      name: error.name || "Error",
+      message: redactSecrets(error.message || "Error sin mensaje"),
+      stack: error.stack ? redactSecrets(error.stack) : undefined,
+    };
+  }
+  if (typeof error === "string") {
+    return { name: "Error", message: redactSecrets(error) };
+  }
+  return { name: "Error", message: truncate(serializeContext({ error }), 1_000) };
+}
+
+function shouldSendAlert(key: string, cooldownMs: number): boolean {
+  const now = Date.now();
+  const previous = alertTimestamps.get(key);
+  if (previous != null && now - previous < cooldownMs) return false;
+  alertTimestamps.set(key, now);
+
+  if (alertTimestamps.size > 500) {
+    const cutoff = now - Math.max(cooldownMs, DEFAULT_ALERT_COOLDOWN_MS) * 2;
+    for (const [entryKey, timestamp] of alertTimestamps) {
+      if (timestamp < cutoff) alertTimestamps.delete(entryKey);
+    }
+  }
+  return true;
+}
+
+async function postDiscordWebhook(
+  url: string,
+  content: string,
+  embeds?: DiscordEmbed[],
+): Promise<void> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        embeds,
+        allowed_mentions: { parse: [] },
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) {
+      console.error(
+        `[discord] webhook respondio ${res.status}: ${await res.text().catch(() => "")}`,
+      );
+    }
+  } catch (error) {
+    console.error("[discord] error enviando webhook:", error);
+  }
+}
+
+/** Envia un aviso general al webhook del equipo, si esta configurado. */
 export async function sendDiscordNotification(
   content: string,
   embeds?: DiscordEmbed[],
@@ -32,26 +143,116 @@ export async function sendDiscordNotification(
     }
     return;
   }
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, embeds }),
-    });
-    if (!res.ok) {
-      console.error(
-        `[discord] webhook respondió ${res.status}: ${await res.text().catch(() => "")}`,
-      );
-    }
-  } catch (err) {
-    console.error("[discord] error enviando webhook:", err);
-  }
+  await postDiscordWebhook(url, content, embeds);
 }
 
-/** Recorta texto largo para que entre en un embed sin romper el límite. */
-function truncate(text: string, max: number): string {
-  const t = text.trim();
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+/**
+ * Reporta fallos operativos sin propagar errores al flujo principal. Alertas con
+ * la misma huella se agrupan durante cinco minutos para evitar tormentas.
+ */
+export async function notifyOperationalError(args: OperationalErrorArgs): Promise<void> {
+  const details = errorDetails(args.error);
+  const key = args.fingerprint ?? `${args.source}:${details.name}:${details.message}`;
+  if (!shouldSendAlert(key, args.cooldownMs ?? DEFAULT_ALERT_COOLDOWN_MS)) return;
+
+  const url =
+    process.env.DISCORD_ALERT_WEBHOOK_URL?.trim() ||
+    process.env.DISCORD_WEBHOOK_URL?.trim();
+  if (!url) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(`[discord-alert] ${args.source}: ${details.message}`);
+    }
+    return;
+  }
+
+  const fields: DiscordEmbedField[] = [
+    { name: "Origen", value: truncate(args.source, 1_024), inline: true },
+    {
+      name: "Entorno",
+      value: truncate(
+        process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV ?? "desconocido",
+        1_024,
+      ),
+      inline: true,
+    },
+    {
+      name: details.name,
+      value: truncate(details.message, 1_024),
+    },
+  ];
+  if (args.context && Object.keys(args.context).length > 0) {
+    fields.push({
+      name: "Contexto",
+      value: `\`\`\`json\n${truncate(serializeContext(args.context), 950)}\n\`\`\``,
+    });
+  }
+  if (details.stack) {
+    fields.push({
+      name: "Stack",
+      value: `\`\`\`\n${truncate(details.stack, 950)}\n\`\`\``,
+    });
+  }
+
+  await postDiscordWebhook(url, "Fallo operativo en Luna Negra", [
+    {
+      title: truncate(`${details.name} en ${args.source}`, 256),
+      color: ROJO,
+      fields,
+      timestamp: new Date().toISOString(),
+    },
+  ]);
+}
+
+/**
+ * Avisa que un pago que DEBÍA ser un zap social NIP-57 (recibo 9735 público)
+ * terminó no siéndolo: cayó al riel LNURL normal, no se pudo publicar el recibo,
+ * o nunca apareció en los relays. La plata igual se movió; lo que se pierde es la
+ * visibilidad social. Va a un webhook dedicado (DISCORD_ZAP_WEBHOOK_URL) para no
+ * mezclarse con los errores operativos; si no está, cae al de alertas y luego al
+ * general. Mismo dedup/cooldown que notifyOperationalError.
+ */
+export async function notifyNonSocialZap(args: NonSocialZapArgs): Promise<void> {
+  const key = args.fingerprint ?? `non-social-zap:${args.flow}:${args.reason}`;
+  if (!shouldSendAlert(key, args.cooldownMs ?? DEFAULT_ALERT_COOLDOWN_MS)) return;
+
+  const url =
+    process.env.DISCORD_ZAP_WEBHOOK_URL?.trim() ||
+    process.env.DISCORD_ALERT_WEBHOOK_URL?.trim() ||
+    process.env.DISCORD_WEBHOOK_URL?.trim();
+  if (!url) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[zap-no-social] ${args.flow}: ${redactSecrets(args.reason)}`);
+    }
+    return;
+  }
+
+  const fields: DiscordEmbedField[] = [
+    { name: "Flujo", value: truncate(args.flow, 1_024), inline: true },
+    {
+      name: "Entorno",
+      value: truncate(
+        process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV ?? "desconocido",
+        1_024,
+      ),
+      inline: true,
+    },
+    { name: "Por qué no fue social", value: truncate(redactSecrets(args.reason), 1_024) },
+  ];
+  if (args.context && Object.keys(args.context).length > 0) {
+    fields.push({
+      name: "Contexto",
+      value: `\`\`\`json\n${truncate(serializeContext(args.context), 950)}\n\`\`\``,
+    });
+  }
+
+  await postDiscordWebhook(url, "⚡ Zap no social en Luna Negra", [
+    {
+      title: truncate(`Zap no social — ${args.flow}`, 256),
+      color: AMBAR,
+      fields,
+      timestamp: new Date().toISOString(),
+    },
+  ]);
 }
 
 /** Aviso de un juego nuevo enviado a revisión. */

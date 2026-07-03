@@ -32,6 +32,7 @@ import { createGuestUsers } from "@/lib/guest-users";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiError, corsPreflight, CORS } from "@/lib/api";
 import { beginIdempotent } from "@/lib/idempotency";
+import { notifyOperationalError } from "@/lib/discord";
 
 export function OPTIONS() {
   return corsPreflight();
@@ -306,6 +307,14 @@ export async function POST(req: Request) {
   // 3) Crear la apuesta
   const bodyText = await req.text();
   const result = await createZapBet(bodyText, providerId, siteUrl(req));
+  if (result.status >= 500) {
+    await notifyOperationalError({
+      source: "api-v2-bet-create",
+      error: new Error("No se pudo crear la apuesta v2"),
+      fingerprint: `api-v2-bet-create:${providerId}:${result.status}`,
+      context: { providerId, status: result.status, response: result.body },
+    });
+  }
 
   // 4) Guardar la respuesta (éxito) o liberar la key (error → permite reintento).
   if (idem && idem.kind === "fresh") {

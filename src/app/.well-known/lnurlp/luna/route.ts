@@ -13,6 +13,7 @@ import {
   storeLightningAddress,
   storeLnurlUrl,
 } from "@/lib/site-url";
+import { notifyOperationalError } from "@/lib/discord";
 
 const LNURL_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -118,6 +119,12 @@ export async function GET(req: Request) {
       { headers: LNURL_HEADERS },
     );
   } catch (error) {
+    await notifyOperationalError({
+      source: "lnurl-store-deposit-invoice",
+      error,
+      fingerprint: `lnurl-store-deposit-invoice:${part.id}`,
+      context: { betId: bet.id, participantId: part.id, amountMsat: amount },
+    });
     return lnurlError(
       error instanceof Error ? error.message : "No se pudo generar el invoice",
     );
