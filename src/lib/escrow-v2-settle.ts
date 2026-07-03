@@ -184,7 +184,7 @@ async function runSettlement(args: {
   // real (LUNA_FEE_LUD16) o asiento settled retenido.
   await payHouseFeeV2({ bet, amountMsat: feeMsat + dust });
 
-  // Corte del dev (proveedor): sale del pozo como zap anclado.
+  // Corte del dev (proveedor): sale del pozo como profile-zap.
   if (devFeeMsat > 0n) {
     await payProviderFeeV2({ bet, amountMsat: devFeeMsat });
   }
@@ -257,6 +257,7 @@ async function publishSettleNoteFor(
     ["t", BET_V2_SETTLE_TAG],
     ["bet", bet.id],
     ["e", bet.anchorEventId],
+    ...winners.map((w) => ["p", w.pubkey]),
   ];
   return publishSettleNote(lines.join("\n"), tags);
 }

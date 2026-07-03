@@ -22,8 +22,8 @@ export type GameNostrRef = {
   nostrCoord: string | null;
   nostrEventId: string | null;
   // Ids de los contratos ancla (kind:1) de las apuestas v2 del juego. Los zaps de
-  // depósito/premio (recibos kind:9735) cuelgan de estos con #e, así que probamos
-  // por ellos (el ancla NO lleva la coordenada del juego). Sin apuestas v2 = [].
+  // depósito (recibos kind:9735) cuelgan de estos con #e; los premios son
+  // profile-zaps al ganador y no se prueban por #e. Sin apuestas v2 = [].
   betAnchorIds?: string[];
 };
 
@@ -68,8 +68,8 @@ export async function probeGamesNostr(
 
   const coordToGame = new Map<string, string>();
   const eventToGame = new Map<string, string>();
-  // Ancla de apuesta v2 → juego. Los recibos de zap (9735) de depósito/premio
-  // cuelgan del ancla con #e, así atribuimos cada recibo a su juego.
+  // Ancla de apuesta v2 → juego. Los recibos de zap (9735) de depósito cuelgan
+  // del ancla con #e, así atribuimos cada recibo a su juego.
   const anchorToGame = new Map<string, string>();
   for (const g of games) {
     if (g.nostrCoord) coordToGame.set(g.nostrCoord, g.id);
@@ -77,7 +77,7 @@ export async function probeGamesNostr(
     for (const anchorId of g.betAnchorIds ?? []) anchorToGame.set(anchorId, g.id);
   }
   // Una sola query de recibos 9735 cubre las dos anclas por #e: el anuncio del
-  // juego (propinas/premios sueltos) y los contratos de apuesta v2 (escrow por zaps).
+  // juego (propinas sueltas) y los contratos de apuesta v2 (depósitos del escrow).
   const zapTargetIds = [...new Set([...eventToGame.keys(), ...anchorToGame.keys()])];
 
   // Conteos por (gameId, key).
@@ -124,8 +124,8 @@ export async function probeGamesNostr(
     if (gameId) bump(gameId, key);
   }
   for (const ev of zapEvents) {
-    // Un recibo puede anclar al anuncio del juego (propina/premio suelto → "zaps")
-    // o a un contrato de apuesta v2 (depósito/premio de escrow → "bets").
+    // Un recibo puede anclar al anuncio del juego (propina suelta → "zaps")
+    // o a un contrato de apuesta v2 (depósito de escrow → "bets").
     for (const t of ev.tags) {
       if (t[0] !== "e") continue;
       const announceGame = eventToGame.get(t[1]);
@@ -187,7 +187,7 @@ export async function probeGamesNostr(
     }
 
     // Apuestas v2 por zaps (ancla #e = contrato de la apuesta). "Probar en vivo" =
-    // hay recibos 9735 (depósitos/premios) colgando de algún contrato del juego.
+    // hay recibos 9735 de depósitos colgando de algún contrato del juego.
     if (!g.betAnchorIds || g.betAnchorIds.length === 0) {
       results.push({
         key: "bets",
@@ -204,7 +204,7 @@ export async function probeGamesNostr(
         latencyMs,
         detail:
           found > 0
-            ? `${found} recibo(s) de zap (kind:9735) de depósito/premio anclados a ${g.betAnchorIds.length} contrato(s) de apuesta.`
+            ? `${found} recibo(s) de zap (kind:9735) de depósito anclados a ${g.betAnchorIds.length} contrato(s) de apuesta.`
             : `Sin recibos de zap todavía para ${g.betAnchorIds.length} contrato(s) de apuesta v2 en los relays.`,
         skipped: false,
       });

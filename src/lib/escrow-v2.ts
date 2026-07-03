@@ -7,16 +7,16 @@ import { BET_V2_CONTRACT_TAG } from "./escrow-v2-config";
 // adorna el texto/tags del evento ancla con la particularidad de los zaps.
 
 /**
- * Texto del contrato v2 (kind:1, ancla de todos los zaps). Reutiliza el texto de
- * v1 y le agrega una línea aclarando que el dinero se mueve por zaps públicos
- * anclados a ESTE evento. `Parameters<typeof buildContractText>[0]` mantiene la
+ * Texto del contrato v2 (kind:1, ancla de depósitos y liquidación). Reutiliza el
+ * texto de v1 y le agrega una línea aclarando que el dinero se mueve por zaps
+ * públicos. `Parameters<typeof buildContractText>[0]` mantiene la
  * firma acoplada a la de v1 sin re-declarar el shape.
  */
 export function buildContractTextV2(
   p: Parameters<typeof buildContractText>[0],
 ): string {
   return `${buildContractText(p)}
-Depósitos y premios se mueven por zaps públicos (NIP-57) anclados a este evento.`;
+Depósitos: zaps públicos anclados a este contrato. Premio: profile-zap público de Luna Negra al ganador.`;
 }
 
 /**

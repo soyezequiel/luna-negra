@@ -39,8 +39,8 @@ const err = (code: string, message: string, status: number): Result => ({
 
 /**
  * Publica el evento ancla del contrato v2 (kind:1). A diferencia de v1, el ancla
- * es un invariante DURO: todos los zaps cuelgan de él, así que sin ancla no puede
- * haber apuesta.
+ * es un invariante DURO: los depósitos y la liquidación cuelgan de él, así que
+ * sin ancla no puede haber apuesta.
  *  - Con nsec configurado y algún relay que aceptó → devuelve el event id.
  *  - Con nsec pero NINGÚN relay lo aceptó → null (el caller falla con 503).
  *  - Sin nsec (dev) → placeholder `dev-anchor-<hex>` para probar el flujo sin claves

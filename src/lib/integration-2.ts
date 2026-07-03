@@ -149,7 +149,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-57 · zaps",
           impl: "implementado",
           signal: "betsV2",
-          desc: "Escrow por zaps públicos (NIP-57): depósitos y premios se mueven como zaps anclados a un contrato en Nostr (recibos kind:9735 auditables). Misma custodia que la 1.0, pero el riel es Nostr. POST /api/v2/bets.",
+          desc: "Escrow por zaps públicos (NIP-57): depósitos anclados al contrato, premio como profile-zap al ganador y nota de liquidación anclada. Misma custodia que la 1.0, pero el riel es Nostr. POST /api/v2/bets.",
         },
       },
     ],

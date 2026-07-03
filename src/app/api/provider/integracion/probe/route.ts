@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     select: { id: true, nostrCoord: true, nostrEventId: true },
   });
   // Anclas de apuestas v2 por juego (kind:1 real, no el placeholder dev): los
-  // recibos de zap de depósito/premio cuelgan de ellas y las prueba probeGamesNostr.
+  // recibos de zap de depósito cuelgan de ellas y las prueba probeGamesNostr.
   const zapBets = await prisma.zapBet.findMany({
     where: { providerId: provider.id, anchorEventId: { not: null } },
     select: { gameId: true, anchorEventId: true },

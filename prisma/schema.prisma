@@ -658,11 +658,11 @@ model LedgerEntry {
 }
 
 // ─────────────── Apuestas v2 (zaps NIP-57) — convive con v1 ────────────────
-// Espejo de Bet/BetParticipant/LedgerEntry, pero TODO el dinero se mueve por
-// zaps públicos anclados (tag `e`) al evento del contrato (`anchorEventId`). La
-// lógica pura (economía, hash, estados, invariante del ledger) se reutiliza de
-// v1; acá solo cambian los rieles de pago (zap entrante/saliente) y la auditoría
-// pública (recibos 9735 + nota de liquidación kind:1).
+// Espejo de Bet/BetParticipant/LedgerEntry, pero el dinero se mueve por zaps
+// públicos: depósitos anclados (tag `e`) al contrato y premios como profile-zaps
+// al ganador. La lógica pura (economía, hash, estados, invariante del ledger) se
+// reutiliza de v1; acá solo cambian los rieles de pago (zap entrante/saliente) y
+// la auditoría pública (recibos 9735 + nota de liquidación kind:1).
 
 model ZapBet {
   id               String    @id @default(cuid())
@@ -682,7 +682,7 @@ model ZapBet {
   metadataJson     String? // metadata libre del proveedor (JSON serializado, opcional)
   depositDeadline  DateTime? // +10 min al crear
   resolveDeadline  DateTime? // +15 min al quedar ready
-  anchorEventId    String?   @unique // evento Nostr del contrato = ancla de TODOS los zaps
+  anchorEventId    String?   @unique // evento Nostr del contrato = ancla de depósitos y liquidación
   contractHash     String? // huella sha256 de los términos (idéntica a v1, CONTRACT_MISMATCH)
   resultEventId    String? // evento Nostr del resultado firmado
   settleNoteId     String? // nota de liquidación kind:1 (resumen público anclado)

@@ -7,10 +7,10 @@ import { BET_FEE_MIN_MSAT } from "@/lib/escrow-v2-config";
 import { msatToSats } from "@/lib/money";
 import { ZapDepositCard } from "@/components/zap-deposit-card";
 
-// Página de una apuesta v2 (namespace propio, no choca con /bets/[id] de v1). Todo
-// el dinero se mueve por zaps públicos anclados al contrato: acá se ve el contrato,
-// el estado del pozo, la tarjeta de depósito del propio jugador y, al liquidarse,
-// el ganador con links a los recibos 9735 y a la nota de liquidación.
+// Página de una apuesta v2 (namespace propio, no choca con /bets/[id] de v1).
+// Depósitos: zaps públicos anclados al contrato. Premio: profile-zap al ganador.
+// Acá se ve el contrato, el estado del pozo, la tarjeta de depósito del propio
+// jugador y, al liquidarse, links a los recibos 9735 y a la nota de liquidación.
 
 const STATUS_LABEL: Record<string, string> = {
   pending_deposits: "Esperando depósitos",

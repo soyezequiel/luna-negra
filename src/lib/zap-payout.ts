@@ -9,11 +9,12 @@ import {
 import { msatToSats } from "@/lib/money";
 
 // Motor de zaps SALIENTES de apuestas v2 (payout al ganador / refund / fees).
-// Luna Negra es la que zapea: firma el 9734 con su nsec (`p` = receptor, `e` =
-// ancla), le pide el invoice al LNURL del receptor, VERIFICA el monto del bolt11
-// antes de pagar y lo paga con el NWC. El recibo 9735 lo emite el wallet del
-// receptor (zap real, auditable). Fallbacks: wallet sin zaps → pago LNURL normal;
-// sin dirección → el caller marca withdraw_pending (QR de retiro, como v1).
+// Luna Negra es la que zapea: firma el 9734 con su nsec (`p` = receptor, sin
+// `e`, o sea profile-zap), le pide el invoice al LNURL del receptor, VERIFICA el
+// monto del bolt11 antes de pagar y lo paga con el NWC. El recibo 9735 lo emite
+// el wallet del receptor (zap real, visible para el ganador). Fallbacks: wallet
+// sin zaps → pago LNURL normal; sin dirección → el caller marca withdraw_pending
+// (QR de retiro, como v1).
 
 export type ZapPayoutResult =
   | { kind: "zap"; zapRequestId: string; preimage: string; destination: string }
@@ -22,7 +23,7 @@ export type ZapPayoutResult =
   | { kind: "failed"; error: string };
 
 /**
- * Mueve `amountMsat` a `address` como zap anclado al contrato, o por los fallbacks.
+ * Mueve `amountMsat` a `address` como profile-zap, o por los fallbacks.
  * NO toca DB ni el ledger: el caller registra el outflow y marca settled/failed.
  *  - `address` null → { kind: "withdraw" } (el caller abre el QR de retiro).
  *  - dev sin NWC → preimage simulado (kind según haya address).
@@ -44,16 +45,14 @@ export async function sendZapPayout(opts: {
     return { kind: "lnurl", preimage: "dev-preimage", destination: address };
   }
 
-  const anchorReal = !!opts.anchorEventId && !opts.anchorEventId.startsWith("dev-anchor-");
   const endpoint = await resolveZapEndpointForAddress(address).catch(() => null);
 
-  // Camino zap: el wallet del receptor soporta NIP-57 y tenemos con qué anclar.
-  if (endpoint && opts.recipientPubkey && anchorReal) {
+  // Sin eventId es un profile-zap tienda -> receptor, visible para el ganador.
+  if (endpoint && opts.recipientPubkey) {
     const unsigned = buildUnsignedZapRequest({
       amountSats,
       comment: opts.comment,
       recipientPubkey: opts.recipientPubkey,
-      eventId: opts.anchorEventId,
       lnurl: endpoint.lnurl,
     });
     const signed = signZapRequest(unsigned);

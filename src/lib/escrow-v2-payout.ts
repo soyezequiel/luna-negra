@@ -18,7 +18,7 @@ import { LUNA_FEE_LUD16, WITHDRAW_WINDOW_MS } from "@/lib/escrow-v2-config";
 type MarkPaid = { preimage: string; payoutKind: "zap" | "lnurl"; zapRequestId?: string };
 
 /**
- * Mueve plata a un participante (payout o refund) como zap anclado al contrato.
+ * Mueve plata a un participante (payout o refund) como profile-zap.
  * Idempotente vía ledger; sin destino → withdraw_pending (QR); dev sin NWC simula.
  */
 export async function payParticipantV2(args: {
@@ -113,7 +113,7 @@ export async function payParticipantV2(args: {
 }
 
 /**
- * Paga el CORTE DEL DEV (proveedor) como zap anclado. Sale del pozo como asiento
+ * Paga el CORTE DEL DEV (proveedor) como profile-zap. Sale del pozo como asiento
  * `dev_fee`. Sin destino → el asiento queda `pending` (deuda con el dev; la casa la
  * retiene). NO bloquea el payout del ganador ni lanza. Espejo de payProviderFee.
  */

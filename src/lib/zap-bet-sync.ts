@@ -10,8 +10,10 @@ import { getStorePubkey } from "./nostr-server";
  * completa `payoutReceiptId` (+ el `zapReceiptId` del asiento del ledger), cerrando
  * la auditoría del zap saliente sin bloquear el pago (que ya se hizo).
  *
- * Es un espejo ACOTADO de zap-sync.ts: mismo patrón de pool + querySync + dedup,
- * pero el matching es por el 9734 que FIRMAMOS nosotros (su id == payoutZapRequestId).
+ * Es un espejo ACOTADO de zap-sync.ts: mismo patrón de pool + querySync + dedup.
+ * Los payouts salen como profile-zaps (`p` = receptor, sin `e`), así que
+ * buscamos por el receptor y el matching fuerte es el 9734 que FIRMAMOS nosotros
+ * (su id == payoutZapRequestId).
  * El scheduler vive en src/instrumentation.ts.
  */
 
@@ -25,7 +27,7 @@ export async function syncZapBetReceipts(): Promise<void> {
   const storePubkey = getStorePubkey();
   if (!storePubkey) return; // sin identidad de la tienda no firmamos 9734 salientes
 
-  // Participantes con payout por zap todavía sin recibo, de apuestas ancladas.
+  // Participantes con payout por zap todavía sin recibo.
   const pending = await prisma.zapBetParticipant.findMany({
     where: {
       payoutKind: "zap",
@@ -37,26 +39,30 @@ export async function syncZapBetReceipts(): Promise<void> {
       betId: true,
       userId: true,
       payoutZapRequestId: true,
-      bet: { select: { anchorEventId: true } },
+      pubkey: true,
+      createdAt: true,
+      settledAt: true,
     },
   });
   if (pending.length === 0) return;
 
   // Índice: 9734 que firmamos (payoutZapRequestId) → participante.
   const byRequestId = new Map<string, (typeof pending)[number]>();
-  const anchors = new Set<string>();
+  const recipientPubkeys = new Set<string>();
+  let since = Math.floor(Date.now() / 1000);
   for (const p of pending) {
     if (p.payoutZapRequestId) byRequestId.set(p.payoutZapRequestId, p);
-    const a = p.bet.anchorEventId;
-    if (a && !a.startsWith("dev-anchor-")) anchors.add(a);
+    if (/^[a-f0-9]{64}$/.test(p.pubkey)) recipientPubkeys.add(p.pubkey);
+    const ts = Math.floor((p.settledAt ?? p.createdAt).getTime() / 1000) - 60 * 60;
+    if (ts < since) since = ts;
   }
-  if (anchors.size === 0) return;
+  if (recipientPubkeys.size === 0) return;
 
   let receipts: Event[];
   try {
     receipts = await pool().querySync(
       RELAYS,
-      { kinds: [9735], "#e": [...anchors] },
+      { kinds: [9735], "#p": [...recipientPubkeys], since },
       { maxWait: 5000 },
     );
   } catch {
@@ -74,7 +80,7 @@ export async function syncZapBetReceipts(): Promise<void> {
 
 async function recordPayoutReceipt(
   receipt: Event,
-  byRequestId: Map<string, { id: string; betId: string; userId: string }>,
+  byRequestId: Map<string, { id: string; betId: string; userId: string; pubkey: string }>,
   storePubkey: string,
 ): Promise<void> {
   if (receipt.kind !== 9735) return;
@@ -93,6 +99,8 @@ async function recordPayoutReceipt(
   if (zr.pubkey !== storePubkey || !zr.id) return;
   const part = byRequestId.get(zr.id);
   if (!part) return;
+  const recipient = receipt.tags.find((t) => t[0] === "p")?.[1];
+  if (recipient !== part.pubkey) return;
 
   // Completa la auditoría: recibo en el participante y en el asiento del ledger.
   await prisma.zapBetParticipant.update({
