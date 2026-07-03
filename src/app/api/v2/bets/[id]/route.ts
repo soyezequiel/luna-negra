@@ -5,6 +5,7 @@ import {
   checkAndSettleDepositV2,
   participantLnurlUrl,
   buildDepositZapRequest,
+  ensureCustodialDepositInvoiceV2,
 } from "@/lib/zap-bet";
 import { encodeLnurl } from "@/lib/zap";
 import { msatToSats } from "@/lib/money";
@@ -52,7 +53,12 @@ export async function GET(
   const { id } = await params;
   let bet = await prisma.zapBet.findUnique({
     where: { id },
-    include: { participants: { orderBy: { createdAt: "asc" } } },
+    include: {
+      participants: {
+        orderBy: { createdAt: "asc" },
+        include: { user: { select: { nsecEnc: true } } },
+      },
+    },
   });
   if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
   if (bet.providerId !== providerId) {
@@ -68,7 +74,12 @@ export async function GET(
     if (await checkPendingDepositsThrottled(pending)) {
       bet = (await prisma.zapBet.findUnique({
         where: { id },
-        include: { participants: { orderBy: { createdAt: "asc" } } },
+        include: {
+      participants: {
+        orderBy: { createdAt: "asc" },
+        include: { user: { select: { nsecEnc: true } } },
+      },
+    },
       }))!;
     }
   }
@@ -91,55 +102,73 @@ export async function GET(
   // del proxy los headers pueden dar http/host interno, así que NO los usamos.
   const base = siteUrl(req);
 
-  const participants = bet.participants.map((p) => {
-    // El depósito v2 SIEMPRE es un zap NIP-57: el apostador firma un 9734 anclado al
-    // contrato y recién ahí sale el invoice. Para que un consumidor de la API (un
-    // juego con el firmante Nostr del jugador) pueda hacer que "pagar con extensión"
-    // y el QR sean zaps reales —no un LNURL-pay plano que el callback rechaza— le
-    // damos todo lo necesario para completar el zap fuera de la web de Luna:
-    //   - `depositZapRequest`: el 9734 SIN firmar (mismos tags que valida el callback);
-    //     el juego lo firma con la identidad del jugador.
-    //   - `depositCallback`: a dónde mandar el 9734 firmado (`?amount&nostr`) para
-    //     obtener el invoice. Es el LNURL-pay del participante.
-    //   - `bolt11`: el invoice ya emitido (si el jugador ya firmó en un intento
-    //     previo); así el QR persiste entre polls y el que vuelve paga el mismo.
-    //   - `lnurl`/`payUrl`: se mantienen (QR LNURL para wallets con NIP-57 y firma
-    //     en la web de Luna como fallback).
-    const canDeposit = open && p.depositStatus === "pending";
-    const lnurl = canDeposit ? encodeLnurl(participantLnurlUrl(base, p.id)) : null;
-    const payUrl = canDeposit ? `${base}/apuestas/${bet.id}` : null;
-    const bolt11 = canDeposit ? p.depositInvoice : null;
-    // El 9734 sin firmar solo hace falta mientras no haya invoice emitido todavía.
-    let depositZapRequest: ReturnType<typeof buildDepositZapRequest> | null = null;
-    let depositCallback: string | null = null;
-    if (canDeposit && !bolt11) {
-      try {
-        depositZapRequest = buildDepositZapRequest(bet, p, base);
-        depositCallback = participantLnurlUrl(base, p.id);
-      } catch {
-        // Sin identidad de tienda / ancla no se puede armar el zap request; el juego
-        // cae al fallback `payUrl`. No tumbamos la respuesta del resto de asientos.
-        depositZapRequest = null;
-        depositCallback = null;
+  // Handles de depósito por participante. Cada asiento se resuelve de forma aislada
+  // (best-effort): si falla el de uno, el resto igual responde con los suyos. En
+  // paralelo porque los invitados hacen un make_invoice por NWC (~2-4 s c/u).
+  const participants = await Promise.all(
+    bet.participants.map(async (p) => {
+      // El depósito v2 SIEMPRE es un zap NIP-57 anclado al contrato: hay que firmar un
+      // 9734 y recién ahí sale el invoice. Según quién tenga la clave:
+      //   - INVITADO/custodial (Luna guarda su `nsecEnc`): Luna firma el 9734 en su
+      //     nombre y emite el invoice ya mismo → devolvemos `bolt11`, y el jugador
+      //     paga con cualquier wallet/extensión/QR (sin firmar nada).
+      //   - CLAVE PROPIA (NIP-07/46): mandamos el 9734 SIN firmar (`depositZapRequest`)
+      //     + su `depositCallback`; el juego lo firma con la identidad del jugador.
+      //   - `bolt11` ya emitido (firma previa): persiste el QR entre polls.
+      //   - `lnurl`/`payUrl`: se mantienen (QR NIP-57 y firma en la web de Luna).
+      const canDeposit = open && p.depositStatus === "pending";
+      const lnurl = canDeposit ? encodeLnurl(participantLnurlUrl(base, p.id)) : null;
+      const payUrl = canDeposit ? `${base}/apuestas/${bet.id}` : null;
+      let bolt11 = canDeposit ? p.depositInvoice : null;
+      let depositZapRequest: ReturnType<typeof buildDepositZapRequest> | null = null;
+      let depositCallback: string | null = null;
+      let depositError: string | null = null;
+
+      if (canDeposit && !bolt11) {
+        // 1) Invitado/custodial: Luna firma y emite el invoice (best-effort).
+        try {
+          const inv = await ensureCustodialDepositInvoiceV2(bet, p, base);
+          if (inv) bolt11 = inv.invoice;
+        } catch (e) {
+          depositError =
+            e instanceof Error ? e.message : "No se pudo generar el invoice de depósito.";
+          console.error(
+            `[v2/bets/${bet.id}] depósito custodial falló para ${p.id}:`,
+            e,
+          );
+        }
+        // 2) Clave propia: el 9734 sin firmar para que el cliente lo firme.
+        if (!bolt11) {
+          try {
+            depositZapRequest = buildDepositZapRequest(bet, p, base);
+            depositCallback = participantLnurlUrl(base, p.id);
+          } catch {
+            // Sin identidad de tienda / ancla no se puede armar el zap request; el
+            // juego cae al fallback `payUrl`. No tumbamos al resto de asientos.
+            depositZapRequest = null;
+            depositCallback = null;
+          }
+        }
       }
-    }
-    return {
-      participantId: p.id,
-      npub: p.npub,
-      depositStatus: p.depositStatus,
-      depositReceiptId: p.depositReceiptId,
-      bolt11,
-      lnurl,
-      payUrl,
-      depositZapRequest,
-      depositCallback,
-      result: p.result,
-      payoutStatus: p.payoutStatus,
-      payoutSats: p.payoutMsat != null ? sats(p.payoutMsat) : null,
-      payoutKind: p.payoutKind,
-      payoutReceiptId: p.payoutReceiptId,
-    };
-  });
+      return {
+        participantId: p.id,
+        npub: p.npub,
+        depositStatus: p.depositStatus,
+        depositReceiptId: p.depositReceiptId,
+        bolt11,
+        lnurl,
+        payUrl,
+        depositZapRequest,
+        depositCallback,
+        depositError,
+        result: p.result,
+        payoutStatus: p.payoutStatus,
+        payoutSats: p.payoutMsat != null ? sats(p.payoutMsat) : null,
+        payoutKind: p.payoutKind,
+        payoutReceiptId: p.payoutReceiptId,
+      };
+    }),
+  );
 
   return apiOk(
     {

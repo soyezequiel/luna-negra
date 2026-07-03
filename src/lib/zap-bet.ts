@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { nip57, verifyEvent, type Event } from "nostr-tools";
+import { finalizeEvent } from "nostr-tools/pure";
+import { decryptSecret } from "@/lib/crypto-vault";
 import type { ZapBet, ZapBetParticipant } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { RELAYS } from "@/lib/constants";
@@ -231,6 +233,49 @@ export async function ensureDepositInvoiceV2(
   });
 
   return { invoice: inv.invoice, paymentHash: inv.paymentHash, devMode };
+}
+
+/**
+ * Depósito de un participante cuya clave CUSTODIA Luna Negra (invitado efímero o
+ * cuenta por email): como no hay firmante propio, Luna firma el 9734 del depósito en
+ * su nombre con la clave guardada (`nsecEnc`) y emite el invoice. Así el invitado
+ * paga con cualquier wallet/extensión/QR y el depósito sigue siendo un zap NIP-57
+ * real (el 9735 lleva su pubkey como emisor). Devuelve el invoice, o `null` si el
+ * participante trae clave propia (NIP-07/46) → el cliente lo firma.
+ *
+ * Idempotente: si el invoice ya está emitido, lo reusa SIN re-firmar (firmar de nuevo
+ * cambiaría el 9734 guardado y su hash dejaría de coincidir con el invoice vigente).
+ */
+export async function ensureCustodialDepositInvoiceV2(
+  bet: ZapBet,
+  part: ZapBetParticipant & { user?: { nsecEnc: string | null } | null },
+  baseUrl: string,
+): Promise<DepositInvoiceV2 | null> {
+  // Clave custodiada por Luna: la traemos del include si vino, si no la buscamos.
+  let nsecEnc = part.user === undefined ? undefined : part.user?.nsecEnc ?? null;
+  if (nsecEnc === undefined) {
+    const u = await prisma.user.findUnique({
+      where: { id: part.userId },
+      select: { nsecEnc: true },
+    });
+    nsecEnc = u?.nsecEnc ?? null;
+  }
+  if (!nsecEnc) return null; // clave propia → firma el cliente
+
+  const devMode = !lightningConfigured();
+  // Reuso idempotente: mismo criterio que ensureDepositInvoiceV2 (no re-firmar).
+  const storedIsDevPlaceholder = part.depositInvoice?.startsWith("lnbc-dev-") ?? false;
+  if (part.depositInvoice && part.depositPaymentHash && (devMode || !storedIsDevPlaceholder)) {
+    return { invoice: part.depositInvoice, paymentHash: part.depositPaymentHash, devMode };
+  }
+
+  const unsigned = buildDepositZapRequest(bet, part, baseUrl);
+  const sk = decryptSecret(nsecEnc);
+  const signed = finalizeEvent(
+    { kind: unsigned.kind, created_at: unsigned.created_at, tags: unsigned.tags, content: unsigned.content },
+    sk,
+  );
+  return ensureDepositInvoiceV2(bet, part, signed as unknown as SignedZapRequest);
 }
 
 /**
