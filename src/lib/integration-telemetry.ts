@@ -468,6 +468,7 @@ export type GameRef = {
 //   scores   → puntajes kind:31337 ya proyectados a Score (sourceEventId != null)
 //   zaps     → propinas/premios NIP-57 (tabla Zap)
 //   comments → reseñas/logros kind:1 colgando de la coordenada (GameComment)
+//   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2)
 // Los retos NIP-17 NO entran acá: van cifrados E2E (capacidad declarada, no
 // observable). Ver src/lib/integration-2.ts.
 export type NostrSignals = Record<string, PingInfo | null>;
@@ -538,11 +539,11 @@ export async function readNostrEvidence(
 
   const ensure = (gameId: string): NostrSignals => {
     let r = out.get(gameId);
-    if (!r) out.set(gameId, (r = { scores: null, zaps: null, comments: null }));
+    if (!r) out.set(gameId, (r = { scores: null, zaps: null, comments: null, betsV2: null }));
     return r;
   };
 
-  const [zaps, comments, scores] = await Promise.all([
+  const [zaps, comments, scores, betsV2] = await Promise.all([
     prisma.zap.groupBy({
       by: ["gameId"],
       where: inGames,
@@ -566,6 +567,15 @@ export async function readNostrEvidence(
         updatedAt: true,
         leaderboard: { select: { gameId: true } },
       },
+    }),
+    // Apuestas por zaps (escrow v2): la existencia de una ZapBet prueba que el juego
+    // ejerció POST /api/v2/bets (riel Nostr). Análogo a `bets` (v1) pero es señal 2.0.
+    prisma.zapBet.groupBy({
+      by: ["gameId"],
+      where: inGames,
+      _count: { _all: true },
+      _min: { createdAt: true },
+      _max: { createdAt: true },
     }),
   ]);
 
@@ -596,6 +606,15 @@ export async function readNostrEvidence(
     scoreAgg.set(gid, mergePing(scoreAgg.get(gid) ?? null, info) as PingInfo);
   }
   for (const [gid, info] of scoreAgg) ensure(gid).scores = info;
+
+  for (const b of betsV2) {
+    if (!b._min.createdAt || !b._max.createdAt) continue;
+    ensure(b.gameId).betsV2 = {
+      count: b._count._all,
+      firstSeenAt: iso(b._min.createdAt),
+      lastSeenAt: iso(b._max.createdAt),
+    };
+  }
 
   return out;
 }

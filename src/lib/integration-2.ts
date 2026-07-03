@@ -26,7 +26,8 @@ export type TwoZeroImpl = "implementado" | "declarado" | "diseño";
 
 // Señal de uso 2.0 derivable de la DB. "none" = sin señal por juego (login,
 // presencia, invitaciones: van cifradas o no dejan rastro).
-export type TwoZeroSignal = "scores" | "zaps" | "comments" | "none";
+//   betsV2 → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2).
+export type TwoZeroSignal = "scores" | "zaps" | "comments" | "betsV2" | "none";
 
 export type TwoZeroSide = {
   label: string; // estándar visible: "kind:31337", "NIP-38", …
@@ -66,12 +67,6 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         key: "purchase",
         title: "Verificar compra",
         oneZero: ["purchase"],
-        twoZero: null,
-      },
-      {
-        key: "bets",
-        title: "Apuestas y escrow",
-        oneZero: ["bets"],
         twoZero: null,
       },
       {
@@ -144,6 +139,17 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           signal: "none",
           manual: true,
           desc: "Invitación general a jugar por DM cifrado (NIP-17, gift-wrap): apunta a la coordenada del juego (y opcionalmente a una sala), sin otorgar acceso. Cifrada E2E → no observable desde el server: el proveedor declara si la integró. Hoy las invitaciones van por la REST 1.0 (§5).",
+        },
+      },
+      {
+        key: "bets",
+        title: "Apuestas y escrow",
+        oneZero: ["bets"],
+        twoZero: {
+          label: "NIP-57 · zaps",
+          impl: "implementado",
+          signal: "betsV2",
+          desc: "Escrow por zaps públicos (NIP-57): depósitos y premios se mueven como zaps anclados a un contrato en Nostr (recibos kind:9735 auditables). Misma custodia que la 1.0, pero el riel es Nostr. POST /api/v2/bets.",
         },
       },
     ],
