@@ -61,8 +61,12 @@ export function notifSubtitle(it: NotifItem): string | null {
         .join(" · ");
     case "comment":
       return it.text ?? null;
-    case "bet":
-      return it.gameTitle ?? null;
+    case "bet": {
+      const dest = it.payoutDestination
+        ? `💸 ${it.payoutDestination}${it.payoutKind === "lnurl" ? " (sin recibo Nostr)" : ""}`
+        : null;
+      return [it.gameTitle, dest].filter(Boolean).join(" · ") || null;
+    }
   }
 }
 

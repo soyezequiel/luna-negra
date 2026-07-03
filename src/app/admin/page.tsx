@@ -65,13 +65,22 @@ type Payout = {
   payoutStatus: string;
 };
 
+type BetPayout = {
+  npub: string;
+  payoutSats: number;
+  payoutStatus: string;
+  payoutDestination: string | null;
+  payoutKind: string | null;
+};
 type BetRow = {
   id: string;
+  version: 1 | 2;
   gameTitle: string;
   status: string;
   stakeSats: number;
   paid: number;
   total: number;
+  payouts: BetPayout[];
 };
 type EconomySettings = {
   storeFeePct: number;
@@ -749,9 +758,10 @@ export default function AdminPage() {
     }
   }
 
-  async function cancelBet(id: string) {
+  async function cancelBet(id: string, version: 1 | 2) {
     if (!confirm("¿Cancelar esta apuesta incompleta y reembolsar?")) return;
-    await fetch(`/api/escrow/bets/${id}/cancel`, { method: "POST" });
+    const base = version === 2 ? "/api/v2/bets" : "/api/escrow/bets";
+    await fetch(`${base}/${id}/cancel`, { method: "POST" });
     load();
   }
 
@@ -1279,20 +1289,49 @@ export default function AdminPage() {
           <ul className="space-y-2">
             {bets.map((b) => (
               <li
-                key={b.id}
-                className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
+                key={`${b.version}:${b.id}`}
+                className="rounded-lg border border-line bg-panel px-4 py-3"
               >
-                <div>
-                  <p className="text-sm font-medium">{b.gameTitle}</p>
-                  <p className="text-xs text-faint">
-                    {BET_STATUS[b.status] ?? b.status} · {b.stakeSats} sats ·{" "}
-                    {b.paid}/{b.total} pagaron
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {b.gameTitle}
+                      {b.version === 2 ? (
+                        <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+                          ⚡ v2
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-faint">
+                      {BET_STATUS[b.status] ?? b.status} · {b.stakeSats} sats ·{" "}
+                      {b.paid}/{b.total} pagaron
+                    </p>
+                  </div>
+                  {b.status === "pending_deposits" ? (
+                    <Button variant="ghost" onClick={() => cancelBet(b.id, b.version)}>
+                      Cancelar
+                    </Button>
+                  ) : null}
                 </div>
-                {b.status === "pending_deposits" ? (
-                  <Button variant="ghost" onClick={() => cancelBet(b.id)}>
-                    Cancelar
-                  </Button>
+                {b.payouts.length > 0 ? (
+                  <ul className="mt-2 space-y-1 border-t border-line pt-2">
+                    {b.payouts.map((p) => (
+                      <li key={p.npub} className="text-[11px] text-faint">
+                        <span className="font-mono">{p.npub.slice(0, 12)}…</span> ·{" "}
+                        {p.payoutSats} sats ·{" "}
+                        {p.payoutStatus === "paid" && p.payoutDestination ? (
+                          <>
+                            💸 <span className="font-mono text-muted">{p.payoutDestination}</span>
+                            {p.payoutKind ? ` (${p.payoutKind})` : ""}
+                          </>
+                        ) : p.payoutStatus === "withdraw_pending" ? (
+                          "🎟️ retiro por QR"
+                        ) : (
+                          p.payoutStatus
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </li>
             ))}

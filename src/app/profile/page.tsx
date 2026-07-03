@@ -17,10 +17,16 @@ import { NostrPermsSection } from "@/components/nostr-perms-section";
 type LibGame = { id: string; slug: string; title: string; coverUrl: string | null };
 type MineBet = {
   id: string;
+  version: 1 | 2;
+  gameSlug: string;
   gameTitle: string;
   status: string;
   stakeSats: number;
   result: string;
+  payoutStatus: string;
+  payoutSats: number | null;
+  payoutDestination: string | null;
+  payoutKind: string | null;
 };
 
 function Kpi({
@@ -64,7 +70,7 @@ export default function ProfilePage() {
       .then((r) => r.json())
       .then((d) => setGames(d.games ?? []))
       .catch(() => {});
-    fetch("/api/escrow/bets/mine")
+    fetch("/api/me/bets")
       .then((r) => r.json())
       .then((d) => setBets(d.bets ?? []))
       .catch(() => {});
@@ -244,26 +250,51 @@ export default function ProfilePage() {
               <p className="text-sm text-ln-faint">Sin actividad todavía.</p>
             ) : (
               <ul className="space-y-2">
-                {recentSettled.map((b) => (
-                  <li
-                    key={b.id}
-                    className="flex items-center justify-between rounded-ln-md border border-ln-border bg-ln-card/60 px-4 py-2.5 text-sm"
-                  >
-                    <span className="text-ln-text">
-                      {b.result === "won" ? (
-                        <span className="font-medium text-ln-aurora">Ganaste</span>
-                      ) : b.result === "lost" ? (
-                        <span className="text-ln-muted">Perdiste</span>
-                      ) : (
-                        <span className="text-ln-luna">Empate</span>
-                      )}{" "}
-                      en {b.gameTitle}
-                    </span>
-                    <span className="font-mono text-xs text-ln-corona-bright">
-                      {satsLabel(b.stakeSats)} sats
-                    </span>
-                  </li>
-                ))}
+                {recentSettled.map((b) => {
+                  const href = b.version === 2 ? `/apuestas/${b.id}` : `/bets/${b.id}`;
+                  // Solo mostramos "llegó a" si cobró y hay destino (ganó/empató).
+                  const showDest =
+                    b.payoutStatus === "paid" && !!b.payoutDestination;
+                  return (
+                    <li
+                      key={`${b.version}:${b.id}`}
+                      className="rounded-ln-md border border-ln-border bg-ln-card/60 px-4 py-2.5 text-sm"
+                    >
+                      <Link href={href} className="flex items-center justify-between gap-3">
+                        <span className="text-ln-text">
+                          {b.result === "won" ? (
+                            <span className="font-medium text-ln-aurora">Ganaste</span>
+                          ) : b.result === "lost" ? (
+                            <span className="text-ln-muted">Perdiste</span>
+                          ) : (
+                            <span className="text-ln-luna">Empate</span>
+                          )}{" "}
+                          en {b.gameTitle}
+                        </span>
+                        <span className="font-mono text-xs text-ln-corona-bright">
+                          {satsLabel(b.stakeSats)} sats
+                        </span>
+                      </Link>
+                      {showDest ? (
+                        <p className="mt-1 text-[11.5px] text-ln-faint">
+                          💸 Premio a{" "}
+                          <span className="font-mono text-ln-muted">
+                            {b.payoutDestination}
+                          </span>
+                          {b.payoutKind === "zap" ? (
+                            <span> · zap NIP-57</span>
+                          ) : b.payoutKind === "lnurl" ? (
+                            <span> · LNURL (sin recibo Nostr)</span>
+                          ) : null}
+                        </p>
+                      ) : b.payoutStatus === "withdraw_pending" ? (
+                        <p className="mt-1 text-[11.5px] text-ln-faint">
+                          🎟️ Premio pendiente de retiro por QR
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
 

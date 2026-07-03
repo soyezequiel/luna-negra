@@ -54,6 +54,8 @@ export async function GET(
     paid: boolean;
     result: string;
     payoutStatus: string;
+    payoutSats: number | null;
+    payoutDestination: string | null;
     depositInvoice: string | null;
     withdrawUrl: string | null;
   } = null;
@@ -81,6 +83,8 @@ export async function GET(
         paid: mine.depositStatus === "paid",
         result: mine.result,
         payoutStatus: mine.payoutStatus,
+        payoutSats: mine.payoutMsat != null ? Number(msatToSats(mine.payoutMsat)) : null,
+        payoutDestination: mine.payoutDestination,
         depositInvoice: mine.depositInvoice,
         withdrawUrl,
       };

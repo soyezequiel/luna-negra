@@ -184,31 +184,48 @@ export default async function ApuestaV2Page({
             {bet.participants
               .filter((p) => p.payoutMsat != null)
               .map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3">
-                  <span className="truncate font-mono text-xs text-ln-muted">
-                    {short(p.npub)}
-                  </span>
-                  <span className="flex items-center gap-2 text-ln-text">
-                    {sats(p.payoutMsat as bigint)} sats
-                    <span className="text-xs text-ln-faint">
-                      {p.payoutStatus === "paid"
-                        ? `vía ${p.payoutKind}`
-                        : p.payoutStatus === "withdraw_pending"
-                          ? "· retiro por QR"
-                          : `· ${p.payoutStatus}`}
+                <li key={p.id} className="rounded-ln-lg border border-ln-border/40 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate font-mono text-xs text-ln-muted">
+                      {short(p.npub)}
                     </span>
-                    {p.payoutReceiptId ? (
-                      <a
-                        href={njump(p.payoutReceiptId)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-ln-corona-bright hover:underline"
-                        title="Recibo del zap de premio"
-                      >
-                        ⚡
-                      </a>
-                    ) : null}
-                  </span>
+                    <span className="flex items-center gap-2 text-ln-text">
+                      {sats(p.payoutMsat as bigint)} sats
+                      <span className="text-xs text-ln-faint">
+                        {p.payoutStatus === "paid"
+                          ? `vía ${p.payoutKind}`
+                          : p.payoutStatus === "withdraw_pending"
+                            ? "· retiro por QR"
+                            : `· ${p.payoutStatus}`}
+                      </span>
+                      {p.payoutReceiptId ? (
+                        <a
+                          href={njump(p.payoutReceiptId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-ln-corona-bright hover:underline"
+                          title="Recibo del zap de premio"
+                        >
+                          ⚡
+                        </a>
+                      ) : null}
+                    </span>
+                  </div>
+                  {p.payoutStatus === "paid" && p.payoutDestination ? (
+                    <p className="mt-1 text-xs text-ln-faint">
+                      💸 Llegó a{" "}
+                      <span className="font-mono text-ln-muted">{p.payoutDestination}</span>
+                      {p.payoutKind === "zap" ? (
+                        <span className="text-ln-faint"> · zap NIP-57 (recibo público)</span>
+                      ) : p.payoutKind === "lnurl" ? (
+                        <span className="text-ln-faint"> · pago LNURL (sin recibo Nostr)</span>
+                      ) : null}
+                    </p>
+                  ) : p.payoutStatus === "withdraw_pending" ? (
+                    <p className="mt-1 text-xs text-ln-faint">
+                      🎟️ Sin wallet configurada: el premio espera retiro por QR.
+                    </p>
+                  ) : null}
                 </li>
               ))}
           </ul>

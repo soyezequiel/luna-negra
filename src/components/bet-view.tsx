@@ -25,6 +25,8 @@ type BetData = {
     paid: boolean;
     result: string;
     payoutStatus: string;
+    payoutSats: number | null;
+    payoutDestination: string | null;
     depositInvoice: string | null;
     withdrawUrl: string | null;
   } | null;
@@ -234,7 +236,15 @@ export function BetView({ betId }: { betId: string }) {
               <p className="text-lg font-semibold text-muted">Perdiste esta vez</p>
             )}
             {bet.me.payoutStatus === "paid" || bet.me.payoutStatus === "claimed" ? (
-              <p className="mt-1 text-sm text-green">Cobrado ✓</p>
+              <>
+                <p className="mt-1 text-sm text-green">Cobrado ✓</p>
+                {bet.me.payoutDestination ? (
+                  <p className="mt-1 text-xs text-faint">
+                    💸 Llegó a{" "}
+                    <span className="font-mono text-muted">{bet.me.payoutDestination}</span>
+                  </p>
+                ) : null}
+              </>
             ) : bet.me.payoutStatus === "withdraw_pending" && bet.me.withdrawUrl ? (
               <div className="mt-3">
                 {nwcConnected ? (

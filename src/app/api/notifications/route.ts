@@ -148,21 +148,31 @@ export async function GET(): Promise<NextResponse> {
     }
   }
 
-  // Como jugador: apuestas resueltas / premios listos para cobrar.
-  const parts = await prisma.betParticipant.findMany({
-    where: { userId: session.sub, result: { not: "pending" } },
-    include: { bet: { include: { game: { select: { slug: true, title: true } } } } },
-    orderBy: { settledAt: "desc" },
-    take: PER_SOURCE,
-  });
-  for (const part of parts) {
-    const claimable = part.payoutStatus === "withdraw_pending";
-    const resultText =
-      part.result === "won"
+  // Como jugador: apuestas resueltas / premios listos para cobrar (v1 + v2).
+  const [parts, zapParts] = await Promise.all([
+    prisma.betParticipant.findMany({
+      where: { userId: session.sub, result: { not: "pending" } },
+      include: { bet: { include: { game: { select: { slug: true, title: true } } } } },
+      orderBy: { settledAt: "desc" },
+      take: PER_SOURCE,
+    }),
+    prisma.zapBetParticipant.findMany({
+      where: { userId: session.sub, result: { not: "pending" } },
+      include: { bet: { include: { game: { select: { slug: true, title: true } } } } },
+      orderBy: { settledAt: "desc" },
+      take: PER_SOURCE,
+    }),
+  ]);
+  const betText = (result: string, claimable: boolean): string =>
+    claimable
+      ? "Tu premio está listo para cobrar"
+      : result === "won"
         ? "Ganaste tu apuesta"
-        : part.result === "tie"
+        : result === "tie"
           ? "Tu apuesta terminó en empate"
           : "Perdiste tu apuesta";
+  for (const part of parts) {
+    const claimable = part.payoutStatus === "withdraw_pending";
     items.push({
       id: `bet:${part.id}`,
       type: "bet",
@@ -170,8 +180,24 @@ export async function GET(): Promise<NextResponse> {
       gameSlug: part.bet.game.slug,
       gameTitle: part.bet.game.title,
       amountSats: part.payoutMsat ? Math.floor(Number(part.payoutMsat) / 1000) : null,
-      text: claimable ? "Tu premio está listo para cobrar" : resultText,
-      href: "/bets",
+      text: betText(part.result, claimable),
+      payoutDestination: part.payoutStatus === "paid" ? part.payoutDestination : null,
+      href: `/bets/${part.bet.id}`,
+    });
+  }
+  for (const part of zapParts) {
+    const claimable = part.payoutStatus === "withdraw_pending";
+    items.push({
+      id: `zapbet:${part.id}`,
+      type: "bet",
+      at: (part.settledAt ?? part.createdAt).getTime(),
+      gameSlug: part.bet.game.slug,
+      gameTitle: part.bet.game.title,
+      amountSats: part.payoutMsat ? Math.floor(Number(part.payoutMsat) / 1000) : null,
+      text: betText(part.result, claimable),
+      payoutDestination: part.payoutStatus === "paid" ? part.payoutDestination : null,
+      payoutKind: part.payoutStatus === "paid" ? part.payoutKind : null,
+      href: `/apuestas/${part.bet.id}`,
     });
   }
 
