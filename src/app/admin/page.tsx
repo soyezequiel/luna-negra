@@ -1319,11 +1319,15 @@ export default function AdminPage() {
                       <li key={p.npub} className="text-[11px] text-faint">
                         <span className="font-mono">{p.npub.slice(0, 12)}…</span> ·{" "}
                         {p.payoutSats} sats ·{" "}
-                        {p.payoutStatus === "paid" && p.payoutDestination ? (
+                        {p.payoutStatus === "paid" &&
+                        p.payoutDestination &&
+                        p.payoutDestination !== "lnurl-withdraw" ? (
                           <>
                             💸 <span className="font-mono text-muted">{p.payoutDestination}</span>
                             {p.payoutKind ? ` (${p.payoutKind})` : ""}
                           </>
+                        ) : p.payoutStatus === "claimed" ? (
+                          "🎟️ cobrado por QR"
                         ) : p.payoutStatus === "withdraw_pending" ? (
                           "🎟️ retiro por QR"
                         ) : (

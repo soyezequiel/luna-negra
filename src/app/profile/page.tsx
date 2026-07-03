@@ -252,9 +252,12 @@ export default function ProfilePage() {
               <ul className="space-y-2">
                 {recentSettled.map((b) => {
                   const href = b.version === 2 ? `/apuestas/${b.id}` : `/bets/${b.id}`;
-                  // Solo mostramos "llegó a" si cobró y hay destino (ganó/empató).
+                  // Solo mostramos "llegó a" si cobró y hay destino real (ganó/empató).
+                  // `lnurl-withdraw` es el placeholder del cobro por QR de v1, no una wallet.
                   const showDest =
-                    b.payoutStatus === "paid" && !!b.payoutDestination;
+                    b.payoutStatus === "paid" &&
+                    !!b.payoutDestination &&
+                    b.payoutDestination !== "lnurl-withdraw";
                   return (
                     <li
                       key={`${b.version}:${b.id}`}
@@ -286,6 +289,10 @@ export default function ProfilePage() {
                           ) : b.payoutKind === "lnurl" ? (
                             <span> · LNURL (sin recibo Nostr)</span>
                           ) : null}
+                        </p>
+                      ) : b.payoutStatus === "claimed" ? (
+                        <p className="mt-1 text-[11.5px] text-ln-faint">
+                          🎟️ Premio cobrado por QR (retiro)
                         </p>
                       ) : b.payoutStatus === "withdraw_pending" ? (
                         <p className="mt-1 text-[11.5px] text-ln-faint">

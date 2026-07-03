@@ -238,11 +238,14 @@ export function BetView({ betId }: { betId: string }) {
             {bet.me.payoutStatus === "paid" || bet.me.payoutStatus === "claimed" ? (
               <>
                 <p className="mt-1 text-sm text-green">Cobrado ✓</p>
-                {bet.me.payoutDestination ? (
+                {bet.me.payoutDestination &&
+                bet.me.payoutDestination !== "lnurl-withdraw" ? (
                   <p className="mt-1 text-xs text-faint">
                     💸 Llegó a{" "}
                     <span className="font-mono text-muted">{bet.me.payoutDestination}</span>
                   </p>
+                ) : bet.me.payoutStatus === "claimed" ? (
+                  <p className="mt-1 text-xs text-faint">🎟️ Cobrado por QR (retiro)</p>
                 ) : null}
               </>
             ) : bet.me.payoutStatus === "withdraw_pending" && bet.me.withdrawUrl ? (

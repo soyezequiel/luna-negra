@@ -283,6 +283,20 @@ export default function BetsPage() {
                                 ? " · empate"
                                 : ""}
                         </p>
+                        {b.payoutStatus === "paid" &&
+                        b.payoutDestination &&
+                        b.payoutDestination !== "lnurl-withdraw" ? (
+                          <p className="mt-0.5 truncate text-[11px] text-ln-faint">
+                            💸 Premio a{" "}
+                            <span className="font-mono text-ln-muted">
+                              {b.payoutDestination}
+                            </span>
+                          </p>
+                        ) : b.payoutStatus === "claimed" ? (
+                          <p className="mt-0.5 text-[11px] text-ln-faint">
+                            🎟️ Cobrado por QR (retiro)
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <span className="shrink-0 font-mono text-sm font-semibold text-ln-corona-bright">
