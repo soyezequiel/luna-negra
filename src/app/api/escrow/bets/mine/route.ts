@@ -25,6 +25,7 @@ export async function GET() {
       depositStatus: p.depositStatus,
       result: p.result,
       payoutStatus: p.payoutStatus,
+      payoutDestination: p.payoutDestination,
       createdAt: p.bet.createdAt,
     })),
   });

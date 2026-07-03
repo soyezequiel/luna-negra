@@ -21,6 +21,8 @@ type Row = {
   stakeSats: number;
   depositStatus: string;
   result: string;
+  payoutStatus: string;
+  payoutDestination: string | null;
 };
 
 function Kpi({
@@ -95,9 +97,16 @@ function DuelCard({ b }: { b: Row }) {
         </span>
       </div>
 
-      <p className="text-[11px] text-ln-faint">
-        Comisión 4% · el ganador se lleva el pozo neto.
-      </p>
+      {b.payoutStatus === "paid" && b.payoutDestination ? (
+        <p className="truncate text-[11px] text-ln-faint">
+          💸 Premio a{" "}
+          <span className="font-mono text-ln-muted">{b.payoutDestination}</span>
+        </p>
+      ) : (
+        <p className="text-[11px] text-ln-faint">
+          Comisión 4% · el ganador se lleva el pozo neto.
+        </p>
+      )}
 
       <span
         className={`btn w-full ${cta.play ? "btn-aurora" : "btn-corona"}`}
