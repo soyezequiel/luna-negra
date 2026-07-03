@@ -176,8 +176,8 @@ export async function settleDepositV2(
   let depositReceiptOk = false;
   if (bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-") && part.depositInvoice) {
     // Si el apostador firmó su 9734 lo usamos como `description` (identifica al
-    // emisor con el tag `P`); si no (invitado/LNURL sin nostr), va un 9734
-    // sintético firmado por la tienda — el zap no identifica emisor (documentado).
+    // emisor con el tag `P`). Sin firma no publicamos un 9735: los clientes Nostr
+    // descartan recibos con `description` sintético/no firmado.
     let signerPubkey: string | null = null;
     let descriptionZapRequest = part.depositZapRequest;
     if (descriptionZapRequest) {
@@ -187,27 +187,18 @@ export async function settleDepositV2(
         descriptionZapRequest = null;
       }
     }
-    if (!descriptionZapRequest) {
-      descriptionZapRequest = JSON.stringify(
-        buildUnsignedZapRequest({
-          amountSats: Number(msatToSats(bet.stakeMsat)),
-          recipientPubkey: getStorePubkey() ?? "",
-          eventId: bet.anchorEventId,
-          lnurl: "",
-          comment: "Depósito por LNURL (emisor no identificado)",
-        }),
-      );
-    }
-    const receipt = await publishZapReceipt({
-      anchorEventId: bet.anchorEventId,
-      bolt11: part.depositInvoice,
-      descriptionZapRequest,
-      zapperPubkey: signerPubkey,
-    }).catch(() => null);
-    if (receipt) {
-      depositReceiptId = receipt.event.id;
-      depositReceiptJson = JSON.stringify(receipt.event);
-      depositReceiptOk = receipt.accepted > 0;
+    if (descriptionZapRequest && signerPubkey) {
+      const receipt = await publishZapReceipt({
+        anchorEventId: bet.anchorEventId,
+        bolt11: part.depositInvoice,
+        descriptionZapRequest,
+        zapperPubkey: signerPubkey,
+      }).catch(() => null);
+      if (receipt) {
+        depositReceiptId = receipt.event.id;
+        depositReceiptJson = JSON.stringify(receipt.event);
+        depositReceiptOk = receipt.accepted > 0;
+      }
     }
   }
 

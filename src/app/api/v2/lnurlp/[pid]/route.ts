@@ -8,10 +8,11 @@ import { siteUrl } from "@/lib/site-url";
 // LNURL-pay (LUD-06) + NIP-57 para el depósito de un participante v2. Dos pasos:
 //   1) GET sin `?amount`  → payRequest (callback + min/max = stake fijo) con
 //      `allowsNostr: true` y `nostrPubkey` = la tienda (firmante de los 9735).
-//   2) GET con `?amount`  → { pr: <bolt11> }. Si viene `?nostr=` (9734 firmado), se
-//      valida y se guarda para el recibo posterior; el invoice lo emite el NWC.
-// Permite pagar el depósito por QR desde cualquier wallet LNURL y deja los recibos
-// verificables por terceros (firmante del 9735 == nostrPubkey del endpoint).
+//   2) GET con `?amount&nostr=` → valida y guarda el 9734 firmado; el invoice lo
+//      emite el NWC. Sin `nostr` válido no hay invoice: el depósito debe ser un zap
+//      social real para que el 9735 sea reconocido por clientes Nostr.
+// Permite pagar el depósito por QR desde wallets LNURL con NIP-57 o desde la UI web
+// de Luna Negra, y deja los recibos verificables por terceros.
 
 const lnurlError = (reason: string) =>
   NextResponse.json({ status: "ERROR", reason });
@@ -49,23 +50,24 @@ export async function GET(
   const url = new URL(req.url);
   const amount = url.searchParams.get("amount");
 
-  // Paso 2: el wallet pide el invoice por el monto exacto.
+  // Paso 2: el wallet pide el invoice por el monto exacto y con un 9734 firmado.
   if (amount != null) {
     if (Number(amount) !== amountMsat) {
       return lnurlError(`Monto debe ser exactamente ${amountMsat} msat`);
     }
-    // Zap opcional: si el wallet manda un 9734 firmado, lo validamos y guardamos
-    // para el recibo. Si no coincide con el contrato, lo ignoramos (pago normal).
-    let signed: SignedZapRequest | null = null;
+    // Zap obligatorio: sin 9734 firmado no hay invoice ni recibo social válido.
+    let signed: SignedZapRequest;
     const nostrParam = url.searchParams.get("nostr");
-    if (nostrParam) {
-      try {
-        const candidate = JSON.parse(nostrParam) as SignedZapRequest;
-        if (validateDepositZapRequest(bet, part, candidate).ok) signed = candidate;
-      } catch {
-        /* nostr param corrupto → pago LNURL normal, sin recibo del emisor */
-      }
+    if (!nostrParam) {
+      return lnurlError("Este depósito requiere un zap request NIP-57 firmado");
     }
+    try {
+      signed = JSON.parse(nostrParam) as SignedZapRequest;
+    } catch {
+      return lnurlError("Zap request inválido");
+    }
+    const validation = validateDepositZapRequest(bet, part, signed);
+    if (!validation.ok) return lnurlError(validation.error);
     try {
       const inv = await ensureDepositInvoiceV2(bet, part, signed);
       return NextResponse.json({ pr: inv.invoice, routes: [] });

@@ -89,9 +89,9 @@ export async function GET(
 
   const participants = bet.participants.map((p) => {
     // El handle de depósito v2 es el LNURL-pay del participante (LUD-06 + NIP-57):
-    // el apostador firma el 9734 y paga por ahí, o lo abre como QR. El bolt11 no se
-    // pre-genera acá (depende del 9734 firmado); se pide en deposit/invoice o por
-    // el propio LNURL callback.
+    // el apostador firma el 9734 y paga por ahí. El callback LNURL exige `nostr=`
+    // válido; para wallets sin NIP-57, el fallback es abrir `payUrl` y firmar en
+    // Luna Negra. El bolt11 no se pre-genera acá: depende del 9734 firmado.
     const lnurl =
       open && p.depositStatus === "pending"
         ? encodeLnurl(participantLnurlUrl(base, p.id))
