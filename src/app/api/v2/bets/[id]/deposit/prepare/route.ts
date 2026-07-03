@@ -4,16 +4,11 @@ import { getSession } from "@/lib/auth";
 import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { buildDepositZapRequest } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
+import { siteUrl } from "@/lib/site-url";
 
 // Paso 1 del depósito por zap (v2): arma el zap request (9734) SIN firmar para que
 // el apostador lo firme con su identidad. Requiere sesión y que el que pide sea el
 // participante que va a depositar (así el 9735 identifica quién puso la plata).
-
-function baseUrl(req: Request): string {
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
 
 export async function POST(
   req: Request,
@@ -54,7 +49,7 @@ export async function POST(
   }
 
   try {
-    const unsignedZapRequest = buildDepositZapRequest(bet, part, baseUrl(req));
+    const unsignedZapRequest = buildDepositZapRequest(bet, part, siteUrl(req));
     return NextResponse.json({ participantId: part.id, unsignedZapRequest });
   } catch (e) {
     return NextResponse.json(

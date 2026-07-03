@@ -6,18 +6,13 @@ import { encodeLnurl } from "@/lib/zap";
 import { msatToSats } from "@/lib/money";
 import { BET_FEE_MIN_MSAT } from "@/lib/escrow-v2-config";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
+import { siteUrl } from "@/lib/site-url";
 
 // Estado + economía + handles de depósito por zap de una apuesta v2 (Bearer API
 // key del proveedor). En cada poll de un participante pendiente verifica el
 // invoice on-demand (detección en segundos, como v1) y, si pagó, publica el 9735.
 export function OPTIONS() {
   return corsPreflight();
-}
-
-function baseUrl(req: Request): string {
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
 }
 
 // Anti-rebote del lookup de invoice por participante (idéntico a v1): cada
@@ -87,7 +82,10 @@ export async function GET(
   const open =
     bet.status === "pending_deposits" &&
     (bet.depositDeadline == null || bet.depositDeadline > new Date());
-  const base = baseUrl(req);
+  // URL canónica (NEXT_PUBLIC_SITE_URL, https): el LNURL de depósito y el payUrl
+  // deben ser https y del dominio público, o las wallets rechazan el LNURL. Detrás
+  // del proxy los headers pueden dar http/host interno, así que NO los usamos.
+  const base = siteUrl(req);
 
   const participants = bet.participants.map((p) => {
     // El handle de depósito v2 es el LNURL-pay del participante (LUD-06 + NIP-57):

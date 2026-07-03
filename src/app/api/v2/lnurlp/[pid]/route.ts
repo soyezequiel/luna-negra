@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getStorePubkey } from "@/lib/nostr-server";
 import { ensureDepositInvoiceV2, validateDepositZapRequest } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
+import { siteUrl } from "@/lib/site-url";
 
 // LNURL-pay (LUD-06) + NIP-57 para el depósito de un participante v2. Dos pasos:
 //   1) GET sin `?amount`  → payRequest (callback + min/max = stake fijo) con
@@ -82,7 +83,9 @@ export async function GET(
   ]);
   const res: Record<string, unknown> = {
     tag: "payRequest",
-    callback: `${url.origin}${url.pathname}`,
+    // Callback canónico (https, dominio público). `url.origin` detrás del proxy
+    // puede ser http/host interno y la wallet aborta el pago; usamos siteUrl.
+    callback: `${siteUrl(req)}${url.pathname}`,
     minSendable: amountMsat,
     maxSendable: amountMsat,
     metadata,
