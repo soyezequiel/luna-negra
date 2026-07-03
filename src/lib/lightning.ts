@@ -202,7 +202,7 @@ export async function createInvoice(
   amountSats: number,
   description: string,
 ): Promise<CreatedInvoice> {
-  return createInvoiceFromNwc(amountSats, { description });
+  return createInvoiceFromNwc(amountSats * 1000, { description });
 }
 
 /**
@@ -213,16 +213,31 @@ export async function createDescriptionHashInvoice(
   amountSats: number,
   descriptionHash: string,
 ): Promise<CreatedInvoice> {
+  return createDescriptionHashInvoiceMsat(amountSats * 1000, descriptionHash);
+}
+
+/**
+ * Igual que `createDescriptionHashInvoice` pero con el monto en msat exacto (sin
+ * pasar por sats), para LNURL-pay donde el monto pedido llega en msat y el invoice
+ * debe cobrar EXACTAMENTE eso. Acepta cualquier msat entero (ej. depósito libre).
+ */
+export async function createDescriptionHashInvoiceMsat(
+  amountMsat: number,
+  descriptionHash: string,
+): Promise<CreatedInvoice> {
   if (!/^[a-f0-9]{64}$/i.test(descriptionHash)) {
     throw new Error("descriptionHash debe ser un SHA-256 hexadecimal");
   }
-  return createInvoiceFromNwc(amountSats, {
+  if (!Number.isInteger(amountMsat) || amountMsat <= 0) {
+    throw new Error("El monto debe ser un entero positivo de msat");
+  }
+  return createInvoiceFromNwc(amountMsat, {
     description_hash: descriptionHash.toLowerCase(),
   });
 }
 
 async function createInvoiceFromNwc(
-  amountSats: number,
+  amountMsat: number,
   description:
     | { description: string }
     | { description_hash: string },
@@ -231,7 +246,7 @@ async function createInvoiceFromNwc(
     "makeInvoice",
     async (client) => {
       const tx = await client.makeInvoice({
-        amount: amountSats * 1000,
+        amount: amountMsat,
         ...description,
         expiry: 60 * 15,
       });
@@ -243,6 +258,29 @@ async function createInvoiceFromNwc(
     },
     FAST_OP_TIMEOUT_MS,
   );
+}
+
+/**
+ * Saldo total (en sats) sumando los wallets NWC que respondan. Es para mostrarle al
+ * admin cuánto hay en la tesorería; nunca lanza (devuelve null si no hay wallet
+ * configurado o si ninguno respondió). Un wallet caído se saltea (y se marca down).
+ */
+export async function getWalletBalanceSats(): Promise<number | null> {
+  if (!lightningConfigured()) return null;
+  probeDownWallets();
+  let totalMsat = 0;
+  let algunoRespondio = false;
+  for (const i of attemptOrder()) {
+    try {
+      const res = await withTimeout(getClient(i).getBalance(), FAST_OP_TIMEOUT_MS);
+      markUp(i);
+      totalMsat += res.balance ?? 0;
+      algunoRespondio = true;
+    } catch (err) {
+      if (isWalletDownError(err)) markDown(i);
+    }
+  }
+  return algunoRespondio ? Math.floor(totalMsat / 1000) : null;
 }
 
 /**

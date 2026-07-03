@@ -81,6 +81,18 @@ type EconomySettings = {
   updatedAt: string | null;
   configured: boolean;
 };
+type TreasurySettings = {
+  minSats: number;
+  maxSats: number;
+  updatedAt: string | null;
+  configured: boolean;
+};
+type TreasuryInfo = {
+  settings: TreasurySettings;
+  balanceSats: number | null;
+  lightningConfigured: boolean;
+  address: string | null;
+};
 
 const PAYOUT_LABEL: Record<string, string> = {
   pending: "En proceso",
@@ -541,6 +553,9 @@ export default function AdminPage() {
     betDevFeeMaxPct: "",
   });
   const [economyMsg, setEconomyMsg] = useState<string | null>(null);
+  const [treasury, setTreasury] = useState<TreasuryInfo | null>(null);
+  const [treasuryDraft, setTreasuryDraft] = useState({ minSats: "", maxSats: "" });
+  const [treasuryMsg, setTreasuryMsg] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [, startLoadTransition] = useTransition();
@@ -580,6 +595,16 @@ export default function AdminPage() {
         storeFeePct: String(e.settings.storeFeePct),
         betFeePct: String(e.settings.betFeePct),
         betDevFeeMaxPct: String(e.settings.betDevFeeMaxPct),
+      });
+    }
+    const t = await fetch("/api/admin/treasury")
+      .then((res) => res.json())
+      .catch(() => null);
+    if (t?.settings) {
+      setTreasury(t);
+      setTreasuryDraft({
+        minSats: String(t.settings.minSats),
+        maxSats: String(t.settings.maxSats),
       });
     }
   }, []);
@@ -635,6 +660,35 @@ export default function AdminPage() {
         betDevFeeMaxPct: String(d.settings.betDevFeeMaxPct),
       });
       setEconomyMsg("Porcentajes guardados.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveTreasury(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy("treasury");
+    setTreasuryMsg(null);
+    try {
+      const r = await fetch("/api/admin/treasury", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          minSats: treasuryDraft.minSats,
+          maxSats: treasuryDraft.maxSats,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setTreasuryMsg(d.error ?? "No se pudieron guardar los límites");
+        return;
+      }
+      setTreasury((prev) => (prev ? { ...prev, settings: d.settings } : prev));
+      setTreasuryDraft({
+        minSats: String(d.settings.minSats),
+        maxSats: String(d.settings.maxSats),
+      });
+      setTreasuryMsg("Límites guardados.");
     } finally {
       setBusy(null);
     }
@@ -859,6 +913,130 @@ export default function AdminPage() {
           </form>
         ) : (
           <p className="mt-4 text-sm text-faint">Cargando porcentajes...</p>
+        )}
+      </section>
+
+      <section className="mt-8 rounded-lg border border-line bg-panel p-5">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="font-semibold text-ink">Tesorería (depósito libre)</h2>
+            <p className="mt-1 text-xs text-faint">
+              Límites del LNURL-pay que acepta cualquier monto y cae al NWC
+              {treasury?.address ? (
+                <>
+                  {" "}(<span className="font-mono text-muted">{treasury.address}</span>)
+                </>
+              ) : null}
+              .
+            </p>
+          </div>
+          {treasury?.settings.updatedAt ? (
+            <p className="text-[11px] text-faint">
+              Actualizado {new Date(treasury.settings.updatedAt).toLocaleString("es-AR")}
+            </p>
+          ) : null}
+        </div>
+
+        {treasury ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Kpi
+                label="Saldo del NWC"
+                value={
+                  treasury.balanceSats == null
+                    ? "—"
+                    : `${treasury.balanceSats.toLocaleString("es-AR")} sats`
+                }
+                sub={
+                  !treasury.lightningConfigured
+                    ? "NWC no configurado"
+                    : treasury.balanceSats == null
+                      ? "no respondió"
+                      : "en la tesorería"
+                }
+                accent="var(--btc)"
+              />
+              <Kpi
+                label="Límites actuales"
+                value={`${treasury.settings.minSats.toLocaleString("es-AR")}–${treasury.settings.maxSats.toLocaleString("es-AR")}`}
+                sub={treasury.settings.configured ? "sats (guardado)" : "sats (default)"}
+                accent="var(--blue)"
+              />
+            </div>
+
+            <form onSubmit={saveTreasury} className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-xs font-medium text-muted">Mínimo</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    className="w-32 rounded border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
+                    value={treasuryDraft.minSats}
+                    onChange={(ev) =>
+                      setTreasuryDraft((prev) => ({ ...prev, minSats: ev.target.value }))
+                    }
+                  />
+                  <span className="text-sm text-muted">sats</span>
+                </div>
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-muted">Máximo</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    className="w-32 rounded border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-blue/30"
+                    value={treasuryDraft.maxSats}
+                    onChange={(ev) =>
+                      setTreasuryDraft((prev) => ({ ...prev, maxSats: ev.target.value }))
+                    }
+                  />
+                  <span className="text-sm text-muted">sats</span>
+                </div>
+              </label>
+              <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                <Button type="submit" disabled={busy === "treasury"}>
+                  {busy === "treasury" ? "Guardando..." : "Guardar límites"}
+                </Button>
+                {treasuryMsg ? (
+                  <span className="text-xs text-btc">{treasuryMsg}</span>
+                ) : null}
+              </div>
+            </form>
+
+            <div className="mt-4 rounded border border-line bg-bg/40 p-4 text-xs leading-relaxed text-muted">
+              <p className="font-medium text-ink">¿Necesitás un saldo base para que funcione?</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4">
+                <li>
+                  <span className="text-ink">Recibir no requiere saldo.</span> Los depósitos
+                  de apuestas y las recargas a la tesorería solo emiten invoices: no gastan
+                  nada del NWC.
+                </li>
+                <li>
+                  <span className="text-ink">Los premios se auto-financian.</span> Lo que
+                  cobra el ganador sale del propio pozo (los depósitos ya están en el NWC),
+                  así que no ponés plata de tu bolsillo por el premio.
+                </li>
+                <li>
+                  <span className="text-ink">Sí conviene una reserva chica para el ruteo.</span>{" "}
+                  Pagar por Lightning cuesta un fee de ruteo (unos pocos sats) que sale de tu
+                  liquidez. Sin liquidez de salida suficiente, los payouts fallan y quedan
+                  para reintentar en “Payouts a resolver”.
+                </li>
+              </ul>
+              {treasury.lightningConfigured && treasury.balanceSats === 0 ? (
+                <p className="mt-2 text-[var(--ln-corona)]">
+                  ⚠ El NWC está en 0 sats: vas a poder cobrar depósitos, pero los payouts
+                  fallarán hasta que haya liquidez de salida (mandá una recarga a la tesorería).
+                </p>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <p className="mt-4 text-sm text-faint">Cargando tesorería...</p>
         )}
       </section>
 

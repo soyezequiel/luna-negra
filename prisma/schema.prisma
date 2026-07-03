@@ -182,6 +182,10 @@ model PlatformSettings {
   // (`Provider.betDevFeePct` o `Game.betDevFeePct`) se acota a este valor al crear
   // la apuesta, para que el dev no deje al ganador con muy poco ni a la casa en rojo.
   betDevFeeMaxPct Int   @default(20)
+  // Límites (en sats) del depósito LIBRE a la tesorería (tesoreria@<dominio>, el
+  // LNURL-pay que cae al NWC). null = usar el default del entorno (TREASURY_*_SATS).
+  treasuryMinSats Int?
+  treasuryMaxSats Int?
   updatedAt   DateTime @default(now()) @updatedAt
 }
 

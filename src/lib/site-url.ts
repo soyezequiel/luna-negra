@@ -27,6 +27,28 @@ export function storeLightningAddress(baseUrl: string): string | null {
   }
 }
 
+export const TREASURY_LNURL_USERNAME = "tesoreria";
+
+/**
+ * Endpoint LNURL-pay de DEPÓSITO LIBRE a la tesorería: acepta cualquier monto y
+ * cae al NWC del store (a diferencia de `storeLnurlUrl`, que solo cobra depósitos
+ * de apuestas anclados a un contrato).
+ */
+export function treasuryLnurlUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/.well-known/lnurlp/${TREASURY_LNURL_USERNAME}`;
+}
+
+/** Lightning Address de depósito libre a la tesorería (tesoreria@dominio). */
+export function treasuryLightningAddress(baseUrl: string): string | null {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "https:" || !url.hostname) return null;
+    return `${TREASURY_LNURL_USERNAME}@${url.hostname}`;
+  } catch {
+    return null;
+  }
+}
+
 /** URL absoluta a la ficha de un juego. */
 export function gamePageUrl(req: Request, slug: string): string {
   return `${siteUrl(req)}/game/${slug}`;
