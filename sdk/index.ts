@@ -373,7 +373,10 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
       return {
         kind: 30078,
         created_at: Math.floor(Date.now() / 1000),
+        // `d`=betId: kind:30078 es direccionable (NIP-01). Sin `d` los resultados
+        // comparten coordenada y se pisan entre sí en los relays.
         tags: [
+          ["d", betId],
           ["t", "lunanegra:result"],
           ["bet", betId],
           ...winnerNpubs.map((n) => ["winner", n]),

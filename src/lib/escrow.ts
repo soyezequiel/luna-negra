@@ -193,9 +193,15 @@ export function computeContractHash(p: {
 
 /**
  * Plantilla (sin firmar) del evento de resultado de una apuesta. Misma forma
- * que produce el SDK (`buildResultEvent`): kind 30078, tags `t`/`bet`/`winner`.
+ * que produce el SDK (`buildResultEvent`): kind 30078, tags `d`/`t`/`bet`/`winner`.
  * Determinista salvo `created_at`. La firma la pone el proveedor (self-sign) o
  * Luna Negra con el oráculo gestionado.
+ *
+ * El tag `d` = betId es obligatorio: kind:30078 es un evento DIRECCIONABLE
+ * (NIP-01, rango 30000–39999). Sin `d`, todos los resultados del mismo firmante
+ * comparten la coordenada `30078:<pubkey>:""` y se pisan entre sí en los relays
+ * (queda sólo el último) y quedan mal formados → indexadores como el de njump no
+ * los levantan. Con `d`=betId cada resultado es una coordenada única y estable.
  */
 export function buildResultEventTemplate(p: {
   betId: string;
@@ -206,6 +212,7 @@ export function buildResultEventTemplate(p: {
     kind: 30078,
     created_at: p.createdAt ?? Math.floor(Date.now() / 1000),
     tags: [
+      ["d", p.betId],
       ["t", "lunanegra:result"],
       ["bet", p.betId],
       ...p.winnerNpubs.map((n) => ["winner", n]),

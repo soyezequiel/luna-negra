@@ -149,9 +149,13 @@ export async function publishContract(
   return ev.id;
 }
 
-/** Republica un evento ya firmado (ej. el resultado firmado por el proveedor). */
-export async function publishSignedEvent(ev: Event): Promise<void> {
-  await publishToRelays(ev).catch(() => 0);
+/**
+ * Republica un evento ya firmado (ej. el resultado firmado por el proveedor) y
+ * devuelve cuántos relays lo aceptaron. El caller no debe guardar el id del
+ * evento si devolvió 0 (ningún relay lo tiene → sería un link muerto).
+ */
+export async function publishSignedEvent(ev: Event): Promise<number> {
+  return publishToRelays(ev).catch(() => 0);
 }
 
 /**

@@ -159,16 +159,16 @@ async function runSettlement(args: {
       });
       return null;
     });
+    const resultAccepted = await publishSignedEvent(resultEvent);
     await prisma.zapBet.update({
       where: { id: betId },
       data: {
         status: "voided",
         settledAt: new Date(),
-        resultEventId: resultEvent.id,
+        ...(resultAccepted > 0 ? { resultEventId: resultEvent.id } : {}),
         ...(noteId ? { settleNoteId: noteId } : {}),
       },
     });
-    await publishSignedEvent(resultEvent);
     after(() => emitBetRefundedV2(betId, "void"));
     return { ok: true, voided: true };
   }
@@ -238,17 +238,17 @@ async function runSettlement(args: {
     return null;
   });
 
+  const resultAccepted = await publishSignedEvent(resultEvent);
   await prisma.zapBet.update({
     where: { id: betId },
     data: {
       status: "settled",
       settledAt: new Date(),
-      resultEventId: resultEvent.id,
+      ...(resultAccepted > 0 ? { resultEventId: resultEvent.id } : {}),
       ...(noteId ? { settleNoteId: noteId } : {}),
     },
   });
 
-  await publishSignedEvent(resultEvent);
   after(() => emitBetSettledV2(betId));
   return { ok: true };
 }

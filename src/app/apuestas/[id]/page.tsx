@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { computeEconomics, publicBetStatus } from "@/lib/escrow-math";
 import { BET_FEE_MIN_MSAT } from "@/lib/escrow-v2-config";
+import { RELAYS } from "@/lib/constants";
 import { msatToSats } from "@/lib/money";
 import { ZapDepositCard } from "@/components/zap-deposit-card";
 
@@ -34,6 +36,7 @@ export default async function ApuestaV2Page({
     where: { id },
     include: {
       game: { select: { title: true, slug: true } },
+      provider: { select: { oraclePubkey: true } },
       participants: { orderBy: { createdAt: "asc" } },
     },
   });
@@ -58,6 +61,19 @@ export default async function ApuestaV2Page({
     bet.status === "pending_deposits" &&
     (bet.depositDeadline == null || bet.depositDeadline > new Date());
   const anchorReal = !!bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-");
+
+  // El evento de resultado es kind:30078 (direccionable, firmado por el oráculo
+  // del proveedor). Lo linkeamos como `nevent` con relay-hints + autor + kind: así
+  // njump lo trae directo del relay en vez de depender de su indexador, que no
+  // levanta app-data (kind:30078) y devolvía "no event found" con el id crudo.
+  const resultNevent = bet.resultEventId
+    ? nip19.neventEncode({
+        id: bet.resultEventId,
+        relays: RELAYS.slice(0, 3),
+        author: bet.provider.oraclePubkey ?? undefined,
+        kind: 30078,
+      })
+    : null;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
@@ -251,9 +267,9 @@ export default async function ApuestaV2Page({
                 🧾 Nota de liquidación
               </a>
             ) : null}
-            {bet.resultEventId ? (
+            {resultNevent ? (
               <a
-                href={njump(bet.resultEventId)}
+                href={njump(resultNevent)}
                 target="_blank"
                 rel="noreferrer"
                 className="text-ln-corona-bright hover:underline"

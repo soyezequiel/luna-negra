@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { nip19 } from "nostr-tools";
+import { RELAYS } from "@/lib/constants";
 import type {
   AdminBetDetail,
   AdminBetParticipant,
@@ -22,6 +24,16 @@ function nameOf(p: AdminBetParticipant) {
 }
 function njump(eventId: string) {
   return `https://njump.me/${eventId}`;
+}
+// El evento de resultado es kind:30078 (app-data): njump no lo levanta por id
+// crudo (su indexador ignora ese kind). Lo linkeamos como `nevent` con relay-hints
+// para que lo traiga directo del relay.
+function njumpResult(eventId: string) {
+  return `https://njump.me/${nip19.neventEncode({
+    id: eventId,
+    relays: RELAYS.slice(0, 3),
+    kind: 30078,
+  })}`;
 }
 function fmtTime(iso: string | null) {
   if (!iso) return "—";
@@ -124,7 +136,7 @@ export function BetDetail({
         <Field label="Resultado Nostr">
           {d.resultEventId ? (
             <a
-              href={njump(d.resultEventId)}
+              href={njumpResult(d.resultEventId)}
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-blue hover:underline"

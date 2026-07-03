@@ -18,7 +18,9 @@ vi.mock("@/lib/escrow-payout", () => ({
 
 const published: unknown[] = [];
 vi.mock("@/lib/nostr-server", () => ({
-  publishSignedEvent: vi.fn(async (ev: unknown) => { published.push(ev); }),
+  // Devuelve la cantidad de relays que aceptaron (≥1) para que el settle guarde
+  // el resultEventId. Con 0, el settle omite el id (link muerto).
+  publishSignedEvent: vi.fn(async (ev: unknown) => { published.push(ev); return 1; }),
 }));
 
 const settled: string[] = [];

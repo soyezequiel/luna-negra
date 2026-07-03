@@ -153,11 +153,15 @@ async function runSettlement(args: {
       });
       await payParticipant({ bet, participant: p, amountMsat: bet.stakeMsat, kind: "refund" });
     }
+    const resultAccepted = await publishSignedEvent(resultEvent);
     await prisma.bet.update({
       where: { id: betId },
-      data: { status: "voided", settledAt: new Date(), resultEventId: resultEvent.id },
+      data: {
+        status: "voided",
+        settledAt: new Date(),
+        ...(resultAccepted > 0 ? { resultEventId: resultEvent.id } : {}),
+      },
     });
-    await publishSignedEvent(resultEvent);
     after(() => emitBetRefunded(betId, "void"));
     return { ok: true, voided: true };
   }
@@ -227,13 +231,17 @@ async function runSettlement(args: {
     data: { result: "lost" },
   });
 
+  // Republicar el evento firmado del resultado (prueba en Nostr). Sólo guardamos
+  // su id si algún relay lo aceptó, para no dejar un link muerto.
+  const resultAccepted = await publishSignedEvent(resultEvent);
   await prisma.bet.update({
     where: { id: betId },
-    data: { status: "settled", settledAt: new Date(), resultEventId: resultEvent.id },
+    data: {
+      status: "settled",
+      settledAt: new Date(),
+      ...(resultAccepted > 0 ? { resultEventId: resultEvent.id } : {}),
+    },
   });
-
-  // Republicar el evento firmado del resultado (prueba en Nostr).
-  await publishSignedEvent(resultEvent);
 
   after(() => emitBetSettled(betId));
   return { ok: true };
