@@ -202,8 +202,8 @@ async function runSettlement(args: {
   });
   const { perWinner, dust } = splitWinnings(netMsat, winners.length);
 
-  // Fee de la casa (dust incluido). Nunca self-payment: payHouseFeeV2 decide zap
-  // real (LUNA_FEE_LUD16) o asiento settled retenido.
+  // Corte de la casa (dust incluido) = la diferencia que queda en el pozo. No es un
+  // movimiento saliente: se retiene en el NWC de la casa (asiento `fee` settled).
   await payHouseFeeV2({ bet, amountMsat: feeMsat + dust });
 
   // Corte del dev (proveedor): sale del pozo como profile-zap.

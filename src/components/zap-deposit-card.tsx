@@ -79,11 +79,18 @@ export function ZapDepositCard({ betId, stakeSats }: Props) {
       if (!signer) throw new Error("Conectá tu Nostr para depositar");
       const signed = await signer.signEvent(prep.unsignedZapRequest as UnsignedEvent);
 
+      // 2b) Firmar el comentario de participación (kind:1 reply al post), si el
+      //     server lo mandó. Es el evento al que se zapea el premio si ganás.
+      let signedComment: unknown;
+      if (prep.unsignedComment) {
+        signedComment = await signer.signEvent(prep.unsignedComment as UnsignedEvent);
+      }
+
       // 3) Pedir el invoice (Luna Negra lo emite con su NWC).
       const invRes = await fetch(`/api/v2/bets/${betId}/deposit/invoice`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ signedZapRequest: signed }),
+        body: JSON.stringify({ signedZapRequest: signed, signedComment }),
       });
       const inv = await invRes.json();
       if (!invRes.ok) throw new Error(inv.error ?? "No se pudo generar el invoice");

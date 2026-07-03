@@ -168,6 +168,17 @@ export default async function ApuestaV2Page({
                     ⚡
                   </a>
                 ) : null}
+                {p.commentEventId ? (
+                  <a
+                    href={njump(p.commentEventId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-ln-muted hover:underline"
+                    title="Comentario de participación (el premio se zapea acá si gana)"
+                  >
+                    💬
+                  </a>
+                ) : null}
               </span>
             </li>
           ))}

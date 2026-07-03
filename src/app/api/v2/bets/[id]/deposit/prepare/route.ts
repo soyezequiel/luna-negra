@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
-import { buildDepositZapRequest } from "@/lib/zap-bet";
+import { buildDepositZapRequest, buildParticipationComment } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { siteUrl } from "@/lib/site-url";
 import { notifyOperationalError } from "@/lib/discord";
@@ -51,7 +51,10 @@ export async function POST(
 
   try {
     const unsignedZapRequest = buildDepositZapRequest(bet, part, siteUrl(req));
-    return NextResponse.json({ participantId: part.id, unsignedZapRequest });
+    // Comentario de participación (kind:1 reply al post) para que el jugador lo
+    // firme junto al 9734. Null si el ancla no es real → el flujo sigue sin él.
+    const unsignedComment = buildParticipationComment(bet);
+    return NextResponse.json({ participantId: part.id, unsignedZapRequest, unsignedComment });
   } catch (e) {
     await notifyOperationalError({
       source: "api-v2-deposit-prepare",

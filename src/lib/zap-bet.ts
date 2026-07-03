@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { nip57 } from "nostr-tools";
+import { nip57, verifyEvent, type Event } from "nostr-tools";
 import type { ZapBet, ZapBetParticipant } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { RELAYS } from "@/lib/constants";
 import {
   createDescriptionHashInvoice,
   isInvoicePaid,
@@ -15,6 +16,7 @@ import {
 import {
   getStorePubkey,
   publishZapReceipt,
+  republishEvent,
 } from "@/lib/nostr-server";
 import { recordDepositV2 } from "@/lib/ledger-v2";
 import { RESOLVE_WINDOW_MS } from "@/lib/escrow-v2-config";
@@ -109,6 +111,62 @@ export function validateDepositZapRequest(
     (anchorIsReal ? tagValue(signed, "e") === anchor : true) &&
     (!allowedLnurls || (!!requestLnurl && allowedLnurls.has(requestLnurl)));
   return ok ? { ok: true } : { ok: false, error: "El zap request no coincide con la apuesta" };
+}
+
+type UnsignedNote = { kind: 1; created_at: number; tags: string[][]; content: string };
+
+/**
+ * Arma el COMENTARIO de participación (kind:1) SIN firmar: un reply NIP-10 al post
+ * del contrato (`e` root + `p` = la tienda, autora del contrato) que el jugador
+ * firma con su propia identidad al depositar. El payout del ganador se zapea a ESTE
+ * comentario (`e`), no al post. Null si el ancla no es real (dev-anchor) o no hay
+ * identidad de tienda: en ese caso el flujo sigue sin comentario y el premio cae al
+ * post (retrocompatibilidad).
+ */
+export function buildParticipationComment(bet: ZapBet): UnsignedNote | null {
+  const anchor = bet.anchorEventId;
+  if (!anchor || anchor.startsWith("dev-anchor-")) return null;
+  const storePubkey = getStorePubkey();
+  if (!storePubkey) return null;
+  const sats = Number(msatToSats(bet.stakeMsat));
+  const relay = RELAYS[RELAYS.length - 1];
+  return {
+    kind: 1,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [
+      ["e", anchor, relay, "root"],
+      ["p", storePubkey],
+    ],
+    content: `🌑 Entro a esta apuesta con ${sats} sats. ¡Que gane el mejor! ⚡`,
+  };
+}
+
+/**
+ * Valida el comentario de participación firmado por el jugador: firma válida,
+ * kind 1, autor == participante y referencia (`e`) el ancla del contrato. No
+ * exige el marcador NIP-10 exacto (distintos signers lo arman distinto), solo que
+ * apunte al post.
+ */
+export function validateParticipationComment(
+  bet: ZapBet,
+  part: ZapBetParticipant,
+  signed: SignedZapRequest,
+): DepositValidation {
+  const anchor = bet.anchorEventId;
+  if (!anchor || anchor.startsWith("dev-anchor-")) {
+    return { ok: false, error: "La apuesta no tiene un ancla real" };
+  }
+  if (signed.kind !== 1) return { ok: false, error: "El comentario debe ser kind:1" };
+  if (signed.pubkey !== part.pubkey) {
+    return { ok: false, error: "El comentario no está firmado por el participante" };
+  }
+  if (!signed.tags.some((t) => t[0] === "e" && t[1] === anchor)) {
+    return { ok: false, error: "El comentario no referencia el post de la apuesta" };
+  }
+  if (!verifyEvent(signed as unknown as Event)) {
+    return { ok: false, error: "La firma del comentario es inválida" };
+  }
+  return { ok: true };
 }
 
 export type DepositInvoiceV2 = {
@@ -253,6 +311,30 @@ export async function settleDepositV2(
     });
   }
 
+  // 1.5) Publicar el COMENTARIO de participación firmado por el jugador (lo mandó
+  //      al pedir el invoice). Al pagarse, queda visible como reply del contrato y
+  //      el payout del ganador se ancla a él. Best-effort: si 0 relays, el tick lo
+  //      reintenta (commentEventOk=false) y mientras tanto el premio cae al post.
+  let commentEventId: string | null = part.commentEventId;
+  let commentEventOk = part.commentEventOk;
+  if (
+    !commentEventOk &&
+    part.commentEventJson &&
+    bet.anchorEventId &&
+    !bet.anchorEventId.startsWith("dev-anchor-")
+  ) {
+    try {
+      const ev = JSON.parse(part.commentEventJson) as Event;
+      const accepted = await republishEvent(ev);
+      if (accepted > 0) {
+        commentEventId = ev.id;
+        commentEventOk = true;
+      }
+    } catch {
+      /* json corrupto: se ignora; el premio del ganador cae al post del contrato */
+    }
+  }
+
   // 2) Estado + ledger. `depositReceiptId` es @unique: si otro proceso ya settleó
   //    (carrera tick/poll), el update podría chocar → lo hacemos condicional.
   await prisma.zapBetParticipant.updateMany({
@@ -263,6 +345,8 @@ export async function settleDepositV2(
       depositReceiptId,
       depositReceiptJson,
       depositReceiptOk,
+      commentEventId,
+      commentEventOk,
     },
   });
   await recordDepositV2({

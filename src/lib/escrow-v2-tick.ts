@@ -28,6 +28,7 @@ export async function runTickV2(): Promise<{
   forfeited: number;
   retried: number;
   receiptsRepublished: number;
+  commentsRepublished: number;
 }> {
   const now = new Date();
   let deposits = 0;
@@ -36,6 +37,7 @@ export async function runTickV2(): Promise<{
   let forfeited = 0;
   let retried = 0;
   let receiptsRepublished = 0;
+  let commentsRepublished = 0;
 
   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
   if (lightningConfigured()) {
@@ -201,5 +203,42 @@ export async function runTickV2(): Promise<{
     }
   }
 
-  return { deposits, ready, refunded, forfeited, retried, receiptsRepublished };
+  // H) Reintentar la publicación de comentarios de participación que ningún relay
+  //    aceptó (para que el payout del ganador tenga a qué anclar el zap).
+  const pendingComments = await prisma.zapBetParticipant.findMany({
+    where: { depositStatus: "paid", commentEventOk: false, commentEventJson: { not: null } },
+    select: { id: true, betId: true, commentEventJson: true },
+  });
+  for (const p of pendingComments) {
+    if (!p.commentEventJson) continue;
+    try {
+      const ev = JSON.parse(p.commentEventJson) as Event;
+      const accepted = await republishEvent(ev);
+      if (accepted > 0) {
+        await prisma.zapBetParticipant.update({
+          where: { id: p.id },
+          data: { commentEventId: ev.id, commentEventOk: true },
+        });
+        commentsRepublished++;
+      }
+    } catch (error) {
+      await notifyOperationalError({
+        source: "zap-participation-comment-retry",
+        error,
+        fingerprint: `zap-participation-comment-retry:${p.id}`,
+        cooldownMs: 30 * 60_000,
+        context: { betId: p.betId, participantId: p.id },
+      });
+    }
+  }
+
+  return {
+    deposits,
+    ready,
+    refunded,
+    forfeited,
+    retried,
+    receiptsRepublished,
+    commentsRepublished,
+  };
 }

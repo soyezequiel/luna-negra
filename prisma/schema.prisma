@@ -718,6 +718,11 @@ model ZapBetParticipant {
   depositReceiptId   String?   @unique // id del 9735 que Luna Negra firmó y publicó
   depositReceiptJson String? // recibo 9735 firmado completo (re-publicar si 0 relays)
   depositReceiptOk   Boolean   @default(false) // >=1 relay aceptó el recibo (retry en tick si false)
+  // Comentario de participación (kind:1 reply al post del contrato, FIRMADO por el
+  // propio jugador). El payout del ganador se zapea a ESTE comentario (e), no al post.
+  commentEventId     String?   @unique // id del kind:1 (null hasta publicarse en ≥1 relay)
+  commentEventJson   String? // evento firmado completo (guardado al pedir invoice; se publica al pagar)
+  commentEventOk     Boolean   @default(false) // >=1 relay aceptó el comentario (retry en tick si false)
   // Resultado / payout (zap saliente que Luna Negra firma hacia el receptor)
   result             String    @default("pending") // pending | won | lost | tie
   payoutStatus       String    @default("none") // none|pending|paid|failed|withdraw_pending|claimed|forfeited

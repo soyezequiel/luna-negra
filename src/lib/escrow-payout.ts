@@ -141,6 +141,10 @@ export async function payProviderFee(args: {
 }): Promise<void> {
   const { bet, amountMsat } = args;
   if (amountMsat <= 0n) return;
+  // Lightning no mueve sub-1-sat: si el corte del dev redondea a <1 sat (apuestas de
+  // stake chico), no se puede pagar ni por zap ni por LNURL ("Invalid amount"). Lo
+  // retiene la casa junto con su comisión, sin asiento (mismo criterio que el dust).
+  if (amountMsat < 1000n) return;
   const owner = bet.provider.owner;
   const idempotencyKey = `dev_fee:${bet.id}`;
 

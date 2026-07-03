@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
-import { validateDepositZapRequest, ensureDepositInvoiceV2 } from "@/lib/zap-bet";
+import {
+  validateDepositZapRequest,
+  ensureDepositInvoiceV2,
+  validateParticipationComment,
+} from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { siteUrl } from "@/lib/site-url";
 import { notifyOperationalError } from "@/lib/discord";
@@ -73,6 +77,28 @@ export async function POST(
 
   const check = validateDepositZapRequest(bet, part, signed, siteUrl(req));
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 });
+
+  // Comentario de participación firmado (opcional): lo validamos y guardamos ahora;
+  // se publica al confirmarse el pago (settleDepositV2) y el payout del ganador se
+  // ancla a él. Es AUXILIAR: si no viene o no valida, NO bloqueamos el depósito —
+  // solo se descarta el comentario y el premio caería al post del contrato.
+  const signedComment = body?.signedComment as SignedZapRequest | undefined;
+  if (signedComment && typeof signedComment === "object") {
+    const commentCheck = validateParticipationComment(bet, part, signedComment);
+    if (commentCheck.ok) {
+      const json = JSON.stringify(signedComment);
+      if (part.commentEventJson !== json) {
+        await prisma.zapBetParticipant.update({
+          where: { id: part.id },
+          data: { commentEventJson: json },
+        });
+      }
+    } else {
+      console.warn(
+        `[v2/deposit/invoice] comentario de participación inválido para ${part.id}: ${commentCheck.error}`,
+      );
+    }
+  }
 
   try {
     const inv = await ensureDepositInvoiceV2(bet, part, signed);

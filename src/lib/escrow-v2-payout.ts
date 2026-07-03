@@ -6,9 +6,8 @@ import { resolveDestination } from "@/lib/escrow-payout";
 import { recordOutflowV2 } from "@/lib/ledger-v2";
 import { canPayout } from "@/lib/ledger-math";
 import { lightningConfigured } from "@/lib/lightning";
-import { getStorePubkey } from "@/lib/nostr-server";
 import { sendZapPayout } from "@/lib/zap-payout";
-import { LUNA_FEE_LUD16, WITHDRAW_WINDOW_MS } from "@/lib/escrow-v2-config";
+import { WITHDRAW_WINDOW_MS } from "@/lib/escrow-v2-config";
 import { notifyOperationalError } from "@/lib/discord";
 
 // Payouts de apuestas v2: Luna Negra ZAPEA al ganador / refund / dev fee (o cae a
@@ -101,8 +100,12 @@ export async function payParticipantV2(args: {
     return;
   }
 
+  // El premio del ganador se zapea a SU comentario de participación (si se publicó);
+  // el reembolso va al post del contrato. Sin comentario, el premio cae al post.
+  const payoutAnchor =
+    kind === "payout" ? (participant.commentEventId ?? bet.anchorEventId) : bet.anchorEventId;
   const res = await sendZapPayout({
-    anchorEventId: bet.anchorEventId,
+    anchorEventId: payoutAnchor,
     recipientPubkey: participant.pubkey,
     address: dest,
     amountMsat,
@@ -135,6 +138,12 @@ export async function payProviderFeeV2(args: {
 }): Promise<void> {
   const { bet, amountMsat } = args;
   if (amountMsat <= 0n) return;
+  // Lightning no mueve sub-1-sat: si el corte del dev redondea a <1 sat (típico en
+  // apuestas de stake chico, ej. 5% de 18 sats = 0,9 sat), NO se puede pagar ni por
+  // zap (mín 1000 msat) ni por LNURL (WoS solo emite sats enteros → "Invalid amount").
+  // Lo retiene la casa junto con su comisión, sin asiento ni alerta (mismo criterio
+  // que el `dust` del reparto entre ganadores).
+  if (amountMsat < 1000n) return;
   const owner = bet.provider.owner;
   const idempotencyKey = `dev_fee:${bet.id}`;
 
@@ -200,11 +209,12 @@ export async function payProviderFeeV2(args: {
 }
 
 /**
- * Corte de la CASA (Luna Negra). Nunca self-payment al NWC del escrow: si
- * `LUNA_FEE_LUD16` apunta a otro wallet, el fee sale como zap real (receptor = la
- * tienda, destino = ese wallet); si no, queda como asiento `fee` settled en el
- * ledger (la casa lo retiene en su NWC), igual que v1. En ambos casos la nota de
- * liquidación lo registra públicamente.
+ * Corte de la CASA (Luna Negra) = la DIFERENCIA que queda en el pozo tras pagar al
+ * ganador y al dev. NO genera un movimiento saliente: Luna Negra es la custodia del
+ * pozo, así que su parte simplemente se queda en su propio NWC. Solo registra el
+ * asiento `fee` (settled) para que el ledger cuadre (pozo = fee + dev + payout) y la
+ * nota de liquidación lo muestre. Minimiza los pagos salientes a lo indispensable:
+ * ganador y dev. (v1 ya hacía esto; ahora v2 también, sin la wallet de fee externa.)
  */
 export async function payHouseFeeV2(args: {
   bet: ZapBet;
@@ -234,30 +244,7 @@ export async function payHouseFeeV2(args: {
     return;
   }
 
-  const storePubkey = getStorePubkey();
-  // Zap real solo si hay un wallet de fee DISTINTO configurado y NWC disponible.
-  if (LUNA_FEE_LUD16 && storePubkey && lightningConfigured()) {
-    const res = await sendZapPayout({
-      anchorEventId: bet.anchorEventId,
-      recipientPubkey: storePubkey,
-      address: LUNA_FEE_LUD16,
-      amountMsat,
-      comment: `Luna Negra fee ${bet.id}`,
-    });
-    if (res.kind === "zap" || res.kind === "lnurl") {
-      await prisma.zapLedgerEntry.update({
-        where: { idempotencyKey },
-        data: {
-          status: "settled",
-          paymentHash: res.kind === "lnurl" ? res.preimage : res.preimage,
-          zapRequestId: res.kind === "zap" ? res.zapRequestId : null,
-        },
-      });
-      return;
-    }
-    // Falló mover el fee al wallet externo: lo retiene la casa (asiento settled).
-  }
-  // Sin wallet de fee externo: el fee queda en el NWC de la casa (asiento settled).
+  // Retenido en el NWC de la casa (sin zap saliente): el asiento queda settled.
   await prisma.zapLedgerEntry.update({
     where: { idempotencyKey },
     data: { status: "settled" },
@@ -321,8 +308,10 @@ export async function retryFailedPayoutV2(
     return "withdraw_pending";
   }
 
+  const retryAnchor =
+    kind === "payout" ? (part.commentEventId ?? part.bet.anchorEventId) : part.bet.anchorEventId;
   const res = await sendZapPayout({
-    anchorEventId: part.bet.anchorEventId,
+    anchorEventId: retryAnchor,
     recipientPubkey: part.pubkey,
     address: dest,
     amountMsat,

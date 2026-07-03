@@ -23,11 +23,10 @@ export {
 // endpoints sin desplegar (default ON). "false" explícito lo desactiva.
 export const BETS_V2_ENABLED = process.env.BETS_V2_ENABLED !== "false";
 
-// Lightning Address para cobrar el corte de la casa COMO ZAP REAL. Solo se usa si
-// apunta a un wallet DISTINTO del NWC del escrow (si no, sería self-payment): en
-// ese caso el fee sale por zap; si no está seteado, el fee queda como asiento
-// `fee` settled en el ledger (igual que v1) + registro en la nota de liquidación.
-export const LUNA_FEE_LUD16 = process.env.LUNA_FEE_LUD16?.trim() || null;
+// El corte de la casa NO se paga: es la diferencia que queda en el pozo tras el
+// ganador y el dev, y se retiene en el propio NWC de Luna Negra (asiento `fee`
+// settled + registro en la nota de liquidación). Así los únicos movimientos
+// salientes son los indispensables: premio del ganador y corte del dev.
 
 // Cadencia del sync de recibos de payout (9735 emitidos por el wallet del
 // receptor). Cierra la auditoría de los zaps salientes; no bloquea el pago.
