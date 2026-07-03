@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { verifyApiKey } from "@/lib/api-keys";
 import { computeEconomics, publicBetStatus } from "@/lib/escrow-math";
-import { checkAndSettleDepositV2, participantLnurlUrl } from "@/lib/zap-bet";
+import {
+  checkAndSettleDepositV2,
+  participantLnurlUrl,
+  buildDepositZapRequest,
+} from "@/lib/zap-bet";
 import { encodeLnurl } from "@/lib/zap";
 import { msatToSats } from "@/lib/money";
 import { BET_FEE_MIN_MSAT } from "@/lib/escrow-v2-config";
@@ -88,22 +92,47 @@ export async function GET(
   const base = siteUrl(req);
 
   const participants = bet.participants.map((p) => {
-    // El handle de depósito v2 es el LNURL-pay del participante (LUD-06 + NIP-57):
-    // el apostador firma el 9734 y paga por ahí. El callback LNURL exige `nostr=`
-    // válido; para wallets sin NIP-57, el fallback es abrir `payUrl` y firmar en
-    // Luna Negra. El bolt11 no se pre-genera acá: depende del 9734 firmado.
-    const lnurl =
-      open && p.depositStatus === "pending"
-        ? encodeLnurl(participantLnurlUrl(base, p.id))
-        : null;
-    const payUrl = open && p.depositStatus === "pending" ? `${base}/apuestas/${bet.id}` : null;
+    // El depósito v2 SIEMPRE es un zap NIP-57: el apostador firma un 9734 anclado al
+    // contrato y recién ahí sale el invoice. Para que un consumidor de la API (un
+    // juego con el firmante Nostr del jugador) pueda hacer que "pagar con extensión"
+    // y el QR sean zaps reales —no un LNURL-pay plano que el callback rechaza— le
+    // damos todo lo necesario para completar el zap fuera de la web de Luna:
+    //   - `depositZapRequest`: el 9734 SIN firmar (mismos tags que valida el callback);
+    //     el juego lo firma con la identidad del jugador.
+    //   - `depositCallback`: a dónde mandar el 9734 firmado (`?amount&nostr`) para
+    //     obtener el invoice. Es el LNURL-pay del participante.
+    //   - `bolt11`: el invoice ya emitido (si el jugador ya firmó en un intento
+    //     previo); así el QR persiste entre polls y el que vuelve paga el mismo.
+    //   - `lnurl`/`payUrl`: se mantienen (QR LNURL para wallets con NIP-57 y firma
+    //     en la web de Luna como fallback).
+    const canDeposit = open && p.depositStatus === "pending";
+    const lnurl = canDeposit ? encodeLnurl(participantLnurlUrl(base, p.id)) : null;
+    const payUrl = canDeposit ? `${base}/apuestas/${bet.id}` : null;
+    const bolt11 = canDeposit ? p.depositInvoice : null;
+    // El 9734 sin firmar solo hace falta mientras no haya invoice emitido todavía.
+    let depositZapRequest: ReturnType<typeof buildDepositZapRequest> | null = null;
+    let depositCallback: string | null = null;
+    if (canDeposit && !bolt11) {
+      try {
+        depositZapRequest = buildDepositZapRequest(bet, p, base);
+        depositCallback = participantLnurlUrl(base, p.id);
+      } catch {
+        // Sin identidad de tienda / ancla no se puede armar el zap request; el juego
+        // cae al fallback `payUrl`. No tumbamos la respuesta del resto de asientos.
+        depositZapRequest = null;
+        depositCallback = null;
+      }
+    }
     return {
       participantId: p.id,
       npub: p.npub,
       depositStatus: p.depositStatus,
       depositReceiptId: p.depositReceiptId,
+      bolt11,
       lnurl,
       payUrl,
+      depositZapRequest,
+      depositCallback,
       result: p.result,
       payoutStatus: p.payoutStatus,
       payoutSats: p.payoutMsat != null ? sats(p.payoutMsat) : null,

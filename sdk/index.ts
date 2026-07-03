@@ -92,6 +92,18 @@ export type BetParticipantView = {
   lnurl: string | null;
   /** Deep-link a la pantalla de pago de Luna Negra. `null` si cerró/pagó. */
   payUrl: string | null;
+  /**
+   * v2 (zaps): zap request NIP-57 (kind 9734) SIN firmar del depósito, anclado al
+   * contrato. Firmalo con la identidad Nostr del jugador y mandalo a `depositCallback`
+   * (`?amount&nostr=`) para obtener el invoice: así "pagar con extensión" y el QR son
+   * zaps reales. `null` si ya hay `bolt11` emitido o el depósito cerró.
+   */
+  depositZapRequest?: UnsignedEvent | null;
+  /**
+   * v2 (zaps): URL LNURL-pay del participante a donde mandar el 9734 firmado
+   * (`GET ?amount=<msat>&nostr=<json>` → `{ pr }`). `null` si no aplica.
+   */
+  depositCallback?: string | null;
 };
 
 export type BetDetail = BetEconomics & {
