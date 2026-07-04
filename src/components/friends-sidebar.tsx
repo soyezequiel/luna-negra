@@ -40,6 +40,7 @@ import {
   joinRoomAndPlay,
   preopenGameWindowIfNeeded,
   getOpenGameWindow,
+  openExternalGameLink,
   POPUP_BLOCKED_BODY,
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
@@ -429,8 +430,17 @@ export function FriendsSidebar() {
   // para Luna Room Link abre la URL del dominio del juego (autocontenida).
   function joinRoom(invite: { slug?: string; roomId: string; url?: string }) {
     if (invite.url) {
-      const w = window.open(invite.url, "_blank", "noopener");
-      if (!w) window.location.assign(invite.url);
+      // Room-link autocontenido: abrir en pestaña nueva sin reemplazar Luna. Si el
+      // navegador lo bloquea, avisar con un toast (un nuevo gesto reintenta).
+      if (!openExternalGameLink(invite.url)) {
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: invite.url,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        });
+      }
       return;
     }
     if (!invite.slug) return;

@@ -31,6 +31,7 @@ import {
 } from "@/lib/invite";
 import {
   joinRoomAndPlay,
+  openExternalGameLink,
   POPUP_BLOCKED_BODY,
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
@@ -162,9 +163,18 @@ export function NotificationsProvider({
             }),
         });
       } else if (/^https?:\/\//.test(href)) {
-        const w = window.open(href, "_blank", "noopener");
-        // Popup bloqueado: navegar en la misma pestaña antes que fallar mudo.
-        if (!w) window.location.assign(href);
+        // Room-link externo: abrir en pestaña nueva sin reemplazar Luna. Si el
+        // navegador bloquea el popup, avisar con un toast (nuevo gesto reintenta)
+        // en vez de navegar la pestaña actual.
+        if (!openExternalGameLink(href)) {
+          notify({
+            title: POPUP_BLOCKED_TITLE,
+            body: POPUP_BLOCKED_BODY,
+            href,
+            kind: "warn",
+            actionLabel: "Abrir juego",
+          });
+        }
       } else {
         router.push(href);
       }

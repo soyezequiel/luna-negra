@@ -242,16 +242,23 @@ export function buildContractText(p: {
     p.devFeePct && p.devFeePct > 0
       ? `${comisionCasa} de Luna Negra + ${p.devFeePct}% del desarrollador`
       : comisionCasa;
+  // Menciones NIP-27: los clientes las renderizan como pills con el nombre del
+  // perfil en lugar del npub crudo (menos ruido visual). Los `p` tags del evento
+  // los agrega quien publica el contrato.
+  const participantes = p.npubs.length
+    ? p.npubs.map((n) => `nostr:${n}`).join(" vs ")
+    : null;
   return [
-    `🌑 Contrato de apuesta — Luna Negra`,
+    `🌑 Apuesta en ${p.gameTitle}`,
     ``,
-    `Juego: ${p.gameTitle}`,
-    `Participantes: ${p.npubs.join(", ")}`,
-    `Monto por jugador: ${p.stakeSats} sats`,
-    `Gana: ${p.victoryCondition || "según el juego"} — el ganador se lleva el pozo menos ${comision} de comisión (empate = se divide).`,
-    `Plazos: depósito 10 min · resolución 15 min.`,
-    `Si no se completan los depósitos en 10 min, se reembolsa. Si no hay resultado en 15 min, se reembolsa todo.`,
-    `Resuelve: ${p.providerName}.`,
-    `ID: ${p.betId}`,
-  ].join("\n");
+    participantes,
+    `${p.stakeSats} sats cada uno · gana ${p.victoryCondition || "según el juego"}`,
+    ``,
+    `El ganador se lleva el pozo menos ${comision} (empate: se divide).`,
+    `10 min para depositar y 15 min para el resultado; si no, se reembolsa.`,
+    `Resuelve ${p.providerName}.`,
+    `ID ${p.betId}`,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
 }

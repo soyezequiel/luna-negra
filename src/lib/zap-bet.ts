@@ -290,6 +290,19 @@ export async function settleDepositV2(
 ): Promise<void> {
   if (!part.depositPaymentHash) return;
 
+  // 0) Claim atómico pending → paid ANTES de tocar Nostr. Sin esto, el poll
+  //    on-demand (checkAndSettleDepositV2) y el tick de escrow pueden entrar los
+  //    dos para el mismo depósito y publicar cada uno su propio recibo 9735
+  //    (mismo bolt11, dos eventos distintos): solo el ganador del claim sigue.
+  //    De paso evita el doble asiento en el ledger y el doble webhook de
+  //    depósito recibido. El tick reintenta el recibo por otra vía (bloque G,
+  //    republicando el evento ya guardado, que es idempotente por id).
+  const claimed = await prisma.zapBetParticipant.updateMany({
+    where: { id: part.id, depositStatus: "pending" },
+    data: { depositStatus: "paid", paidAt: now },
+  });
+  if (claimed.count !== 1) return; // otro proceso ya lo settleó
+
   // 1) Recibo 9735 propio (best-effort; si 0 relays, el tick lo reintenta).
   let depositReceiptId: string | null = null;
   let depositReceiptJson: string | null = null;
@@ -380,13 +393,13 @@ export async function settleDepositV2(
     }
   }
 
-  // 2) Estado + ledger. `depositReceiptId` es @unique: si otro proceso ya settleó
-  //    (carrera tick/poll), el update podría chocar → lo hacemos condicional.
-  await prisma.zapBetParticipant.updateMany({
-    where: { id: part.id, depositStatus: "pending" },
+  // 2) Persistir los artefactos Nostr (recibo + comentario). El estado (paid) ya
+  //    lo tomamos en el claim inicial; acá solo escribimos lo que produjimos como
+  //    ganadores del claim. `depositReceiptId` es @unique y solo lo setea el
+  //    ganador, así que no hay colisión.
+  await prisma.zapBetParticipant.update({
+    where: { id: part.id },
     data: {
-      depositStatus: "paid",
-      paidAt: now,
       depositReceiptId,
       depositReceiptJson,
       depositReceiptOk,

@@ -31,6 +31,29 @@ export const POPUP_BLOCKED_TITLE = "Tu navegador bloqueó la ventana del juego";
 export const POPUP_BLOCKED_BODY =
   "Permití pop-ups para Luna Negra (en Brave: ícono 🛡️ Shields → Pop-ups) o tocá «Abrir juego».";
 
+/**
+ * Abre una URL externa (Luna Room Link autocontenido) en una pestaña nueva sin
+ * tocar la pestaña de Luna. Devuelve `false` solo si el navegador bloqueó el
+ * popup, para que el caller avise en vez de reemplazar la pestaña actual.
+ *
+ * OJO: no usamos `window.open(url, "_blank", "noopener")`. Con `noopener` el
+ * navegador devuelve `null` AUNQUE la pestaña se haya abierto bien (así lo define
+ * la spec de HTML), así que el viejo fallback `if (!w) location.assign(url)`
+ * creía que estaba bloqueado y encima navegaba la pestaña de Luna → se abría la
+ * pestaña nueva Y se reemplazaba Luna Negra. Abrimos sin `noopener` y anulamos el
+ * `opener` a mano; así el `null` de retorno sí significa "popup bloqueado".
+ */
+export function openExternalGameLink(url: string): boolean {
+  const win = window.open(url, "_blank");
+  if (!win) return false;
+  try {
+    win.opener = null;
+  } catch {
+    /* cross-origin: algunos navegadores no dejan escribir opener; ya está abierta */
+  }
+  return true;
+}
+
 export function getOpenGameWindow(slug: string): Window | null {
   const win = gameWindows.get(slug);
   if (!win) return null;

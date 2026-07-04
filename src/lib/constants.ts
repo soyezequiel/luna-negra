@@ -8,6 +8,7 @@ export function gameTag(slug: string): string {
 
 // Relays públicos para leer/publicar perfil, amigos, chat y actividad.
 export const RELAYS = [
+  "wss://relay.lacrypta.ar",
   "wss://relay.damus.io",
   "wss://relay.nostr.band",
   "wss://nos.lol",

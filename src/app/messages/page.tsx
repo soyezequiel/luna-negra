@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { parseInvite, parseRoomLink, latestJoinableInviteId } from "@/lib/invite";
 import {
   joinRoomAndPlay,
+  openExternalGameLink,
   POPUP_BLOCKED_BODY,
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
@@ -52,9 +53,17 @@ export default function MessagesPage() {
   // dentro del click si todavía no existe.
   function joinRoom(invite: { slug?: string; roomId: string; url?: string }) {
     if (invite.url) {
-      // Room-link: abrir la URL del dominio del juego (autocontenida).
-      const w = window.open(invite.url, "_blank", "noopener");
-      if (!w) window.location.assign(invite.url);
+      // Room-link: abrir la URL del dominio del juego (autocontenida) en pestaña
+      // nueva sin reemplazar Luna. Si el navegador lo bloquea, avisar con toast.
+      if (!openExternalGameLink(invite.url)) {
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: invite.url,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        });
+      }
       return;
     }
     if (!invite.slug) return;
