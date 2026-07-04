@@ -20,6 +20,41 @@ import { WITHDRAW_WINDOW_MS } from "@/lib/escrow-config";
 // (User.lud16 / QR de retiro) cubre si ningún relay llegó a responder.
 const PAYOUT_PROFILE_MAX_WAIT_MS = 3_000;
 
+// Caché en memoria del lud16 del perfil (pubkey → lud16|null) para NO tocar relays
+// en el momento de pagar: se precalienta al fondearse la apuesta (ver
+// prewarmPayoutDestinations) y la liquidación lo lee al instante. TTL corto: si la
+// partida dura más, la liquidación paga a lo sumo el fetch con tope de arriba. Una
+// sola instancia self-host → un Map alcanza.
+const PROFILE_LUD16_TTL_MS = 15 * 60_000;
+const profileLud16Cache = new Map<string, { lud16: string | null; at: number }>();
+
+/** lud16 del kind:0 (con caché + tope de espera). null = perfil sin lud16 o relays mudos. */
+async function profileLud16For(pubkey: string): Promise<string | null> {
+  const hit = profileLud16Cache.get(pubkey);
+  if (hit && Date.now() - hit.at < PROFILE_LUD16_TTL_MS) return hit.lud16;
+  const profile = await fetchProfile(pubkey, { maxWaitMs: PAYOUT_PROFILE_MAX_WAIT_MS }).catch(
+    () => null,
+  );
+  const lud16 = profile?.lud16 ?? null;
+  // No cachear el fallo total (profile null): pudo ser un parpadeo de relays y
+  // cachearlo forzaría 15 min de QR de retiro para un usuario que sí tiene lud16.
+  if (profile) profileLud16Cache.set(pubkey, { lud16, at: Date.now() });
+  return lud16;
+}
+
+/**
+ * Precalienta el destino de payout de cada participante (lee su kind:0 y cachea el
+ * lud16). Se dispara al quedar FONDEADA la apuesta, así la liquidación —que corre
+ * en línea cuando el juego reporta al ganador— no espera a los relays para pagar.
+ * Fire-and-forget: nunca lanza ni bloquea al caller.
+ */
+export function prewarmPayoutDestinations(npubs: string[]): void {
+  for (const npub of npubs) {
+    const pk = pubkeyFromNpub(npub);
+    if (pk) void profileLud16For(pk).catch(() => {});
+  }
+}
+
 /**
  * Cascada de destino (R5): lud16 configurado en Luna Negra (perfil) →
  * lud16 del perfil Nostr (kind:0). Si no hay → null (fallback a QR de retiro).
@@ -37,10 +72,7 @@ export async function resolveDestination(npub: string): Promise<string | null> {
 
   const pk = pubkeyFromNpub(npub);
   if (!pk) return null;
-  const profile = await fetchProfile(pk, { maxWaitMs: PAYOUT_PROFILE_MAX_WAIT_MS }).catch(
-    () => null,
-  );
-  return profile?.lud16 ?? null;
+  return profileLud16For(pk);
 }
 
 /**
@@ -64,9 +96,7 @@ export async function resolveZapDestination(npub: string): Promise<string | null
   if (user?.payoutMethod === "nwc") return null;
 
   const pk = pubkeyFromNpub(npub);
-  const profileLud16 = pk
-    ? (await fetchProfile(pk, { maxWaitMs: PAYOUT_PROFILE_MAX_WAIT_MS }).catch(() => null))?.lud16
-    : null;
+  const profileLud16 = pk ? await profileLud16For(pk) : null;
   return profileLud16 ?? user?.lud16 ?? null;
 }
 

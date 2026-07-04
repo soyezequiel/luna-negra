@@ -21,6 +21,7 @@ import {
   republishEvent,
 } from "@/lib/nostr-server";
 import { recordDepositV2 } from "@/lib/ledger-v2";
+import { prewarmPayoutDestinations } from "@/lib/escrow-payout";
 import { RESOLVE_WINDOW_MS } from "@/lib/escrow-v2-config";
 import { emitDepositReceivedV2, emitBetFundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
@@ -197,17 +198,11 @@ export async function ensureDepositInvoiceV2(
     );
   }
 
-  // Persistimos el 9734 firmado apenas llega (aunque el invoice ya exista): es la
-  // `description` del recibo 9735 que publicaremos al confirmarse el pago.
   const zapReqJson = signedZapRequest ? JSON.stringify(signedZapRequest) : null;
-  if (zapReqJson && part.depositZapRequest !== zapReqJson) {
-    await prisma.zapBetParticipant.update({
-      where: { id: part.id },
-      data: { depositZapRequest: zapReqJson },
-    });
-    part = { ...part, depositZapRequest: zapReqJson };
-  }
 
+  // Reuso idempotente: si ya hay invoice vigente, se devuelve ESE y NO se toca el
+  // 9734 guardado — el invoice está comprometido a su description_hash; pisarlo
+  // con un 9734 nuevo rompería la verificación del recibo 9735.
   const storedIsDevPlaceholder = part.depositInvoice?.startsWith("lnbc-dev-") ?? false;
   if (part.depositInvoice && part.depositPaymentHash && (devMode || !storedIsDevPlaceholder)) {
     return { invoice: part.depositInvoice, paymentHash: part.depositPaymentHash, devMode };
@@ -227,10 +222,34 @@ export async function ensureDepositInvoiceV2(
       }
     : await createDescriptionHashInvoice(sats, descriptionHash!);
 
-  await prisma.zapBetParticipant.update({
-    where: { id: part.id },
-    data: { depositInvoice: inv.invoice, depositPaymentHash: inv.paymentHash },
+  // Claim ATÓMICO: solo persiste si nadie emitió antes (o si lo guardado es un
+  // placeholder dev que ahora sí se puede reemplazar). Dos pedidos concurrentes
+  // —p. ej. el pre-fetch post-create y el primer GET de detalle— firman 9734
+  // distintos e invoices distintos; si ambos escribieran, el jugador podría pagar
+  // un bolt11 que ya no es el guardado y el depósito nunca se detectaría. El 9734
+  // viaja en el MISMO update para que description_hash e invoice queden siempre
+  // consistentes; el perdedor descarta el suyo y devuelve el del ganador.
+  const claimed = await prisma.zapBetParticipant.updateMany({
+    where: {
+      id: part.id,
+      OR: [{ depositPaymentHash: null }, { depositPaymentHash: { startsWith: "dev-" } }],
+    },
+    data: {
+      depositInvoice: inv.invoice,
+      depositPaymentHash: inv.paymentHash,
+      ...(zapReqJson ? { depositZapRequest: zapReqJson } : {}),
+    },
   });
+  if (claimed.count !== 1) {
+    const fresh = await prisma.zapBetParticipant.findUnique({
+      where: { id: part.id },
+      select: { depositInvoice: true, depositPaymentHash: true },
+    });
+    if (fresh?.depositInvoice && fresh.depositPaymentHash) {
+      return { invoice: fresh.depositInvoice, paymentHash: fresh.depositPaymentHash, devMode };
+    }
+    throw new Error("No se pudo persistir el invoice de depósito; reintentá");
+  }
 
   return { invoice: inv.invoice, paymentHash: inv.paymentHash, devMode };
 }
@@ -304,11 +323,17 @@ export async function settleDepositV2(
   if (claimed.count !== 1) return; // otro proceso ya lo settleó
 
   // 1) Recibo 9735 propio (best-effort; si 0 relays, el tick lo reintenta).
+  //    Se lanza SIN await para publicarlo en paralelo con el comentario (1.5):
+  //    son eventos independientes y cada publicación puede tardar hasta su
+  //    timeout; en serie sumaban dentro del poll que detecta el pago.
   let depositReceiptId: string | null = null;
   let depositReceiptJson: string | null = null;
   let depositReceiptOk = false;
   let receiptFailure: unknown = null;
-  if (bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-") && part.depositInvoice) {
+  const receiptTask = (async () => {
+    if (!bet.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-") || !part.depositInvoice) {
+      return;
+    }
     // Si el apostador firmó su 9734 lo usamos como `description` (identifica al
     // emisor con el tag `P`). Sin firma no publicamos un 9735: los clientes Nostr
     // descartan recibos con `description` sintético/no firmado.
@@ -339,7 +364,36 @@ export async function settleDepositV2(
     } else {
       receiptFailure = new Error("El depósito pagado no conserva un zap request 9734 válido");
     }
-  }
+  })();
+
+  // 1.5) Publicar el COMENTARIO de participación firmado por el jugador (lo mandó
+  //      al pedir el invoice). Al pagarse, queda visible como reply del contrato y
+  //      el payout del ganador se ancla a él. Best-effort: si 0 relays, el tick lo
+  //      reintenta (commentEventOk=false) y mientras tanto el premio cae al post.
+  let commentEventId: string | null = part.commentEventId;
+  let commentEventOk = part.commentEventOk;
+  const commentTask = (async () => {
+    if (
+      commentEventOk ||
+      !part.commentEventJson ||
+      !bet.anchorEventId ||
+      bet.anchorEventId.startsWith("dev-anchor-")
+    ) {
+      return;
+    }
+    try {
+      const ev = JSON.parse(part.commentEventJson) as Event;
+      const accepted = await republishEvent(ev);
+      if (accepted > 0) {
+        commentEventId = ev.id;
+        commentEventOk = true;
+      }
+    } catch {
+      /* json corrupto: se ignora; el premio del ganador cae al post del contrato */
+    }
+  })();
+
+  await Promise.all([receiptTask, commentTask]);
 
   const expectsReceipt = Boolean(
     bet.anchorEventId && !bet.anchorEventId.startsWith("dev-anchor-"),
@@ -367,30 +421,6 @@ export async function settleDepositV2(
         receiptId: depositReceiptId,
       },
     });
-  }
-
-  // 1.5) Publicar el COMENTARIO de participación firmado por el jugador (lo mandó
-  //      al pedir el invoice). Al pagarse, queda visible como reply del contrato y
-  //      el payout del ganador se ancla a él. Best-effort: si 0 relays, el tick lo
-  //      reintenta (commentEventOk=false) y mientras tanto el premio cae al post.
-  let commentEventId: string | null = part.commentEventId;
-  let commentEventOk = part.commentEventOk;
-  if (
-    !commentEventOk &&
-    part.commentEventJson &&
-    bet.anchorEventId &&
-    !bet.anchorEventId.startsWith("dev-anchor-")
-  ) {
-    try {
-      const ev = JSON.parse(part.commentEventJson) as Event;
-      const accepted = await republishEvent(ev);
-      if (accepted > 0) {
-        commentEventId = ev.id;
-        commentEventOk = true;
-      }
-    } catch {
-      /* json corrupto: se ignora; el premio del ganador cae al post del contrato */
-    }
   }
 
   // 2) Persistir los artefactos Nostr (recibo + comentario). El estado (paid) ya
@@ -443,6 +473,10 @@ export async function promoteIfAllPaidV2(betId: string, now: Date): Promise<bool
     },
   });
   if (claimed.count === 1) {
+    // Precalentar el destino del premio de cada participante (lee el kind:0 y
+    // cachea el lud16): cuando el juego reporte al ganador, la liquidación paga
+    // sin esperar a los relays. Fire-and-forget, nunca bloquea el "funded".
+    prewarmPayoutDestinations(bet.participants.map((p) => p.npub));
     await emitBetFundedV2(betId);
     return true;
   }

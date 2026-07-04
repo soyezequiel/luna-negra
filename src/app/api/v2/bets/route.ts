@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { verifyApiKey } from "@/lib/api-keys";
@@ -29,6 +30,7 @@ import {
   BETS_V2_ENABLED,
 } from "@/lib/escrow-v2-config";
 import { createGuestUsers } from "@/lib/guest-users";
+import { ensureCustodialDepositInvoiceV2 } from "@/lib/zap-bet";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiError, corsPreflight, CORS } from "@/lib/api";
 import { beginIdempotent } from "@/lib/idempotency";
@@ -218,6 +220,31 @@ async function createZapBet(
   await prisma.zapBet.update({
     where: { id: bet.id },
     data: { contractHash, anchorEventId: anchor.anchorEventId },
+  });
+
+  // Pre-emitir EN SEGUNDO PLANO los invoices custodiales (invitados y cuentas por
+  // email): cada uno hace un make_invoice por NWC (~2-4s) que, sin esto, pagaba el
+  // PRIMER GET de detalle — o sea, el jugador esperando el QR. Corre tras enviar la
+  // respuesta (after); idempotente y con claim atómico en ensureDepositInvoiceV2,
+  // así que si un GET llega antes de que termine, uno de los dos reusa el del otro.
+  // Best-effort: si falla, el GET de detalle lo emite on-demand como siempre.
+  after(async () => {
+    try {
+      const fresh = await prisma.zapBet.findUnique({
+        where: { id: bet.id },
+        include: {
+          participants: { include: { user: { select: { nsecEnc: true } } } },
+        },
+      });
+      if (!fresh || fresh.status !== "pending_deposits") return;
+      await Promise.allSettled(
+        fresh.participants
+          .filter((p) => p.user?.nsecEnc && !p.depositInvoice)
+          .map((p) => ensureCustodialDepositInvoiceV2(fresh, p, baseUrl)),
+      );
+    } catch {
+      /* best-effort: el GET de detalle emite on-demand */
+    }
   });
 
   const econ = computeEconomics({

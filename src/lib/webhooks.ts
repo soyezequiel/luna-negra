@@ -98,6 +98,10 @@ export type WebhookType =
   | "bet.expired"
   | "bet.refunded";
 
+// Tope de la entrega directa (sin QStash). 5s alcanza para un endpoint sano
+// (incluso con cold start de Vercel) y acota el peor caso en el camino caliente.
+const WEBHOOK_DIRECT_TIMEOUT_MS = 5_000;
+
 async function deliver(
   providerId: string,
   type: WebhookType,
@@ -132,8 +136,22 @@ async function deliver(
         headers,
       });
     } else {
-      // Sin QStash (dev): entrega directa best-effort.
-      await fetch(provider.webhookUrl, { method: "POST", headers, body });
+      // Sin QStash (self-host/dev): entrega directa best-effort, con TOPE de espera.
+      // Algunos emits corren en línea dentro del poll caliente del juego (p. ej.
+      // deposit.received/bet.funded desde checkAndSettleDepositV2): un endpoint
+      // lento o un cold start del lado del juego no debe colgar esa detección.
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), WEBHOOK_DIRECT_TIMEOUT_MS);
+      try {
+        await fetch(provider.webhookUrl, {
+          method: "POST",
+          headers,
+          body,
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(t);
+      }
     }
     // La entrega se cursó (directo o encolado en QStash): el proveedor tiene el
     // webhook cableado. Registramos la telemetría DIRECTO (await), no vía

@@ -13,6 +13,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
     void warmUpWalletsAtBoot();
+    void warmUpStoreZapProfileAtBoot();
     await startEscrowTick();
     await startZapSync();
     await startZapBetSync();
@@ -42,6 +43,25 @@ async function warmUpWalletsAtBoot() {
     await warmUpWallets();
   } catch (err) {
     await reportBackgroundFailure("warmup-wallets", err);
+  }
+}
+
+/**
+ * Pre-asegura el perfil zap de la tienda (kind:0 con la Lightning Address) al
+ * arrancar: `ensureStoreZapProfile` lee el kind:0 de TODOS los relays (~4-8s) y
+ * quizá publica, y es un guard duro de CREAR apuesta v2 — sin este warm-up, la
+ * PRIMERA apuesta tras cada deploy pagaba ese costo en línea. Memoizado dentro de
+ * ensureStoreZapProfile: las creaciones siguientes son gratis. Fire-and-forget.
+ */
+async function warmUpStoreZapProfileAtBoot() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+  const base = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (!base) return; // sin dominio canónico no hay Lightning Address que asegurar
+  try {
+    const { ensureStoreZapProfile } = await import("./lib/nostr-server");
+    await ensureStoreZapProfile(base.replace(/\/$/, ""));
+  } catch (err) {
+    await reportBackgroundFailure("warmup-store-zap-profile", err);
   }
 }
 
