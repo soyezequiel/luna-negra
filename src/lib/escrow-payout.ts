@@ -13,6 +13,13 @@ import {
 } from "@/lib/lightning";
 import { WITHDRAW_WINDOW_MS } from "@/lib/escrow-config";
 
+// Tope de espera al leer el kind:0 en el camino de PAGO: querySync espera el EOSE
+// de TODOS los relays (~4,4s si uno está lento/colgado), y este lookup corre en
+// línea dentro de la liquidación — es latencia directa entre "ganaste" y "te
+// llegó el zap". Con el tope, un relay lento sólo puede costar esto; el fallback
+// (User.lud16 / QR de retiro) cubre si ningún relay llegó a responder.
+const PAYOUT_PROFILE_MAX_WAIT_MS = 3_000;
+
 /**
  * Cascada de destino (R5): lud16 configurado en Luna Negra (perfil) →
  * lud16 del perfil Nostr (kind:0). Si no hay → null (fallback a QR de retiro).
@@ -30,7 +37,9 @@ export async function resolveDestination(npub: string): Promise<string | null> {
 
   const pk = pubkeyFromNpub(npub);
   if (!pk) return null;
-  const profile = await fetchProfile(pk).catch(() => null);
+  const profile = await fetchProfile(pk, { maxWaitMs: PAYOUT_PROFILE_MAX_WAIT_MS }).catch(
+    () => null,
+  );
   return profile?.lud16 ?? null;
 }
 
@@ -55,7 +64,9 @@ export async function resolveZapDestination(npub: string): Promise<string | null
   if (user?.payoutMethod === "nwc") return null;
 
   const pk = pubkeyFromNpub(npub);
-  const profileLud16 = pk ? (await fetchProfile(pk).catch(() => null))?.lud16 : null;
+  const profileLud16 = pk
+    ? (await fetchProfile(pk, { maxWaitMs: PAYOUT_PROFILE_MAX_WAIT_MS }).catch(() => null))?.lud16
+    : null;
   return profileLud16 ?? user?.lud16 ?? null;
 }
 

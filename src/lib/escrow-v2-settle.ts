@@ -150,16 +150,19 @@ async function runSettlement(args: {
       await prisma.zapBetParticipant.update({ where: { id: p.id }, data: { result: "tie" } });
       await payParticipantV2({ bet, participant: p, amountMsat: bet.stakeMsat, kind: "refund" });
     }
-    const noteId = await publishSettleNoteFor(bet, [], 0n, 0n).catch(async (error) => {
-      await notifyOperationalError({
-        source: "escrow-v2-settle-note",
-        error,
-        fingerprint: `escrow-v2-settle-note:${betId}`,
-        context: { betId, result: "void" },
-      });
-      return null;
-    });
-    const resultAccepted = await publishSignedEvent(resultEvent);
+    // Nota + evento de resultado a relays en paralelo (independientes; en serie sumaban).
+    const [noteId, resultAccepted] = await Promise.all([
+      publishSettleNoteFor(bet, [], 0n, 0n).catch(async (error) => {
+        await notifyOperationalError({
+          source: "escrow-v2-settle-note",
+          error,
+          fingerprint: `escrow-v2-settle-note:${betId}`,
+          context: { betId, result: "void" },
+        });
+        return null;
+      }),
+      publishSignedEvent(resultEvent),
+    ]);
     await prisma.zapBet.update({
       where: { id: betId },
       data: {
@@ -206,11 +209,11 @@ async function runSettlement(args: {
   // movimiento saliente: se retiene en el NWC de la casa (asiento `fee` settled).
   await payHouseFeeV2({ bet, amountMsat: feeMsat + dust });
 
-  // Corte del dev (proveedor): sale del pozo como profile-zap.
-  if (devFeeMsat > 0n) {
-    await payProviderFeeV2({ bet, amountMsat: devFeeMsat });
-  }
-
+  // El GANADOR cobra primero: su zap es lo único que el jugador está esperando en
+  // vivo (Tetris pollea el detalle cada 2s), así que todo lo que se serialice antes
+  // (el zap del dev son 2 fetches LNURL + un pago NWC) es demora visible del premio.
+  // Los montos ya están fijados por computeEconomics, así que el orden no cambia la
+  // solvencia del pozo.
   const resultVal = winners.length > 1 ? "tie" : "won";
   for (const w of winners) {
     await prisma.zapBetParticipant.update({ where: { id: w.id }, data: { result: resultVal } });
@@ -221,24 +224,32 @@ async function runSettlement(args: {
     data: { result: "lost" },
   });
 
-  // Nota de liquidación pública (después de los pagos: ya tenemos recibos/preimages).
-  const fresh = await prisma.zapBetParticipant.findMany({ where: { betId } });
-  const noteId = await publishSettleNoteFor(
-    { ...bet, participants: fresh },
-    fresh.filter((p) => winners.some((w) => w.id === p.id)),
-    feeMsat + dust,
-    devFeeMsat,
-  ).catch(async (error) => {
-    await notifyOperationalError({
-      source: "escrow-v2-settle-note",
-      error,
-      fingerprint: `escrow-v2-settle-note:${betId}`,
-      context: { betId, result: "settled" },
-    });
-    return null;
-  });
+  // Corte del dev (proveedor): sale del pozo como profile-zap.
+  if (devFeeMsat > 0n) {
+    await payProviderFeeV2({ bet, amountMsat: devFeeMsat });
+  }
 
-  const resultAccepted = await publishSignedEvent(resultEvent);
+  // Nota de liquidación pública (después de los pagos: ya tenemos recibos/preimages).
+  // La nota y el evento de resultado van a relays EN PARALELO: son independientes y
+  // cada uno puede tardar hasta su timeout de publicación; en serie sumaban.
+  const fresh = await prisma.zapBetParticipant.findMany({ where: { betId } });
+  const [noteId, resultAccepted] = await Promise.all([
+    publishSettleNoteFor(
+      { ...bet, participants: fresh },
+      fresh.filter((p) => winners.some((w) => w.id === p.id)),
+      feeMsat + dust,
+      devFeeMsat,
+    ).catch(async (error) => {
+      await notifyOperationalError({
+        source: "escrow-v2-settle-note",
+        error,
+        fingerprint: `escrow-v2-settle-note:${betId}`,
+        context: { betId, result: "settled" },
+      });
+      return null;
+    }),
+    publishSignedEvent(resultEvent),
+  ]);
   await prisma.zapBet.update({
     where: { id: betId },
     data: {

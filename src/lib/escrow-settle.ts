@@ -216,11 +216,9 @@ async function runSettlement(args: {
     });
   }
 
-  // Corte del dev (proveedor): sale del pozo y se paga a su dirección de cobro.
-  if (devFeeMsat > 0n) {
-    await payProviderFee({ bet, amountMsat: devFeeMsat });
-  }
-
+  // El GANADOR cobra primero (es lo que el jugador espera en vivo); el corte del
+  // dev sale después. Los montos ya están fijados por computeEconomics, así que el
+  // orden no cambia la solvencia del pozo.
   const resultVal = winners.length > 1 ? "tie" : "won";
   for (const w of winners) {
     await prisma.betParticipant.update({ where: { id: w.id }, data: { result: resultVal } });
@@ -230,6 +228,11 @@ async function runSettlement(args: {
     where: { betId, id: { notIn: winners.map((w) => w.id) } },
     data: { result: "lost" },
   });
+
+  // Corte del dev (proveedor): sale del pozo y se paga a su dirección de cobro.
+  if (devFeeMsat > 0n) {
+    await payProviderFee({ bet, amountMsat: devFeeMsat });
+  }
 
   // Republicar el evento firmado del resultado (prueba en Nostr). Sólo guardamos
   // su id si algún relay lo aceptó, para no dejar un link muerto.
