@@ -248,6 +248,7 @@ export default async function StorePage({
                       priceSats: g.priceSats,
                       categories: g.categories,
                       integration: g.integration,
+                      reviewLabel: g.reviewLabel,
                     }}
                   />
                 ))}

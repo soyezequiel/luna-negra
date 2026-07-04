@@ -81,16 +81,22 @@ export function startPlayingPresence({
   let stopped = false;
   let everSeen = false;
   const startedAt = Date.now();
+  // Último estado in-game que reportó el juego (nivel/puntaje/label libre, ver
+  // deriveStateLabel en social.ts). Se actualiza en cada sondeo y viaja en el
+  // próximo refresh, así la presencia NIP-38 lo muestra sin republicar aparte.
+  let stateLabel: string | null = null;
 
   const refresh = () =>
-    publishPlayingStatus(title, link, STATUS_TTL_S).catch(() => {});
+    publishPlayingStatus(title, link, STATUS_TTL_S, stateLabel).catch(() => {});
 
   const poll = async () => {
     if (stopped) return;
     let playing = false;
     try {
       const res = await fetch("/api/me/playing", { credentials: "same-origin" });
-      playing = res.ok && Boolean((await res.json())?.playing);
+      const data = res.ok ? await res.json() : null;
+      playing = res.ok && Boolean(data?.playing);
+      stateLabel = data?.stateLabel ?? null;
     } catch {
       // Fallo de red: no bajamos el estado por eso. Si persiste, el TTL corto lo
       // deja expirar solo (no llamamos a refresh mientras no confirmemos presencia).

@@ -18,6 +18,7 @@ import { ActivitySection } from "@/components/activity-section";
 import { GameCard } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
 import { GameSocialPanel } from "@/components/game-social-panel";
+import { LivePlayers } from "@/components/live-players";
 import { ShareNostrButton } from "@/components/share-nostr-button";
 import {
   EditableTitle,
@@ -27,13 +28,16 @@ import {
   EditableGameUrl,
   EditableMedia,
 } from "@/components/game-store-edit";
-import { hueFromSlug } from "@/lib/format";
+import { hueFromSlug, formatDurationMs } from "@/lib/format";
 import {
   gameGalleryMedia,
   normalizeImageUrl,
   parseScreenshotUrls,
 } from "@/lib/game-media";
 import { getPublishedGameBySlug, getRelatedGames } from "@/lib/store-catalog";
+import { reviewLabelClass } from "@/lib/reviews";
+import { getUserPlaytimeMs } from "@/lib/play-session";
+import { npubOf } from "@/lib/nostr-social";
 import { isAdmin } from "@/lib/admin";
 import { userSeesBetaGames } from "@/lib/beta";
 import { SITE_URL } from "@/lib/site";
@@ -158,6 +162,18 @@ export default async function GamePage({
   const mode: "store" | "library" =
     owned && sp.view !== "store" ? "library" : "store";
 
+  // Tiempo jugado ("12 h en tu registro"): solo tiene sentido en la biblioteca y
+  // solo mide juegos con presencia real integrada (ver play-session.ts). 0 = sin
+  // sesiones registradas todavía, no se muestra.
+  let playtimeMs = 0;
+  if (mode === "library" && session) {
+    try {
+      playtimeMs = await getUserPlaytimeMs(game.id, npubOf(session.pubkey));
+    } catch {
+      /* no crítico: si falla, simplemente no se muestra el tiempo jugado */
+    }
+  }
+
   const hue = hueFromSlug(game.slug);
   const media = gameGalleryMedia(game);
   // Artículo NIP-23 del juego (si existe) al que se cuelgan comentarios y reseñas.
@@ -241,6 +257,14 @@ export default async function GamePage({
         {game.isBeta ? (
           <span className="rounded-full bg-ln-luna/15 px-2.5 py-1 text-xs font-semibold text-ln-luna ring-1 ring-inset ring-ln-luna/40">
             Beta
+          </span>
+        ) : null}
+        {game.reviews.label ? (
+          <span
+            className={`text-xs font-semibold ${reviewLabelClass(game.reviews.label)}`}
+            title={`${game.reviews.average.toFixed(1)} ★ · ${game.reviews.count} reseña${game.reviews.count === 1 ? "" : "s"}`}
+          >
+            {game.reviews.label} ({game.reviews.count})
           </span>
         ) : null}
         {mode === "library" ? (
@@ -354,6 +378,11 @@ export default async function GamePage({
                   />
                 ) : null}
               </div>
+              {playtimeMs > 0 ? (
+                <p className="mt-3 text-center text-[11px] text-ln-faint">
+                  ⏱ {formatDurationMs(playtimeMs)} en tu registro
+                </p>
+              ) : null}
               {supportsRooms ? (
                 <p className="mt-3 text-center text-[11px] text-ln-faint">
                   Compatible con salas de Luna Negra
@@ -459,6 +488,7 @@ export default async function GamePage({
 
           {/* Metadatos */}
           <dl className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 text-sm">
+            <LivePlayers gameId={game.id} />
             <div className="flex items-center justify-between py-1.5">
               <dt className="text-ln-faint">Proveedor</dt>
               <dd className="flex items-center gap-2 text-ln-luna">
@@ -528,6 +558,7 @@ export default async function GamePage({
                   coverUrl: g.coverUrl,
                   priceSats: g.priceSats,
                   categories: g.categories,
+                  reviewLabel: g.reviews?.label ?? null,
                 }}
               />
             ))}

@@ -18,5 +18,6 @@ export async function GET() {
     playing: Boolean(presence),
     status: presence?.status ?? null,
     roomId: presence?.roomId ?? null,
+    stateLabel: presence?.stateLabel ?? null,
   });
 }

@@ -165,6 +165,57 @@ export async function readGameLeaderboards(
   return out;
 }
 
+export type PlayerStanding = {
+  board: string;
+  score: number;
+  rank: number;
+  total: number;
+  viaNostr: boolean;
+};
+
+/**
+ * Puesto del jugador `npub` en cada tabla del juego donde tiene puntaje ("Tu
+ * mejor: 4.200 · puesto #7 de 312"). Tablas sin puntaje del jugador se omiten
+ * (no hay nada que mostrar). Mismo criterio de rank que `submitScore`
+ * (competition ranking: empates comparten puesto).
+ */
+export async function getPlayerStandings(
+  gameId: string,
+  npub: string,
+): Promise<PlayerStanding[]> {
+  const boards = await prisma.leaderboard.findMany({
+    where: { gameId },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+    take: MAX_BOARDS,
+  });
+  if (boards.length === 0) return [];
+
+  const out: PlayerStanding[] = [];
+  for (const board of boards) {
+    const mine = await prisma.score.findUnique({
+      where: { leaderboardId_npub: { leaderboardId: board.id, npub } },
+      select: { score: true, sourceEventId: true },
+    });
+    if (!mine) continue; // el jugador no tiene puntaje en esta tabla
+
+    const [better, total] = await Promise.all([
+      prisma.score.count({
+        where: { leaderboardId: board.id, score: { gt: mine.score } },
+      }),
+      prisma.score.count({ where: { leaderboardId: board.id } }),
+    ]);
+    out.push({
+      board: board.name,
+      score: mine.score,
+      rank: better + 1,
+      total,
+      viaNostr: mine.sourceEventId != null,
+    });
+  }
+  return out;
+}
+
 export type ReadLeaderboardOptions = {
   window: "all" | "week";
   view: "top" | "around";

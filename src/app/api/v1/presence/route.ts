@@ -2,6 +2,7 @@ import { verifyApiKey } from "@/lib/api-keys";
 import { prisma } from "@/lib/prisma";
 import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { recordPresence } from "@/lib/social";
+import { touchPlaySession } from "@/lib/play-session";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import { npubHasProviderEntitlement } from "@/lib/provider-entitlement";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
@@ -80,6 +81,9 @@ export async function POST(req: Request) {
   // El npub ya está normalizado desde el pubkey decodificado (defensa contra
   // formato raro).
   await recordPresence(providerId, npub, rawStatus, roomId, state, gameId);
+  // Tiempo jugado ("12 h en tu registro"): mismo latido, best-effort (no debe
+  // tumbar el heartbeat de presencia si falla).
+  await touchPlaySession(providerId, gameId, npub).catch(() => {});
   // Telemetría a nivel proveedor (la presencia es feature de proveedor en el panel
   // de integración). La atribución por juego de la CURVA sale de la presencia misma.
   trackIntegration("presence", { providerId });

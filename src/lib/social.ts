@@ -52,6 +52,32 @@ function parseState(json: string | null): Record<string, unknown> | null {
   }
 }
 
+const MAX_STATE_LABEL = 40;
+
+/**
+ * Mini-contrato del `stateJson` que el juego reporta en el heartbeat (§3, bolsa
+ * libre): claves opcionales `label` (texto del juego, prioritaria), `score` y
+ * `level` (números); el resto de la bolsa se ignora acá. Devuelve un texto
+ * corto listo para mostrar ("nivel 7", "12.400 pts") o null si no hay nada
+ * reconocible. El juego es un tercero — se sanea longitud, no se confía en que
+ * mande algo corto o inocuo.
+ */
+export function deriveStateLabel(
+  state: Record<string, unknown> | null,
+): string | null {
+  if (!state) return null;
+  if (typeof state.label === "string" && state.label.trim()) {
+    return state.label.trim().slice(0, MAX_STATE_LABEL);
+  }
+  if (typeof state.score === "number" && Number.isFinite(state.score)) {
+    return `${state.score.toLocaleString("es-AR")} pts`;
+  }
+  if (typeof state.level === "number" && Number.isFinite(state.level)) {
+    return `nivel ${Math.floor(state.level)}`;
+  }
+  return null;
+}
+
 /**
  * Registra/renueva la presencia de un jugador en el juego del proveedor. `gameId`
  * indica EN QUÉ juego está (lo manda el heartbeat como `game`); null = integración
@@ -127,16 +153,21 @@ async function getPresence(
  */
 export async function getOwnPresence(
   npub: string,
-): Promise<{ status: Presence; roomId: string | null } | null> {
+): Promise<{
+  status: Presence;
+  roomId: string | null;
+  stateLabel: string | null;
+} | null> {
   const row = await prisma.gamePresence.findFirst({
     where: { npub, expiresAt: { gt: new Date() } },
     orderBy: { updatedAt: "desc" },
-    select: { status: true, roomId: true },
+    select: { status: true, roomId: true, stateJson: true },
   });
   if (!row) return null;
   return {
     status: row.status === "in-game" ? "in-game" : "online",
     roomId: row.roomId,
+    stateLabel: deriveStateLabel(parseState(row.stateJson)),
   };
 }
 

@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { msatToSats } from "@/lib/money";
 import { PRESENCE_SAMPLE_INTERVAL_MS } from "@/lib/presence-sampler";
+import { getAvgSessionMs } from "@/lib/play-session";
 
 export type StatsRange = "24h" | "7d" | "30d" | "all";
 export type Granularity = "hour" | "day";
@@ -95,6 +96,11 @@ export interface GameStats {
      * sin heartbeat no sabemos cuánto duró la sesión, así que no se dibuja como bloque.
      */
     source: "presence" | "clicks";
+    /**
+     * Duración media de sesión (ms), sobre sesiones con presencia real (§3).
+     * null = sin sesiones cerradas todavía (ver play-session.ts).
+     */
+    avgSessionMs: number | null;
   };
   bets: {
     totalVolumeSats: number;
@@ -247,6 +253,7 @@ export async function buildGameStats(
     activeCount,
     devFeeEntries,
     zaps,
+    avgSessionMs,
   ] = await Promise.all([
     prisma.purchase.findMany({
       where: { gameId, status: "paid", paidAt: { gte: start } },
@@ -301,6 +308,7 @@ export async function buildGameStats(
       where: { gameId, zappedAt: { gte: start } },
       select: { amountSats: true, zappedAt: true, zapperPubkey: true },
     }),
+    getAvgSessionMs(gameId),
   ]);
 
   // ── Ingresos ──
@@ -559,6 +567,7 @@ export async function buildGameStats(
       samples: chartSamples,
       sharedAcrossGames,
       source: playersSource,
+      avgSessionMs,
     },
     bets: {
       totalVolumeSats: volTotal,

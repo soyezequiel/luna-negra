@@ -2,6 +2,7 @@ import { unstable_cache, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { categoryQuerySlugs, normalizeCategories } from "@/lib/categories";
 import { scoreGamesByIntegration } from "@/lib/integration-telemetry";
+import { getReviewSummary, getReviewSummaries } from "@/lib/reviews";
 
 // Tag único de todo lo que dependa del catálogo publicado (Home + ficha + relacionados).
 export const CATALOG_TAG = "games";
@@ -39,6 +40,10 @@ export type CatalogGame = {
   createdAt: string; // ISO: ya serializado para el Data Cache
   integration: number; // 0–8 interfaces de Luna Negra cableadas
   isBeta: boolean; // beta: la Home lo filtra salvo opt-in del usuario
+  // Resumen de reseñas ("Muy positivas · 4,6 ★ (87)"). label null = sin reseñas.
+  reviewLabel: string | null;
+  reviewAverage: number;
+  reviewCount: number;
 };
 
 async function loadCatalog(): Promise<CatalogGame[]> {
@@ -60,19 +65,26 @@ async function loadCatalog(): Promise<CatalogGame[]> {
     },
   });
   const scores = await scoreGamesByIntegration(games);
-  return games.map((g) => ({
-    id: g.id,
-    slug: g.slug,
-    title: g.title,
-    description: g.description,
-    categories: normalizeCategories(g.categories),
-    priceSats: g.priceSats,
-    coverUrl: g.coverUrl,
-    horizontalCoverUrl: g.horizontalCoverUrl,
-    createdAt: g.createdAt.toISOString(),
-    integration: scores.get(g.id) ?? 0,
-    isBeta: g.isBeta,
-  }));
+  const reviews = await getReviewSummaries(games.map((g) => g.id));
+  return games.map((g) => {
+    const r = reviews.get(g.id);
+    return {
+      id: g.id,
+      slug: g.slug,
+      title: g.title,
+      description: g.description,
+      categories: normalizeCategories(g.categories),
+      priceSats: g.priceSats,
+      coverUrl: g.coverUrl,
+      horizontalCoverUrl: g.horizontalCoverUrl,
+      createdAt: g.createdAt.toISOString(),
+      integration: scores.get(g.id) ?? 0,
+      isBeta: g.isBeta,
+      reviewLabel: r?.label ?? null,
+      reviewAverage: r?.average ?? 0,
+      reviewCount: r?.count ?? 0,
+    };
+  });
 }
 
 export const getPublishedCatalog = unstable_cache(loadCatalog, ["store-catalog"], {
@@ -96,7 +108,12 @@ export const getPublishedGameBySlug = unstable_cache(
       include: { provider: true },
     });
     if (!game || game.status !== "published") return null;
-    return { ...game, categories: normalizeCategories(game.categories) };
+    const reviews = await getReviewSummary(game.id);
+    return {
+      ...game,
+      categories: normalizeCategories(game.categories),
+      reviews,
+    };
   },
   ["store-game-by-slug"],
   { revalidate: REVALIDATE_SECONDS, tags: [CATALOG_TAG] },
@@ -105,7 +122,7 @@ export const getPublishedGameBySlug = unstable_cache(
 export const getRelatedGames = unstable_cache(
   async (gameId: string, categories: string[]) => {
     const queryCategories = categoryQuerySlugs(categories);
-    return prisma.game.findMany({
+    const games = await prisma.game.findMany({
       where: {
         status: "published",
         id: { not: gameId },
@@ -116,6 +133,8 @@ export const getRelatedGames = unstable_cache(
       orderBy: { createdAt: "desc" },
       take: 4,
     });
+    const reviews = await getReviewSummaries(games.map((g) => g.id));
+    return games.map((g) => ({ ...g, reviews: reviews.get(g.id) ?? null }));
   },
   ["store-related-games"],
   { revalidate: REVALIDATE_SECONDS, tags: [CATALOG_TAG] },

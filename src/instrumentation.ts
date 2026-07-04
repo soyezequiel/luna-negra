@@ -18,6 +18,8 @@ export async function register() {
     await startCommentSync();
     await startGameSync();
     await startScoreSync();
+    await startReviewSync();
+    await startLivePresenceSync();
     await startPresenceSampler();
     await startStorePresenceSampler();
   }
@@ -225,6 +227,72 @@ async function startScoreSync() {
   // Primer sync poco después del arranque, luego periódico.
   setTimeout(tick, 17_000).unref?.();
   setInterval(tick, SCORE_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de RESEÑAS (kind:1 con formato de `publishGameReview`,
+ * interfaz 2.0): levanta de relays las reseñas firmadas por los jugadores como
+ * respuesta al artículo del juego y las proyecta a la tabla `Review` (mismo
+ * read-model que la API REST 1.0). Mismo patrón que comment/score-sync. Ver
+ * src/lib/review-sync.ts (syncGameReviews) y REVIEW_SYNC_INTERVAL_MS.
+ */
+async function startReviewSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { REVIEW_SYNC_INTERVAL_MS } = await import("./lib/review-sync");
+  if (!REVIEW_SYNC_INTERVAL_MS || REVIEW_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncGameReviews } = await import("./lib/review-sync");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncGameReviews();
+    } catch (err) {
+      await reportBackgroundFailure("review-sync", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 29_000).unref?.();
+  setInterval(tick, REVIEW_SYNC_INTERVAL_MS).unref?.();
+}
+
+/**
+ * Sync IN-PROCESS de "jugando ahora" (NIP-38 kind:30315, interfaz 2.0): cuenta
+ * los estados frescos anclados a la coordenada de cada juego, para los
+ * proveedores que no integran la presencia REST (§3). Mismo patrón que
+ * score/review-sync. Ver src/lib/live-presence.ts (syncLivePresence) y
+ * LIVE_PRESENCE_SYNC_INTERVAL_MS.
+ */
+async function startLivePresenceSync() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  const { LIVE_PRESENCE_SYNC_INTERVAL_MS } = await import("./lib/live-presence");
+  if (!LIVE_PRESENCE_SYNC_INTERVAL_MS || LIVE_PRESENCE_SYNC_INTERVAL_MS <= 0) return;
+
+  const { syncLivePresence } = await import("./lib/live-presence");
+
+  let running = false;
+  const tick = async () => {
+    if (running) return; // no encimar corridas
+    running = true;
+    try {
+      await syncLivePresence();
+    } catch (err) {
+      await reportBackgroundFailure("live-presence-sync", err);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Primer sync poco después del arranque, luego periódico.
+  setTimeout(tick, 32_000).unref?.();
+  setInterval(tick, LIVE_PRESENCE_SYNC_INTERVAL_MS).unref?.();
 }
 
 /**

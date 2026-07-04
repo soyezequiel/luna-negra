@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
 import { normalizeImageUrl } from "@/lib/game-media";
+import { reviewLabelClass } from "@/lib/reviews";
 
 export type GameCardData = {
   slug: string;
@@ -13,6 +14,8 @@ export type GameCardData = {
   multiplayer?: boolean;
   // Número de interfaces de Luna Negra (§1–§8) integradas; >0 muestra el sello.
   integration?: number;
+  // Resumen de reseñas ("Muy positivas"); null/undefined = sin reseñas, no se muestra.
+  reviewLabel?: string | null;
 };
 
 export function GameCard({ game }: { game: GameCardData }) {
@@ -74,6 +77,11 @@ export function GameCard({ game }: { game: GameCardData }) {
           {priceLabel(game.priceSats)}
         </span>
       </div>
+      {game.reviewLabel ? (
+        <p className={`mt-0.5 text-[11px] font-medium ${reviewLabelClass(game.reviewLabel)}`}>
+          {game.reviewLabel}
+        </p>
+      ) : null}
     </Link>
   );
 }

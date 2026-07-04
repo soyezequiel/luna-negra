@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { satsLabel } from "@/lib/format";
+import { satsLabel, formatDurationMs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { GameStats, StatsRange, Granularity } from "@/lib/game-stats";
 import { AreaTrend, BarTrend, PlayersAreaChart, PlayersScatterChart } from "./charts";
@@ -187,6 +187,14 @@ export function GameStatsDashboard({
                   sub="en el período"
                   accent="var(--ln-aurora)"
                 />
+                {stats.players.avgSessionMs != null ? (
+                  <Kpi
+                    label="Sesión media"
+                    value={formatDurationMs(stats.players.avgSessionMs)}
+                    sub="duración promedio jugada"
+                    accent="var(--ln-aurora)"
+                  />
+                ) : null}
               </>
             )}
           </div>

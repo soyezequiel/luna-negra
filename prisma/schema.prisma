@@ -106,6 +106,30 @@ model Provider {
   integrationPings    IntegrationPing[]
   playerCountSamples  PlayerCountSample[]
   gamePlayClicks      GamePlayClick[]
+  playSessions        PlaySession[]
+}
+
+// Sesión de juego para medir tiempo jugado ("12 h en tu registro", "sesión
+// media X min"), derivada del heartbeat de presencia REST (§3, `POST /api/v1/
+// presence`). Se abre en el primer latido de una racha y se cierra con el
+// ÚLTIMO latido visto (no con "ahora") cuando pasa más de SESSION_GAP_MS sin
+// uno nuevo — ver src/lib/play-session.ts. Los juegos que solo reportan clicks
+// (sin heartbeat, §3 no integrado) NO generan filas acá: sin latidos no hay
+// forma de saber cuánto duró la sesión sin inventar (mismo criterio que
+// PlayerCountSample.source="clicks" en play-click.ts).
+model PlaySession {
+  id         String    @id @default(cuid())
+  providerId String
+  provider   Provider  @relation(fields: [providerId], references: [id])
+  gameId     String?
+  npub       String
+  startedAt  DateTime  @default(now())
+  lastBeatAt DateTime  @default(now())
+  endedAt    DateTime?
+
+  @@index([providerId, gameId, npub, endedAt])
+  @@index([gameId, npub])
+  @@index([endedAt])
 }
 
 // Muestra periódica del conteo de jugadores con presencia activa de un proveedor.
@@ -571,6 +595,10 @@ model Review {
   game      Game     @relation(fields: [gameId], references: [id])
   rating    Int // 1-5
   body      String   @default("")
+  // Procedencia 2.0: si esta reseña se reconcilió desde el kind:1 firmado que
+  // publica publishGameReview (respuesta al artículo del juego), guardamos su
+  // id. null = solo vino por el POST de la REST 1.0. Ver src/lib/review-sync.ts.
+  sourceEventId String?
   createdAt DateTime @default(now())
 
   @@unique([userId, gameId]) // una reseña por usuario y juego

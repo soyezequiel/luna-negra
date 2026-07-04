@@ -564,21 +564,30 @@ export async function publishStatus(content: string): Promise<void> {
  * jugando y la expiración corta hace que el estado se auto-limpie si la tienda
  * muere sin poder publicar el `clearPlayingStatus`. El contenido NO lleva emoji
  * (la UI antepone 🎮).
+ *
+ * `stateLabel` (opcional) enriquece el texto con lo que el juego reportó en su
+ * heartbeat (`GamePresence.stateJson` → `deriveStateLabel`, ver social.ts):
+ * "Jugando Tetris — nivel 7 en Luna Negra". Sigue siendo texto plano NIP-38, lo
+ * lee cualquier cliente Nostr.
  */
 export async function publishPlayingStatus(
   title: string,
   gameUrl?: string,
   ttlSeconds = 30,
+  stateLabel?: string | null,
 ): Promise<void> {
   const tags: string[][] = [["d", "general"], lunaNegraStatusTag()];
   if (gameUrl) tags.push(["r", gameUrl]);
   tags.push(["expiration", String(now() + ttlSeconds)]);
+  const content = stateLabel
+    ? `Jugando ${title} — ${stateLabel} en Luna Negra`
+    : `Jugando ${title} en Luna Negra`;
   await publish(
     await sign({
       kind: 30315,
       created_at: now(),
       tags,
-      content: `Jugando ${title} en Luna Negra`,
+      content,
     }),
   );
 }
