@@ -394,9 +394,15 @@ export function FriendsSidebar() {
     }
   }
 
-  // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
-  // dentro del click si todavía no existe.
-  function joinRoom(invite: Invite) {
+  // Aceptar una invitación: para salas de Luna reutiliza/abre la pestaña del juego;
+  // para Luna Room Link abre la URL del dominio del juego (autocontenida).
+  function joinRoom(invite: { slug?: string; roomId: string; url?: string }) {
+    if (invite.url) {
+      const w = window.open(invite.url, "_blank", "noopener");
+      if (!w) window.location.assign(invite.url);
+      return;
+    }
+    if (!invite.slug) return;
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,

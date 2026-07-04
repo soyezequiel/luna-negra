@@ -24,6 +24,7 @@ import {
 } from "@/lib/nostr-social";
 import {
   parseInvite,
+  parseRoomLink,
   parseInviteTitle,
   inviteHref,
   addPendingInvite,
@@ -259,6 +260,23 @@ export function NotificationsProvider({
           const href = inviteHref(invite);
           notify({ title, body, href, kind: "join" });
           fireDesktop(title, body, href);
+          return;
+        }
+        // "Luna Room Link": DM con un enlace `?lnRoom=` del dominio del juego. Se
+        // ancla igual que una invitación de Luna, pero unirse = abrir esa URL.
+        const roomLink = parseRoomLink(plain);
+        if (roomLink) {
+          addPendingInvite({
+            roomId: roomLink.roomId,
+            url: roomLink.url,
+            fromPubkey: senderPubkey,
+            title: parseInviteTitle(plain) ?? "una sala",
+            at: Date.now(),
+          });
+          const title = `🎮 ${name} te invitó a jugar`;
+          const body = "Tocá para unirte a la sala";
+          notify({ title, body, href: roomLink.url, kind: "join" });
+          fireDesktop(title, body, roomLink.url);
           return;
         }
       }

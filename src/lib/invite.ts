@@ -198,12 +198,18 @@ export function onActiveRoomChange(cb: () => void): () => void {
 // pueda anclar al amigo que invitó arriba de todo con la opción de unirse. Se
 // guarda una invitación por emisor (la última gana) y expira como la presencia.
 
-export type PendingInvite = Invite & {
+export type PendingInvite = {
   /** Pubkey (hex) de quien invitó. */
   fromPubkey: string;
   /** Título del juego, para mostrar "te invitó a jugar X". */
   title: string;
   at: number;
+  roomId: string;
+  /** Sala hosteada por Luna: slug para `joinRoomAndPlay`. */
+  slug?: string;
+  /** Luna Room Link (sala hosteada por el juego): URL del dominio del juego.
+   * Unirse = abrir esa URL (el juego resuelve identidad y sala). */
+  url?: string;
 };
 
 const PENDING_INVITES_KEY = "ln_pending_invites";

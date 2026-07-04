@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
 import { Button } from "@/components/ui/button";
-import { parseInvite, latestJoinableInviteId, type Invite } from "@/lib/invite";
+import { parseInvite, parseRoomLink, latestJoinableInviteId } from "@/lib/invite";
 import {
   joinRoomAndPlay,
   POPUP_BLOCKED_BODY,
@@ -50,7 +50,14 @@ export default function MessagesPage() {
 
   // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
   // dentro del click si todavía no existe.
-  function joinRoom(invite: Invite) {
+  function joinRoom(invite: { slug?: string; roomId: string; url?: string }) {
+    if (invite.url) {
+      // Room-link: abrir la URL del dominio del juego (autocontenida).
+      const w = window.open(invite.url, "_blank", "noopener");
+      if (!w) window.location.assign(invite.url);
+      return;
+    }
+    if (!invite.slug) return;
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
@@ -247,9 +254,11 @@ export default function MessagesPage() {
                 ) : (
                   thread.map((m) => {
                     const invite = parseInvite(m.text);
+                    // "Luna Room Link": enlace `?lnRoom=` del dominio del juego.
+                    const roomLink = invite ? null : parseRoomLink(m.text);
                     // Invitación recibida superada por otra más nueva del chat.
                     const superseded =
-                      !!invite && !m.fromMe && m.id !== latestInviteId;
+                      (!!invite || !!roomLink) && !m.fromMe && m.id !== latestInviteId;
                     return (
                       <div
                         key={m.id}
@@ -269,6 +278,24 @@ export default function MessagesPage() {
                             ) : (
                               <button
                                 onClick={() => joinRoom(invite)}
+                                className="self-start rounded-sm bg-green/20 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/30"
+                              >
+                                Unirse a la sala
+                              </button>
+                            )}
+                          </div>
+                        ) : roomLink ? (
+                          <div className="flex flex-col gap-2">
+                            <span>🎮 Invitación a una sala multijugador</span>
+                            {superseded ? (
+                              <span className="self-start rounded-sm bg-white/5 px-3 py-1.5 text-xs font-medium text-faint line-through">
+                                Invitación reemplazada por una más nueva
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  joinRoom({ roomId: roomLink.roomId, url: roomLink.url })
+                                }
                                 className="self-start rounded-sm bg-green/20 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/30"
                               >
                                 Unirse a la sala

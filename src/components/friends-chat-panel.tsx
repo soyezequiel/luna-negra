@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useDmThread } from "@/hooks/use-dm-thread";
-import { parseInvite, latestJoinableInviteId, type Invite } from "@/lib/invite";
+import { parseInvite, parseRoomLink, latestJoinableInviteId } from "@/lib/invite";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDayLabel, formatTime, sameDay } from "@/lib/format-chat";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,7 @@ export function FriendsChatPanel({
   inviteLabel: string;
   inviteDisabled: boolean;
   onInvite: () => void;
-  onJoinRoom: (invite: Invite) => void;
+  onJoinRoom: (invite: { slug?: string; roomId: string; url?: string }) => void;
   onBack: () => void;
 }) {
   const { messages, loading, send, sending } = useDmThread(friendPubkey);
@@ -145,8 +145,11 @@ export function FriendsChatPanel({
               const showDay =
                 !prev || !sameDay(prev.created_at, m.created_at);
               const invite = parseInvite(m.text);
+              // "Luna Room Link": enlace `?lnRoom=` del dominio del juego (sin slug
+              // de Luna). Solo si no era una invitación de sala de Luna.
+              const roomLink = invite ? null : parseRoomLink(m.text);
               const superseded =
-                !!invite && !m.fromMe && m.id !== latestInviteId;
+                (!!invite || !!roomLink) && !m.fromMe && m.id !== latestInviteId;
               return (
                 <Fragment key={m.id}>
                   {showDay ? (
@@ -170,6 +173,24 @@ export function FriendsChatPanel({
                         ) : (
                           <button
                             onClick={() => onJoinRoom(invite)}
+                            className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
+                          >
+                            Unirse a la sala
+                          </button>
+                        )}
+                      </div>
+                    ) : roomLink ? (
+                      <div className="flex flex-col gap-2">
+                        <span>🎮 Invitación a una sala multijugador</span>
+                        {superseded ? (
+                          <span className="self-start rounded-sm bg-white/5 px-2.5 py-1 text-xs text-faint line-through">
+                            Invitación reemplazada por una más nueva
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              onJoinRoom({ roomId: roomLink.roomId, url: roomLink.url })
+                            }
                             className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
                           >
                             Unirse a la sala
