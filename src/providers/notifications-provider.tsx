@@ -34,6 +34,8 @@ import {
   POPUP_BLOCKED_BODY,
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
+import { playInviteSound, armInviteSound } from "@/lib/notify-sound";
+import { Avatar } from "@/components/ui/avatar";
 
 type ToastKind = "info" | "play" | "join" | "btc" | "warn";
 type Toast = {
@@ -43,6 +45,16 @@ type Toast = {
   href?: string;
   kind: ToastKind;
   actionLabel?: string;
+  // Invitación estilo Steam: si vienen estos campos, el toast se renderiza como
+  // una tarjeta grande con la foto de quien invita y el nombre del juego.
+  invite?: {
+    /** Nombre de quien invita (para el título y el color del placeholder). */
+    fromName: string;
+    /** Foto de perfil de quien invita (puede faltar → placeholder). */
+    fromPicture?: string;
+    /** Nombre del juego al que invita. */
+    game: string;
+  };
 };
 
 // Invitación a sala del buzón first-party (GET /api/invites[/stream]).
@@ -51,16 +63,22 @@ type GameInvite = {
   fromNpub: string;
   roomId: string;
   inviteUrl: string;
+  game?: string;
+};
+
+type NotifyOptions = {
+  title: string;
+  body?: string;
+  href?: string;
+  kind?: ToastKind;
+  actionLabel?: string;
+  invite?: Toast["invite"];
+  /** Reproduce el chime de invitación al aparecer. */
+  sound?: boolean;
 };
 
 type NotificationsContextValue = {
-  notify: (t: {
-    title: string;
-    body?: string;
-    href?: string;
-    kind?: ToastKind;
-    actionLabel?: string;
-  }) => void;
+  notify: (t: NotifyOptions) => void;
 };
 
 // Punto de color + halo por tipo de toast (ver design-spec §Toasts).
@@ -77,6 +95,8 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(
 );
 
 const TOAST_TTL = 6000;
+// Las invitaciones a jugar viven más (como en Steam): dan tiempo a decidir.
+const INVITE_TTL = 20000;
 const DECRYPT_FAIL = "[no se pudo descifrar]";
 
 export function NotificationsProvider({
@@ -106,16 +126,16 @@ export function NotificationsProvider({
       href,
       kind = "info",
       actionLabel,
-    }: {
-      title: string;
-      body?: string;
-      href?: string;
-      kind?: ToastKind;
-      actionLabel?: string;
-    }) => {
+      invite,
+      sound,
+    }: NotifyOptions) => {
       const id = ++idSeq.current;
-      setToasts((prev) => [...prev, { id, title, body, href, kind, actionLabel }]);
-      setTimeout(() => dismiss(id), TOAST_TTL);
+      setToasts((prev) => [
+        ...prev,
+        { id, title, body, href, kind, actionLabel, invite },
+      ]);
+      if (sound) playInviteSound();
+      setTimeout(() => dismiss(id), invite ? INVITE_TTL : TOAST_TTL);
     },
     [dismiss],
   );
@@ -171,6 +191,12 @@ export function NotificationsProvider({
     [openHref],
   );
 
+  // Ceba el audio en el primer gesto del usuario para que el chime de invitación
+  // pueda sonar cuando llegue por SSE/DM (sin esto el navegador lo bloquea).
+  useEffect(() => {
+    armInviteSound();
+  }, []);
+
   // Banner para pedir permiso de notificaciones (requiere gesto del usuario).
   useEffect(() => {
     if (!user) {
@@ -195,19 +221,24 @@ export function NotificationsProvider({
     }
   }, []);
 
-  // Resuelve el nombre del emisor (caché en memoria), con fallback al npub corto.
-  const nameOf = useCallback(async (pubkey: string): Promise<string> => {
-    const fallback = shortId(npubOf(pubkey));
-    if (!profileCache.current.has(pubkey)) {
-      try {
-        const map = await fetchProfiles([pubkey]);
-        profileCache.current.set(pubkey, map[pubkey]);
-      } catch {
-        profileCache.current.set(pubkey, undefined);
+  // Resuelve el perfil del emisor (caché en memoria): nombre para el título y
+  // foto para el avatar de la invitación. Cae al npub corto si no hay perfil.
+  const profileOf = useCallback(
+    async (pubkey: string): Promise<{ name: string; picture?: string }> => {
+      const fallback = shortId(npubOf(pubkey));
+      if (!profileCache.current.has(pubkey)) {
+        try {
+          const map = await fetchProfiles([pubkey]);
+          profileCache.current.set(pubkey, map[pubkey]);
+        } catch {
+          profileCache.current.set(pubkey, undefined);
+        }
       }
-    }
-    return profileName(profileCache.current.get(pubkey), fallback);
-  }, []);
+      const p = profileCache.current.get(pubkey);
+      return { name: profileName(p, fallback), picture: p?.picture };
+    },
+    [],
+  );
 
   // Escucha de DMs entrantes mientras hay sesión.
   useEffect(() => {
@@ -222,17 +253,24 @@ export function NotificationsProvider({
 
     async function handleIncoming(ev: Parameters<typeof decryptDm>[0]) {
       const senderPubkey = ev.pubkey;
-      const name = await nameOf(senderPubkey);
+      const { name, picture } = await profileOf(senderPubkey);
       const npub = npubOf(senderPubkey);
 
       // Reto NIP-17 (rumor kind:14 con tag `url`): toast accionable que abre el
       // juego en la sala del reto, sin pasar por el chat.
       const challengeUrl = challengeUrlFromEvent(ev);
       if (challengeUrl) {
-        const title = `🎮 ${name} te retó a jugar`;
+        const title = `${name} te retó a jugar`;
         const body = "Tocá para unirte a la partida";
-        notify({ title, body, href: challengeUrl, kind: "join" });
-        fireDesktop(title, body, challengeUrl);
+        notify({
+          title,
+          body,
+          href: challengeUrl,
+          kind: "join",
+          invite: { fromName: name, fromPicture: picture, game: "una partida" },
+          sound: true,
+        });
+        fireDesktop(`🎮 ${title}`, body, challengeUrl);
         return;
       }
 
@@ -249,34 +287,50 @@ export function NotificationsProvider({
         if (invite) {
           // Persistimos la invitación para que quede anclada en la barra de
           // amigos (no solo como toast efímero).
+          const game = parseInviteTitle(plain) ?? invite.slug;
           addPendingInvite({
             ...invite,
             fromPubkey: senderPubkey,
-            title: parseInviteTitle(plain) ?? invite.slug,
+            title: game,
             at: Date.now(),
           });
-          const title = `🎮 ${name} te invitó a jugar`;
+          const title = `${name} te invitó a jugar`;
           const body = "Tocá para unirte a la sala";
           const href = inviteHref(invite);
-          notify({ title, body, href, kind: "join" });
-          fireDesktop(title, body, href);
+          notify({
+            title,
+            body,
+            href,
+            kind: "join",
+            invite: { fromName: name, fromPicture: picture, game },
+            sound: true,
+          });
+          fireDesktop(`🎮 ${title}`, body, href);
           return;
         }
         // "Luna Room Link": DM con un enlace `?lnRoom=` del dominio del juego. Se
         // ancla igual que una invitación de Luna, pero unirse = abrir esa URL.
         const roomLink = parseRoomLink(plain);
         if (roomLink) {
+          const game = parseInviteTitle(plain) ?? "una sala";
           addPendingInvite({
             roomId: roomLink.roomId,
             url: roomLink.url,
             fromPubkey: senderPubkey,
-            title: parseInviteTitle(plain) ?? "una sala",
+            title: game,
             at: Date.now(),
           });
-          const title = `🎮 ${name} te invitó a jugar`;
+          const title = `${name} te invitó a jugar`;
           const body = "Tocá para unirte a la sala";
-          notify({ title, body, href: roomLink.url, kind: "join" });
-          fireDesktop(title, body, roomLink.url);
+          notify({
+            title,
+            body,
+            href: roomLink.url,
+            kind: "join",
+            invite: { fromName: name, fromPicture: picture, game },
+            sound: true,
+          });
+          fireDesktop(`🎮 ${title}`, body, roomLink.url);
           return;
         }
       }
@@ -288,7 +342,7 @@ export function NotificationsProvider({
     }
 
     return () => sub.close();
-  }, [user, notify, fireDesktop, nameOf]);
+  }, [user, notify, fireDesktop, profileOf]);
 
   // Muestra como toast una invitación a sala recibida del buzón first-party
   // (POST /api/invites / /api/v1/invites → persistidas). La `inviteUrl` puede
@@ -298,13 +352,23 @@ export function NotificationsProvider({
       if (!inv.id || seen.current.has(inv.id)) return; // dedup (cuid ≠ id de DM)
       seen.current.add(inv.id);
       const fromPubkey = pubkeyFromNpub(inv.fromNpub);
-      const name = fromPubkey ? await nameOf(fromPubkey) : shortId(inv.fromNpub);
-      const title = `🎮 ${name} te invitó a una sala`;
+      const { name, picture } = fromPubkey
+        ? await profileOf(fromPubkey)
+        : { name: shortId(inv.fromNpub), picture: undefined };
+      const game = inv.game ?? "una sala";
+      const title = `${name} te invitó a jugar`;
       const body = "Tocá para unirte";
-      notify({ title, body, href: inv.inviteUrl, kind: "join" });
-      fireDesktop(title, body, inv.inviteUrl);
+      notify({
+        title,
+        body,
+        href: inv.inviteUrl,
+        kind: "join",
+        invite: { fromName: name, fromPicture: picture, game },
+        sound: true,
+      });
+      fireDesktop(`🎮 ${title}`, body, inv.inviteUrl);
     },
-    [notify, fireDesktop, nameOf],
+    [notify, fireDesktop, profileOf],
   );
 
   // Recepción de invitaciones a sala en tiempo real vía SSE (una sola conexión,
@@ -409,52 +473,98 @@ export function NotificationsProvider({
 
       {/* Pila de toasts: full-width sobre la tab bar en móvil; abajo-derecha en desktop. */}
       <div className="pointer-events-none fixed inset-x-4 bottom-[88px] z-50 flex flex-col gap-2 ln:inset-x-auto ln:bottom-4 ln:right-4 ln:w-full ln:max-w-xs">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="toast-in pointer-events-auto rounded-ln-lg border border-ln-border-strong bg-ln-card p-3 shadow-ln-modal"
-          >
-            <div className="flex items-start gap-2.5">
-              <span
-                className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                style={{
-                  background: TOAST_DOT[t.kind],
-                  boxShadow: `0 0 10px 1px ${TOAST_DOT[t.kind]}`,
-                }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-ln-text">
-                  {t.title}
-                </p>
-                {t.body ? (
-                  <p className="mt-0.5 text-xs text-ln-muted">{t.body}</p>
-                ) : null}
-                {t.href ? (
-                  <button
-                    onClick={() => {
-                      openHref(t.href!);
-                      dismiss(t.id);
-                    }}
-                    className="mt-2 rounded-full bg-ln-luna/15 px-2.5 py-1 text-xs font-semibold text-ln-luna hover:bg-ln-luna/25"
-                  >
-                    {t.actionLabel ??
-                      (t.href.startsWith("/game/") ||
-                      /^https?:\/\//.test(t.href)
-                        ? "Unirse a la sala"
-                        : "Ver mensaje")}
-                  </button>
-                ) : null}
+        {toasts.map((t) =>
+          t.invite ? (
+            // Invitación estilo Steam: tarjeta grande con la foto de quien invita,
+            // el nombre del juego y un botón "Unirse" que abre la sala.
+            <div
+              key={t.id}
+              className="toast-in pointer-events-auto overflow-hidden rounded-ln-lg border border-ln-border-strong bg-ln-card shadow-ln-modal"
+            >
+              <div className="flex items-center gap-3 p-3">
+                <Avatar
+                  src={t.invite.fromPicture}
+                  seed={t.invite.fromName}
+                  className="h-11 w-11 shrink-0 ring-2 ring-ln-luna/40"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-ln-muted">
+                    <span className="font-semibold text-ln-text">
+                      {t.invite.fromName}
+                    </span>{" "}
+                    te invitó a jugar
+                  </p>
+                  <p className="truncate text-base font-semibold text-ln-luna">
+                    {t.invite.game}
+                  </p>
+                </div>
+                <button
+                  onClick={() => dismiss(t.id)}
+                  className="shrink-0 self-start text-ln-faint hover:text-ln-text"
+                  aria-label="Cerrar"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={() => dismiss(t.id)}
-                className="shrink-0 text-ln-faint hover:text-ln-text"
-                aria-label="Cerrar"
-              >
-                ✕
-              </button>
+              {t.href ? (
+                <button
+                  onClick={() => {
+                    openHref(t.href!);
+                    dismiss(t.id);
+                  }}
+                  className="btn btn-luna w-full rounded-none py-2.5 text-sm font-semibold"
+                >
+                  {t.actionLabel ?? "Unirse"}
+                </button>
+              ) : null}
             </div>
-          </div>
-        ))}
+          ) : (
+            <div
+              key={t.id}
+              className="toast-in pointer-events-auto rounded-ln-lg border border-ln-border-strong bg-ln-card p-3 shadow-ln-modal"
+            >
+              <div className="flex items-start gap-2.5">
+                <span
+                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                  style={{
+                    background: TOAST_DOT[t.kind],
+                    boxShadow: `0 0 10px 1px ${TOAST_DOT[t.kind]}`,
+                  }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ln-text">
+                    {t.title}
+                  </p>
+                  {t.body ? (
+                    <p className="mt-0.5 text-xs text-ln-muted">{t.body}</p>
+                  ) : null}
+                  {t.href ? (
+                    <button
+                      onClick={() => {
+                        openHref(t.href!);
+                        dismiss(t.id);
+                      }}
+                      className="mt-2 rounded-full bg-ln-luna/15 px-2.5 py-1 text-xs font-semibold text-ln-luna hover:bg-ln-luna/25"
+                    >
+                      {t.actionLabel ??
+                        (t.href.startsWith("/game/") ||
+                        /^https?:\/\//.test(t.href)
+                          ? "Unirse a la sala"
+                          : "Ver mensaje")}
+                    </button>
+                  ) : null}
+                </div>
+                <button
+                  onClick={() => dismiss(t.id)}
+                  className="shrink-0 text-ln-faint hover:text-ln-text"
+                  aria-label="Cerrar"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ),
+        )}
       </div>
     </NotificationsContext.Provider>
   );

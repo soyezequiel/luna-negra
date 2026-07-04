@@ -5,6 +5,8 @@ export type PendingGameInvite = {
   fromNpub: string;
   roomId: string;
   inviteUrl: string;
+  /** Nombre del juego (proveedor) para mostrar en la invitación. */
+  game: string;
   createdAt: Date;
 };
 
@@ -24,6 +26,7 @@ export async function consumePendingInvites(
       roomId: true,
       inviteUrl: true,
       createdAt: true,
+      provider: { select: { name: true } },
     },
   });
 
@@ -36,5 +39,32 @@ export async function consumePendingInvites(
       .catch(() => {});
   }
 
-  return pending;
+  // El título real del juego vive en Game.title. El `inviteUrl` first-party lleva
+  // `/game/<slug>?room=…`, así que resolvemos el título por slug (más preciso que
+  // el nombre del proveedor). Si la URL es externa o el juego no está, caemos al
+  // nombre del proveedor.
+  const slugs = pending
+    .map((i) => slugFromInviteUrl(i.inviteUrl))
+    .filter((s): s is string => !!s);
+  const titleBySlug = new Map<string, string>();
+  if (slugs.length) {
+    const games = await prisma.game.findMany({
+      where: { slug: { in: [...new Set(slugs)] } },
+      select: { slug: true, title: true },
+    });
+    for (const g of games) titleBySlug.set(g.slug, g.title);
+  }
+
+  return pending.map(({ provider, ...inv }) => {
+    const slug = slugFromInviteUrl(inv.inviteUrl);
+    const game =
+      (slug ? titleBySlug.get(slug) : undefined) ?? provider?.name ?? "un juego";
+    return { ...inv, game };
+  });
+}
+
+/** Extrae el slug de `/game/<slug>?…` de una inviteUrl first-party (o null). */
+function slugFromInviteUrl(url: string): string | null {
+  const m = /\/game\/([a-z0-9-]+)/i.exec(url);
+  return m ? m[1] : null;
 }

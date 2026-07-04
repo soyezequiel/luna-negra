@@ -274,12 +274,58 @@ export async function warmUpPermissions(pubkey: string): Promise<void> {
 
 // --- Amigos (NIP-02) y perfiles (kind:0) ---
 
+// Caché por pubkey de la lista de relays NIP-65 (kind:10002). Estable dentro de
+// una sesión; evita re-consultarla en cada carga/refresco de amigos.
+const _relayListCache = new Map<string, string[]>();
+
+/**
+ * Relays donde leer los eventos "propios" de un usuario (kind:3, kind:0…):
+ * RELAYS ∪ sus relays de escritura declarados en NIP-65 (kind:10002). Esto
+ * arregla el caso en que el usuario mantiene su lista de contactos actualizada
+ * desde un cliente (Amber, Primal, Damus…) que la publica SOLO en sus propios
+ * relays: sin unir esos relays, Luna Negra leía un kind:3 viejo de los 4 relays
+ * hardcodeados y "faltaban" los follows recientes (no aparecían amigos nuevos).
+ *
+ * En NIP-65, un tag `r` sin marcador es read+write; con marcador solo cuenta si
+ * es "write" (ahí publica sus reemplazables). Best-effort y cacheado: si no hay
+ * kind:10002 o los relays fallan, cae a RELAYS.
+ */
+async function relaysForAuthor(pubkey: string): Promise<string[]> {
+  const cached = _relayListCache.get(pubkey);
+  if (cached) return cached;
+  const relays = new Set(RELAYS);
+  try {
+    const evs = await pool().querySync(
+      RELAYS,
+      { kinds: [10002], authors: [pubkey] },
+      { maxWait: MAX_WAIT },
+    );
+    if (evs.length) {
+      const newest = evs.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+      for (const t of newest.tags) {
+        const marker = t[2];
+        if (t[0] === "r" && typeof t[1] === "string" && (!marker || marker === "write")) {
+          relays.add(t[1]);
+        }
+      }
+    }
+  } catch {
+    /* sin lista NIP-65 o relays caídos: solo el fallback RELAYS */
+  }
+  const out = [...relays];
+  _relayListCache.set(pubkey, out);
+  return out;
+}
+
 export async function fetchContacts(pubkey: string): Promise<string[]> {
   // Se consulta a TODOS los relays y se toma el kind:3 más nuevo: `pool.get`
   // devuelve el primero en responder, que puede ser una contact list vieja de
   // un relay desactualizado (por eso un follow recién hecho tardaba en aparecer).
+  // Incluimos los relays NIP-65 del usuario para no leer un kind:3 viejo cuando
+  // su cliente publica la lista actualizada solo en sus propios relays.
+  const relays = await relaysForAuthor(pubkey);
   const evs = await pool().querySync(
-    RELAYS,
+    relays,
     { kinds: [3], authors: [pubkey] },
     { maxWait: MAX_WAIT },
   );
@@ -325,8 +371,12 @@ export function clampContacts(contacts: string[], max = 1000): string[] {
 
 /** Trae el evento kind:3 (lista de contactos) más nuevo del usuario, o null. */
 async function fetchContactEvent(pubkey: string): Promise<Event | null> {
+  // Mismo set ampliado que fetchContacts: si releyéramos solo de RELAYS podríamos
+  // partir de un kind:3 viejo y, al republicar con el nuevo follow, borrar los
+  // contactos que el usuario tiene en sus relays NIP-65.
+  const relays = await relaysForAuthor(pubkey);
   const evs = await pool().querySync(
-    RELAYS,
+    relays,
     { kinds: [3], authors: [pubkey] },
     { maxWait: MAX_WAIT },
   );
