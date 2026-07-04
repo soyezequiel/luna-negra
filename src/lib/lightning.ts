@@ -72,12 +72,43 @@ const FAST_OP_TIMEOUT_MS = 8_000;
 /** Timeout propio (más corto que el del SDK) para que el failover no se cuelgue. */
 class WalletTimeoutError extends Error {}
 
-type WalletHealth = { down: boolean; lastProbe: number; probing: boolean };
+// Wallet DEGRADADO: responde al relay (get_info OK, lookup OK) pero FALLA las
+// operaciones que mueven plata — p. ej. `make_invoice` con LiquidityRequestFailed
+// (sin liquidez entrante) o `pay_invoice` con PaymentSendingFailed (sin ruta o
+// saldo). Son errores de aplicación, no timeouts, así que `isWalletDownError` no
+// los ve y el sondeo get_info tampoco: sin este estado, CADA operación volvía a
+// intentar primero el wallet enfermo y pagaba su error (~1-3s) antes de usar el
+// sano. Un wallet degradado va al fondo del orden por este cooldown; lo repone
+// una operación real exitosa (o el vencimiento, que habilita reintentarlo).
+const DEGRADED_COOLDOWN_MS = 5 * 60_000;
+
+type WalletHealth = {
+  down: boolean;
+  lastProbe: number;
+  probing: boolean;
+  degradedUntil: number;
+};
 const health: WalletHealth[] = NWC_URLS.map(() => ({
   down: false,
   lastProbe: 0,
   probing: false,
+  degradedUntil: 0,
 }));
+
+function isDegraded(i: number): boolean {
+  return Date.now() < health[i].degradedUntil;
+}
+
+function markDegraded(i: number, op: string): void {
+  const yaEstaba = isDegraded(i);
+  health[i].degradedUntil = Date.now() + DEGRADED_COOLDOWN_MS;
+  if (!yaEstaba) {
+    Sentry.captureMessage(
+      `NWC wallet #${i} degradado (${op} falló): las próximas operaciones prueban primero el otro wallet`,
+      "warning",
+    );
+  }
+}
 
 /** ¿El error indica que el wallet no respondió (caído), no que rechazó la operación? */
 function isWalletDownError(err: unknown): boolean {
@@ -105,13 +136,21 @@ function markUp(i: number): void {
   }
 }
 
-/** Índices de wallets en orden de intento: sanos primero (por preferencia), caídos al final. */
+/** Una operación que MUEVE plata salió bien: el wallet dejó de estar degradado. */
+function markOpHealthy(i: number): void {
+  if (isDegraded(i)) {
+    Sentry.captureMessage(`NWC wallet #${i} recuperado (operación real exitosa)`, "info");
+  }
+  health[i].degradedUntil = 0;
+}
+
+/**
+ * Índices de wallets en orden de intento: sanos primero (por preferencia), luego
+ * degradados (responden pero fallan operaciones), caídos al final.
+ */
 function attemptOrder(): number[] {
-  return NWC_URLS.map((_, i) => i).sort((a, b) => {
-    const da = health[a].down ? 1 : 0;
-    const db = health[b].down ? 1 : 0;
-    return da - db || a - b;
-  });
+  const rank = (i: number) => (health[i].down ? 2 : isDegraded(i) ? 1 : 0);
+  return NWC_URLS.map((_, i) => i).sort((a, b) => rank(a) - rank(b) || a - b);
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -189,6 +228,7 @@ async function withFailover<T>(
       const call = fn(getClient(i));
       const result = await (timeoutMs ? withTimeout(call, timeoutMs) : call);
       markUp(i);
+      markOpHealthy(i);
       if (k > 0) {
         // No salió el wallet preferido: avisar para que el operador lo revise
         // (puede estar caído o sin saldo).
@@ -200,7 +240,16 @@ async function withFailover<T>(
       return result;
     } catch (err) {
       lastErr = err;
-      if (isWalletDownError(err)) markDown(i);
+      if (isWalletDownError(err)) {
+        markDown(i);
+      } else {
+        // Error de APLICACIÓN del wallet (LiquidityRequestFailed, PaymentSendingFailed,
+        // saldo insuficiente…): withFailover solo corre operaciones que mueven plata
+        // (make_invoice / pay_invoice), así que un rechazo acá = wallet degradado. Si
+        // el fallo fuera del destino (no del wallet), el siguiente wallet también va a
+        // fallar y quedar degradado — el orden relativo no empeora.
+        markDegraded(i, op);
+      }
       const hayMas = k < orden.length - 1;
       Sentry.captureException(err, {
         level: hayMas ? "warning" : "error",
@@ -331,14 +380,16 @@ export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
         );
         markUp(i);
         algunoRespondio = true;
-        if (tx.state === "settled") return true;
+        // El wallet que conoce el invoice es el que lo emitió: su respuesta es la
+        // única autoritativa. Devolvemos ya (pagado o no) en vez de gastar otra
+        // vuelta preguntándole al resto, que solo puede contestar NOT_FOUND.
+        return tx.state === "settled";
       } catch (err) {
         // Este wallet no conoce el invoice o está caído: probamos el siguiente.
         lastErr = err;
         if (isWalletDownError(err)) markDown(i);
       }
     }
-    if (algunoRespondio) break; // un wallet conocía el invoice; no hace falta tocar los caídos
   }
   if (!algunoRespondio) throw lastErr;
   return false;
