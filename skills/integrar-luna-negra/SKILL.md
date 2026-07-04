@@ -60,7 +60,9 @@ dice quién es el jugador y le ofrece estos servicios por HTTP.
 | **Juego** | La experiencia que publicas | Entidad con `gameId`, `slug`, precio, URL y assets |
 | **Jugador** | Quien compra o entra a jugar | Identidad Nostr **estable**: `npub` (bech32) y `pubkey` (hex) |
 | **Entitlement** | Pase temporal de acceso | JWT ES256 que llega como `?lnToken=…` al abrir el juego |
-| **Invite token** | Pase a una sala | JWT ES256 que llega como `?inviteToken=…` |
+| **Invite token** | Pase a una sala de Luna (§4) | JWT ES256 que llega como `?inviteToken=…` |
+| **Room Link** (`lnRoom`) | Enlace a una sala hosteada por **tu** juego (§5·bis) | `?lnRoom=<id>` en tu dominio; la sala la crea tu juego *lazy* |
+| **`lnInvite`** | Autorización dirigida a un `npub` para un `lnRoom` | JWT ES256 opcional (`scope:"room-invite"`); sin él, el enlace es público |
 | **API key** | Llave server-to-server | `ln_sk_…` — **secreta, solo en tu backend** |
 | **Webhook secret** | Verifica avisos entrantes | `whsec_…` para validar la firma HMAC |
 
@@ -242,7 +244,8 @@ https://tu-juego.com/?lnRoom=<roomId>[&lnInvite=<jwt>]
 4. Si hay `lnInvite`: verificá su firma vía JWKS y **exigí `jugador == toNpub`**
    (claim del token); si no coincide, rechazá o degradá a espectador. El `lnInvite`
    es autocontenido (`scope:"room-invite"`, claims `gameId`/`slug`/`roomId`/`toNpub`):
-   **no** llames a ningún endpoint para validarlo.
+   **no** llames a ningún endpoint para validarlo (con el SDK §9:
+   `await luna.verifyRoomInvite(lnInvite)`).
 5. **Si la sala `lnRoom` no existe en tu backend → creala** (host = el primero en
    entrar); si existe → unite.
 6. **Descartá los params de la URL** (`history.replaceState`) para no dejar tokens en
@@ -454,14 +457,15 @@ const luna = createClient({
 });
 
 const ent  = await luna.verifyAccess(lnToken);          // entitlement | null
-const room = await luna.verifyRoom(inviteToken);        // RoomInvite | null
+const room = await luna.verifyRoom(inviteToken);        // RoomInvite | null  (§4)
+const rl   = await luna.verifyRoomInvite(lnInvite);     // RoomLinkInvite | null  (§5·bis)
 const bet  = await luna.createBet({ gameId, participants, stakeSats: 10 });
 const info = await luna.getBet(bet.betId);
 await luna.reportWinners(bet.betId, [winnerNpub]);
 await luna.postActivity(slug, "¡Nuevo récord en la sala 42!");
 ```
 
-Métodos: `verifyAccess`, `verifyRoom`, `getPlayerProfile`, `createBet`, `getBet`,
+Métodos: `verifyAccess`, `verifyRoom`, `verifyRoomInvite`, `getPlayerProfile`, `createBet`, `getBet`,
 `cancelBet`, `reportWinners`, `buildResultEvent`/`reportResult` (self-sign),
 `postActivity`, `getWebhook`/`setWebhook`, `verifyWebhook`.
 

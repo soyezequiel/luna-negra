@@ -164,6 +164,21 @@ export type RoomInvite = {
   expiresAt: string | null;
 };
 
+/**
+ * Autorización dirigida de "Luna Room Link" (`lnInvite`, ver docs/luna-room-link.md).
+ * A diferencia de `RoomInvite` (§4, sala de Luna), esto NO va atado al que abre ni
+ * asume una sala hosteada por Luna: `toNpub` es el ÚNICO npub autorizado a entrar a
+ * `roomId` (una sala que hostea TU juego). Verificalo offline y exigí que el jugador
+ * conectado sea `toNpub`. Es opcional: sin `lnInvite`, el enlace es público.
+ */
+export type RoomLinkInvite = {
+  gameId: string;
+  slug: string;
+  roomId: string;
+  toNpub: string;
+  expiresAt: string | null;
+};
+
 export type PlayerProfile = {
   npub: string;
   pubkey: string;
@@ -182,6 +197,12 @@ export type LunaNegraClient = {
   verifyAccess(token: string): Promise<Entitlement | null>;
   /** Valida un invite token de sala. Devuelve la info o `null`. */
   verifyRoom(token: string): Promise<RoomInvite | null>;
+  /**
+   * Valida un `lnInvite` de "Luna Room Link" (autorización dirigida a una sala que
+   * hostea tu juego). Devuelve `{ gameId, slug, roomId, toNpub, expiresAt }` o `null`.
+   * Exigí que el jugador conectado (§1) sea `toNpub`.
+   */
+  verifyRoomInvite(token: string): Promise<RoomLinkInvite | null>;
   /** Refresca nombre/avatar de un jugador por npub (sin depender del token). */
   getPlayerProfile(npub: string): Promise<PlayerProfile | null>;
   /** Crea una apuesta (requiere `apiKey`). */
@@ -261,6 +282,25 @@ export function createClient(opts: LunaNegraOptions): LunaNegraClient {
           host: Boolean(p.host),
           hostNpub: (p.hostNpub as string | undefined) ?? null,
           hostPubkey: (p.hostPubkey as string | undefined) ?? null,
+          expiresAt:
+            typeof p.exp === "number"
+              ? new Date(p.exp * 1000).toISOString()
+              : null,
+        };
+      } catch {
+        return null;
+      }
+    },
+
+    async verifyRoomInvite(token) {
+      try {
+        const p = await verify(token);
+        if (p.scope !== "room-invite") return null;
+        return {
+          gameId: p.gameId as string,
+          slug: p.slug as string,
+          roomId: p.roomId as string,
+          toNpub: p.toNpub as string,
           expiresAt:
             typeof p.exp === "number"
               ? new Date(p.exp * 1000).toISOString()
