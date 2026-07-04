@@ -2,7 +2,7 @@ import { nip19 } from "nostr-tools";
 import type { ZapBet, ZapBetParticipant, Provider, User } from "@prisma/client";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
-import { resolveDestination } from "@/lib/escrow-payout";
+import { resolveDestination, resolveZapDestination } from "@/lib/escrow-payout";
 import { recordOutflowV2 } from "@/lib/ledger-v2";
 import { canPayout } from "@/lib/ledger-math";
 import { lightningConfigured } from "@/lib/lightning";
@@ -50,7 +50,7 @@ export async function payParticipantV2(args: {
     return;
   }
 
-  const dest = await resolveDestination(participant.npub);
+  const dest = await resolveZapDestination(participant.npub);
 
   const markPaid = async (res: MarkPaid) => {
     await prisma.zapLedgerEntry.update({
@@ -294,7 +294,7 @@ export async function retryFailedPayoutV2(
     return "skipped";
   }
 
-  const dest = await resolveDestination(part.npub);
+  const dest = await resolveZapDestination(part.npub);
   if (!dest) {
     await prisma.zapLedgerEntry.update({ where: { id: entry.id }, data: { status: "pending" } });
     await prisma.zapBetParticipant.update({

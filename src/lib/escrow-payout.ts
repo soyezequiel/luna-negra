@@ -35,6 +35,31 @@ export async function resolveDestination(npub: string): Promise<string | null> {
 }
 
 /**
+ * Destino para un payout-ZAP (v2), optimizado para VISIBILIDAD social.
+ *
+ * Un zap sólo se renderiza en la nota/perfil del destinatario si el recibo (9735)
+ * está firmado por el `nostrPubkey` que anuncia el lud16 de SU PERFIL (kind:0)
+ * — es la regla de verificación de NIP-57. Por eso, al revés que `resolveDestination`
+ * (que prioriza el `User.lud16` configurado en Luna, pensado para cobros no-sociales
+ * como el QR de retiro), acá preferimos el lud16 del perfil Nostr: así el zap del
+ * premio queda anclado a una dirección que el cliente puede verificar y mostrar.
+ *
+ * Cascada: NWC → null (retiro por QR; el secreto vive sólo en el navegador) →
+ * lud16 del perfil (kind:0) → `User.lud16` (paga igual, aunque el zap podría no
+ * renderizar como verificado) → null (QR).
+ */
+export async function resolveZapDestination(npub: string): Promise<string | null> {
+  const user = await prisma.user
+    .findUnique({ where: { npub }, select: { lud16: true, payoutMethod: true } })
+    .catch(() => null);
+  if (user?.payoutMethod === "nwc") return null;
+
+  const pk = pubkeyFromNpub(npub);
+  const profileLud16 = pk ? (await fetchProfile(pk).catch(() => null))?.lud16 : null;
+  return profileLud16 ?? user?.lud16 ?? null;
+}
+
+/**
  * Mueve plata a un participante (reembolso o payout). Idempotente vía ledger.
  * - registra el outflow (invariante anti-insolvencia),
  * - resuelve destino (lud16) y paga; si no hay destino → withdraw_pending (QR, M6),
