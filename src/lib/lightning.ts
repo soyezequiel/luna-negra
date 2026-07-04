@@ -124,6 +124,26 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
+ * Pre-calienta los wallets al arrancar la instancia: abre la conexión NWC
+ * (WebSocket + handshake, que tarda segundos) y sondea `get_info` para poblar el
+ * estado de salud ANTES de la primera operación real. Sin esto, la primera
+ * apuesta paga el handshake en frío y, si el primario está caído, el peaje de
+ * descubrirlo (~8s de FAST_OP_TIMEOUT_MS) recién en el `makeInvoice` del depósito.
+ * No bloquea el arranque ni lanza: se llama fire-and-forget desde instrumentation.
+ */
+export async function warmUpWallets(): Promise<void> {
+  if (!lightningConfigured()) return;
+  await Promise.allSettled(
+    NWC_URLS.map((_, i) =>
+      withTimeout(getClient(i).getInfo(), PROBE_TIMEOUT_MS).then(
+        () => markUp(i),
+        () => markDown(i), // caído desde el arranque → el failover ya lo saltea
+      ),
+    ),
+  );
+}
+
+/**
  * Re-sondea en segundo plano los wallets marcados caídos (a lo sumo cada
  * `PROBE_INTERVAL_MS`). NO bloquea la operación en curso: si el `get_info`
  * responde, el wallet volvió y lo reponemos al frente para la próxima llamada.

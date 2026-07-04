@@ -104,26 +104,67 @@ export async function ensureStoreZapProfile(baseUrl: string): Promise<boolean> {
   return accepted > 0;
 }
 
+// Corte propio por relay: sin esto, un relay lento/colgado hace que `publish`
+// espere el timeout interno del SimplePool (~10s) antes de rendirse, y como
+// antes esperábamos a TODOS, el evento más rápido quedaba rehén del más lento.
+const RELAY_PUBLISH_TIMEOUT_MS = 5_000;
+
+function withRelayTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`relay timeout tras ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 /**
  * Publica un evento ya firmado a los relays y devuelve cuántos lo aceptaron.
  *
- * Usa un pool FRESCO por llamada (no uno a nivel de módulo): en serverless
- * (Vercel) las conexiones WebSocket quedan congeladas entre invocaciones y un
- * pool cacheado escribe sobre sockets zombie → el evento nunca llega al relay.
+ * Resuelve APENAS un relay acepta (no espera a los lentos): para todos nuestros
+ * usos —ancla del contrato, recibo 9735, artículo, nota de liquidación— alcanza
+ * con que UN relay lo tenga para que el evento sea válido/direccionable. Los
+ * relays restantes siguen publicando en segundo plano (best-effort) y el pool se
+ * cierra cuando todos terminan; en el self-host (proceso vivo) esa cola completa.
+ * Si NINGUNO acepta dentro del corte, devuelve 0 (el caller no guarda link muerto).
+ *
+ * Usa un pool FRESCO por llamada (no uno a nivel de módulo): en serverless las
+ * conexiones WebSocket quedan congeladas entre invocaciones y un pool cacheado
+ * escribe sobre sockets zombie → el evento nunca llega al relay.
  */
 async function publishToRelays(ev: Event): Promise<number> {
   const pool = new SimplePool();
-  try {
-    const results = await Promise.allSettled(pool.publish(RELAYS, ev));
-    let ok = 0;
-    results.forEach((r, i) => {
-      if (r.status === "fulfilled") ok++;
-      else console.warn(`[nostr] publish falló en ${RELAYS[i]}:`, r.reason);
+  const publishes = pool.publish(RELAYS, ev);
+  return await new Promise<number>((resolve) => {
+    let accepted = 0;
+    let settled = 0;
+    let resolved = false;
+    publishes.forEach((p, i) => {
+      withRelayTimeout(p, RELAY_PUBLISH_TIMEOUT_MS)
+        .then(
+          () => {
+            accepted++;
+            // Primer relay que acepta → devolvemos ya; el resto sigue en background.
+            if (!resolved) {
+              resolved = true;
+              resolve(accepted);
+            }
+          },
+          (reason) => console.warn(`[nostr] publish falló en ${RELAYS[i]}:`, reason),
+        )
+        .finally(() => {
+          settled++;
+          if (settled === publishes.length) {
+            pool.close(RELAYS);
+            // Ninguno aceptó: recién acá sabemos que el total es 0.
+            if (!resolved) {
+              resolved = true;
+              resolve(accepted);
+            }
+          }
+        });
     });
-    return ok;
-  } finally {
-    pool.close(RELAYS);
-  }
+  });
 }
 
 /**

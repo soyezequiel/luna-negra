@@ -12,6 +12,7 @@ async function reportBackgroundFailure(source: string, error: unknown): Promise<
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
+    void warmUpWalletsAtBoot();
     await startEscrowTick();
     await startZapSync();
     await startZapBetSync();
@@ -25,6 +26,22 @@ export async function register() {
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
+  }
+}
+
+/**
+ * Pre-calienta los wallets NWC al arrancar la instancia (abre la conexión y
+ * puebla el estado de salud) para que la PRIMERA apuesta no pague el handshake en
+ * frío ni el peaje de descubrir un wallet caído en el `makeInvoice` del depósito.
+ * Fire-and-forget: no bloquea el arranque y nunca lanza. Ver [[nwc-failover-salud-wallets]].
+ */
+async function warmUpWalletsAtBoot() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+  try {
+    const { warmUpWallets } = await import("./lib/lightning");
+    await warmUpWallets();
+  } catch (err) {
+    await reportBackgroundFailure("warmup-wallets", err);
   }
 }
 
