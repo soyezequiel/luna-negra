@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
-import { useGameContext } from "@/providers/game-context";
+import { useGameContext, type CurrentGame } from "@/providers/game-context";
 import { useFriendsDrawer } from "@/providers/friends-drawer";
 import { useFriends } from "@/hooks/use-friends";
 import { useOnlyMembers } from "@/hooks/use-friends-filter";
@@ -39,6 +39,7 @@ import {
   launchStandaloneGame,
   joinRoomAndPlay,
   preopenGameWindowIfNeeded,
+  getOpenGameWindow,
   POPUP_BLOCKED_BODY,
   POPUP_BLOCKED_TITLE,
 } from "@/lib/room-launch";
@@ -236,10 +237,19 @@ export function FriendsSidebar() {
   }
 
   // "Luna Room Link" dirigido: pide a Luna un enlace atado al npub del amigo (con el
-  // dominio del juego) SIN abrir el juego, y lo manda por DM. Reusa `linkRoomId` para
-  // que todos los invitados —y el host— caigan en la misma sala.
+  // dominio del juego) y lo manda por DM. Si el host todavía NO tiene el juego
+  // abierto en la sala, lo abre automáticamente (para quedar esperando adentro).
+  // Reusa `linkRoomId` para que todos —host e invitados— caigan en la misma sala.
   async function inviteViaRoomLink(recipientPubkey: string, name: string) {
     if (!currentGame || invitingPk) return;
+    const game = currentGame;
+    // ¿El host ya tiene el juego abierto? Si no, preabrimos la ventana DENTRO del
+    // gesto del click (evita el bloqueo de popups) para meterlo en la sala después.
+    const alreadyOpen = Boolean(getOpenGameWindow(game.slug));
+    const win = alreadyOpen ? null : preopenGameWindowIfNeeded(game.slug);
+    // Una vez que abrimos el juego del host en la sala, `win` ya no debe cerrarse
+    // si algo posterior (p. ej. el DM) falla: el host quedaría afuera de su propia sala.
+    let opened = false;
     setInvitingPk(recipientPubkey);
     try {
       const toNpub = npubOf(recipientPubkey);
@@ -247,7 +257,7 @@ export function FriendsSidebar() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          gameId: currentGame.gameId,
+          gameId: game.gameId,
           roomId: linkRoomId ?? undefined,
           toNpub,
         }),
@@ -256,14 +266,25 @@ export function FriendsSidebar() {
       if (!r.ok || !d.inviteUrl) {
         throw new Error(d.error ?? "No se pudo crear la invitación");
       }
-      if (!linkRoomId && typeof d.roomId === "string") setLinkRoomId(d.roomId);
+      const roomId = (typeof d.roomId === "string" ? d.roomId : linkRoomId) ?? "";
+      if (!linkRoomId && roomId) setLinkRoomId(roomId);
+
+      // Meter al host en la sala si no estaba ya adentro (juego cerrado).
+      if (!alreadyOpen && roomId) {
+        await openHostInRoom(game, roomId, win);
+        opened = true;
+      } else {
+        win?.close();
+      }
+
       await sendDm(
         recipientPubkey,
-        `Te invito a jugar ${currentGame.title} en Luna Negra 🎮\n${d.inviteUrl}`,
+        `Te invito a jugar ${game.title} en Luna Negra 🎮\n${d.inviteUrl}`,
       );
       setInvited((prev) => new Set(prev).add(recipientPubkey));
-      notify({ title: `Invitación a ${currentGame.title} enviada a ${name}` });
+      notify({ title: `Invitación a ${game.title} enviada a ${name}` });
     } catch (e) {
+      if (!opened) win?.close();
       notify({
         title: "No se pudo invitar",
         body: e instanceof Error ? e.message : undefined,
@@ -273,47 +294,57 @@ export function FriendsSidebar() {
     }
   }
 
+  // Mintea un entitlement y abre el juego del host en la sala room-link (`?lnRoom=`),
+  // reutilizando la ventana `win` preabierta en el gesto del click si la hay.
+  async function openHostInRoom(
+    game: CurrentGame,
+    roomId: string,
+    win: Window | null,
+  ) {
+    const sr = await fetch(`/api/games/${game.gameId}/sessions`, {
+      method: "POST",
+    });
+    const sd = await sr.json().catch(() => ({}));
+    if (!sr.ok || !sd.token) throw new Error(sd.error ?? "No se pudo abrir el juego");
+    const result = launchStandaloneGame({
+      gameUrl: game.gameUrl,
+      slug: game.slug,
+      title: game.title,
+      token: sd.token,
+      roomId,
+      win,
+    });
+    if (!result.ok) {
+      notify({
+        title: POPUP_BLOCKED_TITLE,
+        body: POPUP_BLOCKED_BODY,
+        href: result.dest,
+        kind: "warn",
+        actionLabel: "Abrir juego",
+      });
+    }
+  }
+
   // El host abre SU juego en la sala room-link compartida (`?lnRoom=`). No crea una
   // fila Room en Luna: la sala vive en el backend del juego, creada al primer acceso.
   async function openRoomLinkGame() {
     if (!currentGame) return;
-    const win = preopenGameWindowIfNeeded(currentGame.slug);
+    const game = currentGame;
+    const win = preopenGameWindowIfNeeded(game.slug);
     try {
       let roomId = linkRoomId;
       if (!roomId) {
         const r = await fetch("/api/v1/rooms/invite", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ gameId: currentGame.gameId }),
+          body: JSON.stringify({ gameId: game.gameId }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.roomId) throw new Error(d.error ?? "No se pudo crear la sala");
         roomId = d.roomId as string;
         setLinkRoomId(roomId);
       }
-      // Entitlement para abrir el juego identificado (mismo endpoint que "Jugar").
-      const sr = await fetch(`/api/games/${currentGame.gameId}/sessions`, {
-        method: "POST",
-      });
-      const sd = await sr.json().catch(() => ({}));
-      if (!sr.ok || !sd.token) throw new Error(sd.error ?? "No se pudo abrir el juego");
-      const result = launchStandaloneGame({
-        gameUrl: currentGame.gameUrl,
-        slug: currentGame.slug,
-        title: currentGame.title,
-        token: sd.token,
-        roomId,
-        win,
-      });
-      if (!result.ok) {
-        notify({
-          title: POPUP_BLOCKED_TITLE,
-          body: POPUP_BLOCKED_BODY,
-          href: result.dest,
-          kind: "warn",
-          actionLabel: "Abrir juego",
-        });
-      }
+      await openHostInRoom(game, roomId, win);
     } catch (e) {
       win?.close();
       notify({
@@ -578,11 +609,11 @@ export function FriendsSidebar() {
                     className="w-full"
                     onClick={openRoomLinkGame}
                   >
-                    ▶ Jugar con amigos
+                    {linkRoomId ? "▶ Entrar a la sala" : "▶ Jugar con amigos"}
                   </Button>
                   <p className="mt-1.5 text-[11px] text-green/80">
                     {linkRoomId
-                      ? "Sala lista. Invitá a tus amigos desde la lista."
+                      ? "Entrá vos también con este botón; tus amigos se suman al tocar «Unirse»."
                       : "Invitá a tus amigos desde la lista: el enlace los lleva directo a tu sala."}
                   </p>
                 </>
