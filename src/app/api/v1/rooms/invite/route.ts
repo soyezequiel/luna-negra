@@ -21,6 +21,21 @@ import { npubOf, pubkeyFromNpub } from "@/lib/nostr-social";
 
 const ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
+// Código de sala corto y legible para compartir: 4 chars de un alfabeto sin
+// caracteres ambiguos (sin 0/O/1/I), el mismo estilo que los códigos nativos de los
+// juegos. Espacio ~1M; como no persistimos la sala (no hay dedupe), una colisión
+// haría que dos enlaces compartan sala — improbable a esta escala y aceptable (el
+// `roomId` es un identificador opaco, no un secreto).
+const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 chars → sin sesgo de módulo
+function generateRoomCode(length = 4): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  let code = "";
+  for (let i = 0; i < length; i++) {
+    code += ROOM_CODE_ALPHABET[bytes[i] % ROOM_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) {
@@ -41,7 +56,7 @@ export async function POST(req: Request) {
   // No persistimos ninguna fila `Room`: la sala la crea el juego al primer acceso.
   let roomId: string;
   if (body.roomId === undefined || body.roomId === null || body.roomId === "") {
-    roomId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    roomId = generateRoomCode();
   } else if (typeof body.roomId === "string" && ROOM_RE.test(body.roomId.trim())) {
     roomId = body.roomId.trim();
   } else {
