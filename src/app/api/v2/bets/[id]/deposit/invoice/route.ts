@@ -94,9 +94,15 @@ export async function POST(
         });
       }
     } else {
-      console.warn(
-        `[v2/deposit/invoice] comentario de participación inválido para ${part.id}: ${commentCheck.error}`,
-      );
+      // Alerta operativa (no solo console.warn, que se pierde al rotar logs): el
+      // depósito sigue, pero sin comentario el premio caería al post del contrato.
+      await notifyOperationalError({
+        source: "api-v2-deposit-comment",
+        error: new Error(`Comentario de participación inválido: ${commentCheck.error}`),
+        fingerprint: `api-v2-deposit-comment:${part.id}`,
+        cooldownMs: 10 * 60_000,
+        context: { betId: bet.id, participantId: part.id },
+      });
     }
   }
 

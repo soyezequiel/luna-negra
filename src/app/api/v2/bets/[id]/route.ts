@@ -5,6 +5,7 @@ import {
   checkAndSettleDepositV2,
   participantLnurlUrl,
   buildDepositZapRequest,
+  buildParticipationComment,
   ensureCustodialDepositInvoiceV2,
 } from "@/lib/zap-bet";
 import { encodeLnurl } from "@/lib/zap";
@@ -122,6 +123,8 @@ export async function GET(
       let bolt11 = canDeposit ? p.depositInvoice : null;
       let depositZapRequest: ReturnType<typeof buildDepositZapRequest> | null = null;
       let depositCallback: string | null = null;
+      let participationComment: ReturnType<typeof buildParticipationComment> = null;
+      let commentCallback: string | null = null;
       let depositError: string | null = null;
 
       if (canDeposit && !bolt11) {
@@ -142,11 +145,21 @@ export async function GET(
           try {
             depositZapRequest = buildDepositZapRequest(bet, p, base);
             depositCallback = participantLnurlUrl(base, p.id);
+            // Comentario de participación (kind:1 reply al contrato) para que el
+            // juego lo firme junto al 9734 y lo mande a `commentCallback`. Si gana,
+            // el premio se zapea a ESTE comentario en vez del post del contrato.
+            // Opcional: sin él, el flujo de depósito funciona igual.
+            participationComment = buildParticipationComment(bet);
+            commentCallback = participationComment
+              ? `${base}/api/v2/bets/${bet.id}/comment`
+              : null;
           } catch {
             // Sin identidad de tienda / ancla no se puede armar el zap request; el
             // juego cae al fallback `payUrl`. No tumbamos al resto de asientos.
             depositZapRequest = null;
             depositCallback = null;
+            participationComment = null;
+            commentCallback = null;
           }
         }
       }
@@ -160,6 +173,8 @@ export async function GET(
         payUrl,
         depositZapRequest,
         depositCallback,
+        participationComment,
+        commentCallback,
         depositError,
         result: p.result,
         payoutStatus: p.payoutStatus,

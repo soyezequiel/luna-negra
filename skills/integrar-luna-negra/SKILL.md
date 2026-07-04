@@ -401,6 +401,15 @@ LNURL plano). Dos formas de que deposite:
   `depositStatus: "paid"`. También hay un LNURL-pay por asiento en el `lnurl` que trae
   el `GET` (pagable desde cualquier wallet).
 
+**Comentario de participación (recomendado en UI propia):** el `GET /api/v2/bets/{id}`
+trae, junto a `depositZapRequest`, un `participationComment` (kind:1 sin firmar, reply
+al contrato) y su `commentCallback`. Firmalo con la misma identidad del jugador y mandalo
+con `POST {commentCallback}` body `{ signedComment }` (sin auth: la firma del evento es
+la autenticación). Es opcional — el depósito funciona igual sin él — pero si el jugador
+gana, **el premio se zapea a SU comentario** (queda como zap recibido en su perfil) en
+vez de al post del contrato. En el flujo `prepare`/`invoice` de la web equivale a mandar
+`signedComment` junto al `signedZapRequest`.
+
 **Auditabilidad:** el `anchorEventId` es el contrato (kind:1) en Nostr; cada depósito
 tiene su recibo `kind:9735` (`depositReceiptId`), y al liquidar se publica una **nota
 de liquidación** con ganadores, montos y recibos. Abrí cualquiera con `njump.me/<id>`.
