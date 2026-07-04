@@ -23,10 +23,17 @@ const PAYOUT_PROFILE_MAX_WAIT_MS = 3_000;
 // Caché en memoria del lud16 del perfil (pubkey → lud16|null) para NO tocar relays
 // en el momento de pagar: se precalienta al fondearse la apuesta (ver
 // prewarmPayoutDestinations) y la liquidación lo lee al instante. TTL corto: si la
-// partida dura más, la liquidación paga a lo sumo el fetch con tope de arriba. Una
-// sola instancia self-host → un Map alcanza.
+// partida dura más, la liquidación paga a lo sumo el fetch con tope de arriba.
+// En globalThis a propósito: Turbopack duplica este módulo en varios chunks del
+// server (la ruta que fondea y la que liquida pueden ser instancias distintas);
+// un Map top-level dejaría el precalentado en una copia y la liquidación leería
+// otra vacía.
 const PROFILE_LUD16_TTL_MS = 15 * 60_000;
-const profileLud16Cache = new Map<string, { lud16: string | null; at: number }>();
+declare global {
+  // eslint-disable-next-line no-var
+  var lunaProfileLud16Cache: Map<string, { lud16: string | null; at: number }> | undefined;
+}
+const profileLud16Cache = (globalThis.lunaProfileLud16Cache ??= new Map());
 
 /** lud16 del kind:0 (con caché + tope de espera). null = perfil sin lud16 o relays mudos. */
 async function profileLud16For(pubkey: string): Promise<string | null> {

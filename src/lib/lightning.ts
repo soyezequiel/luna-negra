@@ -29,19 +29,50 @@ export function payoutsWillUseFallback(): boolean {
   return attemptOrder()[0] !== 0;
 }
 
+// ── Estado compartido a nivel PROCESO (globalThis) ───────────────────────────
+// IMPORTANTE: Turbopack duplica este módulo en varios chunks del server (rutas,
+// instrumentation, etc.) → varias INSTANCIAS del módulo en el mismo proceso, cada
+// una con su propio top-level. Con `const` acá, el warmup del boot calentaba las
+// conexiones de UNA copia y las rutas abrían otras en frío, y la salud aprendida
+// por una ruta (wallet caído/degradado) no la veía el resto. Se verificó en prod:
+// stacks del mismo proceso apuntando a chunks distintos con clases minificadas
+// distintas. `globalThis` es el mismo escape que usa el cliente de Prisma.
+type LightningShared = {
+  cachedClients: (NWCClient | null)[];
+  health: WalletHealth[];
+};
+
+declare global {
+  // eslint-disable-next-line no-var
+  var lunaLightningShared: LightningShared | undefined;
+}
+
 // Clientes NWC reutilizados entre llamadas (uno por wallet): la conexión al relay
 // (WebSocket + handshake NWC) tarda segundos en abrirse, así que crear uno nuevo
 // por cada consulta hacía que la detección del pago se sintiera muy lenta.
-// Mantenemos las conexiones calientes y las compartimos.
-const cachedClients: (NWCClient | null)[] = [];
+// Mantenemos las conexiones calientes y las compartimos entre TODAS las copias
+// del módulo (ver nota de globalThis arriba).
+function shared(): LightningShared {
+  globalThis.lunaLightningShared ??= {
+    cachedClients: [],
+    health: NWC_URLS.map(() => ({
+      down: false,
+      lastProbe: 0,
+      probing: false,
+      degradedUntil: 0,
+    })),
+  };
+  return globalThis.lunaLightningShared;
+}
 
 function getClient(i: number): NWCClient {
   const url = NWC_URLS[i];
   if (!url) throw new Error(`Wallet NWC #${i} no configurado`);
-  if (!cachedClients[i]) {
-    cachedClients[i] = new NWCClient({ nostrWalletConnectUrl: url });
+  const s = shared();
+  if (!s.cachedClients[i]) {
+    s.cachedClients[i] = new NWCClient({ nostrWalletConnectUrl: url });
   }
-  return cachedClients[i]!;
+  return s.cachedClients[i]!;
 }
 
 // ── Salud de wallets (failover rápido) ───────────────────────────────────────
@@ -72,6 +103,20 @@ const FAST_OP_TIMEOUT_MS = 8_000;
 /** Timeout propio (más corto que el del SDK) para que el failover no se cuelgue. */
 class WalletTimeoutError extends Error {}
 
+// Telemetría del camino del dinero: una línea por intento NWC (op, wallet,
+// duración, resultado). Es lo que permite responder "¿dónde se fue el tiempo?"
+// leyendo los logs de prod después de una apuesta real.
+function logNwc(op: string, wallet: number, startedAt: number, outcome: string): void {
+  console.log(`[nwc] ${op} wallet#${wallet} ${Date.now() - startedAt}ms ${outcome}`);
+}
+
+function errBrief(err: unknown): string {
+  const code =
+    err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
+  const msg = err instanceof Error ? err.message : String(err);
+  return `${code ? `${code}:` : ""}${msg.slice(0, 80)}`;
+}
+
 // Wallet DEGRADADO: responde al relay (get_info OK, lookup OK) pero FALLA las
 // operaciones que mueven plata — p. ej. `make_invoice` con LiquidityRequestFailed
 // (sin liquidez entrante) o `pay_invoice` con PaymentSendingFailed (sin ruta o
@@ -88,12 +133,10 @@ type WalletHealth = {
   probing: boolean;
   degradedUntil: number;
 };
-const health: WalletHealth[] = NWC_URLS.map(() => ({
-  down: false,
-  lastProbe: 0,
-  probing: false,
-  degradedUntil: 0,
-}));
+// Una sola tabla de salud por PROCESO: todas las copias del módulo comparten el
+// mismo array (ver nota de globalThis arriba), así lo que aprende una ruta
+// (caído/degradado) lo aprovechan las demás y el tick.
+const health = shared().health;
 
 function isDegraded(i: number): boolean {
   return Date.now() < health[i].degradedUntil;
@@ -224,9 +267,11 @@ async function withFailover<T>(
   const orden = attemptOrder();
   for (let k = 0; k < orden.length; k++) {
     const i = orden[k];
+    const t0 = Date.now();
     try {
       const call = fn(getClient(i));
       const result = await (timeoutMs ? withTimeout(call, timeoutMs) : call);
+      logNwc(op, i, t0, "ok");
       markUp(i);
       markOpHealthy(i);
       if (k > 0) {
@@ -240,6 +285,7 @@ async function withFailover<T>(
       return result;
     } catch (err) {
       lastErr = err;
+      logNwc(op, i, t0, `error ${errBrief(err)}`);
       if (isWalletDownError(err)) {
         markDown(i);
       } else {
@@ -373,11 +419,13 @@ export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
   for (const soloSanos of [true, false]) {
     for (const i of attemptOrder()) {
       if (health[i].down === soloSanos) continue; // 1ª pasada: sanos; 2ª: sólo caídos
+      const t0 = Date.now();
       try {
         const tx = await withTimeout(
           getClient(i).lookupInvoice({ payment_hash: paymentHash }),
           FAST_OP_TIMEOUT_MS,
         );
+        logNwc("lookupInvoice", i, t0, `state=${tx.state}`);
         markUp(i);
         algunoRespondio = true;
         // El wallet que conoce el invoice es el que lo emitió: su respuesta es la
@@ -387,6 +435,7 @@ export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
       } catch (err) {
         // Este wallet no conoce el invoice o está caído: probamos el siguiente.
         lastErr = err;
+        logNwc("lookupInvoice", i, t0, `error ${errBrief(err)}`);
         if (isWalletDownError(err)) markDown(i);
       }
     }

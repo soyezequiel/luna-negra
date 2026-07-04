@@ -63,7 +63,7 @@ export async function runTickV2(): Promise<{
             return false;
           });
           if (paid) {
-            await settleDepositV2(bet, p, now);
+            await settleDepositV2(bet, p, now, "tick");
             deposits++;
           }
         }

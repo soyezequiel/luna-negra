@@ -46,7 +46,9 @@ export async function sendZapPayout(opts: {
     return { kind: "lnurl", preimage: "dev-preimage", destination: address };
   }
 
+  const t0 = Date.now();
   const endpoint = await resolveZapEndpointForAddress(address).catch(() => null);
+  const tEndpoint = Date.now();
   let zapFailure: Error | null = null;
 
   // Anclamos el zap al contrato (`e` = nota de la apuesta) para que el pago al
@@ -71,7 +73,15 @@ export async function sendZapPayout(opts: {
     if (signed) {
       try {
         const invoice = await fetchZapInvoiceChecked(endpoint, amountSats, signed);
+        const tInvoice = Date.now();
         const preimage = await payInvoiceRaw(invoice);
+        // Telemetría del payout: cuánto costó cada fase (endpoint LNURL, invoice
+        // del receptor, pago NWC). Con esto los logs de prod responden "por qué
+        // tardó el premio" sin adivinar.
+        console.log(
+          `[zap-payout] ${address} ${amountSats} sats — endpoint ${tEndpoint - t0}ms, ` +
+            `invoice ${tInvoice - tEndpoint}ms, pago ${Date.now() - tInvoice}ms`,
+        );
         return { kind: "zap", zapRequestId: signed.id, preimage, destination: address };
       } catch (error) {
         zapFailure = error instanceof Error ? error : new Error("Falló el zap NIP-57");

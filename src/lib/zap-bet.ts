@@ -306,6 +306,10 @@ export async function settleDepositV2(
   bet: ZapBet,
   part: ZapBetParticipant,
   now: Date,
+  // Telemetría: quién detectó el pago ("poll" on-demand del GET vs "tick" de
+  // escrow). Si en los logs los depósitos aparecen confirmados por "tick", el
+  // camino on-demand está fallando y la detección se siente lenta.
+  source: "poll" | "tick" | "webhook" = "poll",
 ): Promise<void> {
   if (!part.depositPaymentHash) return;
 
@@ -321,6 +325,7 @@ export async function settleDepositV2(
     data: { depositStatus: "paid", paidAt: now },
   });
   if (claimed.count !== 1) return; // otro proceso ya lo settleó
+  console.log(`[escrow-v2] depósito ${part.id} (bet ${bet.id}) confirmado vía ${source}`);
 
   // 1) Recibo 9735 propio (best-effort; si 0 relays, el tick lo reintenta).
   //    Se lanza SIN await para publicarlo en paralelo con el comentario (1.5):

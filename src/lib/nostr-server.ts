@@ -36,7 +36,14 @@ export function getStorePubkey(): string | null {
   return sk ? getPublicKey(sk) : null;
 }
 
-let ensuredStoreProfileAddress: string | null = null;
+// Memo a nivel PROCESO (globalThis): Turbopack duplica este módulo en varios
+// chunks del server (rutas vs instrumentation), cada uno con su top-level. Con un
+// `let` local, el warm-up del boot memoizaba en UNA copia y la ruta de crear
+// apuesta (otra copia) volvía a pagar la lectura del kind:0 (~4-8s) igual.
+declare global {
+  // eslint-disable-next-line no-var
+  var lunaEnsuredStoreProfileAddress: string | null | undefined;
+}
 
 /**
  * Publica la Lightning Address estable de Luna Negra en su kind:0, preservando
@@ -49,7 +56,7 @@ export async function ensureStoreZapProfile(baseUrl: string): Promise<boolean> {
 
   const lud16 = storeLightningAddress(baseUrl);
   if (!lud16) return false;
-  if (ensuredStoreProfileAddress === lud16) return true;
+  if (globalThis.lunaEnsuredStoreProfileAddress === lud16) return true;
 
   const pubkey = getPublicKey(sk);
   const readPool = new SimplePool();
@@ -79,7 +86,7 @@ export async function ensureStoreZapProfile(baseUrl: string): Promise<boolean> {
     return false;
   }
   if (metadata.lud16 === lud16) {
-    ensuredStoreProfileAddress = lud16;
+    globalThis.lunaEnsuredStoreProfileAddress = lud16;
     return true;
   }
   if (typeof metadata.lud16 === "string" && metadata.lud16.trim()) {
@@ -100,7 +107,7 @@ export async function ensureStoreZapProfile(baseUrl: string): Promise<boolean> {
     sk,
   );
   const accepted = await publishToRelays(ev).catch(() => 0);
-  if (accepted > 0) ensuredStoreProfileAddress = lud16;
+  if (accepted > 0) globalThis.lunaEnsuredStoreProfileAddress = lud16;
   return accepted > 0;
 }
 

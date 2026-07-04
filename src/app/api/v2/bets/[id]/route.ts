@@ -24,8 +24,14 @@ export function OPTIONS() {
 // Anti-rebote del lookup de invoice por participante (idéntico a v1): cada
 // checkAndSettleDepositV2 hace un lookup_invoice por NWC; sin throttle un poll
 // agresivo martillaría el wallet. 1,5 s mantiene la detección casi inmediata.
+// En globalThis: Turbopack puede duplicar el módulo (instancias con mapas
+// separados = throttle inefectivo y el doble de lookups).
 const ONDEMAND_CHECK_MIN_MS = 1500;
-const lastDepositCheckAt = new Map<string, number>();
+declare global {
+  // eslint-disable-next-line no-var
+  var lunaLastDepositCheckAt: Map<string, number> | undefined;
+}
+const lastDepositCheckAt = (globalThis.lunaLastDepositCheckAt ??= new Map());
 
 async function checkPendingDepositsThrottled(participantIds: string[]): Promise<boolean> {
   const now = Date.now();
