@@ -12,6 +12,7 @@ import { PlayButton } from "@/components/play-button";
 import { LibraryButton } from "@/components/library-button";
 import { GameBets } from "@/components/game-bets";
 import { MultiplayerPanel } from "@/components/multiplayer-panel";
+import { RoomLinkInvite } from "@/components/room-link-invite";
 import { RegisterGame } from "@/providers/game-context";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
@@ -26,6 +27,7 @@ import {
   EditablePrice,
   EditableCategories,
   EditableGameUrl,
+  EditableRoomLink,
   EditableMedia,
 } from "@/components/game-store-edit";
 import { hueFromSlug, formatDurationMs } from "@/lib/format";
@@ -201,6 +203,14 @@ export default async function GamePage({
         .filter(Boolean)
         .slice(0, 6);
   const supportsRooms = Boolean(game.gameUrl);
+  // "Luna Room Link": salas hosteadas por el juego (docs/luna-room-link.md). Es una
+  // capacidad declarada por el proveedor (Game.manualCaps.roomLink), no observable
+  // por el server. Solo con eso —y con enlace del juego— se ofrece "Invitar".
+  const manualCaps = (game.manualCaps as Record<string, boolean> | null) ?? null;
+  const roomLinkEnabled = !!manualCaps?.roomLink;
+  const supportsRoomLink = Boolean(game.gameUrl) && roomLinkEnabled;
+  // Acceso para invitar: mismo criterio que el endpoint (gratis o comprado).
+  const hasAccess = game.priceSats === 0 || owned;
 
   // Media para adjuntar al compartir en Nostr: carátula(s) + capturas, en URL
   // ABSOLUTA (las notas las consumen clientes externos, una ruta /uploads
@@ -466,6 +476,13 @@ export default async function GamePage({
           {/* Panel social "Jugá con amigos" (juegos con salas y comprables) */}
           {supportsRooms && canPlay ? <GameSocialPanel /> : null}
 
+          {/* Invitar a sala hosteada por el juego (Luna Room Link): enlace público
+              con el dominio del juego, sin abrirlo. Gateado por la capacidad
+              declarada `roomLink`. */}
+          {supportsRoomLink && hasAccess ? (
+            <RoomLinkInvite gameId={game.id} title={game.title} />
+          ) : null}
+
           {/* Sala por invitación (link ?room=...) */}
           {game.gameUrl && canPlay ? (
             <Suspense fallback={null}>
@@ -521,7 +538,14 @@ export default async function GamePage({
               <dd className="text-ln-text">Web · Lightning</dd>
             </div>
             {isOwner ? (
-              <EditableGameUrl gameId={game.id} value={game.gameUrl} />
+              <>
+                <EditableGameUrl gameId={game.id} value={game.gameUrl} />
+                <EditableRoomLink
+                  gameId={game.id}
+                  enabled={roomLinkEnabled}
+                  hasGameUrl={Boolean(game.gameUrl)}
+                />
+              </>
             ) : null}
           </dl>
         </aside>

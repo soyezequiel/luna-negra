@@ -301,6 +301,68 @@ export async function verifyInvite(
   }
 }
 
+// --- Room-invite (token dirigido de "Luna Room Link": sala hosteada por el juego) ---
+
+// A diferencia del `invite` de arriba, este token NO asume una sala hosteada por
+// Luna (sin `host`/`hostNpub`/`hostPubkey`) y NO va atado a la identidad del que
+// abre: va atado al DESTINATARIO (`toNpub`), el único autorizado a entrar. Autoriza
+// la entrada a una sala que vive en el backend del juego (ver docs/luna-room-link.md).
+// Verificable offline por el juego con el mismo JWKS que el entitlement.
+export type RoomInvitePayload = {
+  gameId: string;
+  slug: string;
+  roomId: string;
+  toNpub: string;
+};
+
+// ES256 (asimétrica) → verificable offline vía JWKS, como el entitlement/invite.
+export async function signRoomInvite(payload: RoomInvitePayload): Promise<string> {
+  const { privateKey, kid } = await getSigningKeys();
+  return new SignJWT({
+    gameId: payload.gameId,
+    slug: payload.slug,
+    roomId: payload.roomId,
+    toNpub: payload.toNpub,
+    scope: "room-invite",
+  })
+    .setProtectedHeader({ alg: "ES256", kid })
+    .setIssuer(TOKEN_ISSUER)
+    .setAudience(TOKEN_AUDIENCE)
+    // El sujeto es el DESTINATARIO autorizado, no el que genera el enlace.
+    .setSubject(payload.toNpub)
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(privateKey);
+}
+
+// Payload + `expiresAt` derivado del claim `exp` (para mensajes de caducidad).
+export type VerifiedRoomInvite = RoomInvitePayload & { expiresAt: string | null };
+
+export async function verifyRoomInvite(
+  token: string,
+): Promise<VerifiedRoomInvite | null> {
+  try {
+    const { publicKey } = await getSigningKeys();
+    const { payload } = await jwtVerify(token, publicKey, {
+      issuer: TOKEN_ISSUER,
+      audience: TOKEN_AUDIENCE,
+    });
+    if (payload.scope !== "room-invite") return null;
+    return {
+      gameId: payload.gameId as string,
+      slug: payload.slug as string,
+      roomId: payload.roomId as string,
+      toNpub: payload.toNpub as string,
+      expiresAt:
+        typeof payload.exp === "number"
+          ? new Date(payload.exp * 1000).toISOString()
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- Bet-session (token Bearer para el modal de apuestas embebido) ---
 
 export type BetSession = { sub: string; npub: string; pubkey: string };

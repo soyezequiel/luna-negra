@@ -196,9 +196,22 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
   },
 ];
 
-// Claves de capacidad cuya pata 2.0 se declara manualmente (Game.manualCaps).
-// Derivadas del catálogo: son las que marcamos `manual: true`. Sirve para validar
-// en el server qué claves acepta el PATCH y de allowlist en el cliente.
-export const MANUAL_CAP_KEYS: string[] = INTEGRATION_COLUMNS.flatMap((c) =>
-  c.rows.filter((r) => r.twoZero?.manual).map((r) => r.key),
-);
+// Capacidad "Luna Room Link" (enlace de invitación a sala hosteada por el juego,
+// ver docs/luna-room-link.md). Es una capacidad 1.0 (REST: entitlement + URL al
+// dominio del juego), NO una pata 2.0, así que NO vive en el catálogo de la matriz
+// 1.0/2.0. Se declara manualmente igual que las patas `manual` (el server no puede
+// observar si el juego implementó el contrato de 6 pasos): solo si el proveedor la
+// marca, Luna muestra el botón "Invitar" en la ficha. Se persiste en
+// Game.manualCaps["roomLink"].
+export const ROOM_LINK_CAP = "roomLink";
+
+// Claves de capacidad declarables manualmente (Game.manualCaps). Sirve para
+// validar en el server qué claves acepta el PATCH y de allowlist en el cliente.
+// Las patas 2.0 no observables (login, presencia…) se derivan del catálogo
+// (`manual: true`); `roomLink` se suma aparte porque es 1.0 (sin fila de catálogo).
+export const MANUAL_CAP_KEYS: string[] = [
+  ...INTEGRATION_COLUMNS.flatMap((c) =>
+    c.rows.filter((r) => r.twoZero?.manual).map((r) => r.key),
+  ),
+  ROOM_LINK_CAP,
+];

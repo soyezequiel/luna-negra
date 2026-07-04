@@ -201,6 +201,64 @@ Desde tu game server (API key) podés invitar amigos a una sala y leer su presen
 
 ---
 
+## §5·bis. Luna Room Link: salas hosteadas por **tu** juego  ·  *(opt-in)*
+
+A diferencia de §4 (Luna hostea el tablero), acá **el estado de la sala vive en tu
+backend**. Luna solo arma el enlace y resuelve la identidad. Sirve para que alguien
+invite a jugar **desde la ficha de Luna, sin abrir el juego primero**, y que la sala
+**no tenga que pre-existir** (tu juego la crea *lazy*). El enlace lleva **tu dominio**
+(`Game.gameUrl`), no el de Luna. Ver `docs/luna-room-link.md`.
+
+**Enlace canónico** (lo genera Luna, o tu juego):
+
+```
+https://tu-juego.com/?lnRoom=<roomId>[&lnInvite=<jwt>]
+```
+
+- `lnRoom` — id de sala opaco (`^[A-Za-z0-9_-]{1,64}$`). **No pre-existe.**
+- `lnInvite` — *(opcional)* JWT ES256 firmado por Luna que autoriza a **un** `npub`
+  (variante **dirigida**). Sin él = enlace **público** (cualquiera entra).
+- `lnToken` — el entitlement de identidad (§1). **No viaja en el enlace compartible**;
+  se adjunta en el handoff (abajo).
+
+> `lnRoom` es **distinto** de `?room=`+`?inviteToken=` de §4 (salas de Luna). Podés
+> soportar ambos; este contrato es solo para `lnRoom`.
+
+**Contrato del juego (6 pasos).** Al cargar:
+
+1. Leé `lnRoom`. Si falta → arranque normal (no hay sala).
+2. Si hay `lnRoom` pero **no** `lnToken` (enlace crudo reenviado por WhatsApp/Discord)
+   → **rebotá a Luna SSO** preservando tu URL, y volvé a empezar al regresar:
+   ```js
+   const here = new URL(location.href);
+   if (here.searchParams.get("lnRoom") && !here.searchParams.get("lnToken")) {
+     const returnTo = encodeURIComponent(here.toString());
+     location.replace("__LUNA_NEGRA_BASE__/launch/<slug>?returnTo=" + returnTo);
+   }
+   ```
+   Luna autentica (o reusa la sesión), mintea un `lnToken` fresco y **te redirige de
+   vuelta** con `lnToken` + `lnRoom` intactos.
+3. Con `lnToken`: verificá identidad **offline** vía JWKS (igual que §1/§2).
+4. Si hay `lnInvite`: verificá su firma vía JWKS y **exigí `jugador == toNpub`**
+   (claim del token); si no coincide, rechazá o degradá a espectador. El `lnInvite`
+   es autocontenido (`scope:"room-invite"`, claims `gameId`/`slug`/`roomId`/`toNpub`):
+   **no** llames a ningún endpoint para validarlo.
+5. **Si la sala `lnRoom` no existe en tu backend → creala** (host = el primero en
+   entrar); si existe → unite.
+6. **Descartá los params de la URL** (`history.replaceState`) para no dejar tokens en
+   el historial.
+
+**Declaralo en el panel de integración** (capacidad "Invitar a sala / Luna Room
+Link"): solo así Luna muestra el botón **"Invitar"** en tu ficha. Luna no puede
+verificar estos 6 pasos, así que confía en tu declaración.
+
+> **Seguridad.** El enlace público = cualquiera entra: no pongas secretos en
+> `lnRoom` (es un id opaco). El `lnInvite` autoriza **entrada a sala**, nada de
+> dinero (los premios siguen en §7). Luna valida `returnTo` contra tu `Game.gameUrl`
+> antes de redirigir (anti open-redirect).
+
+---
+
 ## §6. Marcadores (leaderboards)
 
 Rankings por juego. El `name`/`board` lo elige tu juego (`semanal`, `clasico`,
@@ -630,6 +688,7 @@ cualquier evento anclado al juego (presencia, marcador, reseñas):
 - [ ] (opc.) §3 Presencia desde el game server.
 - [ ] (opc.) §4 Salas + estado compartido con `?inviteToken=`.
 - [ ] (opc.) §5 Invitaciones / amigos.
+- [ ] (opc.) §5·bis Luna Room Link: manejo `?lnRoom=` (+ cold-open a `/launch/<slug>`), creo la sala lazy y declaro la capacidad en el panel.
 - [ ] (opc.) §6 Marcadores.
 - [ ] (opc.) §7 Apuestas/escrow desde el backend.
 - [ ] (opc., experimental) §7·bis Apuestas v2 por zaps (`/api/v2/bets`, opt-in `BETS_V2_ENABLED`).

@@ -38,6 +38,35 @@ export function parseInvite(text: string): Invite | null {
   return { slug: m[1], roomId: m[2] };
 }
 
+// "Luna Room Link": enlace a una sala HOSTEADA POR EL JUEGO, con el dominio del
+// juego y el param `lnRoom` (ver docs/luna-room-link.md). A diferencia de
+// `parseInvite`, el link NO lleva el slug de Luna (apunta directo al juego), así
+// que devolvemos la URL cruda: entrar = abrir esa URL (el juego resuelve la
+// identidad por cold-open contra /launch/<slug>).
+export type RoomLink = { url: string; roomId: string };
+
+const URL_RE = /https?:\/\/[^\s<>"']+/gi;
+const LN_ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Detecta un enlace de sala de juego (`?lnRoom=…`) dentro de un texto arbitrario.
+ * Parsea cada URL del texto y devuelve la primera con un `lnRoom` válido, o null.
+ */
+export function parseRoomLink(text: string): RoomLink | null {
+  const matches = text.match(URL_RE);
+  if (!matches) return null;
+  for (const raw of matches) {
+    try {
+      const u = new URL(raw);
+      const roomId = u.searchParams.get("lnRoom");
+      if (roomId && LN_ROOM_RE.test(roomId)) return { url: raw, roomId };
+    } catch {
+      /* no es una URL válida → seguir */
+    }
+  }
+  return null;
+}
+
 /** Extrae el título del juego del texto de invitación (ver buildInviteMessage). */
 export function parseInviteTitle(text: string): string | null {
   const m = /Te invito a jugar (.+?) en Luna Negra/i.exec(text);
@@ -60,7 +89,8 @@ export function latestJoinableInviteId(
 ): string | null {
   let id: string | null = null;
   for (const m of messages) {
-    if (!m.fromMe && (parseInvite(m.text) || m.gameUrl)) id = m.id;
+    if (!m.fromMe && (parseInvite(m.text) || parseRoomLink(m.text) || m.gameUrl))
+      id = m.id;
   }
   return id;
 }
