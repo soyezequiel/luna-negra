@@ -206,43 +206,71 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Pre-calienta los wallets al arrancar la instancia: abre la conexión NWC
- * (WebSocket + handshake, que tarda segundos) y sondea `get_info` para poblar el
- * estado de salud ANTES de la primera operación real. Sin esto, la primera
- * apuesta paga el handshake en frío y, si el primario está caído, el peaje de
- * descubrirlo (~8s de FAST_OP_TIMEOUT_MS) recién en el `makeInvoice` del depósito.
- * No bloquea el arranque ni lanza: se llama fire-and-forget desde instrumentation.
+ * Pre-calienta los wallets al arrancar la instancia y sondea su salud REAL ANTES
+ * de la primera apuesta. Clave: NO alcanza con `get_info`. Se comprobó en prod que
+ * un wallet puede responder `get_info` OK (parece sano) pero fallar TODO
+ * `make_invoice`/`pay_invoice` con `LiquidityRequestFailed` (sin liquidez entrante)
+ * o `PaymentSendingFailed` — y tarda ~5,6s en fallar. Con solo `get_info`, ese
+ * wallet quedaba "sano" y la PRIMERA operación real de cada sesión (el invoice del
+ * depósito o el pago del premio) comía esos 5,6s descubriéndolo. Por eso el sondeo
+ * es un `make_invoice` real (1 sat, sin pagar, expira solo):
+ *   - OK            → sano (puede mover plata).
+ *   - error de app  → responde pero NO puede emitir → DEGRADADO (al fondo del orden).
+ *   - timeout/red   → CAÍDO (inalcanzable).
+ * No bloquea el arranque ni lanza: fire-and-forget desde instrumentation.
  */
 export async function warmUpWallets(): Promise<void> {
   if (!lightningConfigured()) return;
-  await Promise.allSettled(
-    NWC_URLS.map((_, i) =>
-      withTimeout(getClient(i).getInfo(), PROBE_TIMEOUT_MS).then(
-        () => markUp(i),
-        () => markDown(i), // caído desde el arranque → el failover ya lo saltea
-      ),
-    ),
-  );
+  await Promise.allSettled(NWC_URLS.map((_, i) => probeWalletCanIssue(i)));
 }
 
 /**
- * Re-sondea en segundo plano los wallets marcados caídos (a lo sumo cada
- * `PROBE_INTERVAL_MS`). NO bloquea la operación en curso: si el `get_info`
- * responde, el wallet volvió y lo reponemos al frente para la próxima llamada.
+ * Sondea si un wallet puede EMITIR un invoice (no solo si responde). Emite un
+ * invoice de 1 sat que nadie paga (expira en 60s, inocuo) y clasifica la salud.
+ * Reusable por el warm-up y por el re-sondeo en segundo plano.
  */
-function probeDownWallets(): void {
+async function probeWalletCanIssue(i: number): Promise<void> {
+  health[i].lastProbe = Date.now();
+  try {
+    await withTimeout(
+      getClient(i).makeInvoice({ amount: 1000, description: "luna-warmup-probe", expiry: 60 }),
+      PROBE_TIMEOUT_MS,
+    );
+    markUp(i);
+    markOpHealthy(i); // puede emitir: sano de verdad
+  } catch (err) {
+    if (isWalletDownError(err)) {
+      markDown(i); // inalcanzable
+    } else {
+      // Responde pero rechaza emitir (LiquidityRequestFailed, etc.): degradado. La
+      // primera apuesta ya arranca salteándolo en vez de pagar el peaje de descubrirlo.
+      markUp(i);
+      markDegraded(i, "warmup-probe");
+    }
+  }
+}
+
+/**
+ * Re-sondea en segundo plano los wallets NO sanos (caídos o degradados), a lo sumo
+ * cada `PROBE_INTERVAL_MS`. NO bloquea la operación en curso — corre fire-and-forget
+ * al entrar a `withFailover`. Clave: el sondeo es un `make_invoice` real (igual que
+ * el warm-up), no `get_info`, porque un wallet degradado responde `get_info` pero
+ * sigue sin poder emitir. Así, si #0 se recupera, lo detectamos SIN que una apuesta
+ * real pague el peaje de descubrirlo; y si sigue roto, se queda degradado en
+ * segundo plano en vez de que el degradado venza y la próxima apuesta lo reintente
+ * en el camino crítico (los ~5,6s que veíamos en prod).
+ */
+function probeUnhealthyWallets(): void {
   const now = Date.now();
   for (let i = 0; i < NWC_URLS.length; i++) {
     const h = health[i];
-    if (!h.down || h.probing || now - h.lastProbe < PROBE_INTERVAL_MS) continue;
+    const unhealthy = h.down || isDegraded(i);
+    if (!unhealthy || h.probing || now - h.lastProbe < PROBE_INTERVAL_MS) continue;
     h.probing = true;
-    h.lastProbe = now;
-    withTimeout(getClient(i).getInfo(), PROBE_TIMEOUT_MS)
-      .then(() => markUp(i))
-      .catch(() => {}) // sigue caído: queda al fondo del orden
-      .finally(() => {
-        h.probing = false;
-      });
+    // probeWalletCanIssue fija lastProbe, clasifica (sano/degradado/caído) y no lanza.
+    void probeWalletCanIssue(i).finally(() => {
+      h.probing = false;
+    });
   }
 }
 
@@ -262,7 +290,7 @@ async function withFailover<T>(
   fn: (client: NWCClient) => Promise<T>,
   timeoutMs?: number,
 ): Promise<T> {
-  probeDownWallets();
+  probeUnhealthyWallets();
   let lastErr: unknown;
   const orden = attemptOrder();
   for (let k = 0; k < orden.length; k++) {
@@ -382,7 +410,7 @@ async function createInvoiceFromNwc(
  */
 export async function getWalletBalanceSats(): Promise<number | null> {
   if (!lightningConfigured()) return null;
-  probeDownWallets();
+  probeUnhealthyWallets();
   let totalMsat = 0;
   let algunoRespondio = false;
   for (const i of attemptOrder()) {
@@ -409,7 +437,7 @@ export async function getWalletBalanceSats(): Promise<number | null> {
  * con "no pagado".
  */
 export async function isInvoicePaid(paymentHash: string): Promise<boolean> {
-  probeDownWallets();
+  probeUnhealthyWallets();
   let lastErr: unknown;
   let algunoRespondio = false;
   // Dos pasadas: primero los wallets sanos; sólo si NINGUNO conoce el invoice
