@@ -16,6 +16,10 @@ export type CurrentGame = {
   gameUrl: string;
   /** Coordenada Nostr `30023:<tienda>:<slug>` (interfaz 2.0). */
   nostrCoord?: string | null;
+  /** El juego declaró soporte de "Luna Room Link" (sala hosteada por el juego): la
+   * barra de amigos invita con un enlace `?lnRoom=` dirigido en vez del flujo de
+   * salas hosteadas por Luna. Ver docs/luna-room-link.md. */
+  roomLink?: boolean;
 };
 
 type GameContextValue = {
@@ -51,10 +55,10 @@ export function useGameContext(): GameContextValue {
  */
 export function RegisterGame(props: CurrentGame) {
   const { setCurrentGame } = useGameContext();
-  const { gameId, slug, title, gameUrl, nostrCoord } = props;
+  const { gameId, slug, title, gameUrl, nostrCoord, roomLink } = props;
   useEffect(() => {
-    setCurrentGame({ gameId, slug, title, gameUrl, nostrCoord });
+    setCurrentGame({ gameId, slug, title, gameUrl, nostrCoord, roomLink });
     return () => setCurrentGame(null);
-  }, [setCurrentGame, gameId, slug, title, gameUrl, nostrCoord]);
+  }, [setCurrentGame, gameId, slug, title, gameUrl, nostrCoord, roomLink]);
   return null;
 }

@@ -36,6 +36,7 @@ import {
 } from "@/lib/invite";
 import {
   launchGameRoom,
+  launchStandaloneGame,
   joinRoomAndPlay,
   preopenGameWindowIfNeeded,
   POPUP_BLOCKED_BODY,
@@ -73,6 +74,11 @@ export function FriendsSidebar() {
   const [activeRoom, setActiveRoomState] = useState<ActiveRoom | null>(null);
   const [invitingPk, setInvitingPk] = useState<string | null>(null);
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Sala compartida para "Luna Room Link" (sala hosteada por el juego): se fija una
+  // vez por sesión de invitación y se reusa en el open del host y en cada invitado,
+  // para que todos caigan en la MISMA sala. Distinta de `activeRoom` (salas de Luna).
+  const [linkRoomId, setLinkRoomId] = useState<string | null>(null);
+  const isRoomLink = Boolean(currentGame?.roomLink);
   // Amigo cuyo chat está abierto (panel dinámico; null = vista de lista).
   const [chatWith, setChatWith] = useState<{
     pubkey: string;
@@ -132,6 +138,7 @@ export function FriendsSidebar() {
   if ((currentGame?.slug ?? null) !== prevSlug) {
     setPrevSlug(currentGame?.slug ?? null);
     setInvited(new Set());
+    setLinkRoomId(null);
   }
 
   // Sala del juego que está abierto (si la creamos en esta sesión de invitación).
@@ -217,6 +224,102 @@ export function FriendsSidebar() {
       });
     } finally {
       setInvitingPk(null);
+    }
+  }
+
+  // Despacha el "Invitar a jugar": si el juego soporta Luna Room Link (sala del
+  // propio juego) usa el enlace dirigido `?lnRoom=&lnInvite=`; si no, el flujo
+  // clásico de salas hosteadas por Luna (DM con `/game/<slug>?room=`).
+  function handleInvite(recipientPubkey: string, name: string) {
+    if (isRoomLink) void inviteViaRoomLink(recipientPubkey, name);
+    else void inviteToGame(recipientPubkey, name);
+  }
+
+  // "Luna Room Link" dirigido: pide a Luna un enlace atado al npub del amigo (con el
+  // dominio del juego) SIN abrir el juego, y lo manda por DM. Reusa `linkRoomId` para
+  // que todos los invitados —y el host— caigan en la misma sala.
+  async function inviteViaRoomLink(recipientPubkey: string, name: string) {
+    if (!currentGame || invitingPk) return;
+    setInvitingPk(recipientPubkey);
+    try {
+      const toNpub = npubOf(recipientPubkey);
+      const r = await fetch("/api/v1/rooms/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameId: currentGame.gameId,
+          roomId: linkRoomId ?? undefined,
+          toNpub,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.inviteUrl) {
+        throw new Error(d.error ?? "No se pudo crear la invitación");
+      }
+      if (!linkRoomId && typeof d.roomId === "string") setLinkRoomId(d.roomId);
+      await sendDm(
+        recipientPubkey,
+        `Te invito a jugar ${currentGame.title} en Luna Negra 🎮\n${d.inviteUrl}`,
+      );
+      setInvited((prev) => new Set(prev).add(recipientPubkey));
+      notify({ title: `Invitación a ${currentGame.title} enviada a ${name}` });
+    } catch (e) {
+      notify({
+        title: "No se pudo invitar",
+        body: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setInvitingPk(null);
+    }
+  }
+
+  // El host abre SU juego en la sala room-link compartida (`?lnRoom=`). No crea una
+  // fila Room en Luna: la sala vive en el backend del juego, creada al primer acceso.
+  async function openRoomLinkGame() {
+    if (!currentGame) return;
+    const win = preopenGameWindowIfNeeded(currentGame.slug);
+    try {
+      let roomId = linkRoomId;
+      if (!roomId) {
+        const r = await fetch("/api/v1/rooms/invite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gameId: currentGame.gameId }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.roomId) throw new Error(d.error ?? "No se pudo crear la sala");
+        roomId = d.roomId as string;
+        setLinkRoomId(roomId);
+      }
+      // Entitlement para abrir el juego identificado (mismo endpoint que "Jugar").
+      const sr = await fetch(`/api/games/${currentGame.gameId}/sessions`, {
+        method: "POST",
+      });
+      const sd = await sr.json().catch(() => ({}));
+      if (!sr.ok || !sd.token) throw new Error(sd.error ?? "No se pudo abrir el juego");
+      const result = launchStandaloneGame({
+        gameUrl: currentGame.gameUrl,
+        slug: currentGame.slug,
+        title: currentGame.title,
+        token: sd.token,
+        roomId,
+        win,
+      });
+      if (!result.ok) {
+        notify({
+          title: POPUP_BLOCKED_TITLE,
+          body: POPUP_BLOCKED_BODY,
+          href: result.dest,
+          kind: "warn",
+          actionLabel: "Abrir juego",
+        });
+      }
+    } catch (e) {
+      win?.close();
+      notify({
+        title: "No se pudo abrir el juego",
+        body: e instanceof Error ? e.message : undefined,
+      });
     }
   }
 
@@ -350,10 +453,11 @@ export function FriendsSidebar() {
         ? "Enviando…"
         : "Invitar a jugar";
 
-  // Invitar requiere el juego abierto (sala activa). Sin sala, los botones
-  // quedan deshabilitados y el host abre el juego desde el panel de arriba.
+  // Con salas de Luna, invitar requiere el juego abierto (sala activa). Con Luna
+  // Room Link no: Luna arma el enlace dirigido sin abrir el juego, así que el botón
+  // queda habilitado directamente.
   const inviteDisabledFor = (pk: string) =>
-    invited.has(pk) || invitingPk === pk || !roomForGame;
+    invited.has(pk) || invitingPk === pk || (!isRoomLink && !roomForGame);
 
   const onlineCount = (friends ?? []).filter((f) => f.status).length;
 
@@ -385,7 +489,7 @@ export function FriendsSidebar() {
           canInvite={canInvite}
           inviteLabel={inviteLabelFor(chatWith.pubkey)}
           inviteDisabled={inviteDisabledFor(chatWith.pubkey)}
-          onInvite={() => inviteToGame(chatWith.pubkey, chatWith.name)}
+          onInvite={() => handleInvite(chatWith.pubkey, chatWith.name)}
           onJoinRoom={joinRoom}
           onBack={() => setChatWith(null)}
         />
@@ -460,7 +564,23 @@ export function FriendsSidebar() {
 
           {canInvite ? (
             <div className="border-b border-line bg-green/10 px-4 py-2.5">
-              {roomForGame ? (
+              {isRoomLink ? (
+                <>
+                  <Button
+                    variant="play"
+                    size="sm"
+                    className="w-full"
+                    onClick={openRoomLinkGame}
+                  >
+                    ▶ Jugar con amigos
+                  </Button>
+                  <p className="mt-1.5 text-[11px] text-green/80">
+                    {linkRoomId
+                      ? "Sala lista. Invitá a tus amigos desde la lista."
+                      : "Invitá a tus amigos desde la lista: el enlace los lleva directo a tu sala."}
+                  </p>
+                </>
+              ) : roomForGame ? (
                 <>
                   <Button
                     variant="play"
@@ -660,7 +780,7 @@ export function FriendsSidebar() {
                       ) : null}
                       {canInvite ? (
                         <button
-                          onClick={() => inviteToGame(f.pubkey, name)}
+                          onClick={() => handleInvite(f.pubkey, name)}
                           disabled={inviteDisabledFor(f.pubkey)}
                           className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                         >
@@ -715,7 +835,7 @@ export function FriendsSidebar() {
                         </div>
                         {canInvite ? (
                           <button
-                            onClick={() => inviteToGame(g.pubkey, name)}
+                            onClick={() => handleInvite(g.pubkey, name)}
                             disabled={inviteDisabledFor(g.pubkey)}
                             className="mt-1.5 w-full rounded-sm border border-green/40 px-2.5 py-1 text-xs font-medium text-green hover:bg-green/10 disabled:opacity-50"
                           >

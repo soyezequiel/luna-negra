@@ -483,8 +483,10 @@ export default async function GamePage({
             <RoomLinkInvite gameId={game.id} title={game.title} />
           ) : null}
 
-          {/* Sala por invitación (link ?room=...) */}
-          {game.gameUrl && canPlay ? (
+          {/* Sala por invitación (link ?room=...). Registra el juego en el contexto
+              para la barra de amigos: si puede jugar (flujo de salas de Luna) o si el
+              juego soporta Luna Room Link y el usuario tiene acceso (invita sin abrir). */}
+          {game.gameUrl && (canPlay || (supportsRoomLink && hasAccess)) ? (
             <Suspense fallback={null}>
               <RegisterGame
                 gameId={game.id}
@@ -492,6 +494,7 @@ export default async function GamePage({
                 title={game.title}
                 gameUrl={game.gameUrl}
                 nostrCoord={game.nostrCoord}
+                roomLink={roomLinkEnabled}
               />
               <MultiplayerPanel
                 gameId={game.id}
