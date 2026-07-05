@@ -14,6 +14,20 @@ $sha = git -C $root rev-parse --short HEAD
 if ($LASTEXITCODE -ne 0 -or -not $sha) { $sha = 'nogit' }
 $buildId = "$sha-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
 
+# Guarda: una carpeta de migracion SIN migration.sql (resto de un `prisma migrate
+# dev` interrumpido) hace que `prisma migrate deploy` en el entrypoint falle con
+# P3015 y el contenedor NUNCA arranque -> 502 en prod. El build no lo detecta, solo
+# explota al aplicar migraciones en runtime. Lo cortamos aca antes de empaquetar.
+$migrationsDir = Join-Path $root 'prisma\migrations'
+if (Test-Path $migrationsDir) {
+  $rotas = Get-ChildItem $migrationsDir -Directory |
+    Where-Object { -not (Test-Path (Join-Path $_.FullName 'migration.sql')) }
+  if ($rotas) {
+    $nombres = ($rotas | ForEach-Object { $_.Name }) -join ', '
+    throw "Migracion(es) sin migration.sql: $nombres. Borra la carpeta vacia o restaura el archivo antes de deployar (rompe prisma migrate deploy -> 502)."
+  }
+}
+
 Write-Host '-> Empaquetando codigo...'
 # OJO con los excludes en tar.exe de Windows (bsdtar / libarchive). VERIFICADO
 # empaquetando ESTE repo con este tar.exe (2026-06-25, ver memoria
