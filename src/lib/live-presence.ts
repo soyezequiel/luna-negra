@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 
 /**
- * "Jugando ahora" (interfaz 2.0): para los juegos que NO integran la presencia
+ * "Jugando ahora" (Nostr Games Protocol (NGP)): para los juegos que NO integran la presencia
  * REST (§3, `GamePresence`), la ÚNICA señal de quién está jugando es el propio
  * estado NIP-38 (`kind:30315`) que la pestaña de la tienda firma y renueva cada
  * ~8s mientras el juego reporta (ver playing-presence.ts), anclado a la
@@ -106,7 +106,7 @@ export async function syncLivePresence(): Promise<void> {
 /**
  * Jugadores AHORA de un juego, unificando las dos fuentes: presencia 1.0
  * (`GamePresence`, la reporta el game server por `POST /api/v1/presence`) y la
- * 2.0 en memoria (NIP-38, ver arriba). Un mismo npub no debería aparecer en
+ * NGP en memoria (NIP-38, ver arriba). Un mismo npub no debería aparecer en
  * ambas para el mismo juego (son integraciones distintas), pero por las dudas
  * se deduplica.
  */

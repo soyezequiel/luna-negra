@@ -153,7 +153,7 @@ describe("NIP-38 presence freshness", () => {
 
   const STORE_PK = "ed13c471be6bff9195a6261d8cbd6c7ab6efe79a7947b208d2b6f066b99cc4d3";
 
-  it("accepts coord-anchored 2.0 presence signed by the game (no luna-negra label)", () => {
+  it("accepts coord-anchored NGP presence signed by the game (no luna-negra label)", () => {
     const result = selectFreshStatuses(
       [
         statusEvent({

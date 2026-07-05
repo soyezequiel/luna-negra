@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 // Agregado de reseñas para mostrar el resumen estilo Steam ("Muy positivas ·
 // 4,6 ★ (87)") en el header de la ficha y en la card del catálogo. Las reseñas
-// entran por dos caminos (POST REST 1.0 y review-sync 2.0 desde Nostr), pero
+// entran por dos caminos (POST REST 1.0 y review-sync NGP desde Nostr), pero
 // ambos escriben la MISMA tabla `Review`, así que el agregado no distingue
 // procedencia: total = todo lo publicado, venga de donde venga.
 

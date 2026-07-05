@@ -1,24 +1,24 @@
 ---
-name: integrar-luna-negra-2-0
+name: integrar-ngp-v2
 description: >-
-  Integra juegos con la interfaz Luna Negra Nostr 2.0 experimental: login
+  Integra juegos con Nostr Games Protocol (NGP) v2: login
   NIP-07/NIP-46, coordenada gameCoord, presencia NIP-38, marcador kind:31337,
   retos e invitaciones NIP-17, salas NIP-29 de diseño, reseñas/logros kind:1,
   zaps NIP-57, apuestas v2 por zaps con escrow custodial bajo /api/v2/bets y
   patrones probados en Tetris para signers, relays, inbox NIP-17 y auto-firma de
   depósitos. Usar cuando el usuario pida eventos Nostr nativos,
   resiliencia/interoperabilidad Nostr, retos 1v1, presencia Nostr, leaderboard
-  Nostr, integración 2.0, zaps o escrow por zap. Para acceso pago, webhooks y
+  Nostr, integración NGP, zaps o escrow por zap. Para acceso pago, webhooks y
   REST productivo usar integrar-luna-negra-1-0.
 ---
 
-# Integrar juegos con Luna Negra Nostr 2.0
+# Integrar juegos con Nostr Games Protocol (NGP)
 
-La interfaz 2.0 usa eventos Nostr firmados por el jugador o el juego para la
+Nostr Games Protocol (NGP) usa eventos Nostr firmados por el jugador o el juego para la
 capa social: presencia, marcadores, retos, reseñas, logros, zaps y apuestas v2
 por zaps. Es experimental y algunos `kind` propuestos pueden cambiar.
 
-La 2.0 no reemplaza la 1.0 para acceso pago, webhooks o escrow REST v1. Para
+NGP no reemplaza la 1.0 para acceso pago, webhooks o escrow REST v1. Para
 eso usa la skill `integrar-luna-negra-1-0`. La excepción en esta skill es
 **apuestas v2 por zaps**: usa zaps NIP-57 públicos, pero sigue siendo custodial
 y server-to-server con Luna Negra.
@@ -34,9 +34,9 @@ Usa esta skill si el usuario pide explícitamente alguno de estos objetivos:
 - Reseñas, comentarios o logros anclados al juego.
 - Zaps NIP-57 al dev, al ganador o al juego.
 - Apuestas v2 por zaps con `/api/v2/bets`.
-- Interoperabilidad con clientes Nostr sin depender solo de Luna Negra.
+- Interoperabilidad NGP con clientes Nostr sin depender solo de Luna Negra.
 
-Si el usuario pide "integrar mi juego con Luna Negra" sin nombrar 2.0, usa la
+Si el usuario pide "integrar mi juego con Luna Negra" sin nombrar NGP, usa la
 1.0 estable. Si quiere apuestas por zaps, usa esta skill; si quiere escrow REST
 v1 o acceso pago, usa la 1.0.
 
@@ -62,7 +62,7 @@ No inventes `gameCoord`. El `slug` no siempre coincide con el nombre visible.
 
 ## Capacidades
 
-| Capacidad | 1.0 REST | 2.0 Nostr | Estado |
+| Capacidad | 1.0 REST | NGP | Estado |
 |---|---|---|---|
 | Identidad | `lnToken` SSO | NIP-07/NIP-46 | disponible |
 | Marcador | `/api/v1/leaderboards` | `kind:31337` | implementado |
@@ -219,7 +219,7 @@ Patrón Tetris:
 
 ## Retos e invitaciones NIP-17
 
-En 2.0 la invitación es un reto cifrado E2E. El server no puede leerlo. El rumor
+En NGP la invitación es un reto cifrado E2E. El server no puede leerlo. El rumor
 interno es `kind:14` y viaja como gift-wrap `kind:1059`.
 
 ```jsonc
@@ -427,10 +427,10 @@ Mantén dos tiers: abierto (`kind:31337`, social, falsificable) y verificado
       el game server.
 - [ ] En depósitos v2, verificar signer contra sesión, no re-firmar si ya hay
       `bolt11` y conservar handles visibles durante polling.
-- [ ] No usar 2.0 para acceso pago, webhooks o escrow REST v1.
+- [ ] No usar NGP para acceso pago, webhooks o escrow REST v1.
 
 ## Referencias del repo
 
-- Spec de perfil de juego Nostr: `docs/perfil-juego-nostr.md`
-- Salas e invitaciones Nostr: `docs/perfil-juego-nostr-salas-invitaciones.md`
-- Implementación del perfil Nostr: `docs/perfil-juego-nostr-implementacion.md`
+- Spec de Nostr Games Protocol (NGP): `docs/nostr-games-protocol.md`
+- Salas e invitaciones NGP: `docs/nostr-games-protocol-salas-invitaciones.md`
+- Implementación de NGP: `docs/nostr-games-protocol-implementacion.md`

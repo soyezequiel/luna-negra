@@ -12,10 +12,18 @@ const SKILLS = [
     file: join(process.cwd(), "skills", "integrar-luna-negra-1-0", "SKILL.md"),
   },
   {
-    version: "2.0",
-    aliases: ["2", "2.0", "nostr", "integrar-luna-negra-2-0"],
-    name: "integrar-luna-negra-2-0",
-    file: join(process.cwd(), "skills", "integrar-luna-negra-2-0", "SKILL.md"),
+    version: "ngp",
+    aliases: [
+      "2",
+      "2.0",
+      "ngp",
+      "ngp-v2",
+      "nostr",
+      "nostr-games-protocol",
+      "integrar-ngp-v2",
+    ],
+    name: "integrar-ngp-v2",
+    file: join(process.cwd(), "skills", "integrar-ngp-v2", "SKILL.md"),
   },
 ] as const;
 
@@ -43,7 +51,7 @@ function originFrom(req: Request): string {
 export async function GET(req: Request) {
   const skill = skillFrom(req);
   if (!skill) {
-    return new Response("Skill desconocida. Usa ?version=1.0 o ?version=2.0", {
+    return new Response("Skill desconocida. Usa ?version=1.0 o ?version=ngp", {
       status: 400,
     });
   }

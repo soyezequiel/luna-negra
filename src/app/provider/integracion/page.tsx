@@ -77,7 +77,7 @@ export default function ProviderIntegrationPage() {
             Integración
           </h1>
           <p className="mt-1 text-sm text-ln-muted">
-            El estándar es la <strong>interfaz independiente Nostr</strong> (Nostr-nativo: login NIP-07/46, marcador
+            El estándar es <strong>Nostr Games Protocol (NGP)</strong> (NGP nativo: login NIP-07/46, marcador
             kind:31337, presencia NIP-38, reseñas NIP-23…), con <strong>Apuestas y escrow</strong> por zaps NIP-57 como
             opcional. El estado sale de los eventos Nostr observados en los relays. La <strong>interfaz Luna
             dependiente (1.0)</strong> se mantiene por compatibilidad: activá el toggle <em>«Interfaz Luna (1.0)»</em>{" "}

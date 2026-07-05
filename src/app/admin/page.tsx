@@ -1388,7 +1388,7 @@ export default function AdminPage() {
         <h2 className="mb-1 font-semibold text-ink">Integración de juegos</h2>
         <p className="mb-4 text-xs text-faint">
           Qué tiene cableada cada juego en tres columnas: interfaz Luna dependiente (REST),
-          intermedio (interfaz Luna ⇆ interfaz Nostr) e interfaz independiente Nostr (Nostr).
+          intermedio (Luna ⇆ NGP) y Nostr Games Protocol (NGP).
           Verde = en uso reciente; naranja = visto hace tiempo o configurado; azul =
           declarado/disponible (Nostr); gris = diseño o no integrado.
         </p>

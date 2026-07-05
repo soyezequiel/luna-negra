@@ -1,20 +1,20 @@
-# Salas e invitaciones en Nostr — Interfaz 2.0 (draft)
+# Salas e invitaciones - Nostr Games Protocol (NGP) (draft)
 
-> ⚠️ **EN CONSTRUCCIÓN — mayormente diseño, no código.** La interfaz 2.0 es una mejora
+> ⚠️ **EN CONSTRUCCIÓN — mayormente diseño, no código.** Nostr Games Protocol (NGP) es una mejora
 > experimental, **no prometida**, **post-hackathon**. Hoy lo garantizado es la **1.0
 > (REST, §1–§8)**. De este documento solo el **reto 1v1 (M0)** está implementado; salas
-> NIP-29 y el resto son diseño. Ver [`perfil-juego-nostr.md`](perfil-juego-nostr.md).
+> NIP-29 y el resto son diseño. Ver [`nostr-games-protocol.md`](nostr-games-protocol.md).
 
-> Extiende la [spec 2.0](perfil-juego-nostr.md) con las dos piezas multijugador:
+> Extiende la [spec NGP](nostr-games-protocol.md) con las dos piezas multijugador:
 > **§4 Salas y estado** y **§5 Invitaciones**, ambas basadas en eventos Nostr. El
 > principio rector es **desacoplar**: la *invitación* es una notificación social
-> (Nostr puro, sin token); la *sala* es donde el juego sincroniza estado y maneja
+> (NGP puro, sin token); la *sala* es donde el juego sincroniza estado y maneja
 > el acceso. Cada una vive por su cuenta.
 >
 > **Alcance honesto.** Esto es para juegos **por turnos con reglas
 > determinísticas** (ajedrez, Catan, el penal de futbolcillo). Tiempo real / acción
-> y juegos con info oculta **quedan fuera** (ver §X). Es la parte más pesada de la
-> 2.0: no es un win gratis como el marcador.
+> y juegos con info oculta **quedan fuera** (ver §X). Es la parte más pesada de
+> NGP: no es un win gratis como el marcador.
 >
 > **Estado.** Borrador. Los `kind` propios pueden cambiar hasta congelar la v1.
 
@@ -24,7 +24,7 @@
 
 En la 1.0, invitación y sala vienen **pegadas**: el invite lleva el token de
 acceso a la sala. Eso obliga a que la invitación conozca la tecnología de la sala.
-En la 2.0 las cortamos:
+En NGP las cortamos:
 
 | Capa | Qué es | Tecnología | Privada |
 |---|---|---|---|
@@ -167,7 +167,7 @@ invitación, y viceversa.
 
 ## 6. Mapa con la 1.0
 
-| 1.0 (panel) | 2.0 | Cambio principal |
+| 1.0 (panel) | NGP | Cambio principal |
 |---|---|---|
 | **§4 Salas y estado** (bolso compartido hosteado por Luna Negra) | grupo NIP-29 + jugadas event-sourced | el estado pasa de tu servidor a un relay; jugadas firmadas; persistente |
 | **§5 Invitaciones** (POST /invites con token, toast efímero) | DM NIP-17 que solo apunta (sin token) | desacoplada; persistente; cross-cliente; el acceso lo maneja la sala |

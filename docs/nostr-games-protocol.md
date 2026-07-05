@@ -1,11 +1,11 @@
-# Perfil de Juego Nostr — Interfaz 2.0 (draft)
+# Nostr Games Protocol (NGP) (draft)
 
-> ⚠️ **EN CONSTRUCCIÓN — no usar en producción todavía.** La interfaz **2.0 (Nostr)**
+> ⚠️ **EN CONSTRUCCIÓN — no usar en producción todavía.** **Nostr Games Protocol (NGP)**
 > es una **mejora experimental y NO prometida**: no formaba parte del alcance del
 > hackathon. Es trabajo **post-hackathon**, porque el proyecto se va a **seguir
 > desarrollando** después. Lo único **garantizado y funcionando hoy** es la
 > [**interfaz 1.0 (REST, §1–§8)**](api-publica.md). Salvo el marcador (kind:31337) y
-> el reto 1v1 (NIP-17), que están implementados como adelanto, **el resto de la 2.0
+> el reto 1v1 (NIP-17), que están implementados como adelanto, **el resto de NGP
 > es diseño, no código**. Los `kind` propuestos pueden cambiar.
 
 > **Qué es.** Una forma de hacer un juego compatible con Luna Negra usando
@@ -15,13 +15,13 @@
 >
 > **Relación con la 1.0.** La [API REST `/api/v1`](api-publica.md) sigue vigente y
 > es la única opción para lo que **necesita un tercero confiable**: custodia de
-> apuestas/escrow y verificación de compra de juego de pago. La 2.0 corre **en
+> apuestas/escrow y verificación de compra de juego de pago. NGP corre **en
 > paralelo** y cubre la capa social/identidad/reputación. No es todo-o-nada: se
 > adopta por niveles.
 >
 > **Salas e invitaciones multijugador** (lo que en el panel 1.0 son §4 y §5) tienen
 > su propio diseño Nostr —invitación NIP-17 desacoplada + sala NIP-29— en
-> [perfil-juego-nostr-salas-invitaciones.md](perfil-juego-nostr-salas-invitaciones.md).
+> [nostr-games-protocol-salas-invitaciones.md](nostr-games-protocol-salas-invitaciones.md).
 >
 > **Estado.** Borrador. Los `kind` marcados como *(propuesto)* pueden cambiar
 > hasta que se congele la v1 de la spec.
@@ -30,14 +30,14 @@
 
 ## 0. Por qué Nostr y no REST
 
-| | 1.0 (REST a Luna Negra) | 2.0 (eventos Nostr) |
+| | 1.0 (REST a Luna Negra) | NGP |
 |---|---|---|
 | Dirección | el juego **pregunta** a Luna Negra | el jugador/juego **publica**; Luna Negra **lee** |
 | Si Luna Negra cae | el juego se queda mudo | marcador e identidad siguen vivos en los relays |
 | Otros clientes | no pueden leer nada | cualquier cliente Nostr lee los mismos eventos |
 | Identidad del juego | `gameId` interno de Luna Negra | coordenada NIP-23 descentralizada |
 
-El objetivo de la 2.0 es **resiliencia + interoperabilidad**. Si tu juego solo
+El objetivo de NGP es **resiliencia + interoperabilidad**. Si tu juego solo
 necesita login y marcador, esta spec te independiza de Luna Negra por completo.
 
 ---
@@ -189,7 +189,7 @@ El firmador del jugador publica su estado. No requiere servidor.
 Luna Negra y cualquier cliente derivan "Jugando <X>" de este evento.
 
 > **Diferencia con la 1.0:** en 1.0 el game server reporta presencia por REST y
-> Luna Negra firma. En 2.0 firma el **propio jugador**, así no necesita a Luna
+> Luna Negra firma. En NGP firma el **propio jugador**, así no necesita a Luna
 > Negra para tener presencia. Requiere que el firmador esté disponible en el
 > cliente (lo está si el login fue NIP-07/46).
 
@@ -221,13 +221,13 @@ dev o al ganador. bitbybit-run y figus ya usan este patrón.
 
 Honestidad de diseño: **Nostr es mensajería firmada, no liquidación de dinero.**
 
-| Caso | Por qué no es Nostr-puro | Qué sí publicar en Nostr |
+| Caso | Por qué no es NGP puro | Qué sí publicar en Nostr |
 |---|---|---|
 | **Escrow / apuestas** | Retener stake y pagar al ganador exige **custodio**. Trustless real = DLCs sobre Bitcoin (fuera de alcance). | El **contrato** (stake, participantes, condición) firmado, y el **resultado del oráculo** como evento → auditable y portable, aunque el dinero pase por la 1.0. |
 | **Compra de juego de pago** | Alguien tiene que **validar el pago Lightning** antes de dar acceso (el "issuer" de figus). | Un **recibo/entitlement** firmado, opcionalmente publicado, para probar la compra ante terceros. |
 | **Salas con estado compartido en vivo** | Posible con efímeros (bitbybit lo hace), pero el esquema es **específico de cada juego** y la latencia de relays no da para tiempo real fino. | — (extensión opcional §8, sin esquema estándar) |
 
-**Regla:** el dinero y la custodia se quedan en la 1.0 REST. La 2.0 publica la
+**Regla:** el dinero y la custodia se quedan en la 1.0 REST. NGP publica la
 **prueba** de lo que pasó, no mueve los fondos.
 
 ---
@@ -268,7 +268,7 @@ protocolos custom — ahí Nostr deja de ser la herramienta correcta y está bie
 - [ ] **N2** (opc.) Presencia NIP-38 (kind 30315) con `expiration`.
 - [ ] **N2** (opc.) Reseñas/logros kind:1 con tag `a` = `GAME`.
 - [ ] **N3** (opc.) Zaps NIP-57 para propinas/premios.
-- [ ] Apuestas/compra de pago → **API REST 1.0** (no Nostr-puro).
+- [ ] Apuestas/compra de pago → **API REST 1.0** (no NGP puro).
 
 ---
 

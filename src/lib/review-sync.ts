@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 
 /**
- * Reconciliación de RESEÑAS desde Nostr (interfaz 2.0). `publishGameReview`
+ * Reconciliación de RESEÑAS desde Nostr (Nostr Games Protocol (NGP)). `publishGameReview`
  * (nostr-social.ts) firma la reseña como respuesta NIP-10 al artículo del juego
  * (tag `a` = coordenada, sin tag `t` — así se distingue de un comentario, que sí
  * lo lleva). Acá levantamos esas notas de relays y las proyectamos a la tabla

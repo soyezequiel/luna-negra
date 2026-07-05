@@ -4,7 +4,7 @@ import { RELAYS } from "./constants";
 import { submitScore } from "./leaderboard";
 
 /**
- * Reconciliación de PUNTAJES desde Nostr (interfaz 2.0). El jugador firma su
+ * Reconciliación de PUNTAJES desde Nostr (Nostr Games Protocol (NGP)). El jugador firma su
  * marcador como evento addressable kind:31337 tageando la coordenada del juego
  * (`a` = 30023:<pubkey>:<slug>); acá los levantamos de relays, verificamos la
  * firma y los proyectamos a la tabla `Score` — el MISMO read-model que alimenta
@@ -15,7 +15,7 @@ import { submitScore } from "./leaderboard";
  * vive en src/instrumentation.ts. Idempotente: keep-best por (juego, tabla,
  * jugador) absorbe duplicados y re-corridas.
  *
- * Ver docs/perfil-juego-nostr.md (spec) y docs/perfil-juego-nostr-implementacion.md.
+ * Ver docs/nostr-games-protocol.md (spec) y docs/nostr-games-protocol-implementacion.md.
  */
 
 // kind addressable del evento de puntaje (rango 30000-39999). Si se congela otro

@@ -8,7 +8,7 @@ import { normalizeImageUrl } from "@/lib/game-media";
 import { revalidateCatalog } from "@/lib/store-catalog";
 import { syncGameToNostr } from "@/lib/announce-game";
 import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
-import { MANUAL_CAP_KEYS } from "@/lib/integration-2";
+import { MANUAL_CAP_KEYS } from "@/lib/integration-ngp";
 import {
   isMigratableCap,
   PURCHASE_CAP,
@@ -58,7 +58,7 @@ export async function PATCH(
         .map((s: string) => (s as string).trim())
         .filter((s: string) => s !== ""),
     );
-  // Declaración manual de una capacidad 2.0 no observable (login, presencia): se
+  // Declaración manual de una capacidad NGP no observable (login, presencia): se
   // fusiona sobre el mapa existente. Solo se aceptan claves de MANUAL_CAP_KEYS.
   if (body.manualCap && typeof body.manualCap === "object") {
     const { key, value } = body.manualCap as { key?: unknown; value?: unknown };
@@ -71,7 +71,7 @@ export async function PATCH(
         : {};
     data.manualCaps = { ...current, [key]: !!value };
   }
-  // Migración por capacidad de la interfaz Luna (REST) a la interfaz Nostr: elige
+  // Migración por capacidad de la interfaz Luna (REST) a NGP: elige
   // por cuál riel corre una capacidad intermedia. "nostr" apaga la pata Luna de esa
   // capacidad (su endpoint devuelve 409). Se fusiona sobre Game.capsMode. Solo se
   // aceptan capacidades migrables (MIGRATABLE_CAPS) y los dos modos válidos.

@@ -119,8 +119,8 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // Etiqueta la interfaz a la que pertenece cada bloque de integración:
-// "1.0" = REST server-to-server (estable), "2.0" = capa Nostr (experimental).
-function IfaceBadge({ kind }: { kind: "1.0" | "2.0" }) {
+// "1.0" = REST server-to-server (estable), "ngp" = NGP (experimental).
+function IfaceBadge({ kind }: { kind: "1.0" | "ngp" }) {
   const is10 = kind === "1.0";
   return (
     <span
@@ -133,10 +133,10 @@ function IfaceBadge({ kind }: { kind: "1.0" | "2.0" }) {
       title={
         is10
           ? "Interfaz 1.0 (REST, server-to-server). Estable — es lo que usa este panel."
-          : "Interfaz 2.0 (Nostr, eventos firmados). Experimental — no usa estas claves."
+          : "Nostr Games Protocol (NGP): eventos Nostr firmados. Experimental — no usa estas claves."
       }
     >
-      {is10 ? "1.0 · REST" : "2.0 · Nostr"}
+      {is10 ? "1.0 · REST" : "NGP"}
     </span>
   );
 }
@@ -834,15 +834,15 @@ export default function ProviderPage() {
               cuando quieras.
             </p>
             <p className="mt-2 rounded-ln-md border border-ln-luna/25 bg-ln-luna/5 px-3 py-2 text-xs text-muted">
-              <IfaceBadge kind="2.0" />{" "}
+              <IfaceBadge kind="ngp" />{" "}
               <span className="ml-1">
-                ¿Solo vas a usar la capa Nostr experimental (presencia NIP-38,
+                ¿Solo vas a usar Nostr Games Protocol (NGP) (presencia NIP-38,
                 marcador <code>kind:31337</code>, retos NIP-17, zaps)?{" "}
                 <strong>No necesitás ninguna de estas variables.</strong> El login
                 es NIP-07/46 (el jugador firma con su propio signer) y los eventos
                 se anclan al <code>gameCoord</code> del juego, que obtenés de los
                 relays (<code>{"{ kinds:[30023], \"#d\":[\"<slug>\"] }"}</code>) o
-                lo hardcodeás. La 2.0 no toca los servidores de Luna Negra.
+                lo hardcodeás. NGP no toca los servidores de Luna Negra.
               </span>
             </p>
 
@@ -873,7 +873,7 @@ export default function ProviderPage() {
                 </dt>
                 <dd className="text-faint">
                   URL de este deploy: base de todas las llamadas REST 1.0,{" "}
-                  <strong>siempre requerida</strong>. La capa 2.0 Nostr no la usa
+                  <strong>siempre requerida</strong>. NGP no la usa
                   (login NIP-07/46 y eventos directo a relays).
                 </dd>
               </div>
@@ -885,7 +885,7 @@ export default function ProviderPage() {
                 <dd className="text-faint">
                   Llave secreta server-to-server (<code>ln_sk_…</code>) para crear
                   apuestas (v1 y v2 por zaps), presencia global, invitaciones y
-                  amigos. <strong>Nunca va al navegador.</strong> La 2.0 no la usa.
+                  amigos. <strong>Nunca va al navegador.</strong> NGP no la usa.
                 </dd>
               </div>
               <div className="flex flex-col gap-0.5">
@@ -910,7 +910,7 @@ export default function ProviderPage() {
                   El <code>gameId</code> para crear apuestas desde el backend.{" "}
                   <strong>No hace falta si creás una clave acotada a un juego</strong>{" "}
                   (abajo, en <strong>Claves de API</strong>): esa clave ya sabe a
-                  qué juego pertenece. (La 2.0 ancla por <code>gameCoord</code>, no
+                  qué juego pertenece. (NGP ancla por <code>gameCoord</code>, no
                   por este id.)
                 </dd>
               </div>

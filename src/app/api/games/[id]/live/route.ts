@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 /**
  * Jugadores en vivo de un juego, estilo SteamDB ("142 jugando ahora · pico hoy
  * 380"). Público: no expone quién, solo el conteo. Unifica presencia 1.0
- * (GamePresence, REST) y 2.0 (NIP-38, ver live-presence.ts).
+ * (GamePresence, REST) y NGP (NIP-38, ver live-presence.ts).
  *   → { now, peakToday }
  */
 export async function GET(

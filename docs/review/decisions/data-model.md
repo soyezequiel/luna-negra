@@ -64,14 +64,14 @@ Restricciones únicas: `@@unique([betId, userId])` en BetParticipant · `@@uniqu
 | Tabla | Crecimiento | Estrategia |
 |-------|------------|-----------|
 | Bet / BetParticipant / LedgerEntry | Lento (N por apuesta) | Sin archivado por ahora; índices por betId, status, deadlines |
-| Eventos Nostr | NO se guardan completos | Solo se guarda el **event id** (contractEventId, resultEventId) |
+| Eventos NGP | NO se guardan completos | Solo se guarda el **event id** (contractEventId, resultEventId) |
 
 ## Decisiones de desnormalización
 
 | Qué | Por qué | Cómo se sincroniza |
 |-----|---------|-------------------|
 | `BetParticipant.npub` | Para el contrato/display sin join a User | Se copia al crear; el npub no cambia |
-| Resultado (won/lost/tie) en participante | Evita recalcular desde el evento Nostr | Lo escribe el procesamiento del resultado verificado |
+| Resultado (won/lost/tie) en participante | Evita recalcular desde el evento NGP | Lo escribe el procesamiento del resultado verificado |
 
 ## Migraciones previstas
 

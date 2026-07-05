@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nostr Games Protocol"
+  short_description: "NGP v2, zaps y apuestas v2"
+  default_prompt: "Use $integrar-ngp-v2 para integrar mi juego con Nostr Games Protocol (NGP)."

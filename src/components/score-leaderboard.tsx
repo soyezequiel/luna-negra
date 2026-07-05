@@ -59,7 +59,7 @@ function formatScore(boardName: string, score: number): string {
 
 /**
  * Marcador del juego en la página de la tienda. Lee de /api/scores/top (que sale
- * del read-model `Score`, alimentado por la API REST 1.0 y por el sync Nostr 2.0
+ * del read-model `Score`, alimentado por la API REST 1.0 y por el sync NGP
  * kind:31337) y resuelve nombre/avatar desde Nostr, igual que <ZapLeaderboard>.
  * Un juego puede tener varias tablas (p. ej. "victorias" y "supervivencia"): se
  * muestran como pestañas. Si no hay ninguna, el componente no renderiza nada.

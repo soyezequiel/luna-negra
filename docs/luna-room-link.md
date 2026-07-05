@@ -7,8 +7,8 @@
 >
 > Complementa —no reemplaza— a [`multijugador-contrato.md`](multijugador-contrato.md)
 > (salas hosteadas por Luna, tokens `invite`) y a
-> [`perfil-juego-nostr-salas-invitaciones.md`](perfil-juego-nostr-salas-invitaciones.md)
-> (capa 2.0 / retos NIP-17).
+> [`nostr-games-protocol-salas-invitaciones.md`](nostr-games-protocol-salas-invitaciones.md)
+> (capa NGP / retos NIP-17).
 
 ## Qué problema resuelve
 
@@ -155,10 +155,10 @@ se pasa `toNpub` y se firma el token.
 ## Entrega por Nostr (opcional)
 
 El enlace ya es una URL portable. NIP-17 solo lo **transporta** a un amigo concreto:
-reusar el reto 2.0 (`kind:14`) poniendo `["url", "<inviteUrl>"]` y, si aplica,
+reusar el reto NGP (`kind:14`) poniendo `["url", "<inviteUrl>"]` y, si aplica,
 `["room", roomId]`. Es 1-a-1 cifrado → encaja con la variante **dirigida**. La
 variante **pública** se comparte como link pelado (DM NIP-04, copiar/pegar, QR).
-Ver mecánica NIP-17 en [`perfil-juego-nostr-salas-invitaciones.md`](perfil-juego-nostr-salas-invitaciones.md).
+Ver mecánica NIP-17 en [`nostr-games-protocol-salas-invitaciones.md`](nostr-games-protocol-salas-invitaciones.md).
 
 ---
 
@@ -174,7 +174,7 @@ Ver mecánica NIP-17 en [`perfil-juego-nostr-salas-invitaciones.md`](perfil-jueg
 | Mint de invitación desde sesión first-party (sin API key, sin abrir el juego) | [`api/invites/route.ts`](src/app/api/invites/route.ts) `POST` | **Pero** arma `inviteUrl` al **dominio de Luna** (`/game/<slug>?room=`) y crea una `GameInvite` dirigida. Hay que derivar la variante game-domain |
 | Validación anti-open-redirect de `inviteUrl` | [`api/v1/invites/route.ts:42`](src/app/api/v1/invites/route.ts) `isAllowedInviteUrl` | Reusar para validar `returnTo` del cold-open |
 | Verificación de propiedad del juego antes de invitar | [`rooms.ts`](src/lib/rooms.ts) `mintRoomInvite`, [`api/invites/route.ts`](src/app/api/invites/route.ts) | Misma lógica de `owns` |
-| Mecanismo de capacidades declaradas por juego | `Game.manualCaps` (Json) + `MANUAL_CAP_KEYS` en [`integration-2.ts:199`](src/lib/integration-2.ts) | Agregar clave `roomLink` acá |
+| Mecanismo de capacidades declaradas por juego | `Game.manualCaps` (Json) + `MANUAL_CAP_KEYS` en [`integration-ngp.ts:199`](src/lib/integration-ngp.ts) | Agregar clave `roomLink` acá |
 | Entrega por Nostr (NIP-17 reto, NIP-04 DM link) | [`invite.ts`](src/lib/invite.ts) `buildInviteMessage`/`parseInvite` | El parseo hoy matchea `/game/<slug>?room=`; extender para `?lnRoom=` |
 | `Game.gameUrl` (dominio registrado del juego) | `prisma/schema.prisma` `model Game` | Ya es la fuente para armar el link |
 
@@ -186,7 +186,7 @@ Ver mecánica NIP-17 en [`perfil-juego-nostr-salas-invitaciones.md`](perfil-jueg
 | 2 | **`POST /api/v1/rooms/invite`** (sesión, no API key) → `{ roomId, inviteUrl, lnInvite? }`. Arma `inviteUrl = <Game.gameUrl>?lnRoom=…[&lnInvite=…]`. **No** crea fila `Room`. | El mint actual (`/api/invites`, `mintRoomInvite`) arma URL de dominio Luna y/o crea `Room` hosteada por Luna. | S |
 | 3 | **Token `lnInvite`** (`scope:"room-invite"`, atado a `toNpub`, sin semántica de sala-Luna): `signRoomInvite`/`verifyRoomInvite` en [`auth.ts`](src/lib/auth.ts). | El `invite` actual va atado al que abre y asume sala de Luna. | S |
 | 4 | **Variante `?lnRoom=` en el launcher** cliente ([`room-launch.ts`](src/lib/room-launch.ts)): abrir `<gameUrl>?lnRoom=&lnToken=` para el camino "desde Luna". | Hoy solo hay `launchStandaloneGame` (`lnToken`) y `launchGameRoom` (`inviteToken`+`room`). | S |
-| 5 | **Capability `roomLink`** en el catálogo de integración ([`integration-2.ts`](src/lib/integration-2.ts)) + toggle en el panel del proveedor + **gating del botón "Invitar"** en la ficha ([`game/[slug]/page.tsx`](src/app/game/[slug]/page.tsx), hoy usa `supportsRooms = Boolean(game.gameUrl)`). | No hay flag para "soporta sala hosteada por el juego con Luna Room Link". | S |
+| 5 | **Capability `roomLink`** en el catálogo de integración ([`integration-ngp.ts`](src/lib/integration-ngp.ts)) + toggle en el panel del proveedor + **gating del botón "Invitar"** en la ficha ([`game/[slug]/page.tsx`](src/app/game/[slug]/page.tsx), hoy usa `supportsRooms = Boolean(game.gameUrl)`). | No hay flag para "soporta sala hosteada por el juego con Luna Room Link". | S |
 | 6 | **UI "Invitar"**: botón en la ficha / panel multijugador que llama a `POST /api/v1/rooms/invite`, muestra el link para copiar (público) y/o selector de amigo (dirigido). | El panel actual ([`multiplayer-panel.tsx`](src/components/multiplayer-panel.tsx)) crea salas hosteadas por Luna. | M |
 | 7 | **Extender el parseo de invitaciones** ([`invite.ts`](src/lib/invite.ts) `INVITE_RE`) para reconocer enlaces `?lnRoom=` con dominio del juego (además del `/game/<slug>?room=` actual). | El regex actual matchea solo el path de Luna. | S |
 | 8 | **Doc del contrato para proveedores** (los 6 pasos de "Contrato del juego") en la guía de integración / skill `integrar-luna-negra-1-0`. | Nuevo. | S |

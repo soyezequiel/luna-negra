@@ -378,16 +378,16 @@ model Game {
   videos             String   @default("[]") // JSON array de URLs de video (trailers), estilo screenshots
   gameUrl            String? // subdominio donde el proveedor hostea el juego
   status             String   @default("draft") // draft | in_review | published
-  // Capacidad declarada por el proveedor: este juego soporta retos 1v1 (interfaz
-  // 2.0, NIP-17). Solo si es true Luna Negra muestra el botón "Retar" en el juego.
-  // Declaración manual de capacidades 2.0 NO observables por el server (login
+  // Capacidad declarada por el proveedor: este juego soporta retos 1v1 (NGP,
+  // NIP-17). Solo si es true Luna Negra muestra el botón "Retar" en el juego.
+  // Declaración manual de capacidades NGP NO observables por el server (login
   // NIP-07/46, presencia NIP-38): el probador no puede verificarlas, así que el
   // proveedor declara si las integró. Mapa { [capKey]: boolean }; ver
-  // MANUAL_CAP_KEYS en src/lib/integration-2.ts.
+  // MANUAL_CAP_KEYS en src/lib/integration-ngp.ts.
   manualCaps         Json?
   // Modo por capacidad de la columna intermedia: elige por cuál interfaz corre
   // cada capacidad migrable. Mapa { [capKey]: "luna" | "nostr" }. "nostr" = migrada
-  // a la interfaz independiente Nostr → la pata Luna (REST) se APAGA para este juego
+  // a Nostr Games Protocol (NGP) → la pata Luna (REST) se APAGA para este juego
   // y su endpoint devuelve 409 CAPABILITY_MIGRATED. Ausente o "luna" = interfaz Luna
   // dependiente (default retrocompatible). Solo capacidades de MIGRATABLE_CAPS
   // (identidad, marcador, presencia, bets). Ver src/lib/capability-mode.ts.
@@ -592,9 +592,9 @@ model Score {
   leaderboard   Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
   npub          String
   score         Int
-  // Procedencia 2.0: si el récord vigente entró por un evento Nostr (kind:31337
+  // Procedencia NGP: si el récord vigente entró por un evento Nostr (kind:31337
   // firmado por el jugador), guardamos su id y pubkey. null = vino por REST 1.0.
-  // Ver docs/perfil-juego-nostr-implementacion.md y src/lib/score-sync.ts.
+  // Ver docs/nostr-games-protocol-implementacion.md y src/lib/score-sync.ts.
   sourceEventId String?
   sourcePubkey  String?
   createdAt     DateTime    @default(now())
@@ -613,7 +613,7 @@ model Review {
   game      Game     @relation(fields: [gameId], references: [id])
   rating    Int // 1-5
   body      String   @default("")
-  // Procedencia 2.0: si esta reseña se reconcilió desde el kind:1 firmado que
+  // Procedencia NGP: si esta reseña se reconcilió desde el kind:1 firmado que
   // publica publishGameReview (respuesta al artículo del juego), guardamos su
   // id. null = solo vino por el POST de la REST 1.0. Ver src/lib/review-sync.ts.
   sourceEventId String?

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { runProbe } from "@/lib/integration-probe";
-import { probeGamesNostr } from "@/lib/integration-probe-2";
+import { probeGamesNostr } from "@/lib/integration-probe-ngp";
 import { siteUrl } from "@/lib/site-url";
 
 // Probador en vivo del proveedor logueado: golpea los endpoints reales del

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { runProbe } from "@/lib/integration-probe";
-import { probeGamesNostr } from "@/lib/integration-probe-2";
+import { probeGamesNostr } from "@/lib/integration-probe-ngp";
 import { siteUrl } from "@/lib/site-url";
 
 // Probador en vivo de admin: corre la suite de health-check contra los endpoints

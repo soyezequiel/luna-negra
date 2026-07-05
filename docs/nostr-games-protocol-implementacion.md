@@ -1,11 +1,11 @@
-# Convivencia 1.0 ↔ 2.0 dentro de Luna Negra
+# Convivencia 1.0 ↔ NGP dentro de Luna Negra
 
-> ⚠️ **La interfaz 2.0 está EN CONSTRUCCIÓN** — mejora experimental, **no prometida**,
+> ⚠️ **Nostr Games Protocol (NGP) está EN CONSTRUCCIÓN** — mejora experimental, **no prometida**,
 > trabajo **post-hackathon** (el proyecto se sigue desarrollando). Hoy lo garantizado
-> es la **1.0 (REST, §1–§8)**. Ver [`perfil-juego-nostr.md`](perfil-juego-nostr.md).
+> es la **1.0 (REST, §1–§8)**. Ver [`nostr-games-protocol.md`](nostr-games-protocol.md).
 
-> Cómo encaja la [interfaz 2.0 Nostr](perfil-juego-nostr.md) en el código actual
-> **sin romper la 1.0 REST**. La idea central: el 2.0 no es un subsistema nuevo,
+> Cómo encaja la [Nostr Games Protocol (NGP)](nostr-games-protocol.md) en el código actual
+> **sin romper la 1.0 REST**. La idea central: NGP no es un subsistema nuevo,
 > es **un sync in-process más** con la misma forma que `zap-sync` / `game-sync` /
 > `comment-sync`, escribiendo en las **mismas tablas** que ya alimentan la UI.
 
@@ -17,14 +17,14 @@ El marcador hoy es un **caché** (`Score` + `Leaderboard`) que
 [`readLeaderboard()`](../src/lib/leaderboard.ts) sirve a la UI. Hoy lo escribe un
 solo camino: `submitScore()` vía REST.
 
-El 2.0 agrega un **segundo escritor** que reconcilia eventos Nostr hacia la misma
+NGP agrega un **segundo escritor** que reconcilia eventos Nostr hacia la misma
 tabla. La UI no se entera: sigue leyendo `Score`.
 
 ```
 1.0 (REST):
   juego ──POST /api/v1/leaderboards/{name}/scores──▶ submitScore() ──▶ [Score] ──┐
                                                                                   ├─▶ readLeaderboard() ─▶ UI
-2.0 (Nostr):
+NGP:
   cliente del jugador ──firma kind:31337──▶ relays ──▶ score-sync (tick) ─────────┘
                                                          └─ verifica firma, mapea a→gameId,
                                                             reusa submitScore() + sourceEventId
@@ -32,7 +32,7 @@ tabla. La UI no se entera: sigue leyendo `Score`.
 
 Esto es **exactamente** el patrón que ya usás:
 [`game-sync.ts`](../src/lib/game-sync.ts) trata la DB como "caché write-through
-reconstruible desde Nostr". El marcador 2.0 hace lo mismo para los puntajes.
+reconstruible desde Nostr". El marcador NGP hace lo mismo para los puntajes.
 
 ---
 
@@ -130,11 +130,11 @@ por Nostr; `null`, por REST.
 
 ---
 
-## 5. Quién firma el evento 2.0 (dos caminos)
+## 5. Quién firma el evento NGP (dos caminos)
 
 | Camino | Quién firma | Requiere a Luna Negra | Para |
 |---|---|---|---|
-| **A — juego Nostr-nativo** | el propio juego con su NIP-07/46 | ❌ No | pacman, sammer, bitbybit (ya firman) |
+| **A — juego NGP nativo** | el propio juego con su NIP-07/46 | ❌ No | pacman, sammer, bitbybit (ya firman) |
 
 **Decisión:** se va por el **camino A** y los juegos se migran de a poco a firmar
 su propio `kind:31337`. El "espejo desde la pestaña" (que la tienda firmara el
@@ -150,7 +150,7 @@ un juego no migre, su marcador sigue viviendo en la tabla `Score` vía REST 1.0
 
 - **`readLeaderboard()` y toda la UI del marcador**: intactos. Leen `Score`.
 - **Endpoints REST `/api/v1/leaderboards/*`**: intactos. La 1.0 sigue siendo
-  válida; el 2.0 solo agrega un alimentador.
+  válida; NGP solo agrega un alimentador.
 - **Escrow / apuestas**: intactos. Siguen centralizados (custodia). Ya emiten el
   evento de resultado firmado por el oráculo
   ([`oracle-keys.ts`](../src/lib/oracle-keys.ts), `buildResultEvent`/`reportResult`
@@ -189,7 +189,7 @@ Si Luna Negra desaparece:
 - La DB de Luna Negra era **solo un caché** (igual que hoy `game-sync` la trata
   como reconstruible). Perderla no pierde datos: se rearma desde Nostr.
 
-Es decir: el 2.0 no es "otra feature", es **mover la fuente de verdad del
+Es decir: NGP no es "otra feature", es **mover la fuente de verdad del
 marcador de tu DB a los relays**, siguiendo el mismo camino que ya recorriste con
 los juegos (kind:30023) y los zaps (kind:9735).
 
@@ -209,6 +209,6 @@ Pendiente:
 
 - [ ] Congelar los `kind` (31337/31338) tras chequear que no colisionen.
 - [ ] (Tier verificado) score-sync condicionado a atestación del `oraclePubkey`.
-- [ ] Doc dev: actualizar la guía de integración Nostr (skill `integrar-luna-negra-2-0`)
+- [ ] Doc dev: actualizar la guía de integración Nostr (skill `integrar-ngp-v2`)
       con el camino A — que el juego firme su propio `kind:31337`.
 </content>

@@ -235,7 +235,7 @@ async function startGameSync() {
 }
 
 /**
- * Sync IN-PROCESS de PUNTAJES (kind:31337, interfaz 2.0): levanta de relays los
+ * Sync IN-PROCESS de PUNTAJES (kind:31337, Nostr Games Protocol (NGP)): levanta de relays los
  * marcadores firmados por los jugadores y los proyecta a la tabla `Score` (mismo
  * read-model que la API REST 1.0). Mismo patrón que zap/comment/game-sync. Ver
  * src/lib/score-sync.ts (syncScores) y SCORE_SYNC_INTERVAL_MS.
@@ -268,7 +268,7 @@ async function startScoreSync() {
 
 /**
  * Sync IN-PROCESS de RESEÑAS (kind:1 con formato de `publishGameReview`,
- * interfaz 2.0): levanta de relays las reseñas firmadas por los jugadores como
+ * Nostr Games Protocol (NGP)): levanta de relays las reseñas firmadas por los jugadores como
  * respuesta al artículo del juego y las proyecta a la tabla `Review` (mismo
  * read-model que la API REST 1.0). Mismo patrón que comment/score-sync. Ver
  * src/lib/review-sync.ts (syncGameReviews) y REVIEW_SYNC_INTERVAL_MS.
@@ -300,7 +300,7 @@ async function startReviewSync() {
 }
 
 /**
- * Sync IN-PROCESS de "jugando ahora" (NIP-38 kind:30315, interfaz 2.0): cuenta
+ * Sync IN-PROCESS de "jugando ahora" (NIP-38 kind:30315, Nostr Games Protocol (NGP)): cuenta
  * los estados frescos anclados a la coordenada de cada juego, para los
  * proveedores que no integran la presencia REST (§3). Mismo patrón que
  * score/review-sync. Ver src/lib/live-presence.ts (syncLivePresence) y

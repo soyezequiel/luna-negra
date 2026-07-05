@@ -459,21 +459,21 @@ export type GameRef = {
   title: string;
   slug: string;
   status: string;
-  // Declaración manual de capacidades 2.0 no observables (Game.manualCaps). JSON
-  // { [capKey]: boolean }; ver MANUAL_CAP_KEYS en src/lib/integration-2.ts.
+  // Declaración manual de capacidades NGP no observables (Game.manualCaps). JSON
+  // { [capKey]: boolean }; ver MANUAL_CAP_KEYS en src/lib/integration-ngp.ts.
   manualCaps?: Record<string, boolean> | null;
   // Modo por capacidad intermedia (Game.capsMode): { [capKey]: "luna" | "nostr" }.
-  // "nostr" = migrada a la interfaz Nostr (pata Luna apagada). Ver capability-mode.ts.
+  // "nostr" = migrada a NGP (pata Luna apagada). Ver capability-mode.ts.
   capsMode?: Record<string, string> | null;
 };
 
-// Señales de uso de la interfaz 2.0 (Nostr) derivables de la DB, por juego:
+// Señales de uso de Nostr Games Protocol (NGP) (Nostr) derivables de la DB, por juego:
 //   scores   → puntajes kind:31337 ya proyectados a Score (sourceEventId != null)
 //   zaps     → propinas/premios NIP-57 (tabla Zap)
 //   comments → reseñas/logros kind:1 colgando de la coordenada (GameComment)
 //   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2)
 // Los retos NIP-17 NO entran acá: van cifrados E2E (capacidad declarada, no
-// observable). Ver src/lib/integration-2.ts.
+// observable). Ver src/lib/integration-ngp.ts.
 export type NostrSignals = Record<string, PingInfo | null>;
 
 export type IntegrationView = {
@@ -489,7 +489,7 @@ export type IntegrationView = {
   games: Array<
     GameRef & {
       features: Record<string, PingInfo | null>;
-      // Evidencia 2.0 observada (null = sin telemetría 2.0 para este juego).
+      // Evidencia NGP observada (null = sin telemetría NGP para este juego).
       nostr?: NostrSignals | null;
     }
   >;
@@ -528,9 +528,9 @@ export function buildIntegrationView(
 }
 
 /**
- * Evidencia de uso de la interfaz 2.0 (Nostr) por juego: puntajes Nostr
+ * Evidencia de uso de Nostr Games Protocol (NGP) (Nostr) por juego: puntajes Nostr
  * (Score.sourceEventId), zaps (NIP-57) y reseñas/comentarios (kind:1). Es lo
- * análogo a deriveDomainEvidence pero para la 2.0; la 1.0 no la conoce. Devuelve
+ * análogo a deriveDomainEvidence pero para NGP; la 1.0 no la conoce. Devuelve
  * un Map gameId→{scores,zaps,comments}; los juegos sin señal quedan fuera del Map.
  */
 export async function readNostrEvidence(
@@ -562,7 +562,7 @@ export async function readNostrEvidence(
       _max: { createdAt: true },
     }),
     // Score no tiene gameId directo (cuelga de Leaderboard) y solo cuentan los de
-    // procedencia 2.0 (sourceEventId != null) → findMany + agrupado manual.
+    // procedencia NGP (sourceEventId != null) → findMany + agrupado manual.
     prisma.score.findMany({
       where: { leaderboard: { gameId: { in: gameIds } }, sourceEventId: { not: null } },
       select: {
@@ -572,7 +572,7 @@ export async function readNostrEvidence(
       },
     }),
     // Apuestas por zaps (escrow v2): la existencia de una ZapBet prueba que el juego
-    // ejerció POST /api/v2/bets (riel Nostr). Análogo a `bets` (v1) pero es señal 2.0.
+    // ejerció POST /api/v2/bets (riel NGP). Análogo a `bets` (v1) pero es señal NGP.
     prisma.zapBet.groupBy({
       by: ["gameId"],
       where: inGames,

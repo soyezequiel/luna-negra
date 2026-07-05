@@ -41,14 +41,14 @@ export async function GET(req: Request) {
   }
 
   // Coordenada NIP-23 del juego (`30023:<tienda>:<slug>`): el ancla del marcador
-  // 2.0. Con ella el juego firma su propio kind:31337 (Camino A). null si el
+  // NGP. Con ella el juego firma su propio kind:31337. null si el
   // juego aún no se publicó (sin artículo → sin coordenada). Ver
-  // docs/perfil-juego-nostr.md.
+  // docs/nostr-games-protocol.md.
   const game = await prisma.game.findUnique({
     where: { id: ent.gameId },
     select: { slug: true, nostrCoord: true, capsMode: true },
   });
-  // Si el login de este juego está migrado a la interfaz Nostr, la pata Luna (canje
+  // Si el login de este juego está migrado a NGP, la pata Luna (canje
   // de lnToken) queda apagada: el juego debe identificar al jugador con NIP-07/46.
   if (capMode(game?.capsMode, "identidad") === "nostr") {
     return apiError(

@@ -1,7 +1,7 @@
 import { SimplePool, type Event } from "nostr-tools";
 import { RELAYS } from "./constants";
 
-// Probador en vivo de la interfaz 2.0 (Nostr), análogo al health-check REST 1.0
+// Probador en vivo de Nostr Games Protocol (NGP) (Nostr), análogo al health-check REST 1.0
 // (integration-probe.ts) pero por juego: consulta los relays por la coordenada
 // del juego (#a) y por su anuncio (#e, para zaps) y reporta cuántos eventos de
 // cada tipo existen AHORA. Acá "hay integración" = hay evidencia en relays.
@@ -10,7 +10,7 @@ import { RELAYS } from "./constants";
 // #e), así no escala con la cantidad de juegos. Read-only: no publica nada.
 
 export type NostrProbeResult = {
-  key: string; // CapabilityRow.key de integration-2.ts
+  key: string; // CapabilityRow.key de integration-ngp.ts
   found: number; // eventos encontrados en relays
   latencyMs: number | null;
   detail: string;
@@ -27,7 +27,7 @@ export type GameNostrRef = {
   betAnchorIds?: string[];
 };
 
-// Filas 2.0 verificables consultando relays por la coordenada (#a), con el kind
+// Filas NGP verificables consultando relays por la coordenada (#a), con el kind
 // que las prueba. (zaps va aparte: se ancla al anuncio con #e.)
 const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
   { key: "marcador", kind: 31337, label: "puntajes kind:31337" },
@@ -36,10 +36,10 @@ const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
   { key: "oraculo", kind: 31338, label: "atestaciones de oráculo kind:31338" },
 ];
 
-// Filas 2.0 que NO se pueden probar en vivo, con el porqué (siempre se reportan
+// Filas NGP que NO se pueden probar en vivo, con el porqué (siempre se reportan
 // como `skipped` para que la UI lo explique en vez de mostrar un falso fallo).
 const UNPROBEABLE: Array<{ key: string; reason: string }> = [
-  { key: "invitaciones", reason: "Las invitaciones 2.0 son DMs NIP-17 cifrados E2E: no observables desde el server." },
+  { key: "invitaciones", reason: "Las invitaciones NGP son DMs NIP-17 cifrados E2E: no observables desde el server." },
   { key: "identidad", reason: "El login NIP-07/46 no deja un evento por juego que consultar." },
   { key: "salas", reason: "Las salas con estado (NIP-29) no se anclan a la coordenada del juego." },
 ];

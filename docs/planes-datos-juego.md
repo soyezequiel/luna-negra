@@ -1,13 +1,13 @@
 # Planes: datos de juego que Luna Negra puede integrar y todavía no muestra
 
 Cinco features para enriquecer la ficha del juego con datos que ya entran (o
-casi) por la integración. **Prioridad por interfaz 2.0**: primero lo que se
+casi) por la integración. **Prioridad por Nostr Games Protocol (NGP)**: primero lo que se
 apoya en eventos Nostr firmados (NIP-38, kind:31337, kind:1/NIP-23), después lo
 que es puramente REST 1.0.
 
 Orden de ataque sugerido:
 
-| # | Feature | Pata 2.0 | Esfuerzo | Prioridad |
+| # | Feature | Pata NGP | Esfuerzo | Prioridad |
 |---|---------|----------|----------|-----------|
 | 5 | Puntaje personal / ranking propio | kind:31337 (fuerte) | S | **P1** |
 | 4 | Agregado de reseñas | kind:1 / NIP-23 (fuerte) | S | **P1** |
@@ -17,13 +17,13 @@ Orden de ataque sugerido:
 
 ---
 
-## Plan 5 — Puntaje personal y puesto propio (P1, 2.0-first)
+## Plan 5 — Puntaje personal y puesto propio (P1, NGP-first)
 
 **Objetivo.** En la ficha, además del top, mostrarle a cada jugador *"Tu mejor:
 4.200 · puesto #7 de 312"* por cada tabla. Es la extensión más barata de la
-infra 2.0 que ya existe.
+infra NGP que ya existe.
 
-**Por qué es 2.0.** El récord se firma como `kind:31337` y `score-sync.ts` lo
+**Por qué es NGP.** El récord se firma como `kind:31337` y `score-sync.ts` lo
 proyecta a la tabla `Score` con `sourceEventId`/`sourcePubkey`. El read-model ya
 distingue procedencia (`viaNostr`). No hay que tocar el camino de escritura:
 solo leer el puesto del jugador logueado.
@@ -47,13 +47,13 @@ premios. Esfuerzo: **S** (un helper + un endpoint + fila en un componente).
 
 ---
 
-## Plan 4 — Agregado de reseñas visible y reconstruible desde Nostr (P1, 2.0-first)
+## Plan 4 — Agregado de reseñas visible y reconstruible desde Nostr (P1, NGP-first)
 
 **Objetivo.** Mostrar el resumen tipo Steam *"Muy positivas · 4,6 ★ (87)"* en el
 **header de la ficha** y en la **`GameCard`**, no solo enterrado en la sección de
 reseñas.
 
-**Por qué es 2.0.** Las reseñas ya se publican como evento Nostr firmado por el
+**Por qué es NGP.** Las reseñas ya se publican como evento Nostr firmado por el
 usuario (`publishGameReview` → `kind:1` colgando de la coordenada del juego, tag
 `a`). Hoy el agregado (`average`, `count`) sale solo de la tabla `Review` (1.0).
 El plan agrega la **reconstrucción desde Nostr**, igual que `comment-sync.ts`
@@ -63,7 +63,7 @@ concilie en `Review`/`GameComment` con `sourceEventId`. Así el rating promedio 
 reconstruible desde relays y no depende solo del POST a la DB.
 
 **Cambios.**
-- 2.0: `src/lib/review-sync.ts` (patrón `comment-sync.ts`): query `kinds:[1]`,
+- NGP: `src/lib/review-sync.ts` (patrón `comment-sync.ts`): query `kinds:[1]`,
   `#a: [coords]`, filtra los que traen rating, dedup por `eventId`, upsert en
   `Review` con procedencia. Schedule en `instrumentation.ts` (junto a
   score/comment-sync). Definir el tag de rating en `publishGameReview` si aún no
@@ -80,26 +80,26 @@ verificar). Esfuerzo: **S–M** (sync nuevo + agregado + 2 badges).
 
 ---
 
-## Plan 1 — "Jugando ahora" en la ficha, derivado de NIP-38 (P1, 2.0-first)
+## Plan 1 — "Jugando ahora" en la ficha, derivado de NIP-38 (P1, NGP-first)
 
 **Objetivo.** Contador estilo SteamDB en la ficha y un badge en la card:
 *"142 jugando ahora · pico hoy 380"*.
 
-**Por qué es 2.0.** La presencia "jugando X" ya existe como `kind:30315` (NIP-38)
+**Por qué es NGP.** La presencia "jugando X" ya existe como `kind:30315` (NIP-38)
 firmada por el propio jugador y anclada a la coordenada del juego
-(`hasStoreGameCoord` en `nostr-social.ts`). Para los juegos 2.0-nativos (que no
-reportan por REST) esa es la ÚNICA fuente. El plan agrega un **presence-sync 2.0**
+(`hasStoreGameCoord` en `nostr-social.ts`). Para los juegos NGP nativos (que no
+reportan por REST) esa es la ÚNICA fuente. El plan agrega un **presence-sync NGP**
 que cuenta esos eventos frescos por coordenada — calcado de `score-sync.ts`.
 
 **Cambios.**
-- 2.0: `src/lib/live-presence-sync.ts`: cada ~30 s, `querySync({ kinds:[30315],
+- NGP: `src/lib/live-presence-sync.ts`: cada ~30 s, `querySync({ kinds:[30315],
   "#a":[coords] })`, quedarse con el último evento por pubkey, descartar vencidos
   (NIP-40) y no-frescos, y contar npubs por juego. Persistir el conteo instantáneo
   en un caché en memoria (`Map<gameId, {count, at}>`) + una fila
   `PlayerCountSample(source:"live-2.0")` para el histórico.
 - 1.0: para juegos que integraron `POST /api/v1/presence`, ya hay `GamePresence`
   fresco. Unificar: `getLivePlayers(gameId)` = npubs frescos de `GamePresence`
-  (por `providerId`+`gameId`) ∪ conteo 2.0 del caché.
+  (por `providerId`+`gameId`) ∪ conteo NGP del caché.
 - Pico de hoy: `max(count)` sobre `PlayerCountSample` del día (ya se muestrea en
   `presence-sampler.ts`).
 - Endpoint público `GET /api/games/[gameId]/live` → `{ now, peakToday }`.
@@ -109,7 +109,7 @@ que cuenta esos eventos frescos por coordenada — calcado de `score-sync.ts`.
 
 **Riesgos / notas.** `GamePresence` se llavea por `(providerId, npub)` y el
 `gameId` puede ser null (integraciones viejas): esos caen a un conteo
-provider-wide, documentarlo. Costo de relay del sync 2.0: acotado a coordenadas de
+provider-wide, documentarlo. Costo de relay del sync NGP: acotado a coordenadas de
 juegos publicados, igual que score-sync. Esfuerzo: **M**.
 
 ---
@@ -119,10 +119,10 @@ juegos publicados, igual que score-sync. Esfuerzo: **M**.
 **Objetivo.** Enriquecer la presencia de amigos: en vez de "Jugando Tetris",
 mostrar *"Jugando Tetris — nivel 7, 12.400 pts"* cuando el juego reporta estado.
 
-**Por qué NO es 2.0-fuerte.** El estado rico vive en `GamePresence.stateJson`
-(bolsa libre JSON del heartbeat REST §3, 1.0). En 2.0 el `kind:30315` lleva solo
+**Por qué NO es NGP fuerte.** El estado rico vive en `GamePresence.stateJson`
+(bolsa libre JSON del heartbeat REST §3, 1.0). En NGP el `kind:30315` lleva solo
 `content` de texto libre ("Jugando X en Luna Negra") — se podría enriquecer el
-texto, pero no hay un esquema de estado firmado. Por eso es P2 y la pata 2.0 es
+texto, pero no hay un esquema de estado firmado. Por eso es P2 y la pata NGP es
 opcional (formatear un `content` más rico al publicar).
 
 **Cambios.**
@@ -130,7 +130,7 @@ opcional (formatear un `content` más rico al publicar).
   `label`, `score`, `level`) en la guía de integración; el resto se ignora.
 - `GET /api/me/playing` y el riel de amigos: exponer `stateLabel` derivado del
   `stateJson` (sanitizado, longitud acotada) para el usuario y sus amigos.
-- Presencia 2.0 (opcional): en `publishPlayingStatus`, aceptar un `stateLabel`
+- Presencia NGP (opcional): en `publishPlayingStatus`, aceptar un `stateLabel`
   para que el `content` del `kind:30315` diga "Jugando X — nivel 7" (sigue siendo
   texto, lo lee cualquier cliente Nostr).
 - UI: `friends-sidebar.tsx` / `friends-chat-panel.tsx` muestran el sublabel.
@@ -141,12 +141,12 @@ consistente. Esfuerzo: **M**.
 
 ---
 
-## Plan 3 — Tiempo jugado / sesiones (P3, casi sin 2.0)
+## Plan 3 — Tiempo jugado / sesiones (P3, casi sin NGP)
 
 **Objetivo.** *"12 h en tu registro"* por jugador y *"sesión media 8 min"* por
 juego, estilo Steam.
 
-**Por qué es lo último.** No hay 2.0 real: NIP-38 no da duración fiable. La fuente
+**Por qué es lo último.** No hay NGP real: NIP-38 no da duración fiable. La fuente
 es 1.0 y hoy es deliberadamente pobre — `play-click.ts` guarda **puntos discretos**
 de apertura y NO inventa duración de sesión sin heartbeat. Medir tiempo jugado
 requiere infra nueva de sesiones.
@@ -169,7 +169,7 @@ lifecycle + agregados).
 ---
 
 ### Dependencias transversales
-- Los tres syncs 2.0 nuevos (review, live-presence) siguen el patrón in-process de
+- Los tres syncs NGP nuevos (review, live-presence) siguen el patrón in-process de
   `instrumentation.ts` + cursor en memoria (self-host, una instancia). Si algún día
   hay más de una instancia, mover cursores a DB.
 - Badges de card (reseñas, jugando ahora) deben cachearse en `store-catalog` para

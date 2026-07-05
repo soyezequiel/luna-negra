@@ -1,10 +1,10 @@
-// Instalador de las skills de integración Luna Negra para agentes de código.
+// Instalador de las skills de integración Luna Negra 1.0 y NGP para agentes de código.
 // Sirve un script (sh por defecto, PowerShell con ?ps) que descarga los SKILL.md
 // desde este deploy y reemplaza el placeholder de la base URL por la URL real.
 //
 //   sh:  curl -fsSL <ORIGIN>/dev/install | sh
 //   ps:  iwr -useb <ORIGIN>/dev/install?ps | iex
-//   una sola: <ORIGIN>/dev/install?version=2.0
+//   una sola: <ORIGIN>/dev/install?version=ngp
 
 const SKILLS = [
   {
@@ -13,9 +13,17 @@ const SKILLS = [
     name: "integrar-luna-negra-1-0",
   },
   {
-    version: "2.0",
-    aliases: ["2", "2.0", "nostr", "integrar-luna-negra-2-0"],
-    name: "integrar-luna-negra-2-0",
+    version: "ngp",
+    aliases: [
+      "2",
+      "2.0",
+      "ngp",
+      "ngp-v2",
+      "nostr",
+      "nostr-games-protocol",
+      "integrar-ngp-v2",
+    ],
+    name: "integrar-ngp-v2",
   },
 ] as const;
 
@@ -50,7 +58,7 @@ function skillUrl(origin: string, version: string): string {
 function shScript(origin: string, skills: readonly Skill[]): string {
   const lines = [
     "#!/usr/bin/env sh",
-    "# Instala las skills de Luna Negra en Claude Code.",
+    "# Instala las skills de Luna Negra 1.0 y NGP en Claude Code.",
     "set -e",
     'ROOT="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"',
   ];
@@ -66,7 +74,7 @@ function shScript(origin: string, skills: readonly Skill[]): string {
   }
 
   lines.push(
-    'echo "    Reinicia tu agente y usa la skill Luna 1.0 o Nostr 2.0 según corresponda."',
+    'echo "    Reinicia tu agente y usa la skill Luna 1.0 o NGP según corresponda."',
     "",
   );
 
@@ -86,7 +94,7 @@ function psScript(origin: string, skills: readonly Skill[]): string {
     .join(",\n");
 
   return [
-    "# Instala las skills de Luna Negra en Claude Code (Windows).",
+    "# Instala las skills de Luna Negra 1.0 y NGP en Claude Code (Windows).",
     "$ErrorActionPreference = 'Stop'",
     "$root = if ($env:CLAUDE_SKILLS_DIR) { $env:CLAUDE_SKILLS_DIR } else { Join-Path $HOME '.claude\\skills' }",
     "$skills = @(",
@@ -98,7 +106,7 @@ function psScript(origin: string, skills: readonly Skill[]): string {
     "  Invoke-WebRequest -UseBasicParsing -Uri $skill.Url -OutFile (Join-Path $dest 'SKILL.md')",
     "  Write-Host \"OK  Skill instalada en: $dest\\SKILL.md\"",
     "}",
-    "Write-Host '    Reinicia tu agente y usa la skill Luna 1.0 o Nostr 2.0 según corresponda.'",
+    "Write-Host '    Reinicia tu agente y usa la skill Luna 1.0 o NGP según corresponda.'",
     "",
   ].join("\n");
 }
@@ -108,7 +116,7 @@ export function GET(req: Request) {
   const origin = originFrom(req);
   const skills = selectedSkills(url);
   if (!skills) {
-    return new Response("Skill desconocida. Usa ?version=1.0 o ?version=2.0", {
+    return new Response("Skill desconocida. Usa ?version=1.0 o ?version=ngp", {
       status: 400,
     });
   }

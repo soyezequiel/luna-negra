@@ -1,30 +1,30 @@
 // Modelo de TRES COLUMNAS de cómo un juego puede integrarse con Luna Negra,
 // cruzando la interfaz 1.0 (REST, §1–§8 — ver integration-features.ts) con la
-// 2.0 (eventos Nostr — ver docs/perfil-juego-nostr.md):
+// Nostr Games Protocol (NGP — ver docs/nostr-games-protocol.md):
 //
 //   • "solo-1.0"   → necesita un tercero confiable (custodia/verificación de pago).
-//                    No tiene equivalente Nostr-puro; se queda en REST.
+//                    No tiene equivalente NGP puro; se queda en REST.
 //   • "intermedio" → misma necesidad, dos caminos: la pata 1.0 (REST) y la pata
-//                    2.0 (Nostr) conviven. Es el "lugar intermedio".
-//   • "solo-2.0"   → Nostr-nativo, sin equivalente en la REST 1.0.
+//                    NGP conviven. Es el "lugar intermedio".
+//   • "solo-ngp"   → NGP nativo, sin equivalente en la REST 1.0.
 //
 // Fuente ÚNICA del layout y los textos, compartida por la matriz (proveedor +
 // admin). Las patas 1.0 reusan las claves de INTEGRATION_FEATURES (telemetría
-// real); las patas 2.0 declaran su estándar, su estado de implementación y qué
+// real); las patas NGP declaran su estándar, su estado de implementación y qué
 // señal observable —si alguna— las respalda.
 
 import type { IntegrationFeature } from "./integration-features";
 
-export type Column = "solo-1.0" | "intermedio" | "solo-2.0";
+export type Column = "solo-1.0" | "intermedio" | "solo-ngp";
 
-// Estado de la pata 2.0 (Nostr):
+// Estado de la pata NGP:
 //   "implementado" → ya corre en Luna Negra (marcador 31337, zaps, reseñas).
 //   "declarado"    → implementado pero NO observable desde el server (reto NIP-17
 //                    va cifrado E2E): solo sabemos la capacidad que declaró el dev.
 //   "diseño"       → especificado en la spec, todavía sin código.
 export type TwoZeroImpl = "implementado" | "declarado" | "diseño";
 
-// Señal de uso 2.0 derivable de la DB. "none" = sin señal por juego (login,
+// Señal de uso NGP derivable de la DB. "none" = sin señal por juego (login,
 // presencia, invitaciones: van cifradas o no dejan rastro).
 //   betsV2 → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2).
 export type TwoZeroSignal = "scores" | "zaps" | "comments" | "betsV2" | "none";
@@ -46,7 +46,7 @@ export type CapabilityRow = {
   // Pata 1.0: features §1–§8 que cubren esta capacidad (se fusionan para el
   // badge). Vacío = no hay equivalente REST.
   oneZero: IntegrationFeature[];
-  // Pata 2.0: descriptor Nostr, o null si no hay equivalente Nostr.
+  // Pata NGP: descriptor Nostr, o null si no hay equivalente Nostr.
   twoZero: TwoZeroSide | null;
 };
 
@@ -155,9 +155,9 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
     ],
   },
   {
-    id: "solo-2.0",
-    title: "Interfaz independiente Nostr",
-    subtitle: "Nostr-nativo",
+    id: "solo-ngp",
+    title: "Nostr Games Protocol (NGP)",
+    subtitle: "NGP nativo",
     rows: [
       {
         key: "zaps",
@@ -198,8 +198,8 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
 
 // Capacidad "Luna Room Link" (enlace de invitación a sala hosteada por el juego,
 // ver docs/luna-room-link.md). Es una capacidad 1.0 (REST: entitlement + URL al
-// dominio del juego), NO una pata 2.0, así que NO vive en el catálogo de la matriz
-// 1.0/2.0. Se declara manualmente igual que las patas `manual` (el server no puede
+// dominio del juego), NO una pata NGP, así que NO vive en el catálogo de la matriz
+// 1.0/NGP. Se declara manualmente igual que las patas `manual` (el server no puede
 // observar si el juego implementó el contrato de 6 pasos): solo si el proveedor la
 // marca, Luna muestra el botón "Invitar" en la ficha. Se persiste en
 // Game.manualCaps["roomLink"].
@@ -207,7 +207,7 @@ export const ROOM_LINK_CAP = "roomLink";
 
 // Claves de capacidad declarables manualmente (Game.manualCaps). Sirve para
 // validar en el server qué claves acepta el PATCH y de allowlist en el cliente.
-// Las patas 2.0 no observables (login, presencia…) se derivan del catálogo
+// Las patas NGP no observables (login, presencia…) se derivan del catálogo
 // (`manual: true`); `roomLink` se suma aparte porque es 1.0 (sin fila de catálogo).
 export const MANUAL_CAP_KEYS: string[] = [
   ...INTEGRATION_COLUMNS.flatMap((c) =>

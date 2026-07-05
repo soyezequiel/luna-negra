@@ -1,7 +1,7 @@
 import type { IntegrationFeature } from "@/lib/integration-features";
 
 // Migración por capacidad de la interfaz Luna dependiente (REST) a la interfaz
-// independiente Nostr. Un proveedor puede pasar CADA capacidad "intermedia" de su
+// NGP. Un proveedor puede pasar CADA capacidad "intermedia" de su
 // juego a Nostr; al hacerlo, la pata Luna (REST) de esa capacidad se APAGA para
 // ese juego (el endpoint devuelve 409). Sirve para migrar de a poco sin cortar
 // todo de golpe. Persistido en Game.capsMode (JSON { [capKey]: "luna" | "nostr" }).
@@ -10,7 +10,7 @@ import type { IntegrationFeature } from "@/lib/integration-features";
 // reemplazo Nostr YA funciona (login NIP-07/46, marcador kind:31337, presencia
 // NIP-38, apuestas por zaps NIP-57). Salas e invitaciones quedan afuera porque su
 // lado Nostr todavía es diseño: migrarlas apagaría la pata Luna sin reemplazo.
-// Las claves son las de CapabilityRow.key en src/lib/integration-2.ts.
+// Las claves son las de CapabilityRow.key en src/lib/integration-ngp.ts.
 export const MIGRATABLE_CAPS = ["identidad", "marcador", "presencia", "bets"] as const;
 export type MigratableCap = (typeof MIGRATABLE_CAPS)[number];
 

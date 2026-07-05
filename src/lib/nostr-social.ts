@@ -72,11 +72,11 @@ function hasLunaNegraLabel(ev: { tags: string[][] }): boolean {
   return ev.tags.some((t) => t[0] === "l" && t[1] === LN_STATUS_LABEL);
 }
 
-// Presencia 2.0 (NIP-38 auto-firmada por el juego, sin pasar por la tienda): en
+// Presencia NGP (NIP-38 auto-firmada por el juego, sin pasar por la tienda): en
 // vez de la etiqueta `l:luna-negra` la ancla un tag `a` con la coordenada del
 // juego (`30023:<pubkey-tienda>:<slug>`). La reconocemos como "jugando un juego de
 // ESTA tienda" solo si esa coordenada la firma la tienda (su `<pubkey>`), para no
-// mostrar la presencia 2.0 de otra plataforma Nostr como si fuera de acá.
+// mostrar la presencia NGP de otra plataforma Nostr como si fuera de acá.
 function hasStoreGameCoord(
   ev: { tags: string[][] },
   storePubkey?: string | null,
@@ -563,7 +563,7 @@ export function selectFreshStatuses(
     // Aceptamos la presencia por DOS vías (el estado `d:"general"` es compartido
     // entre apps Nostr, así que ignoramos lo ajeno como "Accounts" de nostr.build):
     //  1.0 → la publicó la tienda con la etiqueta `l:luna-negra`.
-    //  2.0 → la firmó el propio juego y la ancló a la coordenada de un juego de
+    //  NGP → la firmó el propio juego y la ancló a la coordenada de un juego de
     //        esta tienda (tag `a` = 30023:<pubkey-tienda>:<slug>).
     if (!hasLunaNegraLabel(ev) && !hasStoreGameCoord(ev, storePubkey)) continue;
 
@@ -585,7 +585,7 @@ export async function fetchStatuses(
   pubkeys: string[],
 ): Promise<Record<string, Status>> {
   if (pubkeys.length === 0) return {};
-  // No filtramos por `#l` en el relay: la presencia 2.0 (auto-firmada por el
+  // No filtramos por `#l` en el relay: la presencia NGP (auto-firmada por el
   // juego) no lleva esa etiqueta, la ancla la coordenada `a`. Traemos todos los
   // estados `d:general` de los contactos y `selectFreshStatuses` decide cuáles son
   // de esta tienda (por etiqueta o por coordenada del juego).

@@ -8,7 +8,7 @@ const POLL_INTERVAL_MS = 30_000;
 
 /**
  * "Jugando ahora" estilo SteamDB, en la columna de metadatos de la ficha.
- * Unifica presencia 1.0 (GamePresence, REST) y 2.0 (NIP-38) vía
+ * Unifica presencia 1.0 (GamePresence, REST) y NGP (NIP-38) vía
  * `GET /api/games/[gameId]/live`. Si el juego nunca tuvo presencia (0 ahora y
  * 0 de pico hoy) no se muestra: no hay nada que decir todavía.
  */

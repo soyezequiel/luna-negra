@@ -67,7 +67,7 @@
 3. El estado pasa a **pagado**; el juego entra a tu **biblioteca**. Mencionás el reparto
    **70/30** custodial (el proveedor cobra al instante).
 
-**Variante B — ZAP AL DEV (si querés mostrar Nostr puro y un juego gratis):**
+**Variante B — ZAP AL DEV (si querés mostrar NGP puro y un juego gratis):**
 1. En un juego gratis, tarjeta **"Dejar un zap"** → elegís monto → **firmás el zap
    (NIP-57)** con tu wallet.
 2. Se ve el **recibo** y el juego sube en el **top de zappers** (leaderboard real desde

@@ -470,7 +470,7 @@ export default async function GamePage({
             ) : null}
           </div>
 
-          {/* Marcador del juego (tabla `Score`: REST 1.0 + Nostr 2.0 kind:31337).
+          {/* Marcador del juego (tabla `Score`: REST 1.0 + NGP kind:31337).
               Se auto-oculta si el juego no tiene puntajes. */}
           <ScoreLeaderboard gameId={game.id} />
 

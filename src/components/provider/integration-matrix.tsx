@@ -6,7 +6,7 @@ import {
   INTEGRATION_COLUMNS,
   type CapabilityRow,
   type TwoZeroSide,
-} from "@/lib/integration-2";
+} from "@/lib/integration-ngp";
 import {
   capMode,
   isMigratableCap,
@@ -31,13 +31,13 @@ export type IntegrationView = {
     title: string;
     slug: string;
     status: string;
-    // Declaración manual de capacidades 2.0 no observables (login, presencia).
+    // Declaración manual de capacidades NGP no observables (login, presencia).
     manualCaps?: Record<string, boolean> | null;
     // Modo por capacidad intermedia: { [capKey]: "luna" | "nostr" }. "nostr" =
-    // migrada a la interfaz Nostr (pata Luna apagada). Ver capability-mode.ts.
+    // migrada a NGP (pata Luna apagada). Ver capability-mode.ts.
     capsMode?: Record<string, string> | null;
     features: Record<string, PingInfo | null>;
-    // Señales de uso 2.0 (Nostr): scores | zaps | comments.
+    // Señales de uso NGP: scores | zaps | comments.
     nostr?: Record<string, PingInfo | null> | null;
   }>;
 };
@@ -51,8 +51,8 @@ export type ProbeResult = {
   skipped: boolean;
 };
 
-// Resultado del probador 2.0 (relays Nostr), por capacidad (CapabilityRow.key).
-// Forma espejo de la del server (src/lib/integration-probe-2.ts).
+// Resultado del probador NGP (relays Nostr), por capacidad (CapabilityRow.key).
+// Forma espejo de la del server (src/lib/integration-probe-ngp.ts).
 export type NostrProbeResult = {
   key: string;
   found: number;
@@ -62,7 +62,7 @@ export type NostrProbeResult = {
 };
 
 // Respuesta unificada del probador: 1.0 (endpoints REST, a nivel proveedor) +
-// 2.0 (relays Nostr, por juego).
+// NGP (relays Nostr, por juego).
 export type ProbeResponse = {
   results: ProbeResult[];
   nostr: Record<string, NostrProbeResult[]>;
@@ -133,7 +133,7 @@ function level1For(
   return "none";
 }
 
-// ── Pata 2.0 (Nostr) ──
+// ── Pata NGP ──
 type Level2 = "active" | "stale" | "declared" | "available" | "design";
 
 const LEVEL2_STYLE: Record<Level2, { dot: string; chip: string; label: string }> = {
@@ -158,7 +158,7 @@ function level2For(
   return "available"; // implementado, sin señal por juego (reseñas sin datos)
 }
 
-// ¿El proveedor declaró integrada la pata 2.0 (manual) de esta capacidad?
+// ¿El proveedor declaró integrada la pata NGP (manual) de esta capacidad?
 function declaredFor(
   row: CapabilityRow,
   manualCaps: Record<string, boolean> | null | undefined,
@@ -168,7 +168,7 @@ function declaredFor(
   return !!manualCaps?.[row.key];
 }
 
-// Texto del checkbox con el que el proveedor declara que integró una pata 2.0 no
+// Texto del checkbox con el que el proveedor declara que integró una pata NGP no
 // observable (login/presencia/salas/invitaciones). Fuente única para la matriz Luna
 // y la vista estándar Nostr.
 function manualToggleLabel(row: CapabilityRow): string {
@@ -213,11 +213,11 @@ function isRowLive(
   return false;
 }
 
-// Estado de la pata 2.0 desde la óptica de MIGRACIÓN (no solo "vive o no"):
+// Estado de la pata NGP desde la óptica de MIGRACIÓN (no solo "vive o no"):
 //   "live"      → ya adoptada (en uso / declarada).
 //   "adoptable" → implementada en la plataforma, sin adoptar por el juego (podés pasarte).
 //   "design"    → todavía en spec, no se puede adoptar.
-//   "none"      → esta capacidad no tiene equivalente 2.0 (solo-1.0).
+//   "none"      → esta capacidad no tiene equivalente NGP (solo-1.0).
 function leg2State(
   side: TwoZeroSide | null,
   ev: PingInfo | null,
@@ -230,9 +230,9 @@ function leg2State(
   return "adoptable"; // available | off (p. ej. reto NIP-17 sin declarar)
 }
 
-// Semáforo por tarjeta pensado para quien está pasando de la 1.0 a la 2.0.
-//   on2   → 2.0 adoptada.        migrate/adopt → 2.0 disponible/declarable sin adoptar.
-//   on1   → integrada, sin 2.0 (solo-1.0).
+// Semáforo por tarjeta pensado para quien está pasando de la 1.0 a NGP.
+//   on2   → NGP adoptado.        migrate/adopt → NGP disponible/declarable sin adoptar.
+//   on1   → integrada, sin NGP (solo-1.0).
 //   off   → nada integrado.
 type TileKind = "on2" | "migrate" | "adopt" | "on1" | "off";
 
@@ -273,11 +273,11 @@ const TILE_PRES: Record<
 };
 
 // Deriva el estado de migración de una tarjeta cruzando su pata 1.0 (¿integrada?)
-// con el estado de adopción de su pata 2.0.
+// con el estado de adopción de su pata NGP.
 function tileKind(leg1Live: boolean, s2: ReturnType<typeof leg2State>): TileKind {
   if (s2 === "live") return "on2";
   if (s2 === "adoptable") return leg1Live ? "migrate" : "adopt";
-  // "design" (no declarable, p. ej. oráculo) o "none" (solo-1.0): no hay 2.0 que
+  // "design" (no declarable, p. ej. oráculo) o "none" (solo-1.0): no hay NGP que
   // adoptar hoy → solo importa si la 1.0 corre.
   return leg1Live ? "on1" : "off";
 }
@@ -432,7 +432,7 @@ const LEG_OPTS: SegOpt[] = [
     value: "nostr",
     label: "Nostr",
     active: "bg-blue/20 text-blue",
-    title: "Migrar a la interfaz Nostr (apaga la pata Luna: su endpoint REST devuelve 409)",
+    title: "Migrar a NGP (apaga la pata Luna: su endpoint REST devuelve 409)",
   },
 ];
 
@@ -490,7 +490,7 @@ function CapabilityTile({
   const side = row.twoZero;
   const ev =
     side && side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
-  // ¿Declaró integrada la pata 2.0? (login/presencia → manualCaps). Manda la
+  // ¿Declaró integrada la pata NGP? (login/presencia → manualCaps). Manda la
   // declaración cuando la capacidad no es observable por el probador.
   const declared = declaredFor(row, manualCaps);
   const lvl2 = side ? level2For(side, ev, declared) : null;
@@ -592,7 +592,7 @@ const NOSTR_RING: Record<Level2, string> = {
 };
 
 // Tarjeta de la vista estándar: SOLO la pata Nostr de una capacidad (interfaz
-// independiente Nostr). Sin badge Luna ni control de migración; el proveedor solo
+// NGP). Sin badge Luna ni control de migración; el proveedor solo
 // declara las patas no observables (login/presencia/salas/invitaciones).
 function NostrCapabilityTile({
   row,
@@ -679,7 +679,7 @@ export function GameIntegrationCard({
   );
   const [saving, setSaving] = useState(false);
   const [savingLeg, setSavingLeg] = useState(false);
-  // Declara/desmarca una capacidad 2.0 no observable (login, presencia).
+  // Declara/desmarca una capacidad NGP no observable (login, presencia).
   async function toggleManual(key: string, next: boolean) {
     setManualCaps((m) => ({ ...m, [key]: next })); // optimista
     setSaving(true);
@@ -745,7 +745,7 @@ export function GameIntegrationCard({
     isRowLive(row, game, providerLevel, webhookConfigured, manualCaps),
   ).length;
 
-  // Progreso de migración: de las capacidades con camino 2.0, ¿cuántas ya están en Nostr?
+  // Progreso de migración: de las capacidades con camino NGP, ¿cuántas ya están en Nostr?
   const with2 = rows.filter((r) => r.twoZero);
   const on2 = with2.filter((row) => {
     const side = row.twoZero!;
@@ -753,7 +753,7 @@ export function GameIntegrationCard({
     return leg2State(side, ev, declaredFor(row, manualCaps)) === "live";
   }).length;
 
-  // ── Vista estándar (interfaz independiente Nostr) ──
+  // ── Vista estándar (Nostr Games Protocol (NGP)) ──
   // Capacidades con pata Nostr (todas menos "Verificar compra" y "Webhooks", que
   // son solo-Luna). "Apuestas y escrow" va aparte como opcional.
   const nostrRows = rows.filter((r) => r.twoZero);
@@ -771,7 +771,7 @@ export function GameIntegrationCard({
         <p className="text-sm font-semibold text-ln-text">{game.title}</p>
         {showLuna ? (
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-1.5" title="Capacidades con camino 2.0 ya migradas a Nostr">
+            <div className="flex items-center gap-1.5" title="Capacidades con camino NGP ya migradas a Nostr">
               <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full rounded-full bg-ln-aurora transition-all"
@@ -779,13 +779,13 @@ export function GameIntegrationCard({
                 />
               </div>
               <span className="text-[11px] text-ln-muted">
-                <span className="font-semibold text-ln-text">{on2}</span> de {with2.length} en 2.0
+                <span className="font-semibold text-ln-text">{on2}</span> de {with2.length} en NGP
               </span>
             </div>
             <span className="text-[11px] text-ln-faint">· {live}/{rows.length} integradas</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5" title="Capacidades de la interfaz independiente Nostr activas">
+          <div className="flex items-center gap-1.5" title="Capacidades de Nostr Games Protocol (NGP) activas">
             <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-ln-aurora transition-all"
@@ -851,14 +851,14 @@ export function GameIntegrationCard({
             </span>
           </div>
           <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
-            Columna del medio = misma necesidad por dos caminos (interfaz Luna dependiente ⇆ interfaz independiente Nostr).
-            La interfaz Luna (§1–§8) se mantiene por compatibilidad; el estándar hoy es la interfaz independiente Nostr. El
+            Columna del medio = misma necesidad por dos caminos (interfaz Luna dependiente ⇆ Nostr Games Protocol (NGP)).
+            La interfaz Luna (§1–§8) se mantiene por compatibilidad; el estándar hoy es Nostr Games Protocol (NGP). El
             <em> «no probable»</em> es solo de la pata Nostr (login/presencia/diseño): no se puede
             verificar desde el server, no que falte la parte Luna.
           </p>
         </>
       ) : (
-        // ── Estándar: interfaz independiente Nostr + apuestas (opcional) ──
+        // ── Estándar: Nostr Games Protocol (NGP) + apuestas (opcional) ──
         <>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {coreNostrRows.map((row) => (
@@ -912,7 +912,7 @@ export function GameIntegrationCard({
             </span>
           </div>
           <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
-            Estándar actual: la interfaz independiente Nostr (login NIP-07/46, marcador kind:31337, presencia
+            Estándar actual: Nostr Games Protocol (NGP) (login NIP-07/46, marcador kind:31337, presencia
             NIP-38, reseñas NIP-23…), con <em>Apuestas y escrow</em> por zaps NIP-57 como opcional. El
             <em> «no probable»</em> son las patas cifradas o en diseño (login/presencia/salas/invitaciones):
             no se pueden verificar desde el server, por eso las declarás manualmente.
@@ -925,7 +925,7 @@ export function GameIntegrationCard({
 
 /**
  * Matriz de integración de un proveedor: una tarjeta por juego con el estado de
- * cada capacidad en las tres columnas (interfaz Luna · intermedio · interfaz Nostr),
+ * cada capacidad en las tres columnas (interfaz Luna · intermedio · NGP),
  * más un botón para correr el probador en vivo (solo ejercita los endpoints REST de la interfaz Luna).
  */
 export function IntegrationMatrix({
@@ -941,12 +941,12 @@ export function IntegrationMatrix({
   editable?: boolean;
 }) {
   const [probe, setProbe] = useState<Record<string, ProbeResult> | null>(null);
-  // Probe 2.0 indexado por juego → capacidad.
+  // Probe NGP indexado por juego → capacidad.
   const [nostrProbe, setNostrProbe] = useState<
     Record<string, Record<string, NostrProbeResult>> | null
   >(null);
   const [running, setRunning] = useState(false);
-  // Estándar por defecto = interfaz independiente Nostr. La interfaz Luna dependiente
+  // Estándar por defecto = Nostr Games Protocol (NGP). La interfaz Luna dependiente
   // (1.0) queda detrás de este toggle (se sigue dando soporte por compatibilidad).
   const [showLuna, setShowLuna] = useState(false);
 
@@ -976,8 +976,8 @@ export function IntegrationMatrix({
             </button>
             <p className="text-[11px] text-ln-faint">
               {showLuna
-                ? "Golpea los endpoints REST de la interfaz Luna y consulta los relays de la interfaz Nostr para ver qué responde/existe ahora mismo."
-                : "Consulta los relays de la interfaz Nostr para ver qué eventos existen ahora mismo."}
+                ? "Golpea los endpoints REST de la interfaz Luna y consulta los relays de NGP para ver qué responde/existe ahora mismo."
+                : "Consulta los relays de NGP para ver qué eventos existen ahora mismo."}
             </p>
           </div>
         ) : (
@@ -986,7 +986,7 @@ export function IntegrationMatrix({
 
         <div
           className="inline-flex overflow-hidden rounded-full border border-ln-border/70 text-[11px] font-semibold"
-          title="La interfaz independiente Nostr es el estándar; la interfaz Luna (1.0) se mantiene por compatibilidad"
+          title="Nostr Games Protocol (NGP) es el estándar; la interfaz Luna (1.0) se mantiene por compatibilidad"
         >
           <button
             type="button"

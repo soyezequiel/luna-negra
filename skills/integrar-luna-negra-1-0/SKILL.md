@@ -7,8 +7,8 @@ description: >-
   apuestas/escrow REST v1, webhooks y SDK TypeScript. Usar cuando el usuario pida
   integrar un juego con Luna Negra, cobrar o apostar en sats/Lightning, validar
   acceso pago, usar API keys, salas, presencia, amigos, marcadores REST,
-  webhooks o el SDK. Para eventos Nostr nativos 2.0 y apuestas v2 por zaps usar
-  integrar-luna-negra-2-0.
+  webhooks o el SDK. Para Nostr Games Protocol (NGP) y apuestas v2 por zaps usar
+  integrar-ngp-v2.
 ---
 
 # Integrar juegos con Luna Negra 1.0
@@ -288,7 +288,7 @@ Invariantes:
 - El resultado siempre viene del game server o de un oráculo controlado; nunca
   de un marcador cliente.
 - Si el usuario pide apuestas v2 por zaps o `/api/v2/bets`, usa la skill
-  `integrar-luna-negra-2-0`.
+  `integrar-ngp-v2`.
 
 ## 9. Webhooks
 
