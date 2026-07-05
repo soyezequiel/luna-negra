@@ -18,7 +18,13 @@ export async function GET(
       { headers: CORS },
     );
   }
-  const part = await prisma.betParticipant.findUnique({ where: { id: pid } });
+  // El token solo lleva el id del participante. Puede ser una apuesta v1
+  // (betParticipant) o v2/zaps (zapBetParticipant): buscamos en ambas tablas. Los
+  // campos de retiro (payoutStatus/payoutMsat/withdrawDeadline) tienen el mismo
+  // nombre en las dos, así que los params del withdrawRequest son idénticos.
+  const part =
+    (await prisma.betParticipant.findUnique({ where: { id: pid } })) ??
+    (await prisma.zapBetParticipant.findUnique({ where: { id: pid } }));
   if (
     !part ||
     part.payoutStatus !== "withdraw_pending" ||

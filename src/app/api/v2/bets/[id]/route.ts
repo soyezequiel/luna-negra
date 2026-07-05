@@ -9,6 +9,7 @@ import {
   ensureCustodialDepositInvoiceV2,
 } from "@/lib/zap-bet";
 import { encodeLnurl } from "@/lib/zap";
+import { signWithdrawToken } from "@/lib/auth";
 import { msatToSats } from "@/lib/money";
 import { BET_FEE_MIN_MSAT } from "@/lib/escrow-v2-config";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
@@ -127,6 +128,25 @@ export async function GET(
       const lnurl = canDeposit ? encodeLnurl(participantLnurlUrl(base, p.id)) : null;
       const payUrl = canDeposit ? `${base}/apuestas/${bet.id}` : null;
       let bolt11 = canDeposit ? p.depositInvoice : null;
+      // Cobro del ganador SIN wallet asociada (invitado de un duelo local): si su
+      // payout quedó en `withdraw_pending`, exponemos un LNURL-withdraw firmado para
+      // que el juego lo muestre como QR de retiro escaneable con la billetera —
+      // idéntico a v1 (api/v1/bets/[id]). El callback lnurlw ya sabe cobrar v2.
+      let withdrawLnurl: string | null = null;
+      let withdrawUrl: string | null = null;
+      if (
+        p.payoutStatus === "withdraw_pending" &&
+        p.payoutMsat &&
+        p.withdrawDeadline &&
+        p.withdrawDeadline > new Date()
+      ) {
+        const token = await signWithdrawToken(
+          p.id,
+          Math.floor(p.withdrawDeadline.getTime() / 1000),
+        );
+        withdrawUrl = `${base}/api/escrow/lnurlw/${token}`;
+        withdrawLnurl = encodeLnurl(withdrawUrl);
+      }
       let depositZapRequest: ReturnType<typeof buildDepositZapRequest> | null = null;
       let depositCallback: string | null = null;
       let participationComment: ReturnType<typeof buildParticipationComment> = null;
@@ -187,6 +207,8 @@ export async function GET(
         payoutSats: p.payoutMsat != null ? sats(p.payoutMsat) : null,
         payoutKind: p.payoutKind,
         payoutReceiptId: p.payoutReceiptId,
+        withdrawLnurl,
+        withdrawUrl,
       };
     }),
   );
