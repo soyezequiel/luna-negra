@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession, signRoomInvite } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { npubOf, pubkeyFromNpub } from "@/lib/nostr-social";
+import { queueRoomLinkLaunchRequest } from "@/lib/game-launch-requests";
 
 // "Luna Room Link": genera un enlace de invitación a una sala HOSTEADA POR EL JUEGO
 // sin abrir el juego ni registrar una fila `Room`. Ver docs/luna-room-link.md.
@@ -67,7 +68,9 @@ export async function POST(req: Request) {
     where: { id: gameId },
     select: {
       id: true,
+      providerId: true,
       slug: true,
+      title: true,
       gameUrl: true,
       status: true,
       priceSats: true,
@@ -101,6 +104,7 @@ export async function POST(req: Request) {
 
   // Variante dirigida: si viene `toNpub`, firmamos un `lnInvite` para ese npub.
   let lnInvite: string | undefined;
+  let directedToNpub: string | undefined;
   if (body.toNpub !== undefined && body.toNpub !== null && body.toNpub !== "") {
     const toPubkey = pubkeyFromNpub(String(body.toNpub));
     if (!toPubkey) {
@@ -119,6 +123,7 @@ export async function POST(req: Request) {
       roomId,
       toNpub,
     });
+    directedToNpub = toNpub;
   }
 
   // Enlace canónico: <Game.gameUrl>/?lnRoom=<roomId>[&lnInvite=<jwt>].
@@ -135,5 +140,25 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ roomId, inviteUrl, ...(lnInvite ? { lnInvite } : {}) });
+  // Si la invitación es dirigida, avisamos también al juego ya abierto. TETRA
+  // consume esta orden por GET /api/v1/invites y muestra su popup; el DM sigue
+  // cubriendo a quien tenga el juego cerrado.
+  const launchQueued = lnInvite && directedToNpub
+    ? await queueRoomLinkLaunchRequest({
+        providerId: game.providerId,
+        npub: directedToNpub,
+        roomId,
+        lnInvite,
+        slug: game.slug,
+        title: game.title,
+        inviteUrl,
+      })
+    : false;
+
+  return NextResponse.json({
+    roomId,
+    inviteUrl,
+    ...(lnInvite ? { lnInvite } : {}),
+    launchQueued,
+  });
 }

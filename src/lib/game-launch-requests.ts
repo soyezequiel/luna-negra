@@ -4,10 +4,13 @@ import { mintRoomInvite } from "@/lib/rooms";
 const LAUNCH_REQUEST_TTL_MS = 120_000;
 const LAUNCH_LISTENER_TTL_MS = 20_000;
 
+export type GameLaunchRequestKind = "luna-room" | "room-link";
+
 export type GameLaunchRequestPayload = {
   id: string;
   roomId: string;
   inviteToken: string;
+  kind: GameLaunchRequestKind;
   slug: string;
   title: string;
   gameUrl: string;
@@ -18,6 +21,7 @@ export async function createGameLaunchRequest(input: {
   npub: string;
   roomId: string;
   inviteToken: string;
+  kind?: GameLaunchRequestKind;
   slug: string;
   title: string;
   gameUrl: string;
@@ -29,6 +33,7 @@ export async function createGameLaunchRequest(input: {
       npub: input.npub,
       roomId: input.roomId,
       inviteToken: input.inviteToken,
+      kind: input.kind ?? "luna-room",
       slug: input.slug,
       title: input.title,
       gameUrl: input.gameUrl,
@@ -97,6 +102,41 @@ export async function queueGameLaunchRequest(input: {
   }
 }
 
+/**
+ * Encola el popup para un "Luna Room Link" ya firmado. A diferencia de
+ * `queueGameLaunchRequest`, no mintea una sala de Luna: conserva el `lnInvite` y
+ * la URL del juego para que el cliente entre a su propia sala `lnRoom`.
+ *
+ * La entrega por DM sigue siendo el canal principal; por eso un fallo al encolar
+ * nunca debe romper la creación del enlace.
+ */
+export async function queueRoomLinkLaunchRequest(input: {
+  providerId: string;
+  npub: string;
+  roomId: string;
+  lnInvite: string;
+  slug: string;
+  title: string;
+  inviteUrl: string;
+}): Promise<boolean> {
+  try {
+    await createGameLaunchRequest({
+      providerId: input.providerId,
+      npub: input.npub,
+      roomId: input.roomId,
+      inviteToken: input.lnInvite,
+      kind: "room-link",
+      slug: input.slug,
+      title: input.title,
+      gameUrl: input.inviteUrl,
+    });
+    return true;
+  } catch (error) {
+    console.error("queueRoomLinkLaunchRequest failed (room link still created)", error);
+    return false;
+  }
+}
+
 export async function recordGameLaunchListener(input: {
   providerId: string;
   npub: string;
@@ -151,6 +191,7 @@ export async function consumeGameLaunchRequest(input: {
       id: true,
       roomId: true,
       inviteToken: true,
+      kind: true,
       slug: true,
       title: true,
       gameUrl: true,
@@ -162,5 +203,11 @@ export async function consumeGameLaunchRequest(input: {
     where: { id: request.id, consumedAt: null },
     data: { consumedAt: now },
   });
-  return consumed.count === 1 ? request : null;
+  if (consumed.count !== 1) return null;
+  return {
+    ...request,
+    // La columna es String para mantener el esquema extensible; el contrato
+    // público sólo expone los dos modos que el juego sabe procesar.
+    kind: request.kind === "room-link" ? "room-link" : "luna-room",
+  };
 }

@@ -310,6 +310,8 @@ model GameLaunchRequest {
   npub        String
   roomId      String
   inviteToken String
+  // "luna-room" = sala hosteada por Luna; "room-link" = sala hosteada por el juego.
+  kind        String    @default("luna-room")
   slug        String
   title       String
   gameUrl     String

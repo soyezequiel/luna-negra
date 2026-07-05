@@ -106,3 +106,34 @@ describe("queueGameLaunchRequest", () => {
     expect(mocks.launchCreate).not.toHaveBeenCalled();
   });
 });
+
+describe("queueRoomLinkLaunchRequest", () => {
+  it("queues the signed room link without minting a Luna-hosted room", async () => {
+    const { queueRoomLinkLaunchRequest } = await import("@/lib/game-launch-requests");
+
+    const queued = await queueRoomLinkLaunchRequest({
+      providerId: "prov1",
+      npub: "npub-guest",
+      roomId: "ROOM1",
+      lnInvite: "room-link-token",
+      slug: "tetris",
+      title: "TETRA",
+      inviteUrl: "https://tetris.example/?lnRoom=ROOM1&lnInvite=room-link-token",
+    });
+
+    expect(queued).toBe(true);
+    expect(mocks.mintRoomInvite).not.toHaveBeenCalled();
+    expect(mocks.launchCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        providerId: "prov1",
+        npub: "npub-guest",
+        roomId: "ROOM1",
+        inviteToken: "room-link-token",
+        kind: "room-link",
+        slug: "tetris",
+        title: "TETRA",
+        gameUrl: "https://tetris.example/?lnRoom=ROOM1&lnInvite=room-link-token",
+      }),
+    });
+  });
+});
