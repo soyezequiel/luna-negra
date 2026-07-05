@@ -6,12 +6,16 @@ import { RELAYS } from "@/lib/constants";
 import type {
   AdminBetDetail,
   AdminBetParticipant,
-} from "@/app/api/admin/bets/[id]/route";
+} from "@/lib/bet-detail";
 
-// Detalle completo de una apuesta en el panel admin: contrato, tabla de
-// participantes (quién depositó y cómo, quién ganó, cómo cobró), asientos del
-// ledger y un árbol horizontal del flujo de la plata (apostadores → pozo →
-// comisiones + ganador). Sirve v1 y v2; los campos de zap solo aparecen en v2.
+// Detalle completo de una apuesta: contrato, tabla de participantes (quién
+// depositó y cómo, quién ganó, cómo cobró), asientos del ledger y un árbol
+// horizontal del flujo de la plata (apostadores → pozo → comisiones + ganador).
+// Sirve v1 y v2; los campos de zap solo aparecen en v2.
+//
+// `BetDetailView` es la parte puramente presentacional (recibe el detalle ya
+// armado): la usan el panel admin (vía el wrapper `BetDetail` que hace fetch) y
+// la página pública /apuestas/[id] (que arma el detalle server-side).
 
 function shortNpub(np: string) {
   return np.length > 20 ? `${np.slice(0, 12)}…${np.slice(-4)}` : np;
@@ -68,6 +72,7 @@ const PAYOUT_LABEL: Record<string, string> = {
   forfeited: "no reclamado",
 };
 
+// Wrapper del panel admin: trae el detalle del endpoint admin y lo pinta.
 export function BetDetail({
   betId,
   version,
@@ -94,6 +99,18 @@ export function BetDetail({
   if (error) return <p className="px-3 py-4 text-xs text-[var(--lose)]">{error}</p>;
   if (!d) return <p className="px-3 py-4 text-xs text-faint">Cargando detalle…</p>;
 
+  return <BetDetailView d={d} />;
+}
+
+// Parte presentacional: recibe el detalle ya armado (sin fetch). `meNpub` marca
+// al jugador que está mirando ("· vos") en la tabla de participantes.
+export function BetDetailView({
+  d,
+  meNpub,
+}: {
+  d: AdminBetDetail;
+  meNpub?: string | null;
+}) {
   return (
     <div className="mt-3 space-y-4 border-t border-line pt-3">
       {/* Contrato / metadatos */}
@@ -178,6 +195,9 @@ export function BetDetail({
                   <td className="py-1.5 pr-2 text-faint">{p.seat}</td>
                   <td className="py-1.5 pr-2">
                     <span className="font-medium">{nameOf(p)}</span>
+                    {meNpub && p.npub === meNpub ? (
+                      <span className="ml-1 text-[10px] text-btc">· vos</span>
+                    ) : null}
                     <br />
                     <span className="font-mono text-[10px] text-faint">
                       {shortNpub(p.npub)}

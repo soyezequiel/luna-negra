@@ -872,8 +872,9 @@ export default function ProviderPage() {
                   <IfaceBadge kind="1.0" />
                 </dt>
                 <dd className="text-faint">
-                  URL de este deploy: base de todas las llamadas REST 1.0. La capa
-                  2.0 Nostr no la usa (login NIP-07/46 y eventos directo a relays).
+                  URL de este deploy: base de todas las llamadas REST 1.0,{" "}
+                  <strong>siempre requerida</strong>. La capa 2.0 Nostr no la usa
+                  (login NIP-07/46 y eventos directo a relays).
                 </dd>
               </div>
               <div className="flex flex-col gap-0.5">
@@ -916,9 +917,8 @@ export default function ProviderPage() {
             </dl>
             <p className="mt-3 rounded-ln-md border border-green/25 bg-green/5 px-3 py-2 text-xs text-muted">
               <strong className="text-green">Mínimo para apuestas/escrow:</strong>{" "}
-              con una clave acotada a un juego alcanza con{" "}
-              <code>LUNA_NEGRA_API_KEY</code> (y <code>LUNA_NEGRA_BASE</code> si no
-              usás el deploy oficial). <code>GAME_ID</code> y{" "}
+              <code>LUNA_NEGRA_BASE</code> + <code>LUNA_NEGRA_API_KEY</code> (con la
+              clave acotada a un juego). <code>GAME_ID</code> y{" "}
               <code>WEBHOOK_SECRET</code> quedan opcionales.
             </p>
           </div>

@@ -9,6 +9,8 @@ import { RELAYS } from "@/lib/constants";
 import { msatToSats } from "@/lib/money";
 import { ZapDepositCard } from "@/components/zap-deposit-card";
 import { BetLiveRefresh } from "@/components/bet-live-refresh";
+import { BetDetailView } from "@/components/admin/bet-detail";
+import { betDetailInclude, buildZapBetDetail } from "@/lib/bet-detail";
 
 // Página de una apuesta v2 (namespace propio, no choca con /bets/[id] de v1).
 // Depósitos: zaps públicos anclados al contrato. Premio: profile-zap al ganador.
@@ -35,13 +37,14 @@ export default async function ApuestaV2Page({
   const { id } = await params;
   const bet = await prisma.zapBet.findUnique({
     where: { id },
-    include: {
-      game: { select: { title: true, slug: true } },
-      provider: { select: { oraclePubkey: true } },
-      participants: { orderBy: { createdAt: "asc" } },
-    },
+    include: betDetailInclude,
   });
   if (!bet) notFound();
+
+  // Mismo detalle auditable que arma el panel admin (árbol de flujo de la plata,
+  // tabla de participantes, ledger), pero server-side y sin gate: todos los datos
+  // ya son públicos (zaps NIP-57). Alimenta el <BetDetailView> compartido.
+  const detail = buildZapBetDetail(bet);
 
   const session = await getSession();
   const me = session
@@ -155,120 +158,16 @@ export default async function ApuestaV2Page({
         </p>
       ) : null}
 
-      {/* Participantes */}
+      {/* Detalle completo: flujo de la plata (apostadores → pozo → comisiones +
+          ganador), tabla de participantes con depósitos/cobros y ledger. Mismo
+          componente que el panel admin, alimentado con datos públicos. */}
       <div className="mt-4 rounded-ln-xl border border-ln-border bg-ln-card p-6">
-        <h2 className="font-display text-sm font-bold text-white">Participantes</h2>
-        <ul className="mt-3 space-y-2">
-          {bet.participants.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between gap-3 rounded-ln-lg border border-ln-border/60 px-3 py-2 text-sm"
-            >
-              <span className="truncate font-mono text-xs text-ln-muted">
-                {short(p.npub)}
-                {me?.id === p.id ? " (vos)" : ""}
-              </span>
-              <span className="flex items-center gap-2">
-                {p.result === "won" ? (
-                  <span className="text-ln-corona-bright">🏆 ganó</span>
-                ) : p.result === "tie" ? (
-                  <span className="text-ln-muted">= empate</span>
-                ) : p.result === "lost" ? (
-                  <span className="text-ln-faint">perdió</span>
-                ) : null}
-                <span
-                  className={
-                    p.depositStatus === "paid"
-                      ? "text-ln-corona-bright"
-                      : "text-ln-faint"
-                  }
-                >
-                  {p.depositStatus === "paid" ? "✅ depositó" : "⏳ pendiente"}
-                </span>
-                {p.depositReceiptId ? (
-                  <a
-                    href={njump(p.depositReceiptId)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-ln-corona-bright hover:underline"
-                    title="Recibo del zap de depósito"
-                  >
-                    ⚡
-                  </a>
-                ) : null}
-                {p.commentEventId ? (
-                  <a
-                    href={njump(p.commentEventId)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-ln-muted hover:underline"
-                    title="Comentario de participación (el premio se zapea acá si gana)"
-                  >
-                    💬
-                  </a>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+        <h2 className="font-display text-sm font-bold text-white">Detalle</h2>
+        <BetDetailView d={detail} meNpub={me?.npub} />
 
-      {/* Liquidación */}
-      {status === "settled" || status === "refunded" ? (
-        <div className="mt-4 rounded-ln-xl border border-ln-border bg-ln-card p-6">
-          <h2 className="font-display text-sm font-bold text-white">
-            {status === "settled" ? "🏆 Resultado" : "↩️ Reembolso"}
-          </h2>
-          <ul className="mt-3 space-y-1 text-sm">
-            {bet.participants
-              .filter((p) => p.payoutMsat != null)
-              .map((p) => (
-                <li key={p.id} className="rounded-ln-lg border border-ln-border/40 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-mono text-xs text-ln-muted">
-                      {short(p.npub)}
-                    </span>
-                    <span className="flex items-center gap-2 text-ln-text">
-                      {sats(p.payoutMsat as bigint)} sats
-                      <span className="text-xs text-ln-faint">
-                        {p.payoutStatus === "paid"
-                          ? `vía ${p.payoutKind}`
-                          : p.payoutStatus === "withdraw_pending"
-                            ? "· retiro por QR"
-                            : `· ${p.payoutStatus}`}
-                      </span>
-                      {p.payoutReceiptId ? (
-                        <a
-                          href={njump(p.payoutReceiptId)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-ln-corona-bright hover:underline"
-                          title="Recibo del zap de premio"
-                        >
-                          ⚡
-                        </a>
-                      ) : null}
-                    </span>
-                  </div>
-                  {p.payoutStatus === "paid" && p.payoutDestination ? (
-                    <p className="mt-1 text-xs text-ln-faint">
-                      💸 Llegó a{" "}
-                      <span className="font-mono text-ln-muted">{p.payoutDestination}</span>
-                      {p.payoutKind === "zap" ? (
-                        <span className="text-ln-faint"> · zap NIP-57 (recibo público)</span>
-                      ) : p.payoutKind === "lnurl" ? (
-                        <span className="text-ln-faint"> · pago LNURL (sin recibo Nostr)</span>
-                      ) : null}
-                    </p>
-                  ) : p.payoutStatus === "withdraw_pending" ? (
-                    <p className="mt-1 text-xs text-ln-faint">
-                      🎟️ Sin wallet configurada: el premio espera retiro por QR.
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-          </ul>
-          <div className="mt-3 flex flex-wrap gap-3 text-xs">
+        {(status === "settled" || status === "refunded") &&
+        (bet.settleNoteId || resultNevent) ? (
+          <div className="mt-3 flex flex-wrap gap-3 border-t border-ln-border pt-3 text-xs">
             {bet.settleNoteId ? (
               <a
                 href={njump(bet.settleNoteId)}
@@ -290,8 +189,8 @@ export default async function ApuestaV2Page({
               </a>
             ) : null}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <div className="mt-6 text-center">
         <Link href={`/game/${bet.game.slug}`} className="text-xs text-ln-faint hover:text-ln-text">
