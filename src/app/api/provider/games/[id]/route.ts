@@ -9,6 +9,7 @@ import { revalidateCatalog } from "@/lib/store-catalog";
 import { syncGameToNostr } from "@/lib/announce-game";
 import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
 import { MANUAL_CAP_KEYS } from "@/lib/integration-2";
+import { isMigratableCap, type CapMode } from "@/lib/capability-mode";
 
 export async function PATCH(
   req: Request,
@@ -65,6 +66,24 @@ export async function PATCH(
         ? (owned.game.manualCaps as Record<string, boolean>)
         : {};
     data.manualCaps = { ...current, [key]: !!value };
+  }
+  // Migración por capacidad de la interfaz Luna (REST) a la interfaz Nostr: elige
+  // por cuál riel corre una capacidad intermedia. "nostr" apaga la pata Luna de esa
+  // capacidad (su endpoint devuelve 409). Se fusiona sobre Game.capsMode. Solo se
+  // aceptan capacidades migrables (MIGRATABLE_CAPS) y los dos modos válidos.
+  if (body.legMode && typeof body.legMode === "object") {
+    const { key, value } = body.legMode as { key?: unknown; value?: unknown };
+    if (typeof key !== "string" || !isMigratableCap(key)) {
+      return NextResponse.json({ error: "Capacidad no migrable" }, { status: 400 });
+    }
+    if (value !== "luna" && value !== "nostr") {
+      return NextResponse.json({ error: "Modo inválido (luna|nostr)" }, { status: 400 });
+    }
+    const current =
+      owned.game.capsMode && typeof owned.game.capsMode === "object"
+        ? (owned.game.capsMode as Record<string, CapMode>)
+        : {};
+    data.capsMode = { ...current, [key]: value };
   }
   // Override por juego del corte del dev en apuestas: null/"" = usar el default del
   // proveedor. Se acota al tope global (la misma cota se reaplica al crear apuestas).

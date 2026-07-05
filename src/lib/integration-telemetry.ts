@@ -462,6 +462,9 @@ export type GameRef = {
   // Declaración manual de capacidades 2.0 no observables (Game.manualCaps). JSON
   // { [capKey]: boolean }; ver MANUAL_CAP_KEYS en src/lib/integration-2.ts.
   manualCaps?: Record<string, boolean> | null;
+  // Modo por capacidad intermedia (Game.capsMode): { [capKey]: "luna" | "nostr" }.
+  // "nostr" = migrada a la interfaz Nostr (pata Luna apagada). Ver capability-mode.ts.
+  capsMode?: Record<string, string> | null;
 };
 
 // Señales de uso de la interfaz 2.0 (Nostr) derivables de la DB, por juego:

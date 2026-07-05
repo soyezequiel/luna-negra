@@ -374,6 +374,13 @@ model Game {
   // proveedor declara si las integró. Mapa { [capKey]: boolean }; ver
   // MANUAL_CAP_KEYS en src/lib/integration-2.ts.
   manualCaps         Json?
+  // Modo por capacidad de la columna intermedia: elige por cuál interfaz corre
+  // cada capacidad migrable. Mapa { [capKey]: "luna" | "nostr" }. "nostr" = migrada
+  // a la interfaz independiente Nostr → la pata Luna (REST) se APAGA para este juego
+  // y su endpoint devuelve 409 CAPABILITY_MIGRATED. Ausente o "luna" = interfaz Luna
+  // dependiente (default retrocompatible). Solo capacidades de MIGRATABLE_CAPS
+  // (identidad, marcador, presencia, bets). Ver src/lib/capability-mode.ts.
+  capsMode           Json?
   // Juego en beta: sigue siendo un juego normal (publicado, comprable, jugable y
   // anunciado en Nostr), pero la tienda solo lo muestra a quien activó "ver juegos
   // beta" en su perfil (`User.showBetaGames`), más el dueño y el admin. Es ortogonal

@@ -60,7 +60,7 @@ export type IntegrationColumn = {
 export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
   {
     id: "solo-1.0",
-    title: "Solo 1.0",
+    title: "Interfaz Luna dependiente",
     subtitle: "REST · custodia y confianza",
     rows: [
       {
@@ -156,7 +156,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
   },
   {
     id: "solo-2.0",
-    title: "Solo 2.0",
+    title: "Interfaz independiente Nostr",
     subtitle: "Nostr-nativo",
     rows: [
       {

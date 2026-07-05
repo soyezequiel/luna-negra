@@ -33,6 +33,7 @@ export async function GET() {
           slug: true,
           status: true,
           manualCaps: true,
+          capsMode: true,
         },
       },
     },
@@ -55,6 +56,7 @@ export async function GET() {
         p.games.map((g) => ({
           ...g,
           manualCaps: (g.manualCaps as Record<string, boolean> | null) ?? null,
+          capsMode: (g.capsMode as Record<string, string> | null) ?? null,
         })),
         byGame,
         nostr,

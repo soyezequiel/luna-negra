@@ -4,6 +4,7 @@ import { pubkeyFromNpub, npubOf } from "@/lib/nostr-social";
 import { recordPresence } from "@/lib/social";
 import { touchPlaySession } from "@/lib/play-session";
 import { trackIntegration } from "@/lib/integration-telemetry";
+import { capMode } from "@/lib/capability-mode";
 import { npubHasProviderEntitlement } from "@/lib/provider-entitlement";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
@@ -62,9 +63,20 @@ export async function POST(req: Request) {
   if (typeof rawGame === "string" && rawGame) {
     const g = await prisma.game.findFirst({
       where: { providerId, OR: [{ slug: rawGame }, { id: rawGame }] },
-      select: { id: true },
+      select: { id: true, capsMode: true },
     });
     gameId = g?.id ?? null;
+    // Presencia migrada a Nostr: la pata Luna (heartbeat desde el game server) queda
+    // apagada para este juego. El jugador firma su propio estado NIP-38 (kind:30315).
+    // Solo se aplica cuando el juego viene identificado; sin `game` la presencia es a
+    // nivel proveedor y no se puede atribuir para chequear su modo.
+    if (g && capMode(g.capsMode, "presencia") === "nostr") {
+      return apiError(
+        "CAPABILITY_MIGRATED",
+        "La presencia está migrada a Nostr (NIP-38) para este juego: el jugador firma su propio estado",
+        409,
+      );
+    }
   }
 
   // Bolsa libre opcional: el juego decide qué guarda (puntaje, vidas, equipo…).

@@ -4,6 +4,7 @@ import { verifyApiKey } from "@/lib/api-keys";
 import { prisma } from "@/lib/prisma";
 import { submitScore } from "@/lib/leaderboard";
 import { trackIntegration } from "@/lib/integration-telemetry";
+import { capMode } from "@/lib/capability-mode";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Subir un puntaje al marcador. Dos formas de auth:
@@ -74,6 +75,21 @@ export async function POST(
     }
     gameId = game.id;
     npub = body.npub;
+  }
+
+  // Marcador migrado a Nostr: la pata Luna (subir puntaje por REST) queda apagada.
+  // El puntaje debe venir como kind:31337 firmado por el jugador (score-sync lo
+  // proyecta a la tabla Score). Leer el ranking (GET) sigue funcionando.
+  const scoreGame = await prisma.game.findUnique({
+    where: { id: gameId },
+    select: { capsMode: true },
+  });
+  if (capMode(scoreGame?.capsMode, "marcador") === "nostr") {
+    return apiError(
+      "CAPABILITY_MIGRATED",
+      "El marcador está migrado a Nostr (kind:31337) para este juego: subí el puntaje como evento firmado por el jugador",
+      409,
+    );
   }
 
   const result = await submitScore(gameId, name, npub, body.score);

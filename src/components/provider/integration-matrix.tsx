@@ -7,6 +7,7 @@ import {
   type CapabilityRow,
   type TwoZeroSide,
 } from "@/lib/integration-2";
+import { capMode, isMigratableCap, type CapMode } from "@/lib/capability-mode";
 import { cn } from "@/lib/utils";
 
 // ── Tipos del lado cliente (forma JSON que devuelven las rutas) ──
@@ -25,6 +26,9 @@ export type IntegrationView = {
     status: string;
     // Declaración manual de capacidades 2.0 no observables (login, presencia).
     manualCaps?: Record<string, boolean> | null;
+    // Modo por capacidad intermedia: { [capKey]: "luna" | "nostr" }. "nostr" =
+    // migrada a la interfaz Nostr (pata Luna apagada). Ver capability-mode.ts.
+    capsMode?: Record<string, string> | null;
     features: Record<string, PingInfo | null>;
     // Señales de uso 2.0 (Nostr): scores | zaps | comments.
     nostr?: Record<string, PingInfo | null> | null;
@@ -215,7 +219,7 @@ const TILE_PRES: Record<
     ring: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
     chip: "bg-ln-aurora/15 text-ln-aurora",
     dot: "bg-ln-aurora",
-    label: "En 2.0",
+    label: "En Nostr",
   },
   on1: {
     ring: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
@@ -227,13 +231,13 @@ const TILE_PRES: Record<
     ring: "border-ln-corona/50 bg-ln-corona/[0.07]",
     chip: "bg-ln-corona/20 text-ln-corona",
     dot: "bg-ln-corona",
-    label: "Pasá a 2.0",
+    label: "Pasá a Nostr",
   },
   adopt: {
     ring: "border-ln-corona/40 bg-ln-corona/[0.05]",
     chip: "bg-ln-corona/15 text-ln-corona",
     dot: "bg-ln-corona",
-    label: "Disponible 2.0",
+    label: "Nostr disponible",
   },
   off: {
     ring: "border-ln-border/50 bg-ln-card/15 opacity-70",
@@ -253,12 +257,36 @@ function tileKind(leg1Live: boolean, s2: ReturnType<typeof leg2State>): TileKind
   return leg1Live ? "on1" : "off";
 }
 
-function Badge1({ level, ping, probe }: { level: Level1; ping: PingInfo | null; probe?: ProbeResult }) {
+function Badge1({
+  level,
+  ping,
+  probe,
+  lunaOff,
+}: {
+  level: Level1;
+  ping: PingInfo | null;
+  probe?: ProbeResult;
+  // La pata Luna de esta capacidad está migrada a Nostr → apagada (el endpoint REST
+  // devuelve 409). Se muestra tachada, sin estado de tráfico ni resultado de probador.
+  lunaOff?: boolean;
+}) {
   const s = LEVEL1_STYLE[level];
+  if (lunaOff) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 opacity-60">
+        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ln-faint line-through">
+          Luna
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-ln-faint">
+          Apagada · migrado a Nostr
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
       <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ln-faint">
-        1.0
+        Luna
       </span>
       <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold", s.chip)}>
         <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
@@ -287,7 +315,7 @@ function Badge2({ side, level, ev }: { side: TwoZeroSide; level: Level2; ev: Pin
   return (
     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1" title={side.desc}>
       <span className="inline-flex items-center gap-1 rounded-full bg-blue/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue">
-        2.0
+        Nostr
       </span>
       <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold", s.chip)}>
         <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
@@ -316,6 +344,62 @@ function Probe2Chip({ r }: { r: NostrProbeResult }) {
   );
 }
 
+// Segmento Luna ⇄ Nostr para migrar una capacidad. "Nostr" apaga la pata Luna (el
+// endpoint REST devuelve 409). Editable solo para el proveedor dueño; el admin lo
+// ve read-only (muestra por cuál riel corre hoy).
+function LegToggle({
+  mode,
+  editable,
+  saving,
+  onSet,
+}: {
+  mode: CapMode;
+  editable: boolean;
+  saving: boolean;
+  onSet: (next: CapMode) => void;
+}) {
+  const opts: { value: CapMode; label: string }[] = [
+    { value: "luna", label: "Luna" },
+    { value: "nostr", label: "Nostr" },
+  ];
+  return (
+    <div className="mt-0.5 flex items-center gap-1.5">
+      <span className="text-[9.5px] uppercase tracking-wide text-ln-faint">Corre por</span>
+      <div className="inline-flex overflow-hidden rounded-full border border-ln-border/70">
+        {opts.map((o) => {
+          const active = mode === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              disabled={!editable || saving || active}
+              onClick={() => onSet(o.value)}
+              className={cn(
+                "px-2 py-0.5 text-[10px] font-semibold transition-colors",
+                active
+                  ? o.value === "nostr"
+                    ? "bg-blue/20 text-blue"
+                    : "bg-ln-aurora/20 text-ln-aurora"
+                  : "text-ln-faint",
+                editable && !active && !saving ? "hover:bg-white/5 cursor-pointer" : "",
+                !editable ? "cursor-default" : "",
+              )}
+              title={
+                o.value === "nostr"
+                  ? "Migrar a la interfaz Nostr (apaga la pata Luna: su endpoint REST devuelve 409)"
+                  : "Volver a la interfaz Luna dependiente (REST)"
+              }
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {saving ? <span className="text-[9.5px] text-ln-faint">guardando…</span> : null}
+    </div>
+  );
+}
+
 function CapabilityTile({
   row,
   game,
@@ -325,8 +409,11 @@ function CapabilityTile({
   nostrProbe,
   editable,
   manualCaps,
+  capsMode,
   saving,
   onToggleManual,
+  onSetLeg,
+  savingLeg,
 }: {
   row: CapabilityRow;
   game: IntegrationView["games"][number];
@@ -336,8 +423,11 @@ function CapabilityTile({
   nostrProbe?: Record<string, NostrProbeResult>;
   editable?: boolean;
   manualCaps: Record<string, boolean> | null | undefined;
+  capsMode: Record<string, string> | null | undefined;
   saving: boolean;
   onToggleManual: (key: string, next: boolean) => void;
+  onSetLeg: (key: string, next: CapMode) => void;
+  savingLeg: boolean;
 }) {
   const ping1 = row.oneZero.length ? oneZeroPing(row, game, providerLevel) : null;
   const lvl1 = row.oneZero.length ? level1For(row, ping1, webhookConfigured) : null;
@@ -366,29 +456,49 @@ function CapabilityTile({
             ? "Declaro que integré invitaciones Nostr (NIP-17)"
             : `Declaro que integré ${side?.label ?? "esta capacidad"}`;
 
-  // Estado de un vistazo desde la óptica de migración 1.0 → 2.0.
+  // ¿Capacidad migrable de la interfaz Luna a la Nostr? (identidad/marcador/
+  // presencia/bets). Si está en "nostr", la pata Luna está apagada (endpoint 409).
+  const migratable = isMigratableCap(row.key);
+  const mode: CapMode = migratable ? capMode(capsMode, row.key) : "luna";
+  const lunaOff = migratable && mode === "nostr";
+
+  // Estado de un vistazo desde la óptica de migración Luna → Nostr.
   const leg1Live = lvl1 != null && LIVE1.has(lvl1);
   const kind = tileKind(leg1Live, leg2State(side, ev, declared));
   const pres = TILE_PRES[kind];
+  // Si la capacidad fue migrada explícitamente a Nostr, el chip lo dice sin importar
+  // la telemetría (la pata Luna ya no cuenta).
+  const chipLabel = lunaOff ? "Migrado a Nostr" : pres.label;
+  const chipClass = lunaOff ? TILE_PRES.on2.chip : pres.chip;
+  const chipDot = lunaOff ? TILE_PRES.on2.dot : pres.dot;
+  const ringClass = lunaOff ? TILE_PRES.on2.ring : pres.ring;
 
   return (
-    <div className={cn("rounded-ln-md border p-2.5 transition-colors", pres.ring)}>
+    <div className={cn("rounded-ln-md border p-2.5 transition-colors", ringClass)}>
       <div className="flex items-start justify-between gap-1.5">
         <p className="text-[12px] font-semibold leading-snug text-ln-text">{row.title}</p>
         <span
           className={cn(
             "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide",
-            pres.chip,
+            chipClass,
           )}
         >
-          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", pres.dot)} />
-          {pres.label}
+          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", chipDot)} />
+          {chipLabel}
         </span>
       </div>
       <div className="mt-2 flex flex-col gap-1.5">
-        {lvl1 ? <Badge1 level={lvl1} ping={ping1} probe={probeHit} /> : null}
+        {lvl1 ? <Badge1 level={lvl1} ping={ping1} probe={probeHit} lunaOff={lunaOff} /> : null}
         {side && lvl2 ? <Badge2 side={side} level={lvl2} ev={ev} /> : null}
         {side && nostrProbe?.[row.key] ? <Probe2Chip r={nostrProbe[row.key]} /> : null}
+        {migratable ? (
+          <LegToggle
+            mode={mode}
+            editable={!!editable}
+            saving={savingLeg}
+            onSet={(next) => onSetLeg(row.key, next)}
+          />
+        ) : null}
         {editable && isManualToggle ? (
           <label className="mt-0.5 inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-ln-muted">
             <input
@@ -425,7 +535,11 @@ export function GameIntegrationCard({
   const [manualCaps, setManualCaps] = useState<Record<string, boolean>>(
     game.manualCaps ?? {},
   );
+  const [capsMode, setCapsMode] = useState<Record<string, string>>(
+    game.capsMode ?? {},
+  );
   const [saving, setSaving] = useState(false);
+  const [savingLeg, setSavingLeg] = useState(false);
   // Declara/desmarca una capacidad 2.0 no observable (login, presencia).
   async function toggleManual(key: string, next: boolean) {
     setManualCaps((m) => ({ ...m, [key]: next })); // optimista
@@ -441,6 +555,27 @@ export function GameIntegrationCard({
       setManualCaps((m) => ({ ...m, [key]: !next })); // revertir si falló
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Migra una capacidad intermedia a Luna o Nostr. En "nostr" la pata Luna (REST)
+  // se apaga para este juego (su endpoint pasa a devolver 409).
+  async function setLeg(key: string, next: CapMode) {
+    const prev = capsMode[key] ?? "luna";
+    if (prev === next) return;
+    setCapsMode((m) => ({ ...m, [key]: next })); // optimista
+    setSavingLeg(true);
+    try {
+      const r = await fetch(`/api/provider/games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ legMode: { key, value: next } }),
+      });
+      if (!r.ok) throw new Error();
+    } catch {
+      setCapsMode((m) => ({ ...m, [key]: prev })); // revertir si falló
+    } finally {
+      setSavingLeg(false);
     }
   }
 
@@ -495,8 +630,11 @@ export function GameIntegrationCard({
                   nostrProbe={nostrProbe}
                   editable={editable}
                   manualCaps={manualCaps}
+                  capsMode={capsMode}
                   saving={saving}
                   onToggleManual={toggleManual}
+                  onSetLeg={setLeg}
+                  savingLeg={savingLeg}
                 />
               ))}
             </div>
@@ -507,15 +645,15 @@ export function GameIntegrationCard({
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-ln-faint">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
-          <strong className="font-semibold text-ln-aurora">En 2.0</strong> · ya en Nostr
+          <strong className="font-semibold text-ln-aurora">En Nostr</strong> · ya en la interfaz independiente
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-corona" />
-          <strong className="font-semibold text-ln-corona">Pasá a 2.0</strong> · corre en 1.0, falta migrar
+          <strong className="font-semibold text-ln-corona">Pasá a Nostr</strong> · corre en la interfaz Luna, falta migrar
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
-          <strong className="font-semibold text-ln-aurora">Integrado</strong> · solo-1.0, sin 2.0 que migrar
+          <strong className="font-semibold text-ln-aurora">Integrado</strong> · solo interfaz Luna, sin equivalente Nostr
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/25" />
@@ -523,10 +661,10 @@ export function GameIntegrationCard({
         </span>
       </div>
       <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
-        Columna del medio = misma necesidad por dos caminos (REST 1.0 ⇆ eventos Nostr 2.0).
-        La 2.0 es experimental y no prometida; lo garantizado hoy es la 1.0 (§1–§8). El
-        <em> «no probable»</em> es solo de la pata 2.0 (login/presencia/diseño): no se puede
-        verificar desde el server, no que falte la 1.0.
+        Columna del medio = misma necesidad por dos caminos (interfaz Luna dependiente ⇆ interfaz independiente Nostr).
+        La interfaz Nostr es experimental y no prometida; lo garantizado hoy es la interfaz Luna (§1–§8). El
+        <em> «no probable»</em> es solo de la pata Nostr (login/presencia/diseño): no se puede
+        verificar desde el server, no que falte la parte Luna.
       </p>
     </div>
   );
@@ -534,8 +672,8 @@ export function GameIntegrationCard({
 
 /**
  * Matriz de integración de un proveedor: una tarjeta por juego con el estado de
- * cada capacidad en las tres columnas (solo 1.0 · intermedio · solo 2.0), más un
- * botón para correr el probador en vivo (solo ejercita los endpoints REST 1.0).
+ * cada capacidad en las tres columnas (interfaz Luna · intermedio · interfaz Nostr),
+ * más un botón para correr el probador en vivo (solo ejercita los endpoints REST de la interfaz Luna).
  */
 export function IntegrationMatrix({
   view,
@@ -580,8 +718,8 @@ export function IntegrationMatrix({
             {running ? "Probando…" : "Probar en vivo"}
           </button>
           <p className="text-[11px] text-ln-faint">
-            Golpea los endpoints REST 1.0 y consulta los relays Nostr 2.0 para ver qué
-            responde/existe ahora mismo.
+            Golpea los endpoints REST de la interfaz Luna y consulta los relays de la
+            interfaz Nostr para ver qué responde/existe ahora mismo.
           </p>
         </div>
       ) : null}

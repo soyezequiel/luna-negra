@@ -1387,10 +1387,10 @@ export default function AdminPage() {
       <section className="mt-10">
         <h2 className="mb-1 font-semibold text-ink">Integración de juegos</h2>
         <p className="mb-4 text-xs text-faint">
-          Qué tiene cableada cada juego en tres columnas: solo 1.0 (REST), intermedio
-          (REST 1.0 ⇆ eventos Nostr 2.0) y solo 2.0 (Nostr). Verde = en uso reciente;
-          naranja = visto hace tiempo o configurado; azul = declarado/disponible (2.0);
-          gris = diseño o no integrado.
+          Qué tiene cableada cada juego en tres columnas: interfaz Luna dependiente (REST),
+          intermedio (interfaz Luna ⇆ interfaz Nostr) e interfaz independiente Nostr (Nostr).
+          Verde = en uso reciente; naranja = visto hace tiempo o configurado; azul =
+          declarado/disponible (Nostr); gris = diseño o no integrado.
         </p>
         {integrations.length === 0 ? (
           <p className="text-muted">No hay proveedores.</p>

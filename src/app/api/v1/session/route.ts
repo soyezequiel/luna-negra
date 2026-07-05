@@ -3,6 +3,7 @@ import { verifyEntitlementDetailed } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cacheProfile } from "@/lib/profile-cache";
 import { trackIntegration } from "@/lib/integration-telemetry";
+import { capMode } from "@/lib/capability-mode";
 import { apiOk, apiError, corsPreflight, bearerToken } from "@/lib/api";
 
 // Login SSO: el juego se abre desde Luna Negra con `?lnToken=<token>` (que es el
@@ -45,8 +46,17 @@ export async function GET(req: Request) {
   // docs/perfil-juego-nostr.md.
   const game = await prisma.game.findUnique({
     where: { id: ent.gameId },
-    select: { slug: true, nostrCoord: true },
+    select: { slug: true, nostrCoord: true, capsMode: true },
   });
+  // Si el login de este juego está migrado a la interfaz Nostr, la pata Luna (canje
+  // de lnToken) queda apagada: el juego debe identificar al jugador con NIP-07/46.
+  if (capMode(game?.capsMode, "identidad") === "nostr") {
+    return apiError(
+      "CAPABILITY_MIGRATED",
+      "El login por Luna está migrado a Nostr (NIP-07/46) para este juego",
+      409,
+    );
+  }
   trackIntegration("sso", { gameId: ent.gameId });
 
   return apiOk({

@@ -14,7 +14,7 @@ function Legend() {
   const items = [
     { dot: "bg-ln-aurora", label: "Integrado / en uso (tráfico reciente)" },
     { dot: "bg-ln-corona", label: "Sin uso reciente / configurado" },
-    { dot: "bg-blue", label: "Declarado o disponible (2.0)" },
+    { dot: "bg-blue", label: "Declarado o disponible (Nostr)" },
     { dot: "bg-white/15", label: "Diseño / no integrado" },
   ];
   return (
@@ -77,10 +77,10 @@ export default function ProviderIntegrationPage() {
             Integración
           </h1>
           <p className="mt-1 text-sm text-ln-muted">
-            Qué tiene cableada cada juego, en tres columnas: <strong>solo 1.0</strong> (REST,
-            custodia), <strong>intermedio</strong> (misma necesidad por REST 1.0 ⇆ eventos Nostr 2.0)
-            y <strong>solo 2.0</strong> (Nostr-nativo). El estado 1.0 sale del tráfico real de tu
-            game server; el 2.0, de los eventos Nostr observados.
+            Qué tiene cableada cada juego, en tres columnas: <strong>interfaz Luna dependiente</strong> (REST,
+            custodia), <strong>intermedio</strong> (misma necesidad por los dos caminos, interfaz Luna ⇆ interfaz Nostr)
+            y <strong>interfaz independiente Nostr</strong> (Nostr-nativo). El estado de la interfaz Luna sale del tráfico real de tu
+            game server; el de la Nostr, de los eventos Nostr observados.
           </p>
         </div>
         <Link href="/provider" className="btn btn-ghost shrink-0 self-start">

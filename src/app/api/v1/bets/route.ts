@@ -21,6 +21,7 @@ import {
   DEPOSIT_WINDOW_MS,
 } from "@/lib/escrow-config";
 import { createGuestUsers } from "@/lib/guest-users";
+import { capMode } from "@/lib/capability-mode";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiError, corsPreflight, CORS } from "@/lib/api";
 import { beginIdempotent } from "@/lib/idempotency";
@@ -57,6 +58,15 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
   if (!game) return err("GAME_NOT_FOUND", "Juego no encontrado", 404);
   if (game.providerId !== providerId) {
     return err("NOT_GAME_OWNER", "El juego no es de tu proveedor", 403);
+  }
+  // Apuestas migradas a Nostr: la pata Luna (escrow v1 por REST) queda apagada para
+  // este juego. Debe usar el escrow por zaps NIP-57: POST /api/v2/bets.
+  if (capMode(game.capsMode, "bets") === "nostr") {
+    return err(
+      "CAPABILITY_MIGRATED",
+      "Las apuestas están migradas a Nostr (zaps NIP-57) para este juego: usá POST /api/v2/bets",
+      409,
+    );
   }
 
   // Participantes EN ORDEN (asiento 1..N): cada asiento es un npub registrado

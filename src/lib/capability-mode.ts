@@ -1,0 +1,48 @@
+import type { IntegrationFeature } from "@/lib/integration-features";
+
+// Migración por capacidad de la interfaz Luna dependiente (REST) a la interfaz
+// independiente Nostr. Un proveedor puede pasar CADA capacidad "intermedia" de su
+// juego a Nostr; al hacerlo, la pata Luna (REST) de esa capacidad se APAGA para
+// ese juego (el endpoint devuelve 409). Sirve para migrar de a poco sin cortar
+// todo de golpe. Persistido en Game.capsMode (JSON { [capKey]: "luna" | "nostr" }).
+
+// Solo estas 4 capacidades son migrables: son las de la columna intermedia cuyo
+// reemplazo Nostr YA funciona (login NIP-07/46, marcador kind:31337, presencia
+// NIP-38, apuestas por zaps NIP-57). Salas e invitaciones quedan afuera porque su
+// lado Nostr todavía es diseño: migrarlas apagaría la pata Luna sin reemplazo.
+// Las claves son las de CapabilityRow.key en src/lib/integration-2.ts.
+export const MIGRATABLE_CAPS = ["identidad", "marcador", "presencia", "bets"] as const;
+export type MigratableCap = (typeof MIGRATABLE_CAPS)[number];
+
+export type CapMode = "luna" | "nostr";
+
+export function isMigratableCap(key: string): key is MigratableCap {
+  return (MIGRATABLE_CAPS as readonly string[]).includes(key);
+}
+
+// Mapa feature §1–§8 (interfaz Luna) → capacidad migrable. Un endpoint REST conoce
+// su feature; con esto sabe qué capacidad chequear antes de responder.
+export const FEATURE_TO_CAP: Partial<Record<IntegrationFeature, MigratableCap>> = {
+  sso: "identidad",
+  leaderboards: "marcador",
+  presence: "presencia",
+  bets: "bets",
+};
+
+// Lee el modo de una capacidad desde un valor Game.capsMode ya cargado. Ausente o
+// cualquier cosa que no sea "nostr" = "luna" (default retrocompatible). Acepta
+// cualquier string por comodidad del cliente (una clave no migrable → "luna").
+export function capMode(capsMode: unknown, key: string): CapMode {
+  if (capsMode && typeof capsMode === "object" && !Array.isArray(capsMode)) {
+    if ((capsMode as Record<string, unknown>)[key] === "nostr") return "nostr";
+  }
+  return "luna";
+}
+
+// Normaliza el mapa completo a { [cap]: "luna" | "nostr" } para exponerlo al cliente
+// (la matriz de integración) con solo las claves migrables.
+export function readCapsMode(capsMode: unknown): Record<MigratableCap, CapMode> {
+  const out = {} as Record<MigratableCap, CapMode>;
+  for (const cap of MIGRATABLE_CAPS) out[cap] = capMode(capsMode, cap);
+  return out;
+}
