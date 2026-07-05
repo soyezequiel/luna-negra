@@ -168,6 +168,24 @@ function declaredFor(
   return !!manualCaps?.[row.key];
 }
 
+// Texto del checkbox con el que el proveedor declara que integró una pata 2.0 no
+// observable (login/presencia/salas/invitaciones). Fuente única para la matriz Luna
+// y la vista estándar Nostr.
+function manualToggleLabel(row: CapabilityRow): string {
+  switch (row.key) {
+    case "identidad":
+      return "Declaro que integré el login Nostr (NIP-07/46)";
+    case "presencia":
+      return "Declaro que uso la presencia en vivo (NIP-38)";
+    case "salas":
+      return "Declaro que integré salas Nostr (NIP-29)";
+    case "invitaciones":
+      return "Declaro que integré invitaciones Nostr (NIP-17)";
+    default:
+      return `Declaro que integré ${row.twoZero?.label ?? "esta capacidad"}`;
+  }
+}
+
 // Un badge cuenta como "integrado" para el contador del juego si está vivo o
 // declarado (no si es solo diseño / disponible-sin-uso / no declarado).
 const LIVE1 = new Set<Level1>(["active", "stale", "configured"]);
@@ -480,16 +498,7 @@ function CapabilityTile({
   // Capacidades declarables manualmente (el probador no las puede verificar):
   // login/presencia (side.manual) → Game.manualCaps[key].
   const isManualToggle = !!side?.manual;
-  const toggleLabel =
-    row.key === "identidad"
-      ? "Declaro que integré el login Nostr (NIP-07/46)"
-      : row.key === "presencia"
-        ? "Declaro que uso la presencia en vivo (NIP-38)"
-        : row.key === "salas"
-          ? "Declaro que integré salas Nostr (NIP-29)"
-          : row.key === "invitaciones"
-            ? "Declaro que integré invitaciones Nostr (NIP-17)"
-            : `Declaro que integré ${side?.label ?? "esta capacidad"}`;
+  const toggleLabel = manualToggleLabel(row);
 
   // ¿Capacidad migrable de la interfaz Luna a la Nostr? (identidad/marcador/
   // presencia/bets). Si está en "nostr", la pata Luna está apagada (endpoint 409).
@@ -573,6 +582,76 @@ function CapabilityTile({
   );
 }
 
+// Acento del borde según el estado de la pata Nostr, para la vista estándar.
+const NOSTR_RING: Record<Level2, string> = {
+  active: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
+  stale: "border-ln-corona/45 bg-ln-corona/[0.06]",
+  declared: "border-blue/45 bg-blue/[0.07]",
+  available: "border-ln-border/60 bg-ln-card/15",
+  design: "border-ln-border/40 bg-ln-card/10 opacity-70",
+};
+
+// Tarjeta de la vista estándar: SOLO la pata Nostr de una capacidad (interfaz
+// independiente Nostr). Sin badge Luna ni control de migración; el proveedor solo
+// declara las patas no observables (login/presencia/salas/invitaciones).
+function NostrCapabilityTile({
+  row,
+  game,
+  nostrProbe,
+  editable,
+  manualCaps,
+  saving,
+  onToggleManual,
+}: {
+  row: CapabilityRow;
+  game: IntegrationView["games"][number];
+  nostrProbe?: Record<string, NostrProbeResult>;
+  editable?: boolean;
+  manualCaps: Record<string, boolean> | null | undefined;
+  saving: boolean;
+  onToggleManual: (key: string, next: boolean) => void;
+}) {
+  const side = row.twoZero!;
+  const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
+  const declared = declaredFor(row, manualCaps);
+  const lvl2 = level2For(side, ev, declared);
+  const s = LEVEL2_STYLE[lvl2];
+  const isManualToggle = !!side.manual;
+
+  return (
+    <div className={cn("rounded-ln-md border p-2.5 transition-colors", NOSTR_RING[lvl2])}>
+      <div className="flex items-start justify-between gap-1.5">
+        <p className="text-[12px] font-semibold leading-snug text-ln-text">{row.title}</p>
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide",
+            s.chip,
+          )}
+        >
+          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
+          {s.label}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-col gap-1.5">
+        <Badge2 side={side} level={lvl2} ev={ev} />
+        {nostrProbe?.[row.key] ? <Probe2Chip r={nostrProbe[row.key]} /> : null}
+        {editable && isManualToggle ? (
+          <label className="mt-0.5 inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-ln-muted">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-ln-aurora"
+              checked={declared}
+              disabled={saving}
+              onChange={(e) => onToggleManual(row.key, e.target.checked)}
+            />
+            {saving ? "Guardando…" : manualToggleLabel(row)}
+          </label>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function GameIntegrationCard({
   game,
   providerLevel,
@@ -580,6 +659,7 @@ export function GameIntegrationCard({
   probe,
   nostrProbe,
   editable,
+  showLuna,
 }: {
   game: IntegrationView["games"][number];
   providerLevel: Record<string, PingInfo | null>;
@@ -588,6 +668,8 @@ export function GameIntegrationCard({
   nostrProbe?: Record<string, NostrProbeResult>;
   /** Solo el proveedor dueño puede togglear capacidades; admin lo ve read-only. */
   editable?: boolean;
+  /** Muestra la interfaz Luna dependiente (1.0) completa en vez de la estándar Nostr. */
+  showLuna?: boolean;
 }) {
   const [manualCaps, setManualCaps] = useState<Record<string, boolean>>(
     game.manualCaps ?? {},
@@ -671,80 +753,172 @@ export function GameIntegrationCard({
     return leg2State(side, ev, declaredFor(row, manualCaps)) === "live";
   }).length;
 
+  // ── Vista estándar (interfaz independiente Nostr) ──
+  // Capacidades con pata Nostr (todas menos "Verificar compra" y "Webhooks", que
+  // son solo-Luna). "Apuestas y escrow" va aparte como opcional.
+  const nostrRows = rows.filter((r) => r.twoZero);
+  const betsRow = nostrRows.find((r) => r.key === "bets") ?? null;
+  const coreNostrRows = nostrRows.filter((r) => r.key !== "bets");
+  const nostrLive = nostrRows.filter((row) => {
+    const side = row.twoZero!;
+    const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
+    return leg2State(side, ev, declaredFor(row, manualCaps)) === "live";
+  }).length;
+
   return (
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ln-text">{game.title}</p>
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5" title="Capacidades con camino 2.0 ya migradas a Nostr">
+        {showLuna ? (
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5" title="Capacidades con camino 2.0 ya migradas a Nostr">
+              <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-ln-aurora transition-all"
+                  style={{ width: `${Math.round((on2 / with2.length) * 100)}%` }}
+                />
+              </div>
+              <span className="text-[11px] text-ln-muted">
+                <span className="font-semibold text-ln-text">{on2}</span> de {with2.length} en 2.0
+              </span>
+            </div>
+            <span className="text-[11px] text-ln-faint">· {live}/{rows.length} integradas</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5" title="Capacidades de la interfaz independiente Nostr activas">
             <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-ln-aurora transition-all"
-                style={{ width: `${Math.round((on2 / with2.length) * 100)}%` }}
+                style={{ width: `${Math.round((nostrLive / nostrRows.length) * 100)}%` }}
               />
             </div>
             <span className="text-[11px] text-ln-muted">
-              <span className="font-semibold text-ln-text">{on2}</span> de {with2.length} en 2.0
+              <span className="font-semibold text-ln-text">{nostrLive}</span> de {nostrRows.length} en Nostr
             </span>
           </div>
-          <span className="text-[11px] text-ln-faint">· {live}/{rows.length} integradas</span>
-        </div>
+        )}
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-        {INTEGRATION_COLUMNS.map((col) => (
-          <div key={col.id} className="rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
-            <p className="text-[12px] font-bold uppercase tracking-wide text-ln-text">{col.title}</p>
-            <p className="mb-2 mt-0.5 text-[10px] leading-snug text-ln-faint">{col.subtitle}</p>
-            <div className="flex flex-col gap-2">
-              {col.rows.map((row) => (
-                <CapabilityTile
-                  key={row.key}
-                  row={row}
+      {showLuna ? (
+        // ── Interfaz Luna dependiente (1.0): matriz completa de 3 columnas ──
+        <>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {INTEGRATION_COLUMNS.map((col) => (
+              <div key={col.id} className="rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
+                <p className="text-[12px] font-bold uppercase tracking-wide text-ln-text">{col.title}</p>
+                <p className="mb-2 mt-0.5 text-[10px] leading-snug text-ln-faint">{col.subtitle}</p>
+                <div className="flex flex-col gap-2">
+                  {col.rows.map((row) => (
+                    <CapabilityTile
+                      key={row.key}
+                      row={row}
+                      game={game}
+                      providerLevel={providerLevel}
+                      webhookConfigured={webhookConfigured}
+                      probe={probe}
+                      nostrProbe={nostrProbe}
+                      editable={editable}
+                      manualCaps={manualCaps}
+                      capsMode={capsMode}
+                      saving={saving}
+                      onToggleManual={toggleManual}
+                      onSetLeg={setLeg}
+                      onSetPurchase={setPurchase}
+                      savingLeg={savingLeg}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-ln-faint">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
+              <strong className="font-semibold text-ln-aurora">En Nostr</strong> · ya en la interfaz independiente
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-corona" />
+              <strong className="font-semibold text-ln-corona">Pasá a Nostr</strong> · corre en la interfaz Luna, falta migrar
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
+              <strong className="font-semibold text-ln-aurora">Integrado</strong> · solo interfaz Luna, sin equivalente Nostr
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/25" />
+              No integrado todavía
+            </span>
+          </div>
+          <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
+            Columna del medio = misma necesidad por dos caminos (interfaz Luna dependiente ⇆ interfaz independiente Nostr).
+            La interfaz Luna (§1–§8) se mantiene por compatibilidad; el estándar hoy es la interfaz independiente Nostr. El
+            <em> «no probable»</em> es solo de la pata Nostr (login/presencia/diseño): no se puede
+            verificar desde el server, no que falte la parte Luna.
+          </p>
+        </>
+      ) : (
+        // ── Estándar: interfaz independiente Nostr + apuestas (opcional) ──
+        <>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {coreNostrRows.map((row) => (
+              <NostrCapabilityTile
+                key={row.key}
+                row={row}
+                game={game}
+                nostrProbe={nostrProbe}
+                editable={editable}
+                manualCaps={manualCaps}
+                saving={saving}
+                onToggleManual={toggleManual}
+              />
+            ))}
+          </div>
+
+          {betsRow ? (
+            <div className="mt-3 rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="rounded-full bg-blue/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue">
+                  Opcional
+                </span>
+                <span className="text-[11px] font-semibold text-ln-text">Apuestas y escrow</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <NostrCapabilityTile
+                  row={betsRow}
                   game={game}
-                  providerLevel={providerLevel}
-                  webhookConfigured={webhookConfigured}
-                  probe={probe}
                   nostrProbe={nostrProbe}
                   editable={editable}
                   manualCaps={manualCaps}
-                  capsMode={capsMode}
                   saving={saving}
                   onToggleManual={toggleManual}
-                  onSetLeg={setLeg}
-                  onSetPurchase={setPurchase}
-                  savingLeg={savingLeg}
                 />
-              ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-ln-faint">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
-          <strong className="font-semibold text-ln-aurora">En Nostr</strong> · ya en la interfaz independiente
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-corona" />
-          <strong className="font-semibold text-ln-corona">Pasá a Nostr</strong> · corre en la interfaz Luna, falta migrar
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
-          <strong className="font-semibold text-ln-aurora">Integrado</strong> · solo interfaz Luna, sin equivalente Nostr
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/25" />
-          No integrado todavía
-        </span>
-      </div>
-      <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
-        Columna del medio = misma necesidad por dos caminos (interfaz Luna dependiente ⇆ interfaz independiente Nostr).
-        La interfaz Nostr es experimental y no prometida; lo garantizado hoy es la interfaz Luna (§1–§8). El
-        <em> «no probable»</em> es solo de la pata Nostr (login/presencia/diseño): no se puede
-        verificar desde el server, no que falte la parte Luna.
-      </p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-ln-faint">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-ln-aurora" />
+              <strong className="font-semibold text-ln-aurora">En uso</strong> · evento observado en relays
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue" />
+              <strong className="font-semibold text-blue">Declarado</strong> · lo integraste (no observable)
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue/40" />
+              Disponible / en diseño
+            </span>
+          </div>
+          <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
+            Estándar actual: la interfaz independiente Nostr (login NIP-07/46, marcador kind:31337, presencia
+            NIP-38, reseñas NIP-23…), con <em>Apuestas y escrow</em> por zaps NIP-57 como opcional. El
+            <em> «no probable»</em> son las patas cifradas o en diseño (login/presencia/salas/invitaciones):
+            no se pueden verificar desde el server, por eso las declarás manualmente.
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -772,6 +946,9 @@ export function IntegrationMatrix({
     Record<string, Record<string, NostrProbeResult>> | null
   >(null);
   const [running, setRunning] = useState(false);
+  // Estándar por defecto = interfaz independiente Nostr. La interfaz Luna dependiente
+  // (1.0) queda detrás de este toggle (se sigue dando soporte por compatibilidad).
+  const [showLuna, setShowLuna] = useState(false);
 
   async function run() {
     if (!onProbe) return;
@@ -791,17 +968,48 @@ export function IntegrationMatrix({
 
   return (
     <div className="space-y-3">
-      {onProbe ? (
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={run} disabled={running} className="btn btn-outline">
-            {running ? "Probando…" : "Probar en vivo"}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {onProbe ? (
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={run} disabled={running} className="btn btn-outline">
+              {running ? "Probando…" : "Probar en vivo"}
+            </button>
+            <p className="text-[11px] text-ln-faint">
+              {showLuna
+                ? "Golpea los endpoints REST de la interfaz Luna y consulta los relays de la interfaz Nostr para ver qué responde/existe ahora mismo."
+                : "Consulta los relays de la interfaz Nostr para ver qué eventos existen ahora mismo."}
+            </p>
+          </div>
+        ) : (
+          <span />
+        )}
+
+        <div
+          className="inline-flex overflow-hidden rounded-full border border-ln-border/70 text-[11px] font-semibold"
+          title="La interfaz independiente Nostr es el estándar; la interfaz Luna (1.0) se mantiene por compatibilidad"
+        >
+          <button
+            type="button"
+            onClick={() => setShowLuna(false)}
+            className={cn(
+              "px-2.5 py-1 transition-colors",
+              !showLuna ? "bg-blue/20 text-blue" : "text-ln-faint hover:bg-white/5",
+            )}
+          >
+            Estándar Nostr
           </button>
-          <p className="text-[11px] text-ln-faint">
-            Golpea los endpoints REST de la interfaz Luna y consulta los relays de la
-            interfaz Nostr para ver qué responde/existe ahora mismo.
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowLuna(true)}
+            className={cn(
+              "px-2.5 py-1 transition-colors",
+              showLuna ? "bg-ln-aurora/20 text-ln-aurora" : "text-ln-faint hover:bg-white/5",
+            )}
+          >
+            Interfaz Luna (1.0)
+          </button>
         </div>
-      ) : null}
+      </div>
 
       {view.games.length === 0 ? (
         <p className="text-sm text-ln-faint">
@@ -817,6 +1025,7 @@ export function IntegrationMatrix({
             probe={probe ?? undefined}
             nostrProbe={nostrProbe?.[g.id]}
             editable={editable}
+            showLuna={showLuna}
           />
         ))
       )}

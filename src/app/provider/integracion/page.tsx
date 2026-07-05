@@ -12,10 +12,10 @@ import {
 
 function Legend() {
   const items = [
-    { dot: "bg-ln-aurora", label: "Integrado / en uso (tráfico reciente)" },
-    { dot: "bg-ln-corona", label: "Sin uso reciente / configurado" },
-    { dot: "bg-blue", label: "Declarado o disponible (Nostr)" },
-    { dot: "bg-white/15", label: "Diseño / no integrado" },
+    { dot: "bg-ln-aurora", label: "En uso (evento observado en relays)" },
+    { dot: "bg-blue", label: "Declarado (integrado, no observable)" },
+    { dot: "bg-blue/40", label: "Disponible / en diseño" },
+    { dot: "bg-white/15", label: "No integrado" },
   ];
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-1.5">
@@ -77,10 +77,11 @@ export default function ProviderIntegrationPage() {
             Integración
           </h1>
           <p className="mt-1 text-sm text-ln-muted">
-            Qué tiene cableada cada juego, en tres columnas: <strong>interfaz Luna dependiente</strong> (REST,
-            custodia), <strong>intermedio</strong> (misma necesidad por los dos caminos, interfaz Luna ⇆ interfaz Nostr)
-            y <strong>interfaz independiente Nostr</strong> (Nostr-nativo). El estado de la interfaz Luna sale del tráfico real de tu
-            game server; el de la Nostr, de los eventos Nostr observados.
+            El estándar es la <strong>interfaz independiente Nostr</strong> (Nostr-nativo: login NIP-07/46, marcador
+            kind:31337, presencia NIP-38, reseñas NIP-23…), con <strong>Apuestas y escrow</strong> por zaps NIP-57 como
+            opcional. El estado sale de los eventos Nostr observados en los relays. La <strong>interfaz Luna
+            dependiente (1.0)</strong> se mantiene por compatibilidad: activá el toggle <em>«Interfaz Luna (1.0)»</em>{" "}
+            para ver esa integración (REST, custodia, migración por capacidad).
           </p>
         </div>
         <Link href="/provider" className="btn btn-ghost shrink-0 self-start">
