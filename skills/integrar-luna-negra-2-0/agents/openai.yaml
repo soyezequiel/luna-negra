@@ -1,0 +1,4 @@
+interface:
+  display_name: "Luna Negra Nostr 2.0"
+  short_description: "Nostr 2.0, zaps y apuestas v2"
+  default_prompt: "Use $integrar-luna-negra-2-0 para integrar mi juego con la interfaz Nostr 2.0."

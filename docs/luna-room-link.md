@@ -189,7 +189,7 @@ Ver mecánica NIP-17 en [`perfil-juego-nostr-salas-invitaciones.md`](perfil-jueg
 | 5 | **Capability `roomLink`** en el catálogo de integración ([`integration-2.ts`](src/lib/integration-2.ts)) + toggle en el panel del proveedor + **gating del botón "Invitar"** en la ficha ([`game/[slug]/page.tsx`](src/app/game/[slug]/page.tsx), hoy usa `supportsRooms = Boolean(game.gameUrl)`). | No hay flag para "soporta sala hosteada por el juego con Luna Room Link". | S |
 | 6 | **UI "Invitar"**: botón en la ficha / panel multijugador que llama a `POST /api/v1/rooms/invite`, muestra el link para copiar (público) y/o selector de amigo (dirigido). | El panel actual ([`multiplayer-panel.tsx`](src/components/multiplayer-panel.tsx)) crea salas hosteadas por Luna. | M |
 | 7 | **Extender el parseo de invitaciones** ([`invite.ts`](src/lib/invite.ts) `INVITE_RE`) para reconocer enlaces `?lnRoom=` con dominio del juego (además del `/game/<slug>?room=` actual). | El regex actual matchea solo el path de Luna. | S |
-| 8 | **Doc del contrato para proveedores** (los 6 pasos de "Contrato del juego") en la guía de integración / skill `integrar-luna-negra`. | Nuevo. | S |
+| 8 | **Doc del contrato para proveedores** (los 6 pasos de "Contrato del juego") en la guía de integración / skill `integrar-luna-negra-1-0`. | Nuevo. | S |
 
 ### Fuera de alcance (explícito)
 

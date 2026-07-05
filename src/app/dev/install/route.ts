@@ -1,14 +1,25 @@
-// Instalador de la skill "integrar-luna-negra" para agentes de código.
-// Sirve un script (sh por defecto, PowerShell con ?ps) que descarga el SKILL.md
-// desde este mismo deploy y, de paso, reemplaza el placeholder de la base URL por
-// la URL real para que los ejemplos queden listos para copiar.
+// Instalador de las skills de integración Luna Negra para agentes de código.
+// Sirve un script (sh por defecto, PowerShell con ?ps) que descarga los SKILL.md
+// desde este deploy y reemplaza el placeholder de la base URL por la URL real.
 //
 //   sh:  curl -fsSL <ORIGIN>/dev/install | sh
 //   ps:  iwr -useb <ORIGIN>/dev/install?ps | iex
+//   una sola: <ORIGIN>/dev/install?version=2.0
 
-const SKILL_NAME = "integrar-luna-negra";
-// /dev/skill devuelve el SKILL.md ya interpolado con la base URL real.
-const SKILL_PATH = "/dev/skill";
+const SKILLS = [
+  {
+    version: "1.0",
+    aliases: ["1", "1.0", "luna", "rest", "integrar-luna-negra-1-0"],
+    name: "integrar-luna-negra-1-0",
+  },
+  {
+    version: "2.0",
+    aliases: ["2", "2.0", "nostr", "integrar-luna-negra-2-0"],
+    name: "integrar-luna-negra-2-0",
+  },
+] as const;
+
+type Skill = (typeof SKILLS)[number];
 
 function originFrom(req: Request): string {
   const h = req.headers;
@@ -18,34 +29,76 @@ function originFrom(req: Request): string {
   return proto + "://" + host;
 }
 
-function shScript(origin: string): string {
-  const skillUrl = origin + SKILL_PATH;
-  return [
-    "#!/usr/bin/env sh",
-    "# Instala la skill 'integrar-luna-negra' de Luna Negra en Claude Code.",
-    "set -e",
-    'DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/' + SKILL_NAME + '"',
-    'SKILL_URL="' + skillUrl + '"',
-    'mkdir -p "$DEST"',
-    'if command -v curl >/dev/null 2>&1; then curl -fsSL "$SKILL_URL" -o "$DEST/SKILL.md"; else wget -qO "$DEST/SKILL.md" "$SKILL_URL"; fi',
-    'echo "OK  Skill instalada en: $DEST/SKILL.md"',
-    'echo "    Reinicia tu agente y pedile: \\"integra mi juego con Luna Negra\\"."',
-    "",
-  ].join("\n");
+function selectedSkills(url: URL): readonly Skill[] | null {
+  const raw =
+    url.searchParams.get("version") ??
+    url.searchParams.get("skill") ??
+    url.searchParams.get("name");
+  if (!raw) return SKILLS;
+
+  const key = raw.trim().toLowerCase();
+  const skill = SKILLS.find((candidate) =>
+    (candidate.aliases as readonly string[]).includes(key),
+  );
+  return skill ? [skill] : null;
 }
 
-function psScript(origin: string): string {
-  const skillUrl = origin + SKILL_PATH;
+function skillUrl(origin: string, version: string): string {
+  return origin + "/dev/skill?version=" + encodeURIComponent(version);
+}
+
+function shScript(origin: string, skills: readonly Skill[]): string {
+  const lines = [
+    "#!/usr/bin/env sh",
+    "# Instala las skills de Luna Negra en Claude Code.",
+    "set -e",
+    'ROOT="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"',
+  ];
+
+  for (const skill of skills) {
+    lines.push(
+      'DEST="$ROOT/' + skill.name + '"',
+      'SKILL_URL="' + skillUrl(origin, skill.version) + '"',
+      'mkdir -p "$DEST"',
+      'if command -v curl >/dev/null 2>&1; then curl -fsSL "$SKILL_URL" -o "$DEST/SKILL.md"; else wget -qO "$DEST/SKILL.md" "$SKILL_URL"; fi',
+      'echo "OK  Skill instalada en: $DEST/SKILL.md"',
+    );
+  }
+
+  lines.push(
+    'echo "    Reinicia tu agente y usa la skill Luna 1.0 o Nostr 2.0 según corresponda."',
+    "",
+  );
+
+  return lines.join("\n");
+}
+
+function psScript(origin: string, skills: readonly Skill[]): string {
+  const entries = skills
+    .map(
+      (skill) =>
+        "  @{ Name = '" +
+        skill.name +
+        "'; Url = '" +
+        skillUrl(origin, skill.version) +
+        "' }",
+    )
+    .join(",\n");
+
   return [
-    "# Instala la skill 'integrar-luna-negra' de Luna Negra en Claude Code (Windows).",
+    "# Instala las skills de Luna Negra en Claude Code (Windows).",
     "$ErrorActionPreference = 'Stop'",
-    "$skillUrl = '" + skillUrl + "'",
     "$root = if ($env:CLAUDE_SKILLS_DIR) { $env:CLAUDE_SKILLS_DIR } else { Join-Path $HOME '.claude\\skills' }",
-    "$dest = Join-Path $root '" + SKILL_NAME + "'",
-    "New-Item -ItemType Directory -Force -Path $dest | Out-Null",
-    "Invoke-WebRequest -UseBasicParsing -Uri $skillUrl -OutFile (Join-Path $dest 'SKILL.md')",
-    "Write-Host \"OK  Skill instalada en: $dest\\SKILL.md\"",
-    "Write-Host '    Reinicia tu agente y pedile: \"integra mi juego con Luna Negra\".'",
+    "$skills = @(",
+    entries,
+    ")",
+    "foreach ($skill in $skills) {",
+    "  $dest = Join-Path $root $skill.Name",
+    "  New-Item -ItemType Directory -Force -Path $dest | Out-Null",
+    "  Invoke-WebRequest -UseBasicParsing -Uri $skill.Url -OutFile (Join-Path $dest 'SKILL.md')",
+    "  Write-Host \"OK  Skill instalada en: $dest\\SKILL.md\"",
+    "}",
+    "Write-Host '    Reinicia tu agente y usa la skill Luna 1.0 o Nostr 2.0 según corresponda.'",
     "",
   ].join("\n");
 }
@@ -53,12 +106,19 @@ function psScript(origin: string): string {
 export function GET(req: Request) {
   const url = new URL(req.url);
   const origin = originFrom(req);
+  const skills = selectedSkills(url);
+  if (!skills) {
+    return new Response("Skill desconocida. Usa ?version=1.0 o ?version=2.0", {
+      status: 400,
+    });
+  }
+
   const wantsPs =
     url.searchParams.has("ps") ||
     url.searchParams.get("shell") === "ps" ||
     url.searchParams.get("shell") === "powershell";
 
-  const body = wantsPs ? psScript(origin) : shScript(origin);
+  const body = wantsPs ? psScript(origin, skills) : shScript(origin, skills);
   return new Response(body, {
     headers: {
       "content-type": "text/plain; charset=utf-8",

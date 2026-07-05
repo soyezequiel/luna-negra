@@ -209,6 +209,6 @@ Pendiente:
 
 - [ ] Congelar los `kind` (31337/31338) tras chequear que no colisionen.
 - [ ] (Tier verificado) score-sync condicionado a atestación del `oraclePubkey`.
-- [ ] Doc dev: actualizar §6 de la guía de integración (skill `integrar-luna-negra`)
+- [ ] Doc dev: actualizar la guía de integración Nostr (skill `integrar-luna-negra-2-0`)
       con el camino A — que el juego firme su propio `kind:31337`.
 </content>

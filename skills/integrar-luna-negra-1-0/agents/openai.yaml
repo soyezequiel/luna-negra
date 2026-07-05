@@ -1,0 +1,4 @@
+interface:
+  display_name: "Luna Negra 1.0"
+  short_description: "Integra juegos con REST, pagos y salas"
+  default_prompt: "Use $integrar-luna-negra-1-0 para integrar mi juego con la interfaz Luna 1.0."

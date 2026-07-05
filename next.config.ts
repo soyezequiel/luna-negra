@@ -12,7 +12,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // El route /dev/skill lee este archivo en runtime para servirlo interpolado:
+  // El route /dev/skill lee estas skills en runtime para servirlas interpoladas:
   // hay que incluirlo en el bundle de la función serverless (no solo en el CDN).
   // La skill vive en ./skills (layout estándar de `npx skills`), no en public/.
   outputFileTracingIncludes: {
