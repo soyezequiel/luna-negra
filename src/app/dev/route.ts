@@ -29,7 +29,7 @@ const BODY = `
     </header>
 
     <main id="inicio" class="shell">
-      <div class="hero">
+      <div class="hero" style="grid-template-columns:minmax(0,1fr);">
         <div>
           <span class="eyebrow">Nostr Games Protocol &middot; NGP</span>
           <h1>Integra tu juego con eventos Nostr.</h1>
@@ -43,27 +43,6 @@ const BODY = `
             <a class="button" href="#niveles">Ver niveles</a>
           </div>
         </div>
-
-        <aside class="flow-panel" aria-label="Idea base de NGP">
-          <div class="panel-head">
-            <strong>Idea base</strong>
-            <span class="status violet">Experimental</span>
-          </div>
-          <div class="flow">
-            <div class="flow-step">
-              <b>01</b>
-              <div><strong>Login Nostr</strong><span>El jugador entra con <code>NIP-07</code> o <code>NIP-46</code>. Su <code>pubkey</code> es el player id estable.</span></div>
-            </div>
-            <div class="flow-step">
-              <b>02</b>
-              <div><strong>Cada juego tiene su "direccion"</strong><span>Una etiqueta unica y permanente del juego. Todo lo que se publica —puntajes, presencia, reseñas— queda pegado a ella, asi se sabe a que juego pertenece. Para programadores es la coordenada <code>gameCoord</code>.</span></div>
-            </div>
-            <div class="flow-step">
-              <b>03</b>
-              <div><strong>Publica eventos</strong><span>Marcador <code>kind:31337</code>, presencia NIP-38, retos NIP-17, reseñas y zaps. Solo lo que uses.</span></div>
-            </div>
-          </div>
-        </aside>
       </div>
 
       <div class="content">
@@ -73,15 +52,6 @@ const BODY = `
             <a href="#skill">Skill para tu IA</a>
             <a href="#niveles">Niveles de adopcion</a>
             <a href="#guia-manual">Guia manual</a>
-            <a href="#relays">Relays probados</a>
-            <a href="#identidad">Identidad Nostr</a>
-            <a href="#coordenada">Coordenada del juego</a>
-            <a href="#marcador">Marcador kind:31337</a>
-            <a href="#presencia">Presencia NIP-38</a>
-            <a href="#retos">Retos NIP-17</a>
-            <a href="#social">Reseñas y zaps</a>
-            <a href="#apuestas">Apuestas v2 por zaps</a>
-            <a class="toc-sep" href="#kinds">Resumen de kinds</a>
           </nav>
         </aside>
 
@@ -114,14 +84,27 @@ const BODY = `
             </div>
 
             <p class="note violet">
-              <strong>NGP es experimental, pero probado en Tetris.</strong> Identidad,
-              marcador (<code>kind:31337</code>), presencia, reto 1v1 (NIP-17), reseñas,
-              zaps y apuestas v2 por zaps ya corren en produccion en Tetra. Salas
-              multijugador (NIP-29) y marcador verificado (<code>kind:31338</code>) son
-              solo diseño. Los <code>kind</code> propuestos pueden cambiar. Para escrow
-              REST, webhooks y compra de pago, seguí en la
-              <a href="/dev/luna">version vieja 1.0</a>.
+              <strong>NGP es experimental, pero ya corre en produccion en Tetris.</strong>
+              Identidad, marcador, presencia, retos, reseñas, zaps y apuestas v2 estan
+              probados ahi. Que es solido, que es solo diseño y que queda fuera, abajo.
             </p>
+            <details class="alt-install">
+              <summary>Estado por capa y que NO cubre NGP todavia</summary>
+              <p>
+                <strong>Ya en produccion (Tetris):</strong> identidad, marcador
+                (<code>kind:31337</code>), presencia (NIP-38), reto 1v1 (NIP-17), reseñas,
+                zaps (NIP-57) y apuestas v2 por zaps.
+              </p>
+              <p>
+                <strong>Solo diseño:</strong> salas multijugador (NIP-29) y marcador
+                verificado (<code>kind:31338</code>). Los <code>kind</code> propuestos
+                pueden cambiar.
+              </p>
+              <p style="margin-bottom:16px;">
+                <strong>Fuera de NGP:</strong> escrow REST, webhooks y compra de pago
+                siguen en la <a href="/dev/luna">version vieja 1.0</a>.
+              </p>
+            </details>
 
             <details class="alt-install">
               <summary>Otras formas de instalarla</summary>
