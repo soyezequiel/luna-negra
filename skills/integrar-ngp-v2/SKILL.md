@@ -327,11 +327,13 @@ NIP-57.
 
 - Sin construir UI: manda al jugador a
   `__LUNA_NEGRA_BASE__/apuestas/{betId}` para firmar el zap, pagar y ver estado.
-- UI propia: llama `POST /api/v2/bets/{id}/deposit/prepare`, el jugador firma el
-  `kind:9734`, y luego manda `POST /api/v2/bets/{id}/deposit/invoice` con
-  `{ signedZapRequest }`.
-- Después pollea `GET /api/v2/bets/{id}/mine` hasta
-  `depositStatus: "paid"`.
+- UI propia (patrón Tetris): `GET /api/v2/bets/{id}` trae, por participante, un
+  `depositZapRequest` (`kind:9734` sin firmar) + su `depositCallback` LNURL-pay. El
+  browser firma el 9734 y tu backend hace
+  `GET depositCallback?amount=<stakeSats*1000>&nostr=<9734-firmado>`; el `pr` que
+  devuelve es el invoice a pagar.
+- Después pollea `GET /api/v2/bets/{id}` hasta que el depósito del participante
+  quede pagado.
 
 El resultado sigue viniendo del game server con API key, no del marcador cliente:
 
