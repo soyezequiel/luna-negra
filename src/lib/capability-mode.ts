@@ -20,6 +20,26 @@ export function isMigratableCap(key: string): key is MigratableCap {
   return (MIGRATABLE_CAPS as readonly string[]).includes(key);
 }
 
+// "Verificar compra" (§2) NO tiene equivalente Nostr: Luna es la custodia/vendedora,
+// así que no se migra, se DESACTIVA. Desactivada = acceso abierto: el juego deja de
+// requerir compra y GET /api/v1/entitlements/verify responde valid:true (bypassed)
+// para cualquiera. Se guarda en el mismo Game.capsMode bajo la clave "purchase" con
+// valores "on" (default, verificación activa) | "off" (acceso abierto).
+export const PURCHASE_CAP = "purchase";
+export type PurchaseMode = "on" | "off";
+
+export function purchaseMode(capsMode: unknown): PurchaseMode {
+  if (capsMode && typeof capsMode === "object" && !Array.isArray(capsMode)) {
+    if ((capsMode as Record<string, unknown>)[PURCHASE_CAP] === "off") return "off";
+  }
+  return "on";
+}
+
+// ¿La verificación de compra está desactivada (acceso abierto) para este juego?
+export function purchaseVerificationDisabled(capsMode: unknown): boolean {
+  return purchaseMode(capsMode) === "off";
+}
+
 // Mapa feature §1–§8 (interfaz Luna) → capacidad migrable. Un endpoint REST conoce
 // su feature; con esto sabe qué capacidad chequear antes de responder.
 export const FEATURE_TO_CAP: Partial<Record<IntegrationFeature, MigratableCap>> = {

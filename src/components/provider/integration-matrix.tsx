@@ -7,7 +7,14 @@ import {
   type CapabilityRow,
   type TwoZeroSide,
 } from "@/lib/integration-2";
-import { capMode, isMigratableCap, type CapMode } from "@/lib/capability-mode";
+import {
+  capMode,
+  isMigratableCap,
+  purchaseMode,
+  PURCHASE_CAP,
+  type CapMode,
+  type PurchaseMode,
+} from "@/lib/capability-mode";
 import { cn } from "@/lib/utils";
 
 // ── Tipos del lado cliente (forma JSON que devuelven las rutas) ──
@@ -262,13 +269,15 @@ function Badge1({
   ping,
   probe,
   lunaOff,
+  offLabel,
 }: {
   level: Level1;
   ping: PingInfo | null;
   probe?: ProbeResult;
-  // La pata Luna de esta capacidad está migrada a Nostr → apagada (el endpoint REST
-  // devuelve 409). Se muestra tachada, sin estado de tráfico ni resultado de probador.
+  // La pata Luna de esta capacidad está apagada (migrada a Nostr → 409, o compra
+  // desactivada → acceso abierto). Se muestra tachada, sin tráfico ni probador.
   lunaOff?: boolean;
+  offLabel?: string;
 }) {
   const s = LEVEL1_STYLE[level];
   if (lunaOff) {
@@ -278,7 +287,7 @@ function Badge1({
           Luna
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-ln-faint">
-          Apagada · migrado a Nostr
+          {offLabel ?? "Apagada · migrado a Nostr"}
         </span>
       </div>
     );
@@ -344,51 +353,45 @@ function Probe2Chip({ r }: { r: NostrProbeResult }) {
   );
 }
 
-// Segmento Luna ⇄ Nostr para migrar una capacidad. "Nostr" apaga la pata Luna (el
-// endpoint REST devuelve 409). Editable solo para el proveedor dueño; el admin lo
-// ve read-only (muestra por cuál riel corre hoy).
-function LegToggle({
-  mode,
+// Segmento de dos opciones para cambiar por cuál riel corre una capacidad. Se usa
+// para migrar Luna ⇄ Nostr (capacidades intermedias) y para activar/desactivar la
+// verificación de compra. Editable solo para el proveedor dueño; el admin lo ve
+// read-only (muestra el estado actual).
+type SegOpt = { value: string; label: string; active: string; title: string };
+function SegToggle({
+  caption,
+  value,
+  opts,
   editable,
   saving,
   onSet,
 }: {
-  mode: CapMode;
+  caption: string;
+  value: string;
+  opts: SegOpt[];
   editable: boolean;
   saving: boolean;
-  onSet: (next: CapMode) => void;
+  onSet: (next: string) => void;
 }) {
-  const opts: { value: CapMode; label: string }[] = [
-    { value: "luna", label: "Luna" },
-    { value: "nostr", label: "Nostr" },
-  ];
   return (
     <div className="mt-0.5 flex items-center gap-1.5">
-      <span className="text-[9.5px] uppercase tracking-wide text-ln-faint">Corre por</span>
+      <span className="text-[9.5px] uppercase tracking-wide text-ln-faint">{caption}</span>
       <div className="inline-flex overflow-hidden rounded-full border border-ln-border/70">
         {opts.map((o) => {
-          const active = mode === o.value;
+          const isActive = value === o.value;
           return (
             <button
               key={o.value}
               type="button"
-              disabled={!editable || saving || active}
+              disabled={!editable || saving || isActive}
               onClick={() => onSet(o.value)}
               className={cn(
                 "px-2 py-0.5 text-[10px] font-semibold transition-colors",
-                active
-                  ? o.value === "nostr"
-                    ? "bg-blue/20 text-blue"
-                    : "bg-ln-aurora/20 text-ln-aurora"
-                  : "text-ln-faint",
-                editable && !active && !saving ? "hover:bg-white/5 cursor-pointer" : "",
+                isActive ? o.active : "text-ln-faint",
+                editable && !isActive && !saving ? "hover:bg-white/5 cursor-pointer" : "",
                 !editable ? "cursor-default" : "",
               )}
-              title={
-                o.value === "nostr"
-                  ? "Migrar a la interfaz Nostr (apaga la pata Luna: su endpoint REST devuelve 409)"
-                  : "Volver a la interfaz Luna dependiente (REST)"
-              }
+              title={o.title}
             >
               {o.label}
             </button>
@@ -399,6 +402,36 @@ function LegToggle({
     </div>
   );
 }
+
+const LEG_OPTS: SegOpt[] = [
+  {
+    value: "luna",
+    label: "Luna",
+    active: "bg-ln-aurora/20 text-ln-aurora",
+    title: "Volver a la interfaz Luna dependiente (REST)",
+  },
+  {
+    value: "nostr",
+    label: "Nostr",
+    active: "bg-blue/20 text-blue",
+    title: "Migrar a la interfaz Nostr (apaga la pata Luna: su endpoint REST devuelve 409)",
+  },
+];
+
+const PURCHASE_OPTS: SegOpt[] = [
+  {
+    value: "on",
+    label: "Verificar",
+    active: "bg-ln-aurora/20 text-ln-aurora",
+    title: "Requiere compra: verify valida el entitlement emitido por Luna",
+  },
+  {
+    value: "off",
+    label: "Acceso abierto",
+    active: "bg-blue/20 text-blue",
+    title: "Desactiva la verificación: el juego no requiere compra (verify responde valid:true para cualquiera)",
+  },
+];
 
 function CapabilityTile({
   row,
@@ -413,6 +446,7 @@ function CapabilityTile({
   saving,
   onToggleManual,
   onSetLeg,
+  onSetPurchase,
   savingLeg,
 }: {
   row: CapabilityRow;
@@ -427,6 +461,7 @@ function CapabilityTile({
   saving: boolean;
   onToggleManual: (key: string, next: boolean) => void;
   onSetLeg: (key: string, next: CapMode) => void;
+  onSetPurchase: (next: PurchaseMode) => void;
   savingLeg: boolean;
 }) {
   const ping1 = row.oneZero.length ? oneZeroPing(row, game, providerLevel) : null;
@@ -460,15 +495,23 @@ function CapabilityTile({
   // presencia/bets). Si está en "nostr", la pata Luna está apagada (endpoint 409).
   const migratable = isMigratableCap(row.key);
   const mode: CapMode = migratable ? capMode(capsMode, row.key) : "luna";
-  const lunaOff = migratable && mode === "nostr";
+  // "Verificar compra": no se migra, se desactiva ("off" = acceso abierto).
+  const isPurchase = row.key === PURCHASE_CAP;
+  const pMode: PurchaseMode = isPurchase ? purchaseMode(capsMode) : "on";
+  const purchaseOff = isPurchase && pMode === "off";
+
+  // La pata Luna está apagada: migrada a Nostr (409) o compra desactivada (abierto).
+  const lunaOff = (migratable && mode === "nostr") || purchaseOff;
+  const offLabel = purchaseOff ? "Abierto · sin verificación" : undefined;
 
   // Estado de un vistazo desde la óptica de migración Luna → Nostr.
   const leg1Live = lvl1 != null && LIVE1.has(lvl1);
   const kind = tileKind(leg1Live, leg2State(side, ev, declared));
   const pres = TILE_PRES[kind];
-  // Si la capacidad fue migrada explícitamente a Nostr, el chip lo dice sin importar
-  // la telemetría (la pata Luna ya no cuenta).
-  const chipLabel = lunaOff ? "Migrado a Nostr" : pres.label;
+  // Si la capacidad fue migrada a Nostr o la compra se desactivó, el chip lo dice sin
+  // importar la telemetría (la pata Luna ya no cuenta).
+  const offChipLabel = purchaseOff ? "Acceso abierto" : "Migrado a Nostr";
+  const chipLabel = lunaOff ? offChipLabel : pres.label;
   const chipClass = lunaOff ? TILE_PRES.on2.chip : pres.chip;
   const chipDot = lunaOff ? TILE_PRES.on2.dot : pres.dot;
   const ringClass = lunaOff ? TILE_PRES.on2.ring : pres.ring;
@@ -488,15 +531,29 @@ function CapabilityTile({
         </span>
       </div>
       <div className="mt-2 flex flex-col gap-1.5">
-        {lvl1 ? <Badge1 level={lvl1} ping={ping1} probe={probeHit} lunaOff={lunaOff} /> : null}
+        {lvl1 ? (
+          <Badge1 level={lvl1} ping={ping1} probe={probeHit} lunaOff={lunaOff} offLabel={offLabel} />
+        ) : null}
         {side && lvl2 ? <Badge2 side={side} level={lvl2} ev={ev} /> : null}
         {side && nostrProbe?.[row.key] ? <Probe2Chip r={nostrProbe[row.key]} /> : null}
         {migratable ? (
-          <LegToggle
-            mode={mode}
+          <SegToggle
+            caption="Corre por"
+            value={mode}
+            opts={LEG_OPTS}
             editable={!!editable}
             saving={savingLeg}
-            onSet={(next) => onSetLeg(row.key, next)}
+            onSet={(next) => onSetLeg(row.key, next as CapMode)}
+          />
+        ) : null}
+        {isPurchase ? (
+          <SegToggle
+            caption="Compra"
+            value={pMode}
+            opts={PURCHASE_OPTS}
+            editable={!!editable}
+            saving={savingLeg}
+            onSet={(next) => onSetPurchase(next as PurchaseMode)}
           />
         ) : null}
         {editable && isManualToggle ? (
@@ -579,6 +636,27 @@ export function GameIntegrationCard({
     }
   }
 
+  // Activa/desactiva la verificación de compra. "off" = acceso abierto (el juego deja
+  // de requerir compra; verify responde valid:true para cualquiera).
+  async function setPurchase(next: PurchaseMode) {
+    const prev = (capsMode[PURCHASE_CAP] as PurchaseMode) ?? "on";
+    if (prev === next) return;
+    setCapsMode((m) => ({ ...m, [PURCHASE_CAP]: next })); // optimista
+    setSavingLeg(true);
+    try {
+      const r = await fetch(`/api/provider/games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purchaseMode: next }),
+      });
+      if (!r.ok) throw new Error();
+    } catch {
+      setCapsMode((m) => ({ ...m, [PURCHASE_CAP]: prev })); // revertir si falló
+    } finally {
+      setSavingLeg(false);
+    }
+  }
+
   // Capacidades "vivas" (en uso/declaradas) sobre el total del catálogo de 3 columnas.
   const rows = INTEGRATION_COLUMNS.flatMap((c) => c.rows);
   const live = rows.filter((row) =>
@@ -634,6 +712,7 @@ export function GameIntegrationCard({
                   saving={saving}
                   onToggleManual={toggleManual}
                   onSetLeg={setLeg}
+                  onSetPurchase={setPurchase}
                   savingLeg={savingLeg}
                 />
               ))}

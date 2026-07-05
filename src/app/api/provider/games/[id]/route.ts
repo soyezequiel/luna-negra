@@ -9,7 +9,11 @@ import { revalidateCatalog } from "@/lib/store-catalog";
 import { syncGameToNostr } from "@/lib/announce-game";
 import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
 import { MANUAL_CAP_KEYS } from "@/lib/integration-2";
-import { isMigratableCap, type CapMode } from "@/lib/capability-mode";
+import {
+  isMigratableCap,
+  PURCHASE_CAP,
+  type CapMode,
+} from "@/lib/capability-mode";
 
 export async function PATCH(
   req: Request,
@@ -84,6 +88,22 @@ export async function PATCH(
         ? (owned.game.capsMode as Record<string, CapMode>)
         : {};
     data.capsMode = { ...current, [key]: value };
+  }
+  // Activar/desactivar la verificación de compra (§2). "off" = acceso abierto (el
+  // juego deja de requerir compra; verify responde valid:true para cualquiera). Se
+  // guarda en el mismo Game.capsMode bajo la clave "purchase". Puede combinarse con
+  // legMode en la misma request (se fusionan sobre el mapa ya calculado).
+  if (body.purchaseMode !== undefined) {
+    const value = body.purchaseMode;
+    if (value !== "on" && value !== "off") {
+      return NextResponse.json({ error: "Modo inválido (on|off)" }, { status: 400 });
+    }
+    const current =
+      (data.capsMode as Record<string, string> | undefined) ??
+      (owned.game.capsMode && typeof owned.game.capsMode === "object"
+        ? (owned.game.capsMode as Record<string, string>)
+        : {});
+    data.capsMode = { ...current, [PURCHASE_CAP]: value };
   }
   // Override por juego del corte del dev en apuestas: null/"" = usar el default del
   // proveedor. Se acota al tope global (la misma cota se reaplica al crear apuestas).
