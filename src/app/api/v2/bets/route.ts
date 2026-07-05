@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
-import { verifyApiKey } from "@/lib/api-keys";
+import { verifyApiKeyFull } from "@/lib/api-keys";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import { validateCreateBet, computeContractHash } from "@/lib/escrow";
 import {
@@ -70,6 +70,7 @@ async function publishBetAnchor(
 async function createZapBet(
   bodyText: string,
   providerId: string,
+  keyGameId: string | null,
   baseUrl: string,
 ): Promise<Result> {
   let body: unknown;
@@ -82,6 +83,7 @@ async function createZapBet(
     minSats: BET_MIN_SATS,
     maxSats: BET_MAX_SATS,
     maxSeats: BET_MAX_ANONYMOUS_SEATS,
+    defaultGameId: keyGameId,
   });
   if (!v.ok) return err(v.code, v.error, 400);
 
@@ -298,15 +300,16 @@ export async function POST(req: Request) {
     return apiError("BETS_V2_DISABLED", "Las apuestas v2 están desactivadas", 503);
   }
 
-  // 1) Auth: API key del proveedor
-  const providerId = await verifyApiKey(req);
-  if (!providerId) {
+  // 1) Auth: API key del proveedor (con el juego al que quedó acotada, si aplica)
+  const identity = await verifyApiKeyFull(req);
+  if (!identity) {
     return apiError(
       "INVALID_API_KEY",
       "API key inválida (Authorization: Bearer ln_sk_…)",
       401,
     );
   }
+  const { providerId, gameId: keyGameId } = identity;
 
   const rl = await checkRateLimit(`bet-v2-create:${providerId}`, 20, 60_000);
   if (!rl.success) {
@@ -333,7 +336,7 @@ export async function POST(req: Request) {
 
   // 3) Crear la apuesta
   const bodyText = await req.text();
-  const result = await createZapBet(bodyText, providerId, siteUrl(req));
+  const result = await createZapBet(bodyText, providerId, keyGameId, siteUrl(req));
   if (result.status >= 500) {
     await notifyOperationalError({
       source: "api-v2-bet-create",

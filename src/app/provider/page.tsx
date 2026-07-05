@@ -118,6 +118,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// Etiqueta la interfaz a la que pertenece cada bloque de integración:
+// "1.0" = REST server-to-server (estable), "2.0" = capa Nostr (experimental).
+function IfaceBadge({ kind }: { kind: "1.0" | "2.0" }) {
+  const is10 = kind === "1.0";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+        is10
+          ? "bg-blue/15 text-blue"
+          : "bg-ln-luna/15 text-ln-luna",
+      )}
+      title={
+        is10
+          ? "Interfaz 1.0 (REST, server-to-server). Estable — es lo que usa este panel."
+          : "Interfaz 2.0 (Nostr, eventos firmados). Experimental — no usa estas claves."
+      }
+    >
+      {is10 ? "1.0 · REST" : "2.0 · Nostr"}
+    </span>
+  );
+}
+
 function TabNav({
   tab,
   setTab,
@@ -163,6 +186,8 @@ type ApiKeyRow = {
   prefix: string;
   createdAt: string;
   lastUsedAt: string | null;
+  gameId: string | null;
+  gameTitle: string | null;
 };
 
 export default function ProviderPage() {
@@ -178,6 +203,8 @@ export default function ProviderPage() {
   } | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
   const [keyName, setKeyName] = useState("");
+  // Juego al que acotar la clave nueva ("" = todos los juegos / a nivel proveedor).
+  const [keyGameId, setKeyGameId] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
@@ -238,12 +265,16 @@ export default function ProviderPage() {
     const r = await fetch("/api/provider/api-keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: keyName.trim() || "Clave de API" }),
+      body: JSON.stringify({
+        name: keyName.trim() || "Clave de API",
+        ...(keyGameId ? { gameId: keyGameId } : {}),
+      }),
     });
     const d = await r.json();
     if (!r.ok) return setMsg(d.error ?? "No se pudo crear la clave");
     setCreatedKey(d.key); // se muestra una sola vez
     setKeyName("");
+    setKeyGameId("");
     load();
   }
 
@@ -780,7 +811,10 @@ export default function ProviderPage() {
           {/* env vars */}
           <div className="rounded-ln-lg border border-ln-luna/30 bg-ln-card/60 p-5 lg:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold text-ink">Variables de entorno</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-semibold text-ink">Variables de entorno</h2>
+                <IfaceBadge kind="1.0" />
+              </div>
               <button
                 type="button"
                 onClick={() => copy(envText, "Variables de entorno copiadas.")}
@@ -790,10 +824,26 @@ export default function ProviderPage() {
               </button>
             </div>
             <p className="mt-1 text-xs text-faint">
-              Todo lo que tu game server necesita, junto. Pegalo en el archivo{" "}
-              <code>.env</code> de tu servidor. La API key solo se ve al crearla
-              (en <strong>Claves de API</strong>, abajo); el resto lo podés
-              copiar cuando quieras.
+              Todo lo que tu <strong>game server</strong> necesita para la{" "}
+              <strong>interfaz 1.0 (REST)</strong>: login, verificar compras,
+              presencia, salas y <strong>apuestas</strong> (tanto las clásicas
+              como las <strong>v2 por zaps</strong> de <code>/api/v2/bets</code>,
+              que reusan la misma API key). Pegalo en el archivo <code>.env</code>{" "}
+              de tu servidor. La API key solo se ve al crearla (en{" "}
+              <strong>Claves de API</strong>, abajo); el resto lo podés copiar
+              cuando quieras.
+            </p>
+            <p className="mt-2 rounded-ln-md border border-ln-luna/25 bg-ln-luna/5 px-3 py-2 text-xs text-muted">
+              <IfaceBadge kind="2.0" />{" "}
+              <span className="ml-1">
+                ¿Solo vas a usar la capa Nostr experimental (presencia NIP-38,
+                marcador <code>kind:31337</code>, retos NIP-17, zaps)?{" "}
+                <strong>No necesitás ninguna de estas variables.</strong> El login
+                es NIP-07/46 (el jugador firma con su propio signer) y los eventos
+                se anclan al <code>gameCoord</code> del juego, que obtenés de los
+                relays (<code>{"{ kinds:[30023], \"#d\":[\"<slug>\"] }"}</code>) o
+                lo hardcodeás. La 2.0 no toca los servidores de Luna Negra.
+              </span>
             </p>
 
             {games.length > 1 ? (
@@ -814,13 +864,76 @@ export default function ProviderPage() {
             ) : null}
 
             <pre className="mt-3 overflow-x-auto rounded-ln-md bg-black/40 px-3 py-3 font-mono text-xs text-ink">{envText}</pre>
+
+            <dl className="mt-3 space-y-2 text-xs">
+              <div className="flex flex-col gap-0.5">
+                <dt className="flex items-center gap-2">
+                  <code className="text-ink">LUNA_NEGRA_BASE</code>
+                  <IfaceBadge kind="1.0" />
+                </dt>
+                <dd className="text-faint">
+                  URL de este deploy: base de todas las llamadas REST 1.0. La capa
+                  2.0 Nostr no la usa (login NIP-07/46 y eventos directo a relays).
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="flex items-center gap-2">
+                  <code className="text-ink">LUNA_NEGRA_API_KEY</code>
+                  <IfaceBadge kind="1.0" />
+                </dt>
+                <dd className="text-faint">
+                  Llave secreta server-to-server (<code>ln_sk_…</code>) para crear
+                  apuestas (v1 y v2 por zaps), presencia global, invitaciones y
+                  amigos. <strong>Nunca va al navegador.</strong> La 2.0 no la usa.
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="flex items-center gap-2">
+                  <code className="text-ink">LUNA_NEGRA_WEBHOOK_SECRET</code>
+                  <IfaceBadge kind="1.0" />
+                </dt>
+                <dd className="text-faint">
+                  Verifica la firma HMAC de los webhooks entrantes. Opcional: solo
+                  si escuchás eventos (compras, apuestas liquidadas, payouts).
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="flex items-center gap-2">
+                  <code className="text-ink">LUNA_NEGRA_GAME_ID</code>
+                  <IfaceBadge kind="1.0" />
+                  <span className="rounded-full bg-green/15 px-2 py-0.5 text-[10px] font-semibold text-green">
+                    opcional
+                  </span>
+                </dt>
+                <dd className="text-faint">
+                  El <code>gameId</code> para crear apuestas desde el backend.{" "}
+                  <strong>No hace falta si creás una clave acotada a un juego</strong>{" "}
+                  (abajo, en <strong>Claves de API</strong>): esa clave ya sabe a
+                  qué juego pertenece. (La 2.0 ancla por <code>gameCoord</code>, no
+                  por este id.)
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-3 rounded-ln-md border border-green/25 bg-green/5 px-3 py-2 text-xs text-muted">
+              <strong className="text-green">Mínimo para apuestas/escrow:</strong>{" "}
+              con una clave acotada a un juego alcanza con{" "}
+              <code>LUNA_NEGRA_API_KEY</code> (y <code>LUNA_NEGRA_BASE</code> si no
+              usás el deploy oficial). <code>GAME_ID</code> y{" "}
+              <code>WEBHOOK_SECRET</code> quedan opcionales.
+            </p>
           </div>
 
           {/* api keys */}
           <div id="api-keys" className="scroll-mt-20 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
-            <h2 className="font-semibold">Claves de API</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold">Claves de API</h2>
+              <IfaceBadge kind="1.0" />
+            </div>
             <p className="mb-3 mt-1 text-xs text-faint">
-              Para que tu game server cree apuestas (Bearer). Ver{" "}
+              Para que tu game server cree apuestas (Bearer) — tanto las clásicas
+              como las v2 por zaps. Solo en tu backend, nunca en el navegador.{" "}
+              <strong>Acotala a un juego</strong> y tu server no necesita mandar{" "}
+              <code>gameId</code> (una env var menos). Ver{" "}
               <a href="/developers" className="text-blue hover:underline">
                 /developers
               </a>
@@ -853,17 +966,35 @@ export default function ProviderPage() {
               </div>
             ) : null}
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input
-                className={inputCls}
+                className={cn(inputCls, "min-w-[160px] flex-1")}
                 placeholder="Nombre (ej. servidor-prod)"
                 value={keyName}
                 onChange={(e) => setKeyName(e.target.value)}
               />
+              <select
+                className={cn(inputCls, "max-w-[200px]")}
+                value={keyGameId}
+                onChange={(e) => setKeyGameId(e.target.value)}
+                title="Acotar la clave a un juego (opcional)"
+              >
+                <option value="">Todos los juegos</option>
+                {games.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+              </select>
               <Button type="button" variant="outline" onClick={createKey}>
                 Crear
               </Button>
             </div>
+            <p className="mt-1 text-xs text-faint">
+              Acotada a un juego, tu server puede omitir <code>gameId</code> al
+              crear apuestas. «Todos los juegos» = clave a nivel proveedor (el body
+              debe mandar <code>gameId</code>).
+            </p>
 
             {apiKeys.length > 0 ? (
               <ul className="mt-3 space-y-2">
@@ -878,6 +1009,16 @@ export default function ProviderPage() {
                       <span className="ml-2 text-xs text-faint">
                         {k.lastUsedAt ? "usada" : "sin usar"}
                       </span>
+                      <span
+                        className={cn(
+                          "ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                          k.gameId
+                            ? "bg-ln-luna/15 text-ln-luna"
+                            : "bg-white/10 text-ln-muted",
+                        )}
+                      >
+                        {k.gameId ? k.gameTitle ?? "juego" : "todos los juegos"}
+                      </span>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)}>
                       Revocar
@@ -890,11 +1031,15 @@ export default function ProviderPage() {
 
           {/* webhooks */}
           <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
-            <h2 className="font-semibold">Webhooks</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold">Webhooks</h2>
+              <IfaceBadge kind="1.0" />
+            </div>
             <p className="mb-3 mt-1 text-xs text-faint">
               Luna Negra notifica a esta URL los eventos{" "}
               <code>purchase.completed</code>, <code>bet.settled</code> y{" "}
-              <code>payout.sent</code> (firmados con HMAC).
+              <code>payout.sent</code> (firmados con HMAC). Las apuestas v2 por
+              zaps llegan por acá también, con <code>apiVersion: 2</code>.
             </p>
             <div className="flex gap-2">
               <input

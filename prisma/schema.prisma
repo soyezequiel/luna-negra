@@ -342,6 +342,13 @@ model ApiKey {
   id         String    @id @default(cuid())
   providerId String
   provider   Provider  @relation(fields: [providerId], references: [id])
+  // Juego al que queda acotada la clave (opcional). Si está seteado, las rutas de
+  // crear apuesta (v1/v2) usan este gameId como default cuando el body no lo trae,
+  // así el game server no necesita la env var LUNA_NEGRA_GAME_ID. null = clave a
+  // nivel proveedor (el body debe seguir mandando gameId). Al borrar el juego el FK
+  // se anula (la clave sigue viva, provider-wide).
+  gameId     String?
+  game       Game?     @relation(fields: [gameId], references: [id], onDelete: SetNull)
   name       String
   prefix     String // primeros chars, para mostrar (ej. "ln_sk_ab12cd")
   hash       String    @unique // sha256(key)
@@ -350,12 +357,14 @@ model ApiKey {
   revokedAt  DateTime?
 
   @@index([providerId])
+  @@index([gameId])
 }
 
 model Game {
   id                 String   @id @default(cuid())
   providerId         String
   provider           Provider @relation(fields: [providerId], references: [id])
+  apiKeys            ApiKey[] // claves de API acotadas a este juego (back-relation)
   slug               String   @unique
   title              String
   description        String   @default("")

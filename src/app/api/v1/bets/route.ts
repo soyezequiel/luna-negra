@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
-import { verifyApiKey } from "@/lib/api-keys";
+import { verifyApiKeyFull } from "@/lib/api-keys";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import {
   validateCreateBet,
@@ -37,7 +37,11 @@ const err = (code: string, message: string, status: number): Result => ({
 });
 
 // Lógica de crear apuesta, devuelve {status, body} (para idempotencia).
-async function createBet(bodyText: string, providerId: string): Promise<Result> {
+async function createBet(
+  bodyText: string,
+  providerId: string,
+  keyGameId: string | null,
+): Promise<Result> {
   let body: unknown;
   try {
     body = JSON.parse(bodyText);
@@ -48,6 +52,7 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
     minSats: BET_MIN_SATS,
     maxSats: BET_MAX_SATS,
     maxSeats: BET_MAX_ANONYMOUS_SEATS,
+    defaultGameId: keyGameId,
   });
   if (!v.ok) return err(v.code, v.error, 400);
 
@@ -221,15 +226,16 @@ async function createBet(bodyText: string, providerId: string): Promise<Result> 
 }
 
 export async function POST(req: Request) {
-  // 1) Auth: API key del proveedor
-  const providerId = await verifyApiKey(req);
-  if (!providerId) {
+  // 1) Auth: API key del proveedor (con el juego al que quedó acotada, si aplica)
+  const identity = await verifyApiKeyFull(req);
+  if (!identity) {
     return apiError(
       "INVALID_API_KEY",
       "API key inválida (Authorization: Bearer ln_sk_…)",
       401,
     );
   }
+  const { providerId, gameId: keyGameId } = identity;
 
   const rl = await checkRateLimit(`bet-create:${providerId}`, 20, 60_000);
   if (!rl.success) {
@@ -256,7 +262,7 @@ export async function POST(req: Request) {
 
   // 3) Crear la apuesta
   const bodyText = await req.text();
-  const result = await createBet(bodyText, providerId);
+  const result = await createBet(bodyText, providerId, keyGameId);
 
   // 4) Guardar la respuesta (éxito) o liberar la key (error → permite reintento).
   if (idem && idem.kind === "fresh") {

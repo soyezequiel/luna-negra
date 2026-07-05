@@ -16,11 +16,15 @@ export function generateApiKey(): { key: string; prefix: string; hash: string } 
   return { key, prefix: key.slice(0, 12), hash: hashApiKey(key) };
 }
 
+/** Identidad detrás de una API key: proveedor y (opcional) juego al que está acotada. */
+export type ApiKeyIdentity = { providerId: string; gameId: string | null };
+
 /**
- * Verifica `Authorization: Bearer ln_sk_…` y devuelve el `providerId`, o null.
- * Actualiza `lastUsedAt` best-effort.
+ * Verifica `Authorization: Bearer ln_sk_…` y devuelve `{ providerId, gameId }`, o
+ * null. `gameId` es el juego al que la clave quedó acotada (o null si es a nivel
+ * proveedor). Actualiza `lastUsedAt` best-effort.
  */
-export async function verifyApiKey(req: Request): Promise<string | null> {
+export async function verifyApiKeyFull(req: Request): Promise<ApiKeyIdentity | null> {
   const auth = req.headers.get("authorization");
   if (!auth || !/^Bearer\s+/i.test(auth)) return null;
   const key = auth.replace(/^Bearer\s+/i, "").trim();
@@ -32,5 +36,14 @@ export async function verifyApiKey(req: Request): Promise<string | null> {
   prisma.apiKey
     .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
     .catch(() => {});
-  return row.providerId;
+  return { providerId: row.providerId, gameId: row.gameId };
+}
+
+/**
+ * Igual que `verifyApiKeyFull` pero devuelve solo el `providerId` (o null). Atajo
+ * para las rutas que no necesitan el juego acotado.
+ */
+export async function verifyApiKey(req: Request): Promise<string | null> {
+  const id = await verifyApiKeyFull(req);
+  return id?.providerId ?? null;
 }

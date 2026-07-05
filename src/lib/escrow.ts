@@ -65,7 +65,13 @@ export type CreateBetError = { ok: false; code: string; error: string };
 /** Validación PURA del request de crear apuesta (testeable sin DB). */
 export function validateCreateBet(
   body: CreateBetBody,
-  cfg: { minSats: number; maxSats: number; maxSeats?: number },
+  cfg: {
+    minSats: number;
+    maxSats: number;
+    maxSeats?: number;
+    // Juego a usar si el body no trae `gameId` (la API key está acotada a un juego).
+    defaultGameId?: string | null;
+  },
 ): CreateBetValid | CreateBetError {
   const err = (code: string, error: string): CreateBetError => ({
     ok: false,
@@ -73,7 +79,12 @@ export function validateCreateBet(
     error,
   });
 
-  if (typeof body.gameId !== "string" || !body.gameId) {
+  // `gameId` del body o, si falta, el juego al que está acotada la API key.
+  const gameId =
+    typeof body.gameId === "string" && body.gameId
+      ? body.gameId
+      : cfg.defaultGameId || "";
+  if (!gameId) {
     return err("MISSING_GAME", "Falta gameId");
   }
   const stake = Number(body.stakeSats);
@@ -144,7 +155,7 @@ export function validateCreateBet(
 
   return {
     ok: true,
-    gameId: body.gameId,
+    gameId,
     anonymous,
     seatCount,
     npubs,
