@@ -9,6 +9,7 @@ import {
   readGuestIdentity,
 } from "@/lib/guest-session";
 import { recordPlayClick } from "@/lib/play-click";
+import { capMode, purchaseVerificationDisabled } from "@/lib/capability-mode";
 
 // Crea una "sesión de juego": mintea el token de acceso (entitlement) para lanzar
 // el juego, si el jugador lo posee (o es gratis). Los juegos GRATIS también se
@@ -26,10 +27,25 @@ export async function POST(
 
   const session = await getSession();
 
-  // --- Invitado (sin cuenta Nostr): solo juegos gratis ---
+  // "Acceso abierto": gratis (priceSats 0) o el proveedor desactivó la verificación
+  // de compra (Game.capsMode.purchase = "off"). En ambos casos el juego se puede
+  // lanzar sin poseerlo. Ver src/lib/capability-mode.ts.
+  const openAccess =
+    game.priceSats === 0 || purchaseVerificationDisabled(game.capsMode);
+
+  // Login migrado a Nostr: Luna NO mintea lnToken. El juego identifica al jugador por
+  // NIP-07/46 y el link va limpio (solo lnOrigin). Se mantiene el gate de acceso
+  // (openAccess/compra); solo se omite el token de identidad. Ver capability-mode.ts.
+  const nostrLogin = capMode(game.capsMode, "identidad") === "nostr";
+
+  // --- Invitado (sin cuenta Nostr): solo juegos de acceso abierto ---
   if (!session) {
-    if (game.priceSats !== 0) {
+    if (!openAccess) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+    }
+    // Login por Nostr: sin token ni identidad de invitado (el juego la resuelve solo).
+    if (nostrLogin) {
+      return NextResponse.json({ nostrLogin: true, guest: true });
     }
     const existing = await readGuestIdentity();
     const guest = existing ?? newGuestIdentity();
@@ -52,7 +68,7 @@ export async function POST(
   }
 
   // --- Usuario logueado ---
-  let owns = game.priceSats === 0;
+  let owns = openAccess;
   if (!owns) {
     const p = await prisma.purchase.findUnique({
       where: { userId_gameId: { userId: session.sub, gameId: id } },
@@ -74,17 +90,24 @@ export async function POST(
   // Estima concurrencia por clicks si el juego no integra presencia (best-effort).
   await recordPlayClick(game.providerId, id, session.npub).catch(() => {});
 
+  // Token de mínimo privilegio para que el modal de apuestas (Luna) opere como el
+  // jugador. Se mintea aunque el login sea por Nostr: es de la UI de Luna, no del juego.
+  const betSession = await signBetSession({
+    sub: session.sub,
+    npub: session.npub,
+    pubkey: session.pubkey,
+  });
+
+  // Login por Nostr: sin lnToken (el juego usa NIP-07/46). El link va limpio.
+  if (nostrLogin) {
+    return NextResponse.json({ nostrLogin: true, betSession });
+  }
+
   const token = await signEntitlement({
     npub: session.npub,
     pubkey: session.pubkey,
     gameId: id,
     slug: game.slug,
-  });
-  // Token de mínimo privilegio para que el modal de apuestas opere como el jugador.
-  const betSession = await signBetSession({
-    sub: session.sub,
-    npub: session.npub,
-    pubkey: session.pubkey,
   });
   return NextResponse.json({ token, betSession });
 }

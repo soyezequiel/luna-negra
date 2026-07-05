@@ -51,14 +51,20 @@ export function LaunchGate({
         setStatus("needsBuy");
         return;
       }
-      const d = (await r.json().catch(() => ({}))) as { token?: string; error?: string };
-      if (!r.ok || !d.token) {
+      const d = (await r.json().catch(() => ({}))) as {
+        token?: string;
+        nostrLogin?: boolean;
+        error?: string;
+      };
+      // Login migrado a Nostr: no hay lnToken; el juego identifica al jugador por
+      // NIP-07/46. Redirigimos con el link limpio (solo lnOrigin).
+      if (!r.ok || (!d.token && !d.nostrLogin)) {
         setStatus("error");
         setError(d.error ?? "No se pudo generar el acceso.");
         return;
       }
       const url = new URL(returnTo);
-      url.searchParams.set("lnToken", d.token);
+      if (d.token) url.searchParams.set("lnToken", d.token);
       url.searchParams.set("lnOrigin", window.location.origin);
       setStatus("redirecting");
       window.location.replace(url.toString());

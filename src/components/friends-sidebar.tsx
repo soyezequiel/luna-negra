@@ -306,7 +306,13 @@ export function FriendsSidebar() {
       method: "POST",
     });
     const sd = await sr.json().catch(() => ({}));
-    if (!sr.ok || !sd.token) throw new Error(sd.error ?? "No se pudo abrir el juego");
+    // Login migrado a Nostr: el endpoint no mintea `token` (responde `nostrLogin:true`).
+    // No es un error: abrimos el juego con el link limpio (solo lnRoom + lnOrigin) y la
+    // identidad la resuelve el juego por NIP-07/46. Solo tiramos si además falla el HTTP
+    // o no vino ni token ni la señal de login por Nostr.
+    if (!sr.ok || (!sd.token && !sd.nostrLogin)) {
+      throw new Error(sd.error ?? "No se pudo abrir el juego");
+    }
     const result = launchStandaloneGame({
       gameUrl: game.gameUrl,
       slug: game.slug,

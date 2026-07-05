@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { purchaseVerificationDisabled } from "@/lib/capability-mode";
 import { BuyButton } from "@/components/buy-button";
 import { ZapButton } from "@/components/zap-button";
 import { ZapLeaderboard } from "@/components/zap-leaderboard";
@@ -209,8 +210,12 @@ export default async function GamePage({
   const manualCaps = (game.manualCaps as Record<string, boolean> | null) ?? null;
   const roomLinkEnabled = !!manualCaps?.roomLink;
   const supportsRoomLink = Boolean(game.gameUrl) && roomLinkEnabled;
-  // Acceso para invitar: mismo criterio que el endpoint (gratis o comprado).
-  const hasAccess = game.priceSats === 0 || owned;
+  // "Acceso abierto": el proveedor desactivó la verificación de compra → el juego se
+  // juega sin comprarlo (como si fuera gratis). Ver src/lib/capability-mode.ts.
+  const openAccess = purchaseVerificationDisabled(game.capsMode);
+  // Acceso para invitar/jugar: mismo criterio que el endpoint (gratis, comprado o
+  // con acceso abierto).
+  const hasAccess = game.priceSats === 0 || owned || openAccess;
 
   // Media para adjuntar al compartir en Nostr: carátula(s) + capturas, en URL
   // ABSOLUTA (las notas las consumen clientes externos, una ruta /uploads
@@ -427,6 +432,7 @@ export default async function GamePage({
                     gameId={game.id}
                     priceSats={game.priceSats}
                     owned={false}
+                    openAccess={openAccess}
                     gameUrl={game.gameUrl}
                     title={game.title}
                     slug={game.slug}

@@ -15,6 +15,9 @@ type Props = {
   gameId: string;
   priceSats: number;
   owned: boolean;
+  // El proveedor desactivó la verificación de compra: el juego se juega sin comprarlo
+  // (como si fuera gratis), aunque tenga precio. Ver src/lib/capability-mode.ts.
+  openAccess?: boolean;
   gameUrl: string | null;
   title?: string;
   slug?: string;
@@ -22,7 +25,7 @@ type Props = {
 
 type Phase = "idle" | "creating" | "pending" | "paid" | "error";
 
-export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Props) {
+export function BuyButton({ gameId, priceSats, owned, openAccess, gameUrl, title, slug }: Props) {
   const { user, login } = useSession();
   const { connected: nwcConnected, refresh: refreshWallet } = useWallet();
   const router = useRouter();
@@ -172,9 +175,12 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
     );
   }
 
-  // Juego gratis: se puede jugar sin cuenta Nostr (identidad de invitado). Si el
-  // usuario está logueado, además puede agregarlo a su biblioteca.
-  if (priceSats === 0 && gameUrl) {
+  // Jugable sin comprar: gratis (priceSats 0) o acceso abierto (compra desactivada).
+  // Se puede jugar sin cuenta Nostr (identidad de invitado). En juegos gratis, si el
+  // usuario está logueado, además puede agregarlo a su biblioteca (mintea entitlement
+  // sin cobrar). En acceso abierto con precio NO se ofrece "agregar": ese camino
+  // cobraría el precio; el juego ya es jugable con el botón de arriba.
+  if ((priceSats === 0 || openAccess) && gameUrl) {
     return (
       <div className="space-y-2 [&>button]:w-full">
         <PlayButton
@@ -182,10 +188,10 @@ export function BuyButton({ gameId, priceSats, owned, gameUrl, title, slug }: Pr
           gameUrl={gameUrl}
           title={title}
           slug={slug}
-          label="▶ Jugar gratis"
+          label={priceSats === 0 ? "▶ Jugar gratis" : "▶ Jugar"}
           variant="play"
         />
-        {user ? (
+        {user && priceSats === 0 ? (
           <Button
             variant="ghost"
             onClick={startBuy}
