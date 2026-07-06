@@ -403,11 +403,13 @@ una **clave de servicio del juego** (`LUNA_NEGRA_NGP_NSEC`) y materializa por
 `from-contract`; el resto (depósito por zap, refresh, resultado por API key,
 cancel) queda igual. Gateado por `LUNA_NEGRA_NGP_BETS=1` y **solo cuando todos
 los jugadores tienen npub** (los pozos con invitados sin clave caen al camino
-custodial legacy). El resultado sigue por `POST /result` con API key (Slice 1):
-Luna liquida con el oráculo gestionado y publica el `31340 resolved`. Para pasar a
-resultado **keyless** (Slice 2, ya soportado por Luna), Tetris tendría que declarar
-su clave de oráculo BYO (`POST /api/provider/oracle/self`) y firmar sus 1341 con
-ella en vez de llamar a `/result`. *Código: `src/online/lunaNegraNgp.ts` + branch en
+custodial legacy). El resultado por defecto va por `POST /result` con API key
+(oráculo gestionado). **Modo keyless (Slice 2) ✅ adoptado**: con
+`LUNA_NEGRA_NGP_KEYLESS=1`, Tetris declara su clave de oráculo BYO
+(`ensureOracleDeclared` → `POST /api/provider/oracle/self`, firma un reto), usa esa
+pubkey como `oracle` del 1339 y firma su propio 1341 que manda a `/result` como
+`{ event }` (sin API key). *Código: `src/online/lunaNegraNgp.ts`
+(`ngpOraclePubkey`/`ensureOracleDeclared`/`signNgpResultEvent`) + branch en
 `src/online/lunaNegraBets.ts` (repo Tetris).*
 
 > **Nota de transporte.** El depósito NGP cae en el LNURL **de la tienda**
