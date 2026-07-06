@@ -189,6 +189,25 @@ export async function materializeNgpBet(
   const victoryCondition = (ev.content ?? "").slice(0, 500);
   const roomId = ev.tags.find((t) => t[0] === "room")?.[1] ?? null;
 
+  // ANCLA: el POST HUMANO raíz (kind:1) del que cuelga este contrato como
+  // comentario (`e` root), si existe. Así los depósitos, el estado (31340), los
+  // comentarios de participación y el premio anclan a una nota LEGIBLE en
+  // cualquier cliente Nostr (Jumble, Damus…) en vez de al kind:1339 que no
+  // rinden. Si el 1339 no referencia un root (P2P puro), el ancla es él mismo.
+  const rootRef =
+    ev.tags.find((t) => t[0] === "e" && t[3] === "root")?.[1] ??
+    ev.tags.find((t) => t[0] === "e")?.[1];
+  const anchorEventId = rootRef ?? contractEventId;
+  if (anchorEventId !== contractEventId) {
+    const alreadyByRoot = await prisma.zapBet.findUnique({
+      where: { anchorEventId },
+      select: { id: true, gameId: true },
+    });
+    if (alreadyByRoot) {
+      return { ok: true, betId: alreadyByRoot.id, gameId: alreadyByRoot.gameId };
+    }
+  }
+
   // Resolver cada participante a un User (cuenta existente o mínima por pubkey).
   // Los pubkeys son válidos: vinieron de un evento firmado y verificado.
   const seats: { userId: string; npub: string; pubkey: string }[] = [];
@@ -218,7 +237,7 @@ export async function materializeNgpBet(
         devFeePct,
         victoryCondition,
         roomId,
-        anchorEventId: contractEventId,
+        anchorEventId,
         depositDeadline: new Date(depositDeadlineMs),
         participants: {
           create: seats.map((s) => ({ userId: s.userId, npub: s.npub, pubkey: s.pubkey })),
@@ -230,7 +249,7 @@ export async function materializeNgpBet(
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const raced = await prisma.zapBet.findUnique({
-        where: { anchorEventId: contractEventId },
+        where: { anchorEventId },
         select: { id: true, gameId: true },
       });
       if (raced) return { ok: true, betId: raced.id, gameId: raced.gameId };
