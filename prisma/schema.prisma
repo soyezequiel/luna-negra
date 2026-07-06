@@ -735,6 +735,7 @@ model ZapBet {
   anchorEventId    String?   @unique // evento Nostr del contrato = ancla de depósitos y liquidación
   anchorEventKind  Int? // kind del ancla (1 = post de la tienda / raíz humana NGP; 1339 = NGP puro P2P). Para el tag `K` (NIP-22) del comentario de participación
   contractHash     String? // huella sha256 de los términos (idéntica a v1, CONTRACT_MISMATCH)
+  contractPubkey   String? // pubkey del firmante del contrato NGP kind:1339 (el "retador"). Autoriza el void pre-fondeo (cancel) por 1341. Null en apuestas v2 REST (no hay 1339)
   resultEventId    String? // evento Nostr del resultado firmado
   settleNoteId     String? // nota de liquidación kind:1 (resumen público anclado)
   createdAt        DateTime  @default(now())

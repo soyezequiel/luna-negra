@@ -2,7 +2,10 @@ import { SimplePool, verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { NGP_BET_RESULT_KIND, NGP_BET_TAG, NGP_BETS_ENABLED } from "./ngp-bet-state";
-import { settleZapBetWithResult } from "./escrow-v2-settle";
+import { settleZapBetWithResult, type ZapBetWithRelations } from "./escrow-v2-settle";
+import { payParticipantV2 } from "./escrow-v2-payout";
+import { emitBetCancelledV2, emitBetRefundedV2 } from "./webhooks";
+import { publishNgpBetState } from "./ngp-bet-state";
 import { isTerminal } from "./bet-state";
 import { notifyOperationalError } from "./discord";
 
@@ -94,10 +97,36 @@ export async function syncNgpBetResults(): Promise<void> {
 }
 
 /**
+ * ¿Este 1341 autoriza un VOID DEL RETADOR (cancel pre-fondeo)? Puro para testear
+ * la autorización sin relays ni DB. NO valida la firma: asume que `signerPubkey`
+ * ya viene de un evento verificado (el caller corre `verifyEvent` antes). Reglas:
+ * `status=void`, la apuesta sigue esperando depósitos (`pending_deposits`) y el
+ * firmante es EXACTAMENTE el autor del contrato (`contractPubkey`). Una vez
+ * fondeada (`ready`) el retador ya no puede anular: solo el oráculo.
+ */
+export function isChallengerVoid(args: {
+  status: string;
+  betStatus: string;
+  contractPubkey: string | null;
+  signerPubkey: string;
+}): boolean {
+  return (
+    args.status === "void" &&
+    args.betStatus === "pending_deposits" &&
+    !!args.contractPubkey &&
+    args.signerPubkey === args.contractPubkey
+  );
+}
+
+/**
  * Valida y liquida UN evento de resultado. Separado del sync para poder
- * testearlo sin relays. Reglas de la spec (§5): firma válida, firmante == oráculo
- * del proveedor de la apuesta, `e` == ancla de una apuesta conocida, ganadores ⊆
- * participantes; `draw`/`void` ⇒ reembolso (winners vacío, mismo camino que v2).
+ * testearlo sin relays. Reglas de la spec (§5): firma válida, `e` == ancla de una
+ * apuesta conocida, y luego dos caminos:
+ *  - VOID DEL RETADOR (pre-fondeo): `status=void` firmado por el AUTOR del contrato
+ *    (`bet.contractPubkey`) mientras la apuesta esté `pending_deposits` → cancel +
+ *    reembolso (equivale al cancel v2).
+ *  - LIQUIDACIÓN (fondeada): firmante == oráculo del proveedor, ganadores ⊆
+ *    participantes; `draw`/`void` ⇒ reembolso (winners vacío, mismo camino que v2).
  */
 export async function handleNgpResultEvent(ev: Event): Promise<void> {
   if (ev.kind !== NGP_BET_RESULT_KIND) return;
@@ -126,6 +155,27 @@ export async function handleNgpResultEvent(ev: Event): Promise<void> {
     return;
   }
 
+  const status = ev.tags.find((t) => t[0] === "status")?.[1] ?? "win";
+
+  // VOID DEL RETADOR (cancel pre-fondeo, spec §5 y Fase 3). El AUTOR del contrato
+  // (no el oráculo) puede anular su apuesta con un 1341 `status=void` mientras nadie
+  // haya completado el fondeo (`pending_deposits` = público `accepted`). Equivale al
+  // cancel de v2: reembolsa lo que se haya depositado y termina en `cancelled_admin`
+  // (proyecta a NGP `void`). Una vez `ready` (todos fondearon) ya no puede anular:
+  // de ahí en más manda el oráculo, así que este branch NO aplica y cae al de abajo.
+  if (
+    isChallengerVoid({
+      status,
+      betStatus: bet.status,
+      contractPubkey: bet.contractPubkey,
+      signerPubkey: ev.pubkey,
+    })
+  ) {
+    await cancelNgpBetPreFunding(bet, ev);
+    markProcessed(ev.id);
+    return;
+  }
+
   if (!bet.provider.oraclePubkey || ev.pubkey !== bet.provider.oraclePubkey) {
     console.warn(
       `[ngp-bet-result] 1341 ${ev.id} firmado por ${ev.pubkey}, no por el oráculo de ${bet.id}; ignorado`,
@@ -134,7 +184,6 @@ export async function handleNgpResultEvent(ev: Event): Promise<void> {
     return;
   }
 
-  const status = ev.tags.find((t) => t[0] === "status")?.[1] ?? "win";
   let winnerNpubs: string[] = [];
   if (status === "win") {
     const winnerPks = ev.tags.filter((t) => t[0] === "p").map((t) => t[1]);
@@ -171,4 +220,37 @@ export async function handleNgpResultEvent(ev: Event): Promise<void> {
   if (res.code !== "NOT_READY" && res.code !== "SETTLE_FAILED") {
     markProcessed(ev.id);
   }
+}
+
+/**
+ * Anula una apuesta NGP pre-fondeo por decisión del retador (1341 `status=void`).
+ * Mismo núcleo que el cancel v2 (`/api/v2/bets/{id}/cancel`): claim optimista
+ * `pending_deposits → refunding`, reembolso por zap de los depósitos ya
+ * confirmados (a lo sumo el del propio retador) y estado terminal
+ * `cancelled_admin` (proyecta a NGP `void`, reason `cancelled`). El claim
+ * serializa contra el tick y contra otro 1341: si otro proceso ya movió la
+ * apuesta, `count !== 1` y salimos sin tocar nada.
+ */
+async function cancelNgpBetPreFunding(
+  bet: ZapBetWithRelations,
+  ev: Event,
+): Promise<void> {
+  const claimed = await prisma.zapBet.updateMany({
+    where: { id: bet.id, status: "pending_deposits" },
+    data: { status: "refunding" },
+  });
+  if (claimed.count !== 1) return; // carrera: el tick u otro 1341 ganó
+
+  for (const p of bet.participants.filter((x) => x.depositStatus === "paid")) {
+    await payParticipantV2({ bet, participant: p, amountMsat: bet.stakeMsat, kind: "refund" });
+  }
+  await prisma.zapBet.update({
+    where: { id: bet.id },
+    data: { status: "cancelled_admin", resultEventId: ev.id },
+  });
+
+  await emitBetCancelledV2(bet.id);
+  await emitBetRefundedV2(bet.id, "cancelled");
+  await publishNgpBetState(bet.id);
+  console.log(`[ngp-bet-result] apuesta ${bet.id} anulada por el retador (evento ${ev.id})`);
 }

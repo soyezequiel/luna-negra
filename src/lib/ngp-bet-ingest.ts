@@ -241,6 +241,8 @@ export async function materializeNgpBet(
         // `K` del comentario de participación (NIP-22): si el 1339 cuelga de un post
         // humano raíz, el ancla es ese kind:1; si es P2P puro, el ancla es el 1339.
         anchorEventKind: rootRef ? 1 : 1339,
+        // Firmante del contrato (retador): autoriza el void pre-fondeo por 1341.
+        contractPubkey: ev.pubkey,
         depositDeadline: new Date(depositDeadlineMs),
         participants: {
           create: seats.map((s) => ({ userId: s.userId, npub: s.npub, pubkey: s.pubkey })),

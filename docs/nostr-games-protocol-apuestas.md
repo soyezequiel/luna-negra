@@ -1,8 +1,9 @@
-# NGP — Apuestas y escrow por eventos (draft)
+# NGP — Apuestas y escrow por eventos
 
-> ⚠️ **EN CONSTRUCCIÓN — diseño, no código.** Extiende
+> ✅ **IMPLEMENTADO Y VALIDADO EN PRODUCCIÓN.** Extiende
 > [nostr-games-protocol.md](nostr-games-protocol.md) (NGP) con la capa de
-> apuestas. Los `kind` propuestos pueden cambiar hasta congelar la v1 de la spec.
+> apuestas. Fases 0–3 completas (§8); los `kind` 1339 / 1341 / 31340 están
+> **congelados** (v1 estable).
 >
 > **Relación con lo existente.** Las apuestas v2 (`/api/v2/bets`) ya mueven el
 > dinero por zaps NIP-57 públicos, pero la **coordinación** (crear, consultar
@@ -60,7 +61,7 @@ prueba públicamente (ver §7). Es una garantía reputacional, no criptográfica
 
 ---
 
-## 2. El contrato — kind:1339 *(propuesto)*
+## 2. El contrato — kind:1339 *(estable)*
 
 Lo firma y publica el **retador** (un jugador, o el juego en su nombre). A
 diferencia de v2 —donde el ancla la firma Luna Negra— acá el contrato existe y
@@ -68,7 +69,7 @@ es verificable **sin** Luna Negra.
 
 ```jsonc
 {
-  "kind": 1339,                          // (propuesto) regular, inmutable
+  "kind": 1339,                          // (estable) regular, inmutable
   "pubkey": "<pubkey del retador>",
   "created_at": 1751760000,
   "tags": [
@@ -164,7 +165,7 @@ apostador no se llena de respuestas redundantes.
 
 ---
 
-## 4. Estado del escrow — kind:31340 *(propuesto)*
+## 4. Estado del escrow — kind:31340 *(estable)*
 
 Lo firma el **escrow**. Addressable con `d` = id del contrato: siempre hay un
 único estado vigente, y cada transición queda firmada y con timestamp.
@@ -209,14 +210,14 @@ El juego se suscribe con:
 
 ---
 
-## 5. El resultado — kind:1341 *(propuesto)*
+## 5. El resultado — kind:1341 *(estable)*
 
 Lo firma el **oráculo** declarado en el contrato. Regular e inmutable.
 Reemplaza `POST /result` + API key: la autenticación ES la firma.
 
 ```jsonc
 {
-  "kind": 1341,                          // (propuesto) regular, inmutable
+  "kind": 1341,                          // (estable) regular, inmutable
   "pubkey": "<pubkey del oráculo>",
   "tags": [
     ["e", "<id del contrato>"],
@@ -384,15 +385,34 @@ resolver la custodia de la clave del oráculo. *Código: `src/online/lunaNegraNg
 > crea el participante antes). El mismo `validateDepositZapRequest` acepta ambos
 > LNURL, así que no hubo que tocar la validación del zap.
 
-> **Guest seats.** La ingesta resuelve cada `p` participante a un `User` por
-> pubkey (upsert: cuenta existente o mínima). No hay asientos "invitados"
-> administrados por Luna como en v2: en NGP puro el propio juego genera la clave
-> efímera del invitado y firma con ella. Pendiente documentarlo para devs (Fase 3).
+> **Guest seats (claves efímeras).** La ingesta resuelve cada `p` participante a un
+> `User` por pubkey (upsert: cuenta existente o mínima). No hay asientos "invitados"
+> administrados por Luna como en v2: en NGP el juego que orquesta la sala **genera
+> una clave Nostr efímera por invitado** (un `secp256k1` random en el server del
+> juego), la usa como pubkey del asiento en el 1339 y **firma con ella** tanto el
+> 9734 del depósito como el comentario de participación. Para Luna esos asientos son
+> indistinguibles de un jugador con npub propio: la validación es la misma (el
+> firmante del depósito debe ser uno de los `p` del contrato). Consecuencias para el
+> dev: (1) el premio se paga a esa clave efímera, así que el juego debe custodiarla
+> hasta cobrar (o rutear el payout a una LN address del invitado vía su perfil); (2)
+> si el juego pierde la clave antes del payout, el premio cae al retiro por QR
+> (`withdraw_pending`) y expira como forfeit; (3) la clave efímera **no** debe
+> reusarse entre apuestas. Cuando *todos* los asientos tienen npub real, el juego usa
+> las claves de los jugadores y no genera ninguna efímera (es el caso 1v1 típico).
 
-**Fase 3 — Pulido.**
-`status=void` del retador (cancel), claves efímeras para invitados documentadas,
-actualización de la skill `integrar-ngp-v2` y del panel de integración
-(evidencia NGP: contratos 1339 vistos por juego), congelar kinds.
+**Fase 3 — Pulido. ✅ implementada.**
+- **`status=void` del retador (cancel).** El autor del contrato (`bet.contractPubkey`,
+  guardado en la ingesta) puede anular su apuesta **pre-fondeo** publicando un 1341
+  `status=void`: `ngp-bet-result-sync` lo detecta, reembolsa lo depositado por zap y
+  la deja `cancelled_admin` (proyecta a NGP `void`). Reusa el mismo núcleo que el
+  cancel v2. Una vez `funded` ya no puede anular: manda el oráculo. *Código:
+  `src/lib/ngp-bet-result-sync.ts` (`isChallengerVoid` + `cancelNgpBetPreFunding`),
+  campo `ZapBet.contractPubkey`.*
+- **Claves efímeras para invitados documentadas** (ver nota "Guest seats" arriba).
+- **Kinds congelados** (ver apéndice): 1339 / 1341 / 31340 pasan de *propuesto* a
+  *estable* tras la validación en producción.
+- Pendiente menor: evidencia NGP en el panel de integración (contratos 1339 vistos
+  por juego) y refresco de la skill `integrar-ngp-v2`.
 
 ### Qué implementa el dev de un juego (todo el flujo)
 
@@ -429,9 +449,9 @@ Sin API key, sin polling, sin backend salvo la clave del oráculo.
 
 | Kind | Qué | Firma | Tipo | Estado |
 |---|---|---|---|---|
-| 1339 | **Contrato de apuesta** | retador | regular (inmutable) | *propuesto* |
-| 1341 | **Resultado / anulación** | oráculo (o retador, solo void pre-fondeo) | regular (inmutable) | *propuesto* |
-| 31340 | **Estado del escrow** (`d`=contrato) y **terms** (`d`=`terms`) | escrow | addressable | *propuesto* |
+| 1339 | **Contrato de apuesta** | retador | regular (inmutable) | **estable** (congelado) |
+| 1341 | **Resultado / anulación** | oráculo (o retador, solo void pre-fondeo) | regular (inmutable) | **estable** (congelado) |
+| 31340 | **Estado del escrow** (`d`=contrato) y **terms** (`d`=`terms`) | escrow | addressable | **estable** (congelado) |
 | 9734/9735 | Depósitos y payouts | participante / escrow | NIP-57 | estándar |
 | 1111 | **Comentario de participación** (NIP-22, `E`/`e`=contrato) | participante | comentario | estándar |
 | 1 | Comentarios sociales, nota de liquidación | cualquiera | regular | estándar |
