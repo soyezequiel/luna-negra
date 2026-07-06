@@ -356,6 +356,12 @@ el juego lee **`GET /api/v2/bets/ngp-config?gameId=`** (API key) →
 *Código: `src/app/api/v2/bets/{from-contract,ngp-config}/route.ts` +
 `src/lib/escrow-v2-serialize.ts`.*
 
+**✅ Validado en producción (6 jul 2026).** Una apuesta real de tetris-beta corrió
+entera por NGP: contrato `kind:1339` firmado por la clave de servicio del juego,
+materializado por `from-contract` (el `31340` de la apuesta ancla en el id del
+1339, no en un `kind:1` de Luna), depósitos y premio por zaps, `status: resolved`.
+El resultado siguió por API key (Slice 1); el `1341` keyless es Slice 2.
+
 **Integración de referencia — Tetris.** `createBetForRoom` publica el 1339 con
 una **clave de servicio del juego** (`LUNA_NEGRA_NGP_NSEC`) y materializa por
 `from-contract`; el resto (depósito por zap, refresh, resultado por API key,
