@@ -247,6 +247,33 @@ escrow anula y reembolsa, publicando `status=void` en el 31340 con el motivo.
 Los reembolsos van a la cascada de destino de cada participante (lud16 del
 perfil, etc.) — misma `resolveDestination` de hoy.
 
+### La clave del oráculo: gestionada o propia (BYO)
+
+El 1341 se valida contra `Provider.oraclePubkey`. Hay **dos modos de custodia** de
+esa clave (`src/lib/oracle-keys.ts`):
+
+- **Gestionada (default).** Luna genera y custodia el par. El juego reporta con su
+  **API key** (`POST /api/v2/bets/{id}/result { winners }`) y Luna firma el 1341 por
+  él. Cero fricción de claves, pero no es keyless: Luna es un tercero de confianza
+  para firmar.
+- **Propia / BYO (keyless — Slice 2).** El proveedor trae **su propia** clave Nostr
+  de oráculo. Luna solo guarda la pubkey (`oracleSecretEnc = null`,
+  `oracleSelfSigned = true`) y **no puede firmar por él**: el juego firma sus 1341
+  con su clave y (a) los **publica en relays** — los levanta `ngp-bet-result-sync` —
+  o (b) los postea a `/result` como `{ event }` (la firma ES la auth, sin API key).
+  Los caminos gestionados (`/result` con API key, `/activity`) responden
+  `SELF_SIGNED_ORACLE` en este modo.
+
+**Declarar la clave propia** (self-serve, prueba de posesión): el dueño del
+proveedor pide el reto con `GET /api/provider/oracle/self` → `{ challenge }`, firma
+un evento cuyo `content` es exactamente ese `challenge` (con `created_at` reciente)
+usando su clave de oráculo, y lo envía con `POST /api/provider/oracle/self
+{ proof }`. Luna verifica firma + reto ligado al `providerId` + frescura y guarda la
+pubkey. `POST /api/provider/oracle/managed` vuelve al modo gestionado (genera par
+nuevo). `GET /api/v2/bets/ngp-config` devuelve `oracleSelfSigned` para que el juego
+sepa si debe auto-firmar. El oráculo declarado en el 1339 debe ser esta pubkey (la
+ingesta lo valida con `ORACLE_MISMATCH`).
+
 ### Relación con el marcador
 
 El kind:31337 (score firmado por el jugador) sigue siendo **social y
@@ -366,7 +393,10 @@ el juego lee **`GET /api/v2/bets/ngp-config?gameId=`** (API key) →
 entera por NGP: contrato `kind:1339` firmado por la clave de servicio del juego,
 materializado por `from-contract` (el `31340` de la apuesta ancla en el id del
 1339, no en un `kind:1` de Luna), depósitos y premio por zaps, `status: resolved`.
-El resultado siguió por API key (Slice 1); el `1341` keyless es Slice 2.
+El resultado siguió por API key (Slice 1). **Slice 2 (resultado keyless) ✅
+implementado**: el proveedor puede declarar su propia clave de oráculo (BYO) y
+firmar sus 1341 sin API key (ver "La clave del oráculo" en §5). Falta que el juego
+de referencia (Tetris) lo adopte end-to-end.
 
 **Integración de referencia — Tetris.** `createBetForRoom` publica el 1339 con
 una **clave de servicio del juego** (`LUNA_NEGRA_NGP_NSEC`) y materializa por
@@ -374,10 +404,11 @@ una **clave de servicio del juego** (`LUNA_NEGRA_NGP_NSEC`) y materializa por
 cancel) queda igual. Gateado por `LUNA_NEGRA_NGP_BETS=1` y **solo cuando todos
 los jugadores tienen npub** (los pozos con invitados sin clave caen al camino
 custodial legacy). El resultado sigue por `POST /result` con API key (Slice 1):
-Luna liquida con el oráculo gestionado y publica el `31340 resolved`. El 1341
-firmado por el juego (resultado keyless) queda para el Slice 2, que necesita
-resolver la custodia de la clave del oráculo. *Código: `src/online/lunaNegraNgp.ts`
-+ branch en `src/online/lunaNegraBets.ts` (repo Tetris).*
+Luna liquida con el oráculo gestionado y publica el `31340 resolved`. Para pasar a
+resultado **keyless** (Slice 2, ya soportado por Luna), Tetris tendría que declarar
+su clave de oráculo BYO (`POST /api/provider/oracle/self`) y firmar sus 1341 con
+ella en vez de llamar a `/result`. *Código: `src/online/lunaNegraNgp.ts` + branch en
+`src/online/lunaNegraBets.ts` (repo Tetris).*
 
 > **Nota de transporte.** El depósito NGP cae en el LNURL **de la tienda**
 > (`luna@dominio`, descubierto del `kind:0`/lud16 del escrow), no en el

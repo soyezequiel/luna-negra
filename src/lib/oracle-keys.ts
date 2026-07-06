@@ -1,17 +1,24 @@
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { encryptSecret, decryptSecret } from "@/lib/crypto-vault";
 
-// Clave del ORÁCULO gestionado por proveedor. Luna Negra genera y CUSTODIA una
-// clave Nostr por proveedor para firmar los eventos de resultado (y actividad)
-// en su nombre, de modo que el game server NO necesite una clave Nostr propia:
-// le alcanza con su API key.
+// Clave del ORÁCULO de un proveedor: firma los eventos de resultado (1341) y de
+// actividad en su nombre. Dos modos de custodia:
 //
-// - `oraclePubkey` (hex) es público: contra él se validan los eventos firmados.
-// - `oracleSecretEnc` es el secreto cifrado en reposo (ver crypto-vault). Nunca
-//   se loguea ni se devuelve por la API.
+//  - GESTIONADA (default): Luna Negra genera y CUSTODIA el par. El game server no
+//    necesita clave Nostr propia: le alcanza con su API key y Luna firma por él.
+//    `oraclePubkey` + `oracleSecretEnc` seteados, `oracleSelfSigned = false`.
+//
+//  - PROPIA / BYO (keyless, Slice 2): el proveedor trae su PROPIA clave. Luna solo
+//    guarda `oraclePubkey` (público) — `oracleSecretEnc = null` — y NO puede firmar
+//    por él: el juego firma sus 1341 y los publica (los levanta ngp-bet-result-sync)
+//    o los postea a `/result` como `{event}`. `oracleSelfSigned = true`.
+//
+// En ambos modos `oraclePubkey` (hex) es la verdad contra la que se validan los
+// eventos firmados; `oracleSecretEnc` nunca se loguea ni se devuelve por la API.
 
-/** Genera un keypair de oráculo y devuelve {pubkey, secretEnc} para persistir. */
+/** Genera un keypair de oráculo GESTIONADO y devuelve {pubkey, secretEnc}. */
 export function generateOracleKey(): { pubkey: string; secretEnc: string } {
   const sk = generateSecretKey();
   const pubkey = getPublicKey(sk);
@@ -19,28 +26,32 @@ export function generateOracleKey(): { pubkey: string; secretEnc: string } {
 }
 
 /**
- * Asegura que el proveedor tenga clave de oráculo; la genera si falta.
- * Idempotente: si ya existe, no la toca. Devuelve el pubkey (hex).
+ * Asegura que el proveedor tenga clave de oráculo; genera una GESTIONADA solo si
+ * NO tiene ninguna pubkey declarada. Idempotente y —clave para BYO— NUNCA pisa una
+ * clave existente: si el proveedor ya declaró su pubkey propia (self-signed, sin
+ * secreto), la devolvemos tal cual en vez de regenerar una gestionada encima.
+ * Devuelve el pubkey (hex).
  */
 export async function ensureOracleKey(providerId: string): Promise<string> {
   const p = await prisma.provider.findUnique({
     where: { id: providerId },
-    select: { oraclePubkey: true, oracleSecretEnc: true },
+    select: { oraclePubkey: true },
   });
   if (!p) throw new Error(`Proveedor ${providerId} no encontrado`);
-  if (p.oraclePubkey && p.oracleSecretEnc) return p.oraclePubkey;
+  if (p.oraclePubkey) return p.oraclePubkey; // gestionada o BYO ya declarada: no tocar
 
   const { pubkey, secretEnc } = generateOracleKey();
   await prisma.provider.update({
     where: { id: providerId },
-    data: { oraclePubkey: pubkey, oracleSecretEnc: secretEnc },
+    data: { oraclePubkey: pubkey, oracleSecretEnc: secretEnc, oracleSelfSigned: false },
   });
   return pubkey;
 }
 
 /**
- * Secret key (bytes) del oráculo del proveedor para firmar server-side.
- * Devuelve null si el proveedor aún no tiene clave gestionada provisionada.
+ * Secret key (bytes) del oráculo GESTIONADO del proveedor para firmar server-side.
+ * Devuelve null si el proveedor no tiene clave gestionada provisionada O si firma
+ * con clave propia (BYO): en ese caso Luna no custodia el secreto y no puede firmar.
  */
 export async function getOracleSecret(
   providerId: string,
@@ -54,15 +65,111 @@ export async function getOracleSecret(
 }
 
 /**
- * Rota la clave del oráculo: genera un keypair nuevo y reemplaza pubkey+secreto.
- * IMPORTANTE: invalida los eventos firmados con la clave anterior (un self-signer
- * debe actualizar su clave a la nueva pubkey). Devuelve la nueva pubkey.
+ * Rota la clave del oráculo GESTIONADO: genera un keypair nuevo y reemplaza
+ * pubkey+secreto. Lanza si el proveedor firma con clave propia (BYO): ahí no hay
+ * nada que rotar del lado de Luna — el proveedor re-declara su clave con
+ * `setSelfSignedOracle`. Devuelve la nueva pubkey.
  */
 export async function rotateOracleKey(providerId: string): Promise<string> {
+  const p = await prisma.provider.findUnique({
+    where: { id: providerId },
+    select: { oracleSelfSigned: true },
+  });
+  if (p?.oracleSelfSigned) {
+    throw new OracleSelfSignedError(
+      "El proveedor firma con clave propia; no hay clave gestionada que rotar",
+    );
+  }
   const { pubkey, secretEnc } = generateOracleKey();
   await prisma.provider.update({
     where: { id: providerId },
-    data: { oraclePubkey: pubkey, oracleSecretEnc: secretEnc },
+    data: { oraclePubkey: pubkey, oracleSecretEnc: secretEnc, oracleSelfSigned: false },
+  });
+  return pubkey;
+}
+
+/** El proveedor firma con clave propia (BYO): Luna no puede firmar por él. */
+export class OracleSelfSignedError extends Error {}
+
+// Prueba de posesión: content que el proveedor debe firmar con SU clave de oráculo
+// para declararla. Liga la firma a ESTE proveedor (anti-replay entre proveedores) y
+// al propósito (no reutilizable como resultado/actividad). El `created_at` reciente
+// acota el replay temporal.
+export function oracleProofContent(providerId: string): string {
+  return `luna-negra:oracle:claim:${providerId}`;
+}
+
+export const ORACLE_PROOF_MAX_AGE_S = 5 * 60; // 5 min de ventana para la prueba
+
+export type SelfSignedResult =
+  | { ok: true; oraclePubkey: string }
+  | { ok: false; code: string; message: string };
+
+/**
+ * Valida el evento de prueba de posesión de una clave de oráculo BYO. PURO (no toca
+ * DB) para poder testear la seguridad sin relays ni prisma. Reglas: firma válida,
+ * `content` == el reto ligado a ESTE proveedor (anti-replay entre proveedores),
+ * `created_at` dentro de la ventana (anti-replay temporal). En éxito devuelve la
+ * pubkey firmante = la clave BYO a declarar.
+ */
+export function validateOracleProof(
+  providerId: string,
+  proof: Event,
+  nowS: number = Math.floor(Date.now() / 1000),
+): SelfSignedResult {
+  if (!proof || typeof proof !== "object" || typeof proof.pubkey !== "string") {
+    return { ok: false, code: "BAD_PROOF", message: "Falta el evento de prueba firmado" };
+  }
+  if (!verifyEvent(proof)) {
+    return { ok: false, code: "BAD_SIGNATURE", message: "La firma de la prueba es inválida" };
+  }
+  if (proof.content !== oracleProofContent(providerId)) {
+    return {
+      ok: false,
+      code: "WRONG_CHALLENGE",
+      message: "El content de la prueba no coincide con el reto de este proveedor",
+    };
+  }
+  if (Math.abs(nowS - (proof.created_at ?? 0)) > ORACLE_PROOF_MAX_AGE_S) {
+    return { ok: false, code: "STALE", message: "La prueba expiró; firmá una nueva" };
+  }
+  return { ok: true, oraclePubkey: proof.pubkey };
+}
+
+/**
+ * Declara la clave de oráculo PROPIA (BYO) del proveedor a partir de un evento de
+ * prueba firmado por esa misma clave (validado por `validateOracleProof`). En éxito
+ * setea `oraclePubkey` = firmante, BORRA el secreto gestionado (`oracleSecretEnc =
+ * null`) y marca `oracleSelfSigned`. Puro respecto a auth (el caller ya resolvió que
+ * la sesión es dueña del proveedor).
+ */
+export async function setSelfSignedOracle(
+  providerId: string,
+  proof: Event,
+): Promise<SelfSignedResult> {
+  const check = validateOracleProof(providerId, proof);
+  if (!check.ok) return check;
+
+  await prisma.provider.update({
+    where: { id: providerId },
+    data: {
+      oraclePubkey: proof.pubkey,
+      oracleSecretEnc: null,
+      oracleSelfSigned: true,
+    },
+  });
+  return { ok: true, oraclePubkey: proof.pubkey };
+}
+
+/**
+ * Vuelve al oráculo GESTIONADO: genera un par nuevo custodiado por Luna y apaga el
+ * modo BYO. Devuelve la nueva pubkey gestionada.
+ */
+export async function revertToManagedOracle(providerId: string): Promise<string> {
+  const { pubkey, secretEnc } = generateOracleKey();
+  await prisma.provider.update({
+    where: { id: providerId },
+    data: { oraclePubkey: pubkey, oracleSecretEnc: secretEnc, oracleSelfSigned: false },
   });
   return pubkey;
 }

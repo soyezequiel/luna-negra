@@ -104,6 +104,15 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
     return apiError("FORBIDDEN", "La API key no es del proveedor de esta apuesta", 403);
   }
 
+  // Oráculo BYO (keyless): Luna no custodia la clave y no puede firmar por el juego.
+  if (bet.provider.oracleSelfSigned) {
+    return apiError(
+      "SELF_SIGNED_ORACLE",
+      "Este proveedor firma sus propios resultados con su clave de oráculo; Luna no puede firmar por él",
+      409,
+    );
+  }
+
   // Firmar con el oráculo gestionado del proveedor. `getOracleSecret` puede
   // LANZAR (no sólo devolver null) si `ORACLE_ENC_KEY` falta/cambió o el blob
   // cifrado no autentica (AES-GCM). Ese throw hay que atraparlo acá: si se escapa,

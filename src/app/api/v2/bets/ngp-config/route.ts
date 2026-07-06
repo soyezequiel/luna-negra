@@ -34,7 +34,12 @@ export async function GET(req: Request) {
 
   const game = await prisma.game.findUnique({
     where: { id: gameId },
-    select: { providerId: true, nostrCoord: true, status: true },
+    select: {
+      providerId: true,
+      nostrCoord: true,
+      status: true,
+      provider: { select: { oracleSelfSigned: true } },
+    },
   });
   if (!game) return apiError("GAME_NOT_FOUND", "Juego no encontrado", 404);
   if (game.providerId !== providerId) {
@@ -63,6 +68,9 @@ export async function GET(req: Request) {
   return apiOk({
     storePubkey,
     oraclePubkey,
+    // true = clave BYO del proveedor: el juego DEBE firmar sus propios 1341 (Luna no
+    // firma por él). false = oráculo gestionado: puede reportar por /result + API key.
+    oracleSelfSigned: game.provider.oracleSelfSigned,
     gameCoord: game.nostrCoord,
     minStakeSats: BET_MIN_SATS,
     maxStakeSats: BET_MAX_SATS,

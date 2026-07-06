@@ -92,7 +92,8 @@ model Provider {
   // `oracleSecretEnc` es el secreto cifrado en reposo (AES-256-GCM). Ver
   // src/lib/oracle-keys.ts y src/lib/crypto-vault.ts.
   oraclePubkey     String? // hex; contra esta clave se valida el evento de resultado
-  oracleSecretEnc  String? // secreto cifrado (nunca se loguea ni se expone por API)
+  oracleSecretEnc  String? // secreto cifrado (nunca se loguea ni se expone por API). NULL si oracleSelfSigned (Luna no custodia la clave BYO)
+  oracleSelfSigned Boolean  @default(false) // true = clave de oráculo PROPIA del proveedor (BYO, keyless): el juego firma sus 1341; Luna no puede firmar por él. Ver oracle-keys.ts
   createdAt        DateTime @default(now())
 
   games               Game[]

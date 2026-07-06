@@ -43,11 +43,21 @@ export async function POST(
 
   const game = await prisma.game.findUnique({
     where: { slug },
-    select: { providerId: true },
+    select: { providerId: true, provider: { select: { oracleSelfSigned: true } } },
   });
   if (!game) return apiError("GAME_NOT_FOUND", "Juego no encontrado", 404);
   if (game.providerId !== providerId) {
     return apiError("FORBIDDEN", "El juego no es de tu proveedor", 403);
+  }
+
+  // Oráculo BYO (keyless): Luna no custodia la clave; la actividad la publica el
+  // proveedor con su propia clave (kind:1 tagueando la coordenada del juego).
+  if (game.provider.oracleSelfSigned) {
+    return apiError(
+      "SELF_SIGNED_ORACLE",
+      "Este proveedor firma con su propia clave de oráculo; publicá la actividad vos mismo (kind:1 con el tag del juego)",
+      409,
+    );
   }
 
   const sk = await getOracleSecret(providerId);

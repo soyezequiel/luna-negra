@@ -87,6 +87,17 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
     return apiError("FORBIDDEN", "La API key no es del proveedor de esta apuesta", 403);
   }
 
+  // Oráculo BYO (keyless): Luna no custodia la clave, no puede firmar por el juego.
+  // El juego debe firmar su propio kind:1341 y publicarlo (lo levanta el sync) o
+  // postearlo a este mismo endpoint como { event }.
+  if (bet.provider.oracleSelfSigned) {
+    return apiError(
+      "SELF_SIGNED_ORACLE",
+      "Este proveedor firma sus propios resultados: publicá un kind:1341 firmado por tu oráculo, o mandá POST { event } a este endpoint",
+      409,
+    );
+  }
+
   let sk: Uint8Array | null = null;
   try {
     sk = await getOracleSecret(providerId);

@@ -335,11 +335,23 @@ NIP-57.
 - Después pollea `GET /api/v2/bets/{id}` hasta que el depósito del participante
   quede pagado.
 
-El resultado sigue viniendo del game server con API key, no del marcador cliente:
+El resultado sigue viniendo del game server (no del marcador cliente), en dos
+modos según cómo custodies la clave de oráculo:
 
 ```ts
-POST /api/v2/bets/{id}/result { "winners": ["npub1..."] }
+// Oráculo GESTIONADO (default): Luna firma el 1341 por vos.
+POST /api/v2/bets/{id}/result { "winners": ["npub1..."] }   // Authorization: Bearer ln_sk_…
 ```
+
+**Keyless (clave de oráculo propia / BYO).** Si querés reportar SIN API key: declará
+tu clave una vez (`GET /api/provider/oracle/self` da un `challenge`; firmalo con tu
+clave de oráculo y postealo a `POST /api/provider/oracle/self { proof }`). Desde ahí
+Luna no firma por vos: firmás tu propio `kind:1341` (`e`=contrato, `p`=ganadores,
+`status`, `t`=`ngp-bet`) y lo **publicás en relays** — lo levanta el sync — o lo
+mandás a `POST /api/v2/bets/{id}/result { "event": <1341-firmado> }` (la firma es la
+auth, sin API key). `GET /api/v2/bets/ngp-config` trae `oracleSelfSigned` para saber
+en qué modo estás. En modo BYO, `POST /result { winners }` responde
+`SELF_SIGNED_ORACLE`.
 
 Si el jugador también firma un comentario de participación `kind:1111` (comentario
 NIP-22 sobre el evento del contrato), el premio puede zapearse a ese comentario
