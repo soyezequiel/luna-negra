@@ -207,6 +207,32 @@ export async function publishSignedEvent(ev: Event): Promise<number> {
 }
 
 /**
+ * Firma con la clave de la tienda y publica un evento genérico (lo usa la capa
+ * NGP de apuestas para el estado del escrow kind:31340). Devuelve el id solo si
+ * al menos un relay lo aceptó; null si no hay clave o ninguno lo aceptó.
+ */
+export async function publishStoreEvent(template: {
+  kind: number;
+  tags: string[][];
+  content: string;
+  created_at?: number;
+}): Promise<string | null> {
+  const sk = getSecretKey();
+  if (!sk) return null;
+  const ev = finalizeEvent(
+    {
+      kind: template.kind,
+      created_at: template.created_at ?? Math.floor(Date.now() / 1000),
+      tags: template.tags,
+      content: template.content,
+    },
+    sk,
+  );
+  const accepted = await publishToRelays(ev).catch(() => 0);
+  return accepted > 0 ? ev.id : null;
+}
+
+/**
  * Construye y firma el evento de resultado con la clave del oráculo gestionado
  * (camino con API key: Luna Negra firma en nombre del proveedor). No publica;
  * el núcleo de liquidación lo republica tras pagar.

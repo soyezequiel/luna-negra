@@ -30,6 +30,7 @@ import {
   BETS_V2_ENABLED,
 } from "@/lib/escrow-v2-config";
 import { createGuestUsers } from "@/lib/guest-users";
+import { publishNgpBetState, ensureNgpEscrowTerms } from "@/lib/ngp-bet-state";
 import { ensureCustodialDepositInvoiceV2 } from "@/lib/zap-bet";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiError, corsPreflight, CORS } from "@/lib/api";
@@ -222,6 +223,13 @@ async function createZapBet(
   await prisma.zapBet.update({
     where: { id: bet.id },
     data: { contractHash, anchorEventId: anchor.anchorEventId },
+  });
+
+  // Estado NGP (kind:31340, escrow transparente): sombra observacional del estado
+  // interno; junto con las terms del escrow. Best-effort, nunca bloquea la creación.
+  after(async () => {
+    await ensureNgpEscrowTerms();
+    await publishNgpBetState(bet.id);
   });
 
   // Pre-emitir EN SEGUNDO PLANO los invoices custodiales (invitados y cuentas por

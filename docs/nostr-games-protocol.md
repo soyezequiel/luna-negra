@@ -17,7 +17,10 @@
 > es la única opción para lo que **necesita un tercero confiable**: custodia de
 > apuestas/escrow y verificación de compra de juego de pago. NGP corre **en
 > paralelo** y cubre la capa social/identidad/reputación. No es todo-o-nada: se
-> adopta por niveles.
+> adopta por niveles. Para apuestas existe además un diseño de **escrow
+> transparente** coordinado 100% por eventos (el custodio sigue siendo Luna
+> Negra, pero todas sus acciones son eventos firmados verificables):
+> [nostr-games-protocol-apuestas.md](nostr-games-protocol-apuestas.md).
 >
 > **Salas e invitaciones multijugador** (lo que en el panel 1.0 son §4 y §5) tienen
 > su propio diseño Nostr —invitación NIP-17 desacoplada + sala NIP-29— en
@@ -77,7 +80,7 @@ La spec es un **menú por niveles**. Implementá hasta donde te sirva.
 | **N0 — Identidad** | Login NIP-07/46. Nada más. | Todos. Mínimo absoluto. |
 | **N1 — Marcador** | + evento de score (§3) | Juegos con puntaje (runner, arcade, partido) |
 | **N2 — Social** | + presencia (§4) + actividad/reseñas (§5) | Para aparecer en perfiles y feeds |
-| **N3 — Económico** | + zaps NIP-57 (§6). Apuestas/compra → **siguen en 1.0** (§7) | Premios y propinas |
+| **N3 — Económico** | + zaps NIP-57 (§6). Compra de pago → **sigue en 1.0**; apuestas → [escrow transparente por eventos](nostr-games-protocol-apuestas.md) o 1.0 (§7) | Premios, propinas y apuestas |
 
 **Multijugador con estado en vivo** (§8) queda **fuera del núcleo estándar**: es
 posible con eventos efímeros pero su esquema lo define cada juego.
@@ -223,12 +226,16 @@ Honestidad de diseño: **Nostr es mensajería firmada, no liquidación de dinero
 
 | Caso | Por qué no es NGP puro | Qué sí publicar en Nostr |
 |---|---|---|
-| **Escrow / apuestas** | Retener stake y pagar al ganador exige **custodio**. Trustless real = DLCs sobre Bitcoin (fuera de alcance). | El **contrato** (stake, participantes, condición) firmado, y el **resultado del oráculo** como evento → auditable y portable, aunque el dinero pase por la 1.0. |
+| **Escrow / apuestas** | Retener stake y pagar al ganador exige **custodio**. Trustless real = DLCs sobre Bitcoin (fuera de alcance). | **Todo menos la custodia**: contrato firmado por el retador, depósitos como zaps, estado del escrow, resultado del oráculo y payouts — la coordinación completa por eventos, sin API REST. Diseño en [nostr-games-protocol-apuestas.md](nostr-games-protocol-apuestas.md) (kinds 1339/1341/31340). |
 | **Compra de juego de pago** | Alguien tiene que **validar el pago Lightning** antes de dar acceso (el "issuer" de figus). | Un **recibo/entitlement** firmado, opcionalmente publicado, para probar la compra ante terceros. |
 | **Salas con estado compartido en vivo** | Posible con efímeros (bitbybit lo hace), pero el esquema es **específico de cada juego** y la latencia de relays no da para tiempo real fino. | — (extensión opcional §8, sin esquema estándar) |
 
-**Regla:** el dinero y la custodia se quedan en la 1.0 REST. NGP publica la
-**prueba** de lo que pasó, no mueve los fondos.
+**Regla:** la **custodia** del dinero queda en un tercero (Luna Negra); NGP no
+puede eliminarla, pero sí puede hacer que **toda la coordinación y la prueba**
+de lo que pasó sean eventos firmados. Para apuestas, el custodio opera como
+**escrow transparente**: lee contratos de relays y publica cada acción suya
+como evento verificable (ver el doc de apuestas). La compra de juego de pago
+sí se queda entera en la 1.0.
 
 ---
 
@@ -268,7 +275,9 @@ protocolos custom — ahí Nostr deja de ser la herramienta correcta y está bie
 - [ ] **N2** (opc.) Presencia NIP-38 (kind 30315) con `expiration`.
 - [ ] **N2** (opc.) Reseñas/logros kind:1 con tag `a` = `GAME`.
 - [ ] **N3** (opc.) Zaps NIP-57 para propinas/premios.
-- [ ] Apuestas/compra de pago → **API REST 1.0** (no NGP puro).
+- [ ] **N3** (opc.) Apuestas → escrow transparente por eventos
+      ([spec aparte](nostr-games-protocol-apuestas.md)) o API v2.
+- [ ] Compra de juego de pago → **API REST 1.0** (no NGP puro).
 
 ---
 
@@ -283,6 +292,9 @@ protocolos custom — ahí Nostr deja de ser la herramienta correcta y está bie
 | 9735 | Recibo de zap (propinas/premios) | NIP-57 | estándar |
 | 31337 | **Mejor puntaje del jugador** | esta spec | *propuesto* |
 | 31338 | **Atestación de puntaje (oráculo)** | esta spec | *propuesto* |
+| 1339 | **Contrato de apuesta** (firma el retador) | [apuestas](nostr-games-protocol-apuestas.md) | *propuesto* |
+| 1341 | **Resultado de apuesta** (firma el oráculo) | [apuestas](nostr-games-protocol-apuestas.md) | *propuesto* |
+| 31340 | **Estado del escrow / terms** (firma el escrow) | [apuestas](nostr-games-protocol-apuestas.md) | *propuesto* |
 | 20000–29999 | Estado multijugador efímero (no estándar) | NIP-01 | extensión |
 </content>
 </invoke>

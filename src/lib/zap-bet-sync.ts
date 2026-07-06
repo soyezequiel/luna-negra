@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { getStorePubkey } from "./nostr-server";
 import { notifyOperationalError, notifyNonSocialZap } from "./discord";
+import { publishNgpBetState } from "./ngp-bet-state";
 
 const MISSING_RECEIPT_GRACE_MS = 10 * 60_000;
 
@@ -162,5 +163,8 @@ async function recordPayoutReceipt(
     },
     data: { zapReceiptId: receipt.id },
   });
+  // Estado NGP: el 31340 es addressable, así que re-publicarlo enriquece el
+  // estado terminal con el recibo del payout recién llegado (fire-and-forget).
+  void publishNgpBetState(part.betId);
   return zr.id;
 }

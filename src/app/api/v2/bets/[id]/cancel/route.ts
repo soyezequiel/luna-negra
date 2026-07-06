@@ -5,6 +5,7 @@ import { payParticipantV2 } from "@/lib/escrow-v2-payout";
 import { emitBetCancelledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
+import { publishNgpBetState } from "@/lib/ngp-bet-state";
 
 // Cancela una apuesta v2 NO resuelta (Bearer API key del proveedor dueño) y
 // reembolsa por zap los depósitos ya confirmados. Espejo del cancel v1.
@@ -53,6 +54,7 @@ export async function POST(
   after(async () => {
     await emitBetCancelledV2(id);
     await emitBetRefundedV2(id, "cancelled");
+    await publishNgpBetState(id);
   });
   return apiOk({ ok: true, status: "cancelled" });
 }

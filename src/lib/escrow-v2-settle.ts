@@ -26,6 +26,19 @@ import {
 import { emitBetSettledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { notifyOperationalError } from "@/lib/discord";
+import { publishNgpBetState } from "@/lib/ngp-bet-state";
+
+// `after()` tira fuera de un request scope, y este núcleo también corre desde el
+// watcher NGP de resultados (setInterval en instrumentation): ahí caemos a una
+// promesa flotante — en self-host el proceso sigue vivo y completa igual (mismo
+// criterio que trackIntegration).
+function scheduleAfter(fn: () => unknown): void {
+  try {
+    after(fn);
+  } catch {
+    void fn();
+  }
+}
 
 export type ZapBetWithRelations = ZapBet & {
   provider: Provider & { owner: User };
@@ -172,7 +185,8 @@ async function runSettlement(args: {
         ...(noteId ? { settleNoteId: noteId } : {}),
       },
     });
-    after(() => emitBetRefundedV2(betId, "void"));
+    scheduleAfter(() => emitBetRefundedV2(betId, "void"));
+    scheduleAfter(() => publishNgpBetState(betId));
     return { ok: true, voided: true };
   }
 
@@ -260,7 +274,8 @@ async function runSettlement(args: {
     },
   });
 
-  after(() => emitBetSettledV2(betId));
+  scheduleAfter(() => emitBetSettledV2(betId));
+  scheduleAfter(() => publishNgpBetState(betId));
   return { ok: true };
 }
 
