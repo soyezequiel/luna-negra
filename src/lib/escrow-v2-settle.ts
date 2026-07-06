@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import type { Event } from "nostr-tools";
+import { nip19, type Event } from "nostr-tools";
 import type { ZapBet, ZapBetParticipant, Provider, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeContractHash } from "@/lib/escrow";
@@ -27,6 +27,7 @@ import { emitBetSettledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { notifyOperationalError } from "@/lib/discord";
 import { publishNgpBetState } from "@/lib/ngp-bet-state";
+import { RELAYS } from "@/lib/constants";
 
 // `after()` tira fuera de un request scope, y este núcleo también corre desde el
 // watcher NGP de resultados (setInterval en instrumentation): ahí caemos a una
@@ -111,6 +112,10 @@ export async function settleZapBetWithResult(args: {
 
 const sats = (msat: bigint) => Number(msatToSats(msat));
 
+function nostrEventRef(id: string, kind?: number): string {
+  return `nostr:${nip19.neventEncode({ id, relays: RELAYS.slice(0, 3), kind })}`;
+}
+
 /** Cuerpo de la liquidación v2, ya reclamado `settling`. Si lanza, el caller revierte. */
 async function runSettlement(args: {
   bet: ZapBetWithRelations;
@@ -165,7 +170,7 @@ async function runSettlement(args: {
     }
     // Nota + evento de resultado a relays en paralelo (independientes; en serie sumaban).
     const [noteId, resultAccepted] = await Promise.all([
-      publishSettleNoteFor(bet, [], 0n, 0n).catch(async (error) => {
+      publishSettleNoteFor(bet, [], 0n, 0n, resultEvent).catch(async (error) => {
         await notifyOperationalError({
           source: "escrow-v2-settle-note",
           error,
@@ -253,6 +258,7 @@ async function runSettlement(args: {
       fresh.filter((p) => winners.some((w) => w.id === p.id)),
       feeMsat + dust,
       devFeeMsat,
+      resultEvent,
     ).catch(async (error) => {
       await notifyOperationalError({
         source: "escrow-v2-settle-note",
@@ -289,21 +295,26 @@ async function publishSettleNoteFor(
   winners: ZapBetParticipant[],
   houseFeeMsat: bigint,
   devFeeMsat: bigint,
+  resultEvent: Event,
 ): Promise<string | null> {
   if (!bet.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-")) return null;
 
   const lines: string[] = [`🌑 Liquidación de apuesta — Luna Negra`, `ID: ${bet.id}`];
+  lines.push(`Contrato: ${nostrEventRef(bet.anchorEventId, bet.anchorEventKind ?? 1)}`);
+  lines.push(`Resultado firmado: ${nostrEventRef(resultEvent.id, resultEvent.kind)}`);
   if (winners.length === 0) {
     lines.push(`Resultado: empate/anulación — se reembolsó el stake a cada participante por zap.`);
   } else {
     lines.push(`Ganador${winners.length > 1 ? "es" : ""}:`);
     for (const w of winners) {
       const amt = w.payoutMsat ? `${sats(w.payoutMsat)} sats` : "—";
-      const via =
-        w.payoutKind === "zap"
-          ? `zap${w.payoutReceiptId ? ` (recibo ${w.payoutReceiptId})` : ""}`
-          : w.payoutKind ?? "pendiente";
+      const via = w.payoutKind ?? "pendiente";
       lines.push(`• ${w.npub}: ${amt} vía ${via}`);
+      if (w.payoutReceiptId) {
+        lines.push(`  Prueba de pago (recibo 9735): ${nostrEventRef(w.payoutReceiptId, 9735)}`);
+      } else if (w.payoutZapRequestId) {
+        lines.push(`  Pago enviado; recibo 9735 pendiente. Zap request: ${w.payoutZapRequestId}`);
+      }
     }
     lines.push(`Comisión de la casa: ${sats(houseFeeMsat)} sats.`);
     if (devFeeMsat > 0n) lines.push(`Corte del desarrollador: ${sats(devFeeMsat)} sats.`);

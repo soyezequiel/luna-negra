@@ -1,9 +1,10 @@
-import { SimplePool, nip57, type Event } from "nostr-tools";
+import { SimplePool, nip19, nip57, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
-import { getStorePubkey } from "./nostr-server";
+import { getStorePubkey, publishSettleNote } from "./nostr-server";
 import { notifyOperationalError, notifyNonSocialZap } from "./discord";
 import { publishNgpBetState } from "./ngp-bet-state";
+import { msatToSats } from "./money";
 
 const MISSING_RECEIPT_GRACE_MS = 10 * 60_000;
 
@@ -50,10 +51,13 @@ export async function syncZapBetReceipts(): Promise<void> {
       id: true,
       betId: true,
       userId: true,
+      npub: true,
       payoutZapRequestId: true,
+      payoutMsat: true,
       pubkey: true,
       createdAt: true,
       settledAt: true,
+      bet: { select: { anchorEventId: true, anchorEventKind: true, resultEventId: true } },
     },
   });
   if (pending.length === 0) return;
@@ -127,7 +131,19 @@ export async function syncZapBetReceipts(): Promise<void> {
 
 async function recordPayoutReceipt(
   receipt: Event,
-  byRequestId: Map<string, { id: string; betId: string; userId: string; pubkey: string }>,
+  byRequestId: Map<
+    string,
+    {
+      id: string;
+      betId: string;
+      userId: string;
+      npub: string;
+      pubkey: string;
+      payoutMsat: bigint | null;
+      payoutZapRequestId: string | null;
+      bet: { anchorEventId: string | null; anchorEventKind: number | null; resultEventId: string | null };
+    }
+  >,
   storePubkey: string,
 ): Promise<string | null> {
   if (receipt.kind !== 9735) return null;
@@ -148,6 +164,7 @@ async function recordPayoutReceipt(
   if (!part) return null;
   const recipient = receipt.tags.find((t) => t[0] === "p")?.[1];
   if (recipient !== part.pubkey) return null;
+  byRequestId.delete(zr.id);
 
   // Completa la auditoría: recibo en el participante y en el asiento del ledger.
   await prisma.zapBetParticipant.update({
@@ -166,5 +183,52 @@ async function recordPayoutReceipt(
   // Estado NGP: el 31340 es addressable, así que re-publicarlo enriquece el
   // estado terminal con el recibo del payout recién llegado (fire-and-forget).
   void publishNgpBetState(part.betId);
+  void publishPayoutProofNote(part, receipt).catch((error) => {
+    void notifyOperationalError({
+      source: "zap-bet-sync-proof-note",
+      error,
+      fingerprint: `zap-bet-sync-proof-note:${part.betId}:${receipt.id}`,
+      context: { betId: part.betId, receiptId: receipt.id },
+    });
+  });
   return zr.id;
+}
+
+function nostrEventRef(id: string, kind?: number): string {
+  return `nostr:${nip19.neventEncode({ id, relays: RELAYS.slice(0, 3), kind })}`;
+}
+
+async function publishPayoutProofNote(
+  part: {
+    betId: string;
+    npub: string;
+    pubkey: string;
+    payoutMsat: bigint | null;
+    payoutZapRequestId: string | null;
+    bet: { anchorEventId: string | null; anchorEventKind: number | null; resultEventId: string | null };
+  },
+  receipt: Event,
+): Promise<void> {
+  const anchor = part.bet.anchorEventId;
+  if (!anchor || anchor.startsWith("dev-anchor-")) return;
+
+  const lines = [
+    "🌑 Pago confirmado — Luna Negra",
+    `Apuesta: ${part.betId}`,
+    `Ganador: ${part.npub}`,
+    `Monto: ${part.payoutMsat != null ? Number(msatToSats(part.payoutMsat)) : "?"} sats`,
+    `Contrato: ${nostrEventRef(anchor, part.bet.anchorEventKind ?? 1)}`,
+    part.bet.resultEventId ? `Resultado firmado: ${nostrEventRef(part.bet.resultEventId)}` : null,
+    `Prueba de pago (recibo 9735): ${nostrEventRef(receipt.id, 9735)}`,
+    part.payoutZapRequestId ? `Zap request firmado por Luna: ${part.payoutZapRequestId}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  await publishSettleNote(lines.join("\n"), [
+    ["t", "lunanegra:payout-proof:v2"],
+    ["bet", part.betId],
+    ["e", anchor],
+    ["p", part.pubkey],
+    ["receipt", receipt.id],
+    ...(part.bet.resultEventId ? [["result", part.bet.resultEventId]] : []),
+  ]);
 }
