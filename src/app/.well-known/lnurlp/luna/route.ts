@@ -107,7 +107,9 @@ export async function GET(req: Request) {
   if (!bet && NGP_BETS_ENABLED) {
     const rl = await checkRateLimit(`ngp-bet-ingest:${signed.pubkey}`, 10, 60_000);
     if (!rl.success) return lnurlError("Demasiados intentos; probá en un minuto");
-    const ingest = await materializeNgpBet(anchorEventId, signed.pubkey).catch(
+    const ingest = await materializeNgpBet(anchorEventId, {
+      requireSignerPubkey: signed.pubkey,
+    }).catch(
       async (error) => {
         await notifyOperationalError({
           source: "ngp-bet-ingest",

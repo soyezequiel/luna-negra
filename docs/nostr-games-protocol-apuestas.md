@@ -343,6 +343,30 @@ al escrow (anti-spam §3). Concurrencia resuelta por el `@unique` de
 `src/app/.well-known/lnurlp/luna/route.ts` con rate-limit por pubkey del
 firmante.*
 
+**Materialización EAGER (para juegos con backend).** Un juego que orquesta la
+apuesta server-side (p. ej. una sala) no espera al primer depósito: publica el
+1339 y llama con su API key a **`POST /api/v2/bets/from-contract`**
+`{ contractEventId }`, que corre el mismo `materializeNgpBet` (autorizado por
+dueño del juego en vez de por firmante del depósito) y devuelve el **mismo shape
+que `POST /api/v2/bets`** (betId + handles de asiento). Así el juego reusa todo
+su flujo v2 de depósito/resultado sin cambios: los handles de depósito ya usan
+`bet.anchorEventId` como `e`, que ahora es el id del 1339. Para armar el contrato
+el juego lee **`GET /api/v2/bets/ngp-config?gameId=`** (API key) →
+`{ storePubkey, oraclePubkey, gameCoord, minStakeSats, maxStakeSats }`.
+*Código: `src/app/api/v2/bets/{from-contract,ngp-config}/route.ts` +
+`src/lib/escrow-v2-serialize.ts`.*
+
+**Integración de referencia — Tetris.** `createBetForRoom` publica el 1339 con
+una **clave de servicio del juego** (`LUNA_NEGRA_NGP_NSEC`) y materializa por
+`from-contract`; el resto (depósito por zap, refresh, resultado por API key,
+cancel) queda igual. Gateado por `LUNA_NEGRA_NGP_BETS=1` y **solo cuando todos
+los jugadores tienen npub** (los pozos con invitados sin clave caen al camino
+custodial legacy). El resultado sigue por `POST /result` con API key (Slice 1):
+Luna liquida con el oráculo gestionado y publica el `31340 resolved`. El 1341
+firmado por el juego (resultado keyless) queda para el Slice 2, que necesita
+resolver la custodia de la clave del oráculo. *Código: `src/online/lunaNegraNgp.ts`
++ branch en `src/online/lunaNegraBets.ts` (repo Tetris).*
+
 > **Nota de transporte.** El depósito NGP cae en el LNURL **de la tienda**
 > (`luna@dominio`, descubierto del `kind:0`/lud16 del escrow), no en el
 > per-participante `/api/v2/lnurlp/[pid]` (ese es solo del flujo v2 REST, que

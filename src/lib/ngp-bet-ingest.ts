@@ -38,10 +38,17 @@ import {
  */
 
 export type NgpIngestResult =
-  | { ok: true; betId: string }
+  | { ok: true; betId: string; gameId: string }
   | { ok: false; code: string; error: string };
 
 const fail = (code: string, error: string): NgpIngestResult => ({ ok: false, code, error });
+
+export type MaterializeOpts = {
+  /** Camino LNURL: quien deposita debe ser participante del contrato (anti-spam). */
+  requireSignerPubkey?: string;
+  /** Camino eager (POST /from-contract): el juego del contrato debe ser del proveedor. */
+  expectedProviderId?: string;
+};
 
 // Un `p` tag es de ROL si trae "escrow"/"oracle" como token después de la pubkey
 // (índice 2 = relay hint opcional, 3 = marker NIP-10; aceptamos cualquiera de los
@@ -82,7 +89,7 @@ async function fetchContractEvent(contractEventId: string): Promise<Event | null
  */
 export async function materializeNgpBet(
   contractEventId: string,
-  signerPubkey: string,
+  opts: MaterializeOpts = {},
 ): Promise<NgpIngestResult> {
   if (!NGP_BETS_ENABLED) return fail("NGP_DISABLED", "Las apuestas NGP están desactivadas");
   const storePubkey = getStorePubkey();
@@ -91,9 +98,9 @@ export async function materializeNgpBet(
   // Carrera con otra materialización del mismo contrato: si ya existe, listo.
   const existing = await prisma.zapBet.findUnique({
     where: { anchorEventId: contractEventId },
-    select: { id: true },
+    select: { id: true, gameId: true },
   });
-  if (existing) return { ok: true, betId: existing.id };
+  if (existing) return { ok: true, betId: existing.id, gameId: existing.gameId };
 
   const ev = await fetchContractEvent(contractEventId);
   if (!ev) return fail("CONTRACT_NOT_FOUND", "No se encontró el contrato en los relays");
@@ -123,6 +130,9 @@ export async function materializeNgpBet(
     include: { provider: true },
   });
   if (!game) return fail("GAME_NOT_FOUND", "El juego del contrato no existe o no está publicado");
+  if (opts.expectedProviderId && game.providerId !== opts.expectedProviderId) {
+    return fail("NOT_GAME_OWNER", "El juego del contrato no es de tu proveedor");
+  }
   if (!game.provider.oraclePubkey) {
     return fail("ORACLE_NOT_PROVISIONED", "El proveedor del juego no tiene oráculo provisto");
   }
@@ -141,7 +151,7 @@ export async function materializeNgpBet(
   if (new Set(participantPubkeys).size !== participantPubkeys.length) {
     return fail("DUPLICATE_PARTICIPANT", "Hay participantes duplicados en el contrato");
   }
-  if (!participantPubkeys.includes(signerPubkey)) {
+  if (opts.requireSignerPubkey && !participantPubkeys.includes(opts.requireSignerPubkey)) {
     return fail("SIGNER_NOT_PARTICIPANT", "Quien deposita no es participante del contrato");
   }
 
@@ -221,9 +231,9 @@ export async function materializeNgpBet(
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const raced = await prisma.zapBet.findUnique({
         where: { anchorEventId: contractEventId },
-        select: { id: true },
+        select: { id: true, gameId: true },
       });
-      if (raced) return { ok: true, betId: raced.id };
+      if (raced) return { ok: true, betId: raced.id, gameId: raced.gameId };
     }
     throw e;
   }
@@ -245,5 +255,5 @@ export async function materializeNgpBet(
   // Estado NGP `accepted` (fire-and-forget): el 31340 queda observable enseguida.
   void publishNgpBetState(betId);
 
-  return { ok: true, betId };
+  return { ok: true, betId, gameId: game.id };
 }
