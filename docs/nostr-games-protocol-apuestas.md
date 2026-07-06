@@ -154,8 +154,13 @@ rechazado, y el asiento no está ya fondeado.
 > fondearlos cuesta sats.
 
 Igual que en v2: si el participante además firma un **comentario de
-participación** (kind:1 con `e`=contrato), el premio puede zapearse a ese
-comentario y queda como zap recibido en su perfil. Opcional y best-effort.
+participación** (kind:1111 NIP-22, con `E`/`e`=contrato y `K`/`k`=kind de la
+raíz), el premio puede zapearse a ese comentario y queda como zap recibido en su
+perfil. Opcional y best-effort. Se usa **kind:1111** (comentario NIP-22) en vez de
+kind:1 a propósito: es el kind correcto para comentar un evento que no es una nota
+(la raíz puede ser un kind:1 o el propio 1339) y, además, los clientes NO lo
+listan en las pestañas "Notas"/"Respuestas" del perfil, así el perfil del
+apostador no se llena de respuestas redundantes.
 
 ---
 
@@ -428,4 +433,5 @@ Sin API key, sin polling, sin backend salvo la clave del oráculo.
 | 1341 | **Resultado / anulación** | oráculo (o retador, solo void pre-fondeo) | regular (inmutable) | *propuesto* |
 | 31340 | **Estado del escrow** (`d`=contrato) y **terms** (`d`=`terms`) | escrow | addressable | *propuesto* |
 | 9734/9735 | Depósitos y payouts | participante / escrow | NIP-57 | estándar |
-| 1 | Comentarios, participación, nota de liquidación | cualquiera | regular | estándar |
+| 1111 | **Comentario de participación** (NIP-22, `E`/`e`=contrato) | participante | comentario | estándar |
+| 1 | Comentarios sociales, nota de liquidación | cualquiera | regular | estándar |

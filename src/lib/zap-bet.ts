@@ -117,28 +117,44 @@ export function validateDepositZapRequest(
   return ok ? { ok: true } : { ok: false, error: "El zap request no coincide con la apuesta" };
 }
 
-type UnsignedNote = { kind: 1; created_at: number; tags: string[][]; content: string };
+type UnsignedComment = { kind: 1111; created_at: number; tags: string[][]; content: string };
 
 /**
- * Arma el COMENTARIO de participación (kind:1) SIN firmar: un reply NIP-10 al post
- * del contrato (`e` root + `p` = la tienda, autora del contrato) que el jugador
- * firma con su propia identidad al depositar. El payout del ganador se zapea a ESTE
- * comentario (`e`), no al post. Null si el ancla no es real (dev-anchor) o no hay
- * identidad de tienda: en ese caso el flujo sigue sin comentario y el premio cae al
- * post (retrocompatibilidad).
+ * Arma el COMENTARIO de participación (kind:1111, NIP-22) SIN firmar sobre el
+ * evento del contrato, que el jugador firma con su propia identidad al depositar.
+ * El payout del ganador se zapea a ESTE comentario (`e`), no al post.
+ *
+ * Se usa kind:1111 (no kind:1) A PROPÓSITO: es el kind correcto de NIP-22 para
+ * comentar eventos que no son notas (nuestra raíz puede ser un kind:1 de la tienda
+ * o un kind:1339 de NGP), y —lo clave para el usuario— los clientes NO lo muestran
+ * en las pestañas "Notas"/"Respuestas" del perfil, así el perfil del apostador no
+ * se llena de respuestas redundantes. El evento sigue siendo público y zapeable, o
+ * sea la mecánica de anclar el premio al comentario del ganador queda intacta.
+ *
+ * Tags NIP-22: scope raíz en MAYÚSCULAS (`E`/`K`/`P`) y padre en minúsculas
+ * (`e`/`k`/`p`); como es un comentario de primer nivel, padre == raíz. `K` es el
+ * kind de la raíz (`anchorEventKind`, 1 por defecto; 1339 en NGP puro P2P).
+ *
+ * Null si el ancla no es real (dev-anchor) o no hay identidad de tienda: en ese
+ * caso el flujo sigue sin comentario y el premio cae al post (retrocompatibilidad).
  */
-export function buildParticipationComment(bet: ZapBet): UnsignedNote | null {
+export function buildParticipationComment(bet: ZapBet): UnsignedComment | null {
   const anchor = bet.anchorEventId;
   if (!anchor || anchor.startsWith("dev-anchor-")) return null;
   const storePubkey = getStorePubkey();
   if (!storePubkey) return null;
   const sats = Number(msatToSats(bet.stakeMsat));
   const relay = RELAYS[RELAYS.length - 1];
+  const rootKind = String(bet.anchorEventKind ?? 1);
   return {
-    kind: 1,
+    kind: 1111,
     created_at: Math.floor(Date.now() / 1000),
     tags: [
-      ["e", anchor, relay, "root"],
+      ["E", anchor, relay, storePubkey],
+      ["K", rootKind],
+      ["P", storePubkey],
+      ["e", anchor, relay, storePubkey],
+      ["k", rootKind],
       ["p", storePubkey],
     ],
     content: `🌑 Entro a esta apuesta con ${sats} sats. ¡Que gane el mejor! ⚡`,
@@ -147,9 +163,9 @@ export function buildParticipationComment(bet: ZapBet): UnsignedNote | null {
 
 /**
  * Valida el comentario de participación firmado por el jugador: firma válida,
- * kind 1, autor == participante y referencia (`e`) el ancla del contrato. No
- * exige el marcador NIP-10 exacto (distintos signers lo arman distinto), solo que
- * apunte al post.
+ * kind 1111 (comentario NIP-22), autor == participante y referencia (`e`/`E`) el
+ * ancla del contrato. No exige el conjunto exacto de tags NIP-22 (distintos
+ * signers lo arman distinto), solo que apunte al evento del contrato.
  */
 export function validateParticipationComment(
   bet: ZapBet,
@@ -160,11 +176,11 @@ export function validateParticipationComment(
   if (!anchor || anchor.startsWith("dev-anchor-")) {
     return { ok: false, error: "La apuesta no tiene un ancla real" };
   }
-  if (signed.kind !== 1) return { ok: false, error: "El comentario debe ser kind:1" };
+  if (signed.kind !== 1111) return { ok: false, error: "El comentario debe ser kind:1111" };
   if (signed.pubkey !== part.pubkey) {
     return { ok: false, error: "El comentario no está firmado por el participante" };
   }
-  if (!signed.tags.some((t) => t[0] === "e" && t[1] === anchor)) {
+  if (!signed.tags.some((t) => (t[0] === "e" || t[0] === "E") && t[1] === anchor)) {
     return { ok: false, error: "El comentario no referencia el post de la apuesta" };
   }
   if (!verifyEvent(signed as unknown as Event)) {

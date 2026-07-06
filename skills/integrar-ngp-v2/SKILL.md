@@ -341,9 +341,13 @@ El resultado sigue viniendo del game server con API key, no del marcador cliente
 POST /api/v2/bets/{id}/result { "winners": ["npub1..."] }
 ```
 
-Si el jugador también firma un comentario de participación `kind:1`, el premio
-puede zapearse a ese comentario para que quede como zap recibido en su perfil. El
-depósito funciona igual sin ese comentario.
+Si el jugador también firma un comentario de participación `kind:1111` (comentario
+NIP-22 sobre el evento del contrato), el premio puede zapearse a ese comentario
+para que quede como zap recibido en su perfil. Se usa `kind:1111` y no `kind:1` a
+propósito: los clientes no lo listan en las pestañas "Notas"/"Respuestas" del
+perfil, así el perfil del apostador no se llena de respuestas redundantes. El juego
+solo firma el template que devuelve Luna tal cual (no fija el kind); el depósito
+funciona igual sin ese comentario.
 
 Patrón Tetris para UI propia:
 

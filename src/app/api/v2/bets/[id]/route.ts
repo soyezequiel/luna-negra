@@ -171,8 +171,8 @@ export async function GET(
           try {
             depositZapRequest = buildDepositZapRequest(bet, p, base);
             depositCallback = participantLnurlUrl(base, p.id);
-            // Comentario de participación (kind:1 reply al contrato) para que el
-            // juego lo firme junto al 9734 y lo mande a `commentCallback`. Si gana,
+            // Comentario de participación (kind:1111 NIP-22 sobre el contrato) para
+            // que el juego lo firme junto al 9734 y lo mande a `commentCallback`. Si gana,
             // el premio se zapea a ESTE comentario en vez del post del contrato.
             // Opcional: sin él, el flujo de depósito funciona igual.
             participationComment = buildParticipationComment(bet);

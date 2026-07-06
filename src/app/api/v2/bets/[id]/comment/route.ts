@@ -5,7 +5,7 @@ import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 
 // Comentario de participación de una apuesta v2 (camino in-game / UI propia).
-// El juego obtiene el kind:1 sin firmar en `participationComment` del
+// El juego obtiene el kind:1111 (NIP-22) sin firmar en `participationComment` del
 // GET /api/v2/bets/{id}, el jugador lo firma con su identidad y lo manda acá.
 // Se guarda en el participante y lo publica la tienda: settleDepositV2 si llega
 // antes de confirmarse el pago, o el tick v2 (bloque H) si llega después. El

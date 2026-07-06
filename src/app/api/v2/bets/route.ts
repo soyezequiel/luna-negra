@@ -222,7 +222,9 @@ async function createZapBet(
   }
   await prisma.zapBet.update({
     where: { id: bet.id },
-    data: { contractHash, anchorEventId: anchor.anchorEventId },
+    // El ancla v2 es el post-contrato kind:1 que publica la tienda → `K`=1 en el
+    // comentario de participación (NIP-22).
+    data: { contractHash, anchorEventId: anchor.anchorEventId, anchorEventKind: 1 },
   });
 
   // Estado NGP (kind:31340, escrow transparente): sombra observacional del estado

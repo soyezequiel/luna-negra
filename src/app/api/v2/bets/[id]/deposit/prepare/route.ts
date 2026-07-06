@@ -51,8 +51,8 @@ export async function POST(
 
   try {
     const unsignedZapRequest = buildDepositZapRequest(bet, part, siteUrl(req));
-    // Comentario de participación (kind:1 reply al post) para que el jugador lo
-    // firme junto al 9734. Null si el ancla no es real → el flujo sigue sin él.
+    // Comentario de participación (kind:1111 NIP-22 sobre el contrato) para que el
+    // jugador lo firme junto al 9734. Null si el ancla no es real → el flujo sigue sin él.
     const unsignedComment = buildParticipationComment(bet);
     return NextResponse.json({ participantId: part.id, unsignedZapRequest, unsignedComment });
   } catch (e) {
