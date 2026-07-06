@@ -326,14 +326,33 @@ liquida con el MISMO núcleo que `/api/v2/bets/{id}/result`
 *Código: `src/lib/ngp-bet-result-sync.ts` (cadencia
 `NGP_BET_RESULT_SYNC_INTERVAL_MS`, default 30 s).*
 
-**Fase 2 — Contrato por evento.**
-El callback LNURL, al recibir un 9734 cuyo `e` no corresponde a ninguna apuesta
-conocida, busca el 1339 en relays, lo valida contra `terms` y crea la `zapBet`
-(núcleo de `createZapBet` sin la capa API-key; rate-limit por pubkey; el
-`anchorEventId` pasa a ser el id del 1339 — firmado por el retador, ya no por
-Luna). El watcher de Fase 1 puede además pre-cachear contratos vistos, pero la
-fuente de verdad del "existe" es el intento de fondeo. Flag `NGP_BETS_ENABLED`
-independiente de `BETS_V2_ENABLED`.
+**Fase 2 — Contrato por evento. ✅ implementada.**
+El callback LNURL de la tienda (`/.well-known/lnurlp/luna`), al recibir un 9734
+cuyo `e` no corresponde a ninguna apuesta conocida, busca el 1339 en relays por
+id, lo valida (firma; `t`=`ngp-bet`; el `p` con rol `escrow` == pubkey de la
+tienda; el `p` con rol `oracle` == `Provider.oraclePubkey` del juego; `a` =
+coordenada de un juego publicado; stake dentro de las `terms`; `deadline` no
+vencido; el firmante del depósito es participante) y crea la `zapBet` con
+`anchorEventId` = **id del 1339** (firmado por el retador, ya no por Luna).
+Las comisiones se resuelven server-side igual que `createZapBet` (el retador
+acepta las condiciones publicadas, no las negocia). De ahí en más el depósito
+sigue el flujo v2 idéntico. El intento de fondeo es la única señal que despierta
+al escrow (anti-spam §3). Concurrencia resuelta por el `@unique` de
+`anchorEventId` (P2002 → re-leer). Flag `NGP_BETS_ENABLED`.
+*Código: `src/lib/ngp-bet-ingest.ts` (`materializeNgpBet`), enganchado en
+`src/app/.well-known/lnurlp/luna/route.ts` con rate-limit por pubkey del
+firmante.*
+
+> **Nota de transporte.** El depósito NGP cae en el LNURL **de la tienda**
+> (`luna@dominio`, descubierto del `kind:0`/lud16 del escrow), no en el
+> per-participante `/api/v2/lnurlp/[pid]` (ese es solo del flujo v2 REST, que
+> crea el participante antes). El mismo `validateDepositZapRequest` acepta ambos
+> LNURL, así que no hubo que tocar la validación del zap.
+
+> **Guest seats.** La ingesta resuelve cada `p` participante a un `User` por
+> pubkey (upsert: cuenta existente o mínima). No hay asientos "invitados"
+> administrados por Luna como en v2: en NGP puro el propio juego genera la clave
+> efímera del invitado y firma con ella. Pendiente documentarlo para devs (Fase 3).
 
 **Fase 3 — Pulido.**
 `status=void` del retador (cancel), claves efímeras para invitados documentadas,
