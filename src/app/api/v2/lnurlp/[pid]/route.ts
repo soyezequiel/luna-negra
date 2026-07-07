@@ -4,7 +4,7 @@ import { getStorePubkey } from "@/lib/nostr-server";
 import { ensureDepositInvoiceV2, validateDepositZapRequest } from "@/lib/zap-bet";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
 import { siteUrl } from "@/lib/site-url";
-import { notifyOperationalError } from "@/lib/discord";
+import { notifyBetPaymentDiagnostic, notifyOperationalError } from "@/lib/discord";
 
 // LNURL-pay (LUD-06) + NIP-57 para el depósito de un participante v2. Dos pasos:
 //   1) GET sin `?amount`  → payRequest (callback + min/max = stake fijo) con
@@ -74,7 +74,22 @@ export async function GET(
     const validation = validateDepositZapRequest(bet, part, signed, siteUrl(req));
     if (!validation.ok) return lnurlError(validation.error);
     try {
+      const startedAt = Date.now();
       const inv = await ensureDepositInvoiceV2(bet, part, signed);
+      void notifyBetPaymentDiagnostic({
+        source: "luna-lnurlp",
+        stage: "lnurl-invoice-response",
+        fingerprint: `lnurl-invoice-response:${part.id}:${inv.paymentHash}`,
+        context: {
+          betId: bet.id,
+          participantId: part.id,
+          anchorEventId: bet.anchorEventId,
+          amountMsat: amount,
+          paymentHash: inv.paymentHash,
+          elapsedMs: Date.now() - startedAt,
+          devMode: inv.devMode,
+        },
+      });
       return NextResponse.json(
         { pr: inv.invoice, routes: [] },
         { headers: LNURL_HEADERS },

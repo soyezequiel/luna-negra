@@ -26,7 +26,7 @@ import { RESOLVE_WINDOW_MS } from "@/lib/escrow-v2-config";
 import { emitDepositReceivedV2, emitBetFundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { storeLnurlUrl } from "@/lib/site-url";
-import { notifyNonSocialZap } from "@/lib/discord";
+import { notifyBetPaymentDiagnostic, notifyNonSocialZap } from "@/lib/discord";
 import { publishNgpBetState } from "@/lib/ngp-bet-state";
 
 // Depósito por zap (v2). Luna Negra actúa como receptor NIP-57: el apostador firma
@@ -222,6 +222,19 @@ export async function ensureDepositInvoiceV2(
   // con un 9734 nuevo rompería la verificación del recibo 9735.
   const storedIsDevPlaceholder = part.depositInvoice?.startsWith("lnbc-dev-") ?? false;
   if (part.depositInvoice && part.depositPaymentHash && (devMode || !storedIsDevPlaceholder)) {
+    void notifyBetPaymentDiagnostic({
+      source: "luna-zap-bet",
+      stage: "invoice-reused",
+      fingerprint: `invoice-reused:${part.id}:${part.depositPaymentHash}`,
+      context: {
+        betId: bet.id,
+        participantId: part.id,
+        anchorEventId: bet.anchorEventId,
+        paymentHash: part.depositPaymentHash,
+        devMode,
+        hasZapRequest: Boolean(part.depositZapRequest),
+      },
+    });
     return { invoice: part.depositInvoice, paymentHash: part.depositPaymentHash, devMode };
   }
 
@@ -232,12 +245,14 @@ export async function ensureDepositInvoiceV2(
   const descriptionHash = zapReqJson
     ? createHash("sha256").update(zapReqJson).digest("hex")
     : null;
+  const invoiceStartedAt = Date.now();
   const inv = devMode
     ? {
         invoice: `lnbc-dev-${randomBytes(12).toString("hex")}`,
         paymentHash: `dev-${randomBytes(16).toString("hex")}`,
       }
     : await createDescriptionHashInvoice(sats, descriptionHash!);
+  const invoiceElapsedMs = Date.now() - invoiceStartedAt;
 
   // Claim ATÓMICO: solo persiste si nadie emitió antes (o si lo guardado es un
   // placeholder dev que ahora sí se puede reemplazar). Dos pedidos concurrentes
@@ -263,10 +278,39 @@ export async function ensureDepositInvoiceV2(
       select: { depositInvoice: true, depositPaymentHash: true },
     });
     if (fresh?.depositInvoice && fresh.depositPaymentHash) {
+      void notifyBetPaymentDiagnostic({
+        source: "luna-zap-bet",
+        stage: "invoice-lost-race",
+        fingerprint: `invoice-lost-race:${part.id}:${fresh.depositPaymentHash}`,
+        context: {
+          betId: bet.id,
+          participantId: part.id,
+          anchorEventId: bet.anchorEventId,
+          paymentHash: fresh.depositPaymentHash,
+          invoiceElapsedMs,
+          devMode,
+        },
+      });
       return { invoice: fresh.depositInvoice, paymentHash: fresh.depositPaymentHash, devMode };
     }
     throw new Error("No se pudo persistir el invoice de depósito; reintentá");
   }
+
+  void notifyBetPaymentDiagnostic({
+    source: "luna-zap-bet",
+    stage: "invoice-issued",
+    fingerprint: `invoice-issued:${part.id}:${inv.paymentHash}`,
+    context: {
+      betId: bet.id,
+      participantId: part.id,
+      anchorEventId: bet.anchorEventId,
+      paymentHash: inv.paymentHash,
+      stakeSats: sats,
+      invoiceElapsedMs,
+      devMode,
+      hasZapRequest: Boolean(zapReqJson),
+    },
+  });
 
   return { invoice: inv.invoice, paymentHash: inv.paymentHash, devMode };
 }
@@ -343,6 +387,22 @@ export async function settleDepositV2(
   });
   if (claimed.count !== 1) return; // otro proceso ya lo settleó
   console.log(`[escrow-v2] depósito ${part.id} (bet ${bet.id}) confirmado vía ${source}`);
+  void notifyBetPaymentDiagnostic({
+    source: "luna-zap-bet",
+    stage: "deposit-settled",
+    fingerprint: `deposit-settled:${part.id}:${part.depositPaymentHash}`,
+    context: {
+      betId: bet.id,
+      participantId: part.id,
+      anchorEventId: bet.anchorEventId,
+      paymentHash: part.depositPaymentHash,
+      detectionSource: source,
+      sinceParticipantCreatedMs: now.getTime() - part.createdAt.getTime(),
+      stakeMsat: bet.stakeMsat,
+      hasInvoice: Boolean(part.depositInvoice),
+      hasZapRequest: Boolean(part.depositZapRequest),
+    },
+  });
 
   // 1) Recibo 9735 propio (best-effort; si 0 relays, el tick lo reintenta).
   //    Se lanza SIN await para publicarlo en paralelo con el comentario (1.5):

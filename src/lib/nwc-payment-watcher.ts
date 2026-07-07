@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { checkAndSettleDepositV2 } from "@/lib/zap-bet";
 import { lightningConfigured } from "@/lib/lightning";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
-import { notifyOperationalError } from "@/lib/discord";
+import { notifyBetPaymentDiagnostic, notifyOperationalError } from "@/lib/discord";
 import { settleNgpBetDepositByPaymentHash } from "@/lib/ngp-bet-deposit-sync";
 
 const WATCHER_ENABLED = process.env.NWC_PAYMENT_WATCHER_ENABLED !== "false";
@@ -56,6 +56,19 @@ async function settleNotificationPayment(tx: Nip47Transaction): Promise<void> {
   if (s.settlingHashes.has(paymentHash)) return;
   s.settlingHashes.add(paymentHash);
   try {
+    void notifyBetPaymentDiagnostic({
+      source: "luna-nwc-payment-watcher",
+      stage: "notification-received",
+      fingerprint: `nwc-notification-received:${paymentHash}`,
+      context: {
+        paymentHash,
+        state: tx.state,
+        amount: tx.amount,
+        feesPaid: tx.fees_paid,
+        createdAt: tx.created_at,
+        settledAt: tx.settled_at,
+      },
+    });
     const settled = await settleNgpBetDepositByPaymentHash(paymentHash, "webhook");
     if (settled) {
       console.log(`[nwc-payment-watcher] depósito ${shortHash(paymentHash)} confirmado por notification`);
@@ -100,6 +113,17 @@ async function subscribeWalletNotifications(url: string, index: number): Promise
     info?.notifications.includes("payment_received");
   if (!supportsNotifications) {
     console.warn(`[nwc-payment-watcher] wallet#${index} no anuncia notifications; queda polling fallback`);
+    void notifyBetPaymentDiagnostic({
+      source: "luna-nwc-payment-watcher",
+      stage: "notifications-unsupported",
+      fingerprint: `nwc-notifications-unsupported:${index}`,
+      cooldownMs: ERROR_COOLDOWN_MS,
+      context: {
+        walletIndex: index,
+        capabilities: info?.capabilities ?? [],
+        notifications: info?.notifications ?? [],
+      },
+    });
     client.close();
     return;
   }
@@ -110,12 +134,22 @@ async function subscribeWalletNotifications(url: string, index: number): Promise
     client.close();
   });
   console.log(`[nwc-payment-watcher] escuchando payment_received en wallet#${index}`);
+  void notifyBetPaymentDiagnostic({
+    source: "luna-nwc-payment-watcher",
+    stage: "notifications-subscribed",
+    fingerprint: `nwc-notifications-subscribed:${index}`,
+    cooldownMs: ERROR_COOLDOWN_MS,
+    context: { walletIndex: index },
+  });
 }
 
 async function pollPendingDepositsOnce(): Promise<void> {
   const s = state();
   if (s.polling) return;
   s.polling = true;
+  const startedAt = Date.now();
+  let checked = 0;
+  let settled = 0;
   try {
     const pending = await prisma.zapBetParticipant.findMany({
       where: {
@@ -129,7 +163,8 @@ async function pollPendingDepositsOnce(): Promise<void> {
     });
     for (const part of pending) {
       if (!part.depositPaymentHash || part.depositPaymentHash.startsWith("dev-")) continue;
-      await checkAndSettleDepositV2(part.id).catch(async (error) => {
+      checked += 1;
+      const wasSettled = await checkAndSettleDepositV2(part.id).catch(async (error) => {
         await notifyOperationalError({
           source: "nwc-payment-watcher-poll",
           error,
@@ -137,6 +172,23 @@ async function pollPendingDepositsOnce(): Promise<void> {
           cooldownMs: ERROR_COOLDOWN_MS,
           context: { participantId: part.id },
         });
+        return false;
+      });
+      if (wasSettled) settled += 1;
+    }
+    if (checked > 0) {
+      void notifyBetPaymentDiagnostic({
+        source: "luna-nwc-payment-watcher",
+        stage: "poll-checked",
+        fingerprint: `nwc-poll-checked:${Math.floor(Date.now() / 15_000)}`,
+        cooldownMs: 14_000,
+        context: {
+          pending: pending.length,
+          checked,
+          settled,
+          elapsedMs: Date.now() - startedAt,
+          intervalMs: POLL_INTERVAL_MS,
+        },
       });
     }
   } finally {

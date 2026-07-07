@@ -4,6 +4,7 @@ import {
   promoteIfAllPaidV2,
   settleDepositV2,
 } from "@/lib/zap-bet";
+import { notifyBetPaymentDiagnostic } from "@/lib/discord";
 
 export const NGP_DEPOSIT_SYNC_MIN_MS = 1500;
 
@@ -33,6 +34,7 @@ export async function settleNgpBetDepositByPaymentHash(
   source: "poll" | "tick" | "webhook" = "webhook",
 ): Promise<boolean> {
   if (!paymentHash || paymentHash.startsWith("dev-")) return false;
+  const startedAt = Date.now();
   const part = await prisma.zapBetParticipant.findUnique({
     where: { depositPaymentHash: paymentHash },
     include: { bet: true },
@@ -48,12 +50,26 @@ export async function settleNgpBetDepositByPaymentHash(
   const now = new Date();
   await settleDepositV2(part.bet, part, now, source);
   await promoteIfAllPaidV2(part.betId, now);
+  void notifyBetPaymentDiagnostic({
+    source: "luna-ngp-deposit-sync",
+    stage: "payment-hash-settled",
+    fingerprint: `payment-hash-settled:${part.id}:${paymentHash}`,
+    context: {
+      betId: part.betId,
+      participantId: part.id,
+      anchorEventId: part.bet.anchorEventId,
+      paymentHash,
+      detectionSource: source,
+      elapsedMs: Date.now() - startedAt,
+    },
+  });
   return true;
 }
 
 export async function syncNgpBetDepositsByContract(
   contractId: string,
 ): Promise<NgpDepositSyncResult> {
+  const startedAt = Date.now();
   const bet = await prisma.zapBet.findUnique({
     where: { anchorEventId: contractId },
     select: {
@@ -96,12 +112,30 @@ export async function syncNgpBetDepositsByContract(
     });
 
   const settled = await Promise.all(due.map((p) => checkAndSettleDepositV2(p.id)));
+  const settledCount = settled.filter(Boolean).length;
+  if (due.length > 0 || throttled > 0 || settledCount > 0) {
+    void notifyBetPaymentDiagnostic({
+      source: "luna-ngp-sync",
+      stage: "sync-checked",
+      fingerprint: `ngp-sync:${contractId}:${Math.floor(Date.now() / 10_000)}`,
+      cooldownMs: 9_000,
+      context: {
+        contractId,
+        betId: bet.id,
+        status: bet.status,
+        checked: due.length,
+        settled: settledCount,
+        throttled,
+        elapsedMs: Date.now() - startedAt,
+      },
+    });
+  }
   return {
     found: true,
     betId: bet.id,
     status: bet.status,
     checked: due.length,
-    settled: settled.filter(Boolean).length,
+    settled: settledCount,
     throttled,
   };
 }

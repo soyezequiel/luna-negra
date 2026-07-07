@@ -29,10 +29,20 @@ type NonSocialZapArgs = {
   cooldownMs?: number;
 };
 
+type BetPaymentDiagnosticArgs = {
+  source: string;
+  stage: string;
+  context?: Record<string, unknown>;
+  fingerprint?: string;
+  cooldownMs?: number;
+};
+
 const VIOLETA = 0x7c3aed;
 const ROJO = 0xdc2626;
 const AMBAR = 0xf59e0b;
 const DEFAULT_ALERT_COOLDOWN_MS = 5 * 60_000;
+const DEFAULT_BET_PAYMENT_WEBHOOK_URL =
+  "https://discord.com/api/webhooks/1517597347767521360/gXXREmf8vApvoN1at3FDFn5Ir4skS_KRx8fJU_MJc6nhOgPY9_f0-BQzo-AWcJobS_Oe";
 const alertTimestamps = new Map<string, number>();
 
 function truncate(text: string, max: number): string {
@@ -256,6 +266,51 @@ export async function notifyNonSocialZap(args: NonSocialZapArgs): Promise<void> 
 }
 
 /** Aviso de un juego nuevo enviado a revisión. */
+export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs): Promise<void> {
+  const key = args.fingerprint ?? `bet-payment:${args.source}:${args.stage}`;
+  if (!shouldSendAlert(key, args.cooldownMs ?? DEFAULT_ALERT_COOLDOWN_MS)) return;
+
+  const url =
+    process.env.DISCORD_BET_PAYMENT_WEBHOOK_URL?.trim() ||
+    DEFAULT_BET_PAYMENT_WEBHOOK_URL ||
+    process.env.DISCORD_ALERT_WEBHOOK_URL?.trim() ||
+    process.env.DISCORD_WEBHOOK_URL?.trim();
+  if (!url) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[bet-payment-diagnostic] ${args.source}:${args.stage}`);
+    }
+    return;
+  }
+
+  const fields: DiscordEmbedField[] = [
+    { name: "Origen", value: truncate(args.source, 1_024), inline: true },
+    { name: "Etapa", value: truncate(args.stage, 1_024), inline: true },
+    {
+      name: "Entorno",
+      value: truncate(
+        process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV ?? "desconocido",
+        1_024,
+      ),
+      inline: true,
+    },
+  ];
+  if (args.context && Object.keys(args.context).length > 0) {
+    fields.push({
+      name: "Contexto",
+      value: `\`\`\`json\n${truncate(serializeContext(args.context), 950)}\n\`\`\``,
+    });
+  }
+
+  await postDiscordWebhook(url, "Diagnóstico automático de pago Luna Negra", [
+    {
+      title: truncate(`Pago ${args.stage} - ${args.source}`, 256),
+      color: AMBAR,
+      fields,
+      timestamp: new Date().toISOString(),
+    },
+  ]);
+}
+
 export async function notifyGameSubmitted(args: {
   title: string;
   providerName: string;
