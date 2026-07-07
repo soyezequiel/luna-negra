@@ -1,31 +1,43 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  findUnique: vi.fn(),
+  zapBetFindUnique: vi.fn(),
+  zapBetParticipantFindUnique: vi.fn(),
   checkAndSettleDepositV2: vi.fn(),
+  settleDepositV2: vi.fn(),
+  promoteIfAllPaidV2: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     zapBet: {
-      findUnique: mocks.findUnique,
+      findUnique: mocks.zapBetFindUnique,
+    },
+    zapBetParticipant: {
+      findUnique: mocks.zapBetParticipantFindUnique,
     },
   },
 }));
 
 vi.mock("@/lib/zap-bet", () => ({
   checkAndSettleDepositV2: mocks.checkAndSettleDepositV2,
+  settleDepositV2: mocks.settleDepositV2,
+  promoteIfAllPaidV2: mocks.promoteIfAllPaidV2,
 }));
 
 import {
   isNgpContractId,
   syncNgpBetDepositsByContract,
+  settleNgpBetDepositByPaymentHash,
 } from "@/lib/ngp-bet-deposit-sync";
 
 describe("ngp bet deposit sync", () => {
   beforeEach(() => {
-    mocks.findUnique.mockReset();
+    mocks.zapBetFindUnique.mockReset();
+    mocks.zapBetParticipantFindUnique.mockReset();
     mocks.checkAndSettleDepositV2.mockReset();
+    mocks.settleDepositV2.mockReset();
+    mocks.promoteIfAllPaidV2.mockReset();
     globalThis.lunaNgpDepositSyncAt?.clear();
   });
 
@@ -37,7 +49,7 @@ describe("ngp bet deposit sync", () => {
   });
 
   it("chequea solo participantes pendientes con invoice real", async () => {
-    mocks.findUnique.mockResolvedValue({
+    mocks.zapBetFindUnique.mockResolvedValue({
       id: "bet-1",
       status: "pending_deposits",
       participants: [
@@ -57,7 +69,7 @@ describe("ngp bet deposit sync", () => {
   });
 
   it("throttlea lookups repetidos del mismo participante", async () => {
-    mocks.findUnique.mockResolvedValue({
+    mocks.zapBetFindUnique.mockResolvedValue({
       id: "bet-1",
       status: "pending_deposits",
       participants: [{ id: "p1", depositStatus: "pending", depositPaymentHash: "hash-1" }],
@@ -69,5 +81,24 @@ describe("ngp bet deposit sync", () => {
 
     expect(result).toMatchObject({ checked: 0, settled: 0, throttled: 1 });
     expect(mocks.checkAndSettleDepositV2).toHaveBeenCalledTimes(1);
+  });
+
+  it("settlea directo por payment_hash cuando llega una notification NWC", async () => {
+    const bet = { id: "bet-1", status: "pending_deposits" };
+    const part = {
+      id: "p1",
+      betId: "bet-1",
+      depositStatus: "pending",
+      depositPaymentHash: "hash-1",
+      bet,
+    };
+    mocks.zapBetParticipantFindUnique.mockResolvedValue(part);
+
+    const settled = await settleNgpBetDepositByPaymentHash("hash-1", "webhook");
+
+    expect(settled).toBe(true);
+    expect(mocks.settleDepositV2).toHaveBeenCalledWith(bet, part, expect.any(Date), "webhook");
+    expect(mocks.promoteIfAllPaidV2).toHaveBeenCalledWith("bet-1", expect.any(Date));
+    expect(mocks.checkAndSettleDepositV2).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ export async function registerNode() {
   void warmUpStoreZapProfileAtBoot();
   void warmUpNgpTermsAtBoot();
   await startEscrowTick();
+  await startNwcPaymentWatcher();
   await startZapSync();
   await startZapBetSync();
   await startNgpBetResultSync();
@@ -20,6 +21,21 @@ export async function registerNode() {
   await startLivePresenceSync();
   await startPresenceSampler();
   await startStorePresenceSampler();
+}
+
+/**
+ * Watcher persistente de pagos recibidos por NWC. En self-host mantiene una
+ * suscripción a `payment_received`; si el wallet no notifica, cae a polling rápido
+ * de invoices pendientes. Esto saca la detección del tick lento de escrow.
+ */
+async function startNwcPaymentWatcher() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+  try {
+    const { startNwcPaymentWatcher } = await import("./lib/nwc-payment-watcher");
+    await startNwcPaymentWatcher();
+  } catch (err) {
+    await reportBackgroundFailure("nwc-payment-watcher", err);
+  }
 }
 
 /**

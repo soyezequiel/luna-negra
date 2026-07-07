@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { checkAndSettleDepositV2 } from "@/lib/zap-bet";
+import {
+  checkAndSettleDepositV2,
+  promoteIfAllPaidV2,
+  settleDepositV2,
+} from "@/lib/zap-bet";
 
 export const NGP_DEPOSIT_SYNC_MIN_MS = 1500;
 
@@ -23,6 +27,29 @@ export type NgpDepositSyncResult = {
   settled: number;
   throttled: number;
 };
+
+export async function settleNgpBetDepositByPaymentHash(
+  paymentHash: string,
+  source: "poll" | "tick" | "webhook" = "webhook",
+): Promise<boolean> {
+  if (!paymentHash || paymentHash.startsWith("dev-")) return false;
+  const part = await prisma.zapBetParticipant.findUnique({
+    where: { depositPaymentHash: paymentHash },
+    include: { bet: true },
+  });
+  if (
+    !part ||
+    part.bet.status !== "pending_deposits" ||
+    part.depositStatus !== "pending"
+  ) {
+    return false;
+  }
+
+  const now = new Date();
+  await settleDepositV2(part.bet, part, now, source);
+  await promoteIfAllPaidV2(part.betId, now);
+  return true;
+}
 
 export async function syncNgpBetDepositsByContract(
   contractId: string,
