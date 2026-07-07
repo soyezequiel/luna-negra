@@ -79,8 +79,6 @@ export function NgeCredentialCard({ gameId }: { gameId: string }) {
     setMsg(label);
   }
 
-  const envLine = cred ? `${cred.envVar}=${cred.uri}` : "";
-
   return (
     <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
       <div className="flex flex-wrap items-center gap-2">
@@ -106,18 +104,23 @@ export function NgeCredentialCard({ gameId }: { gameId: string }) {
         <div className="space-y-3">
           <div className="rounded-ln-md border border-ln-border bg-ln-bg-deep/60 p-3">
             <p className="text-xs text-muted">
-              Pegá esto en el <code>.env</code> del game server:
+              En Vercel usá <code>NGE_CONNECTION</code> como nombre. Pegá abajo solo
+              este valor, sin <code>NGE_CONNECTION=</code> adelante:
             </p>
-            <code className="mt-1 block break-all font-mono text-xs text-ink">
-              {envLine}
+            <code className="mt-1 block break-all rounded-ln-sm bg-black/20 px-2 py-1 font-mono text-xs text-ink">
+              {cred.uri}
             </code>
             <button
               type="button"
-              onClick={() => copy(envLine, "Credencial copiada.")}
+              onClick={() => copy(cred.uri, "Valor de NGE_CONNECTION copiado.")}
               className="mt-2 text-xs text-blue hover:underline"
             >
-              Copiar
+              Copiar solo el valor
             </button>
+            <p className="mt-2 text-[11px] text-faint">
+              En un <code>.env</code> local podes escribir <code>NGE_CONNECTION=</code>
+              antes del valor.
+            </p>
           </div>
           <dl className="grid grid-cols-1 gap-1.5 text-[11px] text-faint sm:grid-cols-2">
             <div>
