@@ -20,6 +20,7 @@ import {
 } from "@/components/provider/game-form-fields";
 import { normalizeCategories } from "@/lib/categories";
 import { ZapLeaderboard } from "@/components/zap-leaderboard";
+import { NgeCredentialCard } from "@/components/provider/nge-credential-card";
 
 import { hueFromSlug, satsLabel } from "@/lib/format";
 
@@ -842,7 +843,9 @@ export default function ProviderPage() {
                 es NIP-07/46 (el jugador firma con su propio signer) y los eventos
                 se anclan al <code>gameCoord</code> del juego, que obtenés de los
                 relays (<code>{"{ kinds:[30023], \"#d\":[\"<slug>\"] }"}</code>) o
-                lo hardcodeás. NGP no toca los servidores de Luna Negra.
+                lo hardcodeás. NGP no toca los servidores de Luna Negra. Para{" "}
+                <strong>apuestas por eventos</strong> (NGE), generá la credencial
+                más abajo en vez de configurar variables sueltas.
               </span>
             </p>
 
@@ -922,6 +925,13 @@ export default function ProviderPage() {
               <code>WEBHOOK_SECRET</code> quedan opcionales.
             </p>
           </div>
+
+          {/* credencial NGE (apuestas por eventos, por juego) */}
+          {selectedGameId ? (
+            <div className="lg:col-span-2">
+              <NgeCredentialCard gameId={selectedGameId} />
+            </div>
+          ) : null}
 
           {/* api keys */}
           <div id="api-keys" className="scroll-mt-20 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
