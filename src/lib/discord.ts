@@ -35,12 +35,25 @@ type BetPaymentDiagnosticArgs = {
   context?: Record<string, unknown>;
   fingerprint?: string;
   cooldownMs?: number;
+  /**
+   * Severidad explícita del llamador. Si es "warn"/"error" el aviso se manda
+   * siempre; si es "info" (o no se pasa) solo se manda cuando el contexto delata
+   * un problema (error/bug o lentitud). Los éxitos de rutina no se reportan.
+   */
+  level?: "info" | "warn" | "error";
 };
 
 const VIOLETA = 0x7c3aed;
 const ROJO = 0xdc2626;
 const AMBAR = 0xf59e0b;
 const DEFAULT_ALERT_COOLDOWN_MS = 5 * 60_000;
+/** A partir de acá una operación se considera "lenta" y se reporta. */
+const BET_PAYMENT_SLOW_MS = Math.max(
+  1_000,
+  Number(process.env.DISCORD_BET_PAYMENT_SLOW_MS ?? 4_000),
+);
+/** Etapas que por su naturaleza son una advertencia (degradación/fallback), no un éxito. */
+const BET_PAYMENT_WARNING_STAGES = new Set(["notifications-unsupported"]);
 const DEFAULT_BET_PAYMENT_WEBHOOK_URL =
   "https://discord.com/api/webhooks/1517597347767521360/gXXREmf8vApvoN1at3FDFn5Ir4skS_KRx8fJU_MJc6nhOgPY9_f0-BQzo-AWcJobS_Oe";
 const alertTimestamps = new Map<string, number>();
@@ -265,9 +278,15 @@ export async function notifyNonSocialZap(args: NonSocialZapArgs): Promise<void> 
   ]);
 }
 
-/** Aviso de un juego nuevo enviado a revisión. */
+/**
+ * Reporta anomalías del flujo de pagos de apuestas. Ya NO avisa los éxitos ni la
+ * actividad de rutina: solo se manda cuando hay un error/bug, una advertencia
+ * (degradación/fallback) o la operación anduvo lenta. La severidad la decide
+ * {@link classifyBetPaymentDiagnostic}.
+ */
 export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs): Promise<void> {
-  if (!shouldSendBetPaymentDiagnostic(args)) return;
+  const severity = classifyBetPaymentDiagnostic(args);
+  if (!severity) return; // éxito o actividad de rutina: no se reporta
   const key = args.fingerprint ?? `bet-payment:${args.source}:${args.stage}`;
   if (!shouldSendAlert(key, args.cooldownMs ?? DEFAULT_ALERT_COOLDOWN_MS)) return;
 
@@ -278,7 +297,7 @@ export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs)
     process.env.DISCORD_WEBHOOK_URL?.trim();
   if (!url) {
     if (process.env.NODE_ENV !== "production") {
-      console.log(`[bet-payment-diagnostic] ${args.source}:${args.stage}`);
+      console.log(`[bet-payment-diagnostic] ${severity.level} ${args.source}:${args.stage} — ${severity.reason}`);
     }
     return;
   }
@@ -294,6 +313,7 @@ export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs)
       ),
       inline: true,
     },
+    { name: "Motivo del aviso", value: truncate(severity.reason, 1_024) },
   ];
   if (args.context && Object.keys(args.context).length > 0) {
     fields.push({
@@ -302,29 +322,74 @@ export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs)
     });
   }
 
-  await postDiscordWebhook(url, "Diagnóstico automático de pago Luna Negra", [
+  const etiqueta = severity.level === "error" ? "Error" : "Advertencia";
+  await postDiscordWebhook(url, `${etiqueta} en pagos de Luna Negra`, [
     {
       title: truncate(`Pago ${args.stage} - ${args.source}`, 256),
-      color: AMBAR,
+      color: severity.level === "error" ? ROJO : AMBAR,
       fields,
       timestamp: new Date().toISOString(),
     },
   ]);
 }
 
-function shouldSendBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs): boolean {
-  switch (args.stage) {
-    case "invoice-reused":
-    case "invoice-lost-race":
-    case "invoice-issued":
-    case "lnurl-invoice-response":
-      return false;
-    case "poll-checked":
-    case "sync-checked":
-      return Number(args.context?.settled ?? 0) > 0;
-    default:
-      return true;
+type BetPaymentSeverity = { level: "warn" | "error"; reason: string } | null;
+
+/**
+ * Decide si un diagnóstico de pago merece aviso y con qué severidad.
+ * Devuelve `null` cuando es un éxito/rutina (no se manda nada).
+ */
+function classifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs): BetPaymentSeverity {
+  // 1) Severidad explícita del llamador manda.
+  if (args.level === "error") return { level: "error", reason: "Error reportado por el origen" };
+  if (args.level === "warn") return { level: "warn", reason: "Advertencia reportada por el origen" };
+  // 2) Etapas que son intrínsecamente una degradación/fallback.
+  if (BET_PAYMENT_WARNING_STAGES.has(args.stage)) {
+    return { level: "warn", reason: `Etapa de advertencia: ${args.stage}` };
   }
+  // 3) El resto (éxitos y rutina) solo pasa si el contexto delata un problema.
+  return contextSignalsBetPaymentProblem(args.context);
+}
+
+/**
+ * Inspecciona el contexto buscando señales de fallo (campos de error/bug) o de
+ * lentitud (`elapsedMs`/`durationMs` de la operación — NO tiempos de espera del
+ * usuario como `sinceParticipantCreatedMs`). Devuelve `null` si todo va bien.
+ */
+function contextSignalsBetPaymentProblem(
+  context?: Record<string, unknown>,
+): BetPaymentSeverity {
+  if (!context) return null;
+
+  // Error/bug explícito reportado en el contexto.
+  for (const key of ["error", "failed", "failures", "errors", "errorCount"]) {
+    const value = context[key];
+    if (
+      value === true ||
+      (typeof value === "number" && value > 0) ||
+      (typeof value === "string" && value.trim().length > 0) ||
+      (value != null && typeof value === "object")
+    ) {
+      return { level: "error", reason: `El contexto reporta un fallo (${key})` };
+    }
+  }
+
+  // Lentitud: la operación tardó más de lo tolerable, o un poll superó su ciclo.
+  const elapsed = Number(context.elapsedMs ?? context.durationMs);
+  if (Number.isFinite(elapsed) && elapsed > 0) {
+    const interval = Number(context.intervalMs);
+    if (elapsed >= BET_PAYMENT_SLOW_MS) {
+      return { level: "warn", reason: `Operación lenta: ${Math.round(elapsed)}ms` };
+    }
+    if (Number.isFinite(interval) && interval > 0 && elapsed > interval * 2) {
+      return {
+        level: "warn",
+        reason: `Poll con backlog: ${Math.round(elapsed)}ms sobre ciclo de ${interval}ms`,
+      };
+    }
+  }
+
+  return null;
 }
 
 export async function notifyGameSubmitted(args: {

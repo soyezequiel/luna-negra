@@ -111,3 +111,113 @@ describe("alertas operativas de Discord", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("diagnósticos de pago de apuestas", () => {
+  it("NO reporta un éxito de rutina (depósito confirmado sin anomalías)", async () => {
+    vi.stubEnv(
+      "DISCORD_BET_PAYMENT_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/789/bet-token",
+    );
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyBetPaymentDiagnostic } = await import("@/lib/discord");
+
+    await notifyBetPaymentDiagnostic({
+      source: "luna-zap-bet",
+      stage: "deposit-settled",
+      fingerprint: "ok-1",
+      context: { betId: "bet-1", sinceParticipantCreatedMs: 120_000 },
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("NO reporta un poll normal aunque haya liquidado depósitos", async () => {
+    vi.stubEnv(
+      "DISCORD_BET_PAYMENT_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/789/bet-token",
+    );
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyBetPaymentDiagnostic } = await import("@/lib/discord");
+
+    await notifyBetPaymentDiagnostic({
+      source: "luna-nwc-payment-watcher",
+      stage: "poll-checked",
+      fingerprint: "poll-ok",
+      context: { checked: 3, settled: 2, elapsedMs: 40, intervalMs: 1_000 },
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reporta una etapa de advertencia (fallback a polling)", async () => {
+    vi.stubEnv(
+      "DISCORD_BET_PAYMENT_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/789/bet-token",
+    );
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyBetPaymentDiagnostic } = await import("@/lib/discord");
+
+    await notifyBetPaymentDiagnostic({
+      source: "luna-nwc-payment-watcher",
+      stage: "notifications-unsupported",
+      fingerprint: "warn-1",
+      context: { walletIndex: 0 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://discord.com/api/webhooks/789/bet-token");
+    const serialized = JSON.stringify(JSON.parse(String(init?.body)));
+    expect(serialized).toContain("Advertencia");
+  });
+
+  it("reporta cuando una operación anduvo lenta", async () => {
+    vi.stubEnv(
+      "DISCORD_BET_PAYMENT_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/789/bet-token",
+    );
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyBetPaymentDiagnostic } = await import("@/lib/discord");
+
+    await notifyBetPaymentDiagnostic({
+      source: "luna-zap-bet",
+      stage: "deposit-settled",
+      fingerprint: "slow-1",
+      context: { betId: "bet-1", elapsedMs: 9_000 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const serialized = JSON.stringify(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)));
+    expect(serialized).toContain("lenta");
+  });
+
+  it("reporta cuando el contexto delata un error/bug", async () => {
+    vi.stubEnv(
+      "DISCORD_BET_PAYMENT_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/789/bet-token",
+    );
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyBetPaymentDiagnostic } = await import("@/lib/discord");
+
+    await notifyBetPaymentDiagnostic({
+      source: "luna-ngp-sync",
+      stage: "sync-checked",
+      fingerprint: "err-1",
+      context: { checked: 4, settled: 0, errorCount: 2 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const serialized = JSON.stringify(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)));
+    expect(serialized).toContain("Error");
+  });
+});
