@@ -247,32 +247,33 @@ escrow anula y reembolsa, publicando `status=void` en el 31340 con el motivo.
 Los reembolsos van a la cascada de destino de cada participante (lud16 del
 perfil, etc.) — misma `resolveDestination` de hoy.
 
-### La clave del oráculo: gestionada o propia (BYO)
+### La clave del oráculo: por-apuesta (TOFU), gestionada o BYO declarada
 
-El 1341 se valida contra `Provider.oraclePubkey`. Hay **dos modos de custodia** de
-esa clave (`src/lib/oracle-keys.ts`):
+El 1341 se valida contra `effectiveOracle(bet) = bet.oraclePubkey ?? Provider.oraclePubkey`
+(`src/lib/bet-oracle.ts`). Hay tres formas de fijar quién resuelve:
 
-- **Gestionada (default).** Luna genera y custodia el par. El juego reporta con su
-  **API key** (`POST /api/v2/bets/{id}/result { winners }`) y Luna firma el 1341 por
-  él. Cero fricción de claves, pero no es keyless: Luna es un tercero de confianza
-  para firmar.
-- **Propia / BYO (keyless — Slice 2).** El proveedor trae **su propia** clave Nostr
-  de oráculo. Luna solo guarda la pubkey (`oracleSecretEnc = null`,
-  `oracleSelfSigned = true`) y **no puede firmar por él**: el juego firma sus 1341
-  con su clave y (a) los **publica en relays** — los levanta `ngp-bet-result-sync` —
-  o (b) los postea a `/result` como `{ event }` (la firma ES la auth, sin API key).
-  Los caminos gestionados (`/result` con API key, `/activity`) responden
-  `SELF_SIGNED_ORACLE` en este modo.
+- **NGP por-apuesta (TOFU, default de eventos).** El propio `1339` declara su
+  `oracle` p-tag; la ingesta lo guarda en `bet.oraclePubkey` y el 1341 se valida
+  contra ESE. **No hay registro previo**: el contrato es la fuente. El juego firma
+  sus 1341 con su clave y (a) los **publica en relays** — los levanta
+  `ngp-bet-result-sync` — o (b) los postea a `/result` como `{ event }` (la firma ES
+  la auth, sin API key). El camino gestionado `{ winners }` responde
+  `SELF_SIGNED_ORACLE` si el oráculo del contrato no es el gestionado por Luna.
+- **Gestionada (default REST).** Luna genera y custodia el par
+  (`Provider.oraclePubkey` + secreto). El juego reporta con su **API key** y Luna
+  firma el 1341. Se usa cuando el 1339 declara como oráculo la propia pubkey
+  gestionada, o en el flujo REST sin contrato.
+- **BYO declarada (opcional).** El proveedor puede además registrar su clave a nivel
+  proveedor (`oracleSelfSigned`, `POST /api/provider/oracle/self`) para el flujo REST
+  keyless; en NGP puro no hace falta (manda el oráculo del contrato).
 
-**Declarar la clave propia** (self-serve, prueba de posesión): el dueño del
-proveedor pide el reto con `GET /api/provider/oracle/self` → `{ challenge }`, firma
-un evento cuyo `content` es exactamente ese `challenge` (con `created_at` reciente)
-usando su clave de oráculo, y lo envía con `POST /api/provider/oracle/self
-{ proof }`. Luna verifica firma + reto ligado al `providerId` + frescura y guarda la
-pubkey. `POST /api/provider/oracle/managed` vuelve al modo gestionado (genera par
-nuevo). `GET /api/v2/bets/ngp-config` devuelve `oracleSelfSigned` para que el juego
-sepa si debe auto-firmar. El oráculo declarado en el 1339 debe ser esta pubkey (la
-ingesta lo valida con `ORACLE_MISMATCH`).
+> **⚠️ Seguridad (TOFU).** Como no hay registro previo, cualquiera puede publicar un
+> `1339` para el juego declarando SU oráculo. Si se engaña a una víctima a depositar
+> en ese contrato, el atacante firma el 1341 y cobra. Mitigación: el jugador solo
+> deposita en contratos que le muestra su juego de confianza (el game server los
+> firma). Se conserva el chequeo `escrow == storePubkey` (el contrato debe nombrar a
+> Luna como custodio). Decisión explícita del operador para maximizar el "sin
+> registro"; un modelo con registro por-juego cerraría el hueco.
 
 ### Relación con el marcador
 

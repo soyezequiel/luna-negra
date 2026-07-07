@@ -4,6 +4,7 @@ import { signResultEventV2 } from "@/lib/nostr-server";
 import { ensureOracleKey, getOracleSecret } from "@/lib/oracle-keys";
 import { verifyApiKey } from "@/lib/api-keys";
 import { settleZapBetWithResult, type SettleResult } from "@/lib/escrow-v2-settle";
+import { isValidResultSigner } from "@/lib/bet-oracle";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
@@ -87,13 +88,17 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
     return apiError("FORBIDDEN", "La API key no es del proveedor de esta apuesta", 403);
   }
 
-  // Oráculo BYO (keyless): Luna no custodia la clave, no puede firmar por el juego.
-  // El juego debe firmar su propio kind:1341 y publicarlo (lo levanta el sync) o
-  // postearlo a este mismo endpoint como { event }.
-  if (bet.provider.oracleSelfSigned) {
+  // La firma GESTIONADA solo vale si el oráculo efectivo de la apuesta es el que Luna
+  // custodia. Si el proveedor firma solo (BYO) o el contrato NGP declara OTRO oráculo
+  // (keyless/TOFU por-apuesta), Luna no puede firmar por él: que publique su 1341 o lo
+  // mande como { event }.
+  if (
+    bet.provider.oracleSelfSigned ||
+    (bet.oraclePubkey != null && bet.oraclePubkey !== bet.provider.oraclePubkey)
+  ) {
     return apiError(
       "SELF_SIGNED_ORACLE",
-      "Este proveedor firma sus propios resultados: publicá un kind:1341 firmado por tu oráculo, o mandá POST { event } a este endpoint",
+      "Esta apuesta la resuelve un oráculo propio: publicá un kind:1341 firmado por él, o mandá POST { event } a este endpoint",
       409,
     );
   }
@@ -156,8 +161,8 @@ async function handleSignedEvent(betId: string, body: unknown) {
   });
   if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
 
-  if (!bet.provider.oraclePubkey || ev.pubkey !== bet.provider.oraclePubkey) {
-    return apiError("WRONG_SIGNER", "El resultado no está firmado por el oráculo del proveedor", 403);
+  if (!isValidResultSigner(bet, ev.pubkey)) {
+    return apiError("WRONG_SIGNER", "El resultado no está firmado por el oráculo de la apuesta", 403);
   }
 
   const winnerNpubs = ev.tags.filter((t) => t[0] === "winner").map((t) => t[1]);

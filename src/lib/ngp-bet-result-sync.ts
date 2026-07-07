@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { NGP_BET_RESULT_KIND, NGP_BET_TAG, NGP_BETS_ENABLED } from "./ngp-bet-state";
 import { settleZapBetWithResult, type ZapBetWithRelations } from "./escrow-v2-settle";
+import { isValidResultSigner } from "./bet-oracle";
 import { payParticipantV2 } from "./escrow-v2-payout";
 import { emitBetCancelledV2, emitBetRefundedV2 } from "./webhooks";
 import { publishNgpBetState } from "./ngp-bet-state";
@@ -176,7 +177,7 @@ export async function handleNgpResultEvent(ev: Event): Promise<void> {
     return;
   }
 
-  if (!bet.provider.oraclePubkey || ev.pubkey !== bet.provider.oraclePubkey) {
+  if (!isValidResultSigner(bet, ev.pubkey)) {
     console.warn(
       `[ngp-bet-result] 1341 ${ev.id} firmado por ${ev.pubkey}, no por el oráculo de ${bet.id}; ignorado`,
     );

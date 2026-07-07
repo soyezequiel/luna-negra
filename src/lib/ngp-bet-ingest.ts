@@ -117,8 +117,10 @@ export async function materializeNgpBet(
     return fail("WRONG_ESCROW", "El contrato no nombra a esta tienda como escrow");
   }
 
-  // Oráculo declarado: DEBE coincidir con el oráculo registrado del proveedor, o
-  // el resultado (1341) nunca podría liquidar (ver ngp-bet-result-sync).
+  // Oráculo declarado en el contrato (TOFU por-apuesta): el 1339 nombra su propio
+  // oráculo y el resultado (1341) se valida contra ESA pubkey (ver ngp-bet-result-sync).
+  // No exigimos registro previo del proveedor: el propio contrato es la fuente. Se
+  // guarda en `bet.oraclePubkey`. (El chequeo `escrow == storePubkey` sí se mantiene.)
   const oraclePk = pTags.find((t) => roleOf(t) === "oracle")?.[1];
   if (!oraclePk) return fail("MISSING_ORACLE", "El contrato no declara un oráculo");
 
@@ -132,12 +134,6 @@ export async function materializeNgpBet(
   if (!game) return fail("GAME_NOT_FOUND", "El juego del contrato no existe o no está publicado");
   if (opts.expectedProviderId && game.providerId !== opts.expectedProviderId) {
     return fail("NOT_GAME_OWNER", "El juego del contrato no es de tu proveedor");
-  }
-  if (!game.provider.oraclePubkey) {
-    return fail("ORACLE_NOT_PROVISIONED", "El proveedor del juego no tiene oráculo provisto");
-  }
-  if (game.provider.oraclePubkey !== oraclePk) {
-    return fail("ORACLE_MISMATCH", "El oráculo del contrato no es el del proveedor del juego");
   }
 
   // Participantes: los `p` sin rol, en orden. El firmante del depósito debe ser uno.
@@ -243,6 +239,8 @@ export async function materializeNgpBet(
         anchorEventKind: rootRef ? 1 : 1339,
         // Firmante del contrato (retador): autoriza el void pre-fondeo por 1341.
         contractPubkey: ev.pubkey,
+        // Oráculo declarado en el 1339 (TOFU): valida el 1341 de esta apuesta.
+        oraclePubkey: oraclePk,
         depositDeadline: new Date(depositDeadlineMs),
         participants: {
           create: seats.map((s) => ({ userId: s.userId, npub: s.npub, pubkey: s.pubkey })),
