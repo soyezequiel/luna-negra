@@ -1,0 +1,610 @@
+{
+  "$schema": "NGE test vectors v1",
+  "note": "Claves de prueba deterministas. Los `id` son estables; las firmas se VERIFICAN (aux aleatorio de BIP340), no se comparan carácter a carácter.",
+  "actors": {
+    "escrow": {
+      "sk": "1111111111111111111111111111111111111111111111111111111111111111",
+      "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "npub": "npub1fu64hh9hes90w2808n8tjc2ajp5yhddjef0ctx4s7zmsgp6cwx4qgy4eg9"
+    },
+    "service": {
+      "sk": "2222222222222222222222222222222222222222222222222222222222222222",
+      "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+      "npub": "npub1gekhljh9v0jukzdq6xrshdvqx3yqgctc0xs5jjw0yg597xaw8uns47vduw"
+    },
+    "alice": {
+      "sk": "3333333333333333333333333333333333333333333333333333333333333333",
+      "pubkey": "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1",
+      "npub": "npub183e2mk60muy6l98se9xhl6f28p48uux03gwctytrs6aj2dw8kxcsw0rcm2"
+    },
+    "bob": {
+      "sk": "4444444444444444444444444444444444444444444444444444444444444444",
+      "pubkey": "2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991",
+      "npub": "npub19s9he72nyjs86pfe3vjqzaxups47g3xedv2e4fk877c7v6rgpxgseu6h2f"
+    },
+    "dev": {
+      "sk": "5555555555555555555555555555555555555555555555555555555555555555",
+      "pubkey": "9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b",
+      "npub": "npub1ntpqxd0t8pmg6gzjhcwmhs7g7ctcgp693eg7dd9dytcaj96c39dswlwwu5"
+    },
+    "attacker": {
+      "sk": "6666666666666666666666666666666666666666666666666666666666666666",
+      "pubkey": "5ab4689e400a4a160cf01cd44730845a54768df8547dcdf073d964f109f18c30",
+      "npub": "npub1t26x38jqpf9pvr8srn2ywvyytf28dr0c237umurnm9j0zz033scqdn0433"
+    }
+  },
+  "constants": {
+    "T0": 1751760000,
+    "DEADLINE": 1751763600,
+    "GAME_COORD": "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa",
+    "STAKE_SATS": 1000,
+    "STAKE_MSAT": 1000000,
+    "RELAY": "wss://relay.luna.fit",
+    "LUD16": "luna@luna.naranja.fit",
+    "tag": "nge"
+  },
+  "connectionUri": {
+    "uri": "nostr+nge://4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa?relay=wss%3A%2F%2Frelay.luna.fit&secret=2222222222222222222222222222222222222222222222222222222222222222",
+    "fields": 3,
+    "parsed": {
+      "escrowPubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "relays": [
+        "wss://relay.luna.fit"
+      ],
+      "serviceSecret": "2222222222222222222222222222222222222222222222222222222222222222",
+      "oraclePubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+      "mode": "self-signed"
+    },
+    "explain": "El dev pega esto en NGE_CONNECTION. 3 campos: host=escrow, relay, secret. La SDK deriva oraclePubkey del secret y resuelve gameCoord/lud16/límites del bindEvent. mode=self-signed => sin API key.",
+    "bootstrapFilter": {
+      "kinds": [
+        31340
+      ],
+      "authors": [
+        "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+      ],
+      "#d": [
+        "bind:466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27"
+      ]
+    }
+  },
+  "terms": {
+    "event": {
+      "kind": 31340,
+      "created_at": 1751759990,
+      "tags": [
+        [
+          "d",
+          "terms"
+        ],
+        [
+          "t",
+          "nge"
+        ]
+      ],
+      "content": "{\"minStakeSats\":100,\"maxStakeSats\":100000,\"feePct\":2,\"devFeePct\":1,\"feeMinSats\":1,\"depositWindowSec\":3600,\"resolveWindowSec\":86400}",
+      "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "id": "c6846e80049e6fd77ee717bc76c64db566715a7a5fe2c9692b599f435c767e79",
+      "sig": "da20700268c368ab3da862eda3d6dcb2f684c852e5dc824948283d159d389d037aed591ca501e70af6a967ca90ac24982b3f7b4a38587120441a70d2474223c3"
+    },
+    "content": {
+      "minStakeSats": 100,
+      "maxStakeSats": 100000,
+      "feePct": 2,
+      "devFeePct": 1,
+      "feeMinSats": 1,
+      "depositWindowSec": 3600,
+      "resolveWindowSec": 86400
+    }
+  },
+  "bind": {
+    "event": {
+      "kind": 31340,
+      "created_at": 1751759995,
+      "tags": [
+        [
+          "d",
+          "bind:466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27"
+        ],
+        [
+          "p",
+          "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27"
+        ],
+        [
+          "a",
+          "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+        ],
+        [
+          "t",
+          "nge"
+        ]
+      ],
+      "content": "{\"lud16\":\"luna@luna.naranja.fit\",\"minStakeSats\":100,\"maxStakeSats\":100000,\"feePct\":2,\"devFeePct\":1,\"feeMinSats\":1,\"depositWindowSec\":3600,\"resolveWindowSec\":86400}",
+      "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "id": "7f277c164dc3efdc36e17baba6eede8dad34e20c2fc84e7052737aca31d484f1",
+      "sig": "f60ee37a10e9889cb6e4131fc8806e4272c0cc23ce70cdb7fd8a8144ee2b3b36956f503cd236b9e6275d41f01ce995f46b67cf556b887819a0d1da1249fe8cfb"
+    },
+    "resolves": {
+      "gameCoord": "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa",
+      "lud16": "luna@luna.naranja.fit",
+      "minStakeSats": 100,
+      "maxStakeSats": 100000,
+      "feePct": 2,
+      "devFeePct": 1,
+      "feeMinSats": 1,
+      "depositWindowSec": 3600,
+      "resolveWindowSec": 86400
+    },
+    "explain": "Lo que la URI ya no carga. La SDK lo lee una vez al arrancar (cacheable). Si cambia la coordenada o el lud16 del escrow, se actualiza sin reemitir la credencial."
+  },
+  "happyPath": {
+    "contract": {
+      "kind": 1339,
+      "created_at": 1751760000,
+      "tags": [
+        [
+          "a",
+          "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+        ],
+        [
+          "p",
+          "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+        ],
+        [
+          "p",
+          "2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991"
+        ],
+        [
+          "p",
+          "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+          "wss://relay.luna.fit",
+          "escrow"
+        ],
+        [
+          "p",
+          "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+          "wss://relay.luna.fit",
+          "oracle"
+        ],
+        [
+          "stake",
+          "1000"
+        ],
+        [
+          "deadline",
+          "1751763600"
+        ],
+        [
+          "t",
+          "nge"
+        ]
+      ],
+      "content": "Apuesta 1v1 en Pac-Toshi, tablero clásico. Gana el mejor de 3.",
+      "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+      "id": "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75",
+      "sig": "0b9c507755567337f1c4bcf06388e51506fa9115d868a16147b6b554b630967bc0682bff86cd4f7b6f9a3b149a87d24d6f52366d86b9e40fabcc47125826e38f"
+    },
+    "deposits": {
+      "alice": {
+        "kind": 9734,
+        "created_at": 1751760030,
+        "tags": [
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "p",
+            "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+          ],
+          [
+            "amount",
+            "1000000"
+          ],
+          [
+            "relays",
+            "wss://relay.luna.fit"
+          ]
+        ],
+        "content": "",
+        "pubkey": "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1",
+        "id": "a28a1679461c9676924da3a712404b6ec3b6d3c97ff2d5f637d9b16e34b0bfeb",
+        "sig": "c32e55bf26af35ce51dd5c212d4c3f8f12d3be690a136d9288dc41ff7c29df62568b09455321a12c70a573e7e5109342f8a167abcca7e5acc8e6a70d91c257fb"
+      },
+      "bob": {
+        "kind": 9734,
+        "created_at": 1751760030,
+        "tags": [
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "p",
+            "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+          ],
+          [
+            "amount",
+            "1000000"
+          ],
+          [
+            "relays",
+            "wss://relay.luna.fit"
+          ]
+        ],
+        "content": "",
+        "pubkey": "2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991",
+        "id": "bea827c4c42f28e1936448e12ce33e18493d9c39a774d38f4e0f87d84707ef74",
+        "sig": "451089f59adda5436803a192597d2a72e6dbaec8b9825e3c213a41678513ae3da0c70c3476adbbfa1b0cf08c8a50292749817aff06b006ba7310de722a4c8079"
+      }
+    },
+    "states": {
+      "accepted": {
+        "kind": 31340,
+        "created_at": 1751760005,
+        "tags": [
+          [
+            "d",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "status",
+            "accepted"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "{\"potSats\":0,\"feePct\":2,\"devFeePct\":1}",
+        "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+        "id": "16e9e4dfb5df955ad9cf01f1039b8366dce163b7974daebd8824111ba2754c65",
+        "sig": "2ea34d0aa4d2f47191c14653d49c73a1600572c85dea97c9e1f2dfcdc4167856af022a1c325180e631a3585da49cae461e6ea83d9fd484474a144519f4e6c843"
+      },
+      "funded": {
+        "kind": 31340,
+        "created_at": 1751760040,
+        "tags": [
+          [
+            "d",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "status",
+            "funded"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "{\"deposits\":[{\"p\":\"3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1\",\"receipt\":\"<id 9735 alice>\"},{\"p\":\"2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991\",\"receipt\":\"<id 9735 bob>\"}],\"potSats\":2000,\"feePct\":2,\"devFeePct\":1}",
+        "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+        "id": "3610e667662d4f20027dc9ad70374a61346dd6eb7a8c386bd65282917b77429d",
+        "sig": "fb681614939e03d761b1540a794788a4485b0c7b3a8e94f0e14ac93d0cd1086ed8f0516750c6d27b095f5861467bdadd2536928ced438531e349cebad535ca9e"
+      },
+      "resolved": {
+        "kind": 31340,
+        "created_at": 1751760130,
+        "tags": [
+          [
+            "d",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "status",
+            "resolved"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "{\"resultEvent\":\"eadf0c07d0ee9526a7b3cce2fe6a70993d1a7e219af5cfd7484be7e1e25b371c\",\"winners\":[\"3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1\"],\"payoutReceipt\":\"<id 9735 premio>\",\"devFeeReceipt\":\"<id 9735 dev>\",\"feeSats\":40,\"potSats\":2000}",
+        "pubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+        "id": "b86b07a44101a986cd1fd0961d847e906af6c3c0cc278420685149e24d1593af",
+        "sig": "0c271b62088d4c23095d66f6a1c83a8b9e8be20174328536d09270a179eba3e2a2203df16cf28b30654e05a4aca0b374a3f9cbd76e133d8b2cf0569593558fb1"
+      }
+    },
+    "result": {
+      "kind": 1341,
+      "created_at": 1751760120,
+      "tags": [
+        [
+          "e",
+          "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+        ],
+        [
+          "a",
+          "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+        ],
+        [
+          "p",
+          "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+        ],
+        [
+          "status",
+          "win"
+        ],
+        [
+          "t",
+          "nge"
+        ]
+      ],
+      "content": "{\"score\":\"3-1\"}",
+      "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+      "id": "eadf0c07d0ee9526a7b3cce2fe6a70993d1a7e219af5cfd7484be7e1e25b371c",
+      "sig": "b723aa9096c884b1e8fc41200f2fa832d2a127c06b9212b2a3ee198facb4390bf087e2f6106fd230882c77d7f77d01bb54c6a7742b9b3b5e89aa36647bc778e6"
+    }
+  },
+  "adversarial": [
+    {
+      "name": "stake-over-max",
+      "expect": "REJECT",
+      "code": "STAKE_OUT_OF_RANGE",
+      "why": "stake 200000 > maxStakeSats 100000",
+      "event": {
+        "kind": 1339,
+        "created_at": 1751760000,
+        "tags": [
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "p",
+            "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+          ],
+          [
+            "p",
+            "2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991"
+          ],
+          [
+            "p",
+            "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+            "wss://relay.luna.fit",
+            "escrow"
+          ],
+          [
+            "p",
+            "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+            "wss://relay.luna.fit",
+            "oracle"
+          ],
+          [
+            "stake",
+            "200000"
+          ],
+          [
+            "deadline",
+            "1751763600"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "stake fuera de rango",
+        "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+        "id": "2311bcda5e1f6337695370429ebd975f5c106fdfa457b764f80b87d0decdcb8c",
+        "sig": "7440d564b9beec33ddc6b467b688041fe09192266dfa305ce8f22c7db84f3323bb4065251bb06a80b368e60fd5dfd6f561405ba85e6dce8c3455688befd25967"
+      }
+    },
+    {
+      "name": "wrong-escrow",
+      "expect": "REJECT",
+      "code": "WRONG_ESCROW",
+      "why": "el p-tag 'escrow' no es la pubkey del escrow que emite la URI",
+      "event": {
+        "kind": 1339,
+        "created_at": 1751760000,
+        "tags": [
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "p",
+            "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+          ],
+          [
+            "p",
+            "2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991"
+          ],
+          [
+            "p",
+            "5ab4689e400a4a160cf01cd44730845a54768df8547dcdf073d964f109f18c30",
+            "wss://relay.luna.fit",
+            "escrow"
+          ],
+          [
+            "p",
+            "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+            "wss://relay.luna.fit",
+            "oracle"
+          ],
+          [
+            "stake",
+            "1000"
+          ],
+          [
+            "deadline",
+            "1751763600"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "escrow equivocado",
+        "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+        "id": "94947bb74ff96d30323411d412e690ff902e2ec58217a9ebfe796938fd9d584f",
+        "sig": "a0c69199e15589e26d901d29b6ba1c578a8b6247b0773521033f47da12f3a4a8f7bc995fa45ed194446ef3abe65c19ba220fad062a422ef0ec7104fde7e72c66"
+      }
+    },
+    {
+      "name": "result-wrong-oracle",
+      "expect": "REJECT",
+      "code": "ORACLE_MISMATCH",
+      "why": "el 1341 lo firma attacker, pero el oráculo del contrato es service",
+      "event": {
+        "kind": 1341,
+        "created_at": 1751760120,
+        "tags": [
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "p",
+            "5ab4689e400a4a160cf01cd44730845a54768df8547dcdf073d964f109f18c30"
+          ],
+          [
+            "status",
+            "win"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "{\"score\":\"9-0\"}",
+        "pubkey": "5ab4689e400a4a160cf01cd44730845a54768df8547dcdf073d964f109f18c30",
+        "id": "09b2525c086709187e0d7a790550a9cce9729342397d37e20889fbc0f270cd86",
+        "sig": "ec5560e2c6d19a32ff7001f066799634cf174f95bd40a687d18ecf5b9d473787b8ebf9192e95692ee0b8e01af18ddfd43f83f2c114f9ca9051f0b0ca5de295c9"
+      }
+    },
+    {
+      "name": "winner-not-participant",
+      "expect": "REJECT",
+      "code": "WINNER_NOT_PARTICIPANT",
+      "why": "attacker no está entre los p-participantes del contrato",
+      "event": {
+        "kind": 1341,
+        "created_at": 1751760120,
+        "tags": [
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "p",
+            "5ab4689e400a4a160cf01cd44730845a54768df8547dcdf073d964f109f18c30"
+          ],
+          [
+            "status",
+            "win"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "",
+        "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+        "id": "efa7ebfdefa53b63cdc52147db9ab4ec4d3bc39d2a9434f36d8bb0a7d6b2fc81",
+        "sig": "09043f7112acf654de4790efc664630e3169585c984c0b9197f9cff7bd21836dedb53a5ff987436444fb232d1cdad348284040f70cc540609ca57231eee5ac91"
+      }
+    },
+    {
+      "name": "deposit-wrong-amount",
+      "expect": "REJECT",
+      "code": "AMOUNT_MISMATCH",
+      "why": "amount 500000 msat != stake 1000000 msat",
+      "event": {
+        "kind": 9734,
+        "created_at": 1751760030,
+        "tags": [
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "p",
+            "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+          ],
+          [
+            "amount",
+            "500000"
+          ],
+          [
+            "relays",
+            "wss://relay.luna.fit"
+          ]
+        ],
+        "content": "",
+        "pubkey": "3c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1",
+        "id": "06414ad5da34f968a27ab53b1f2611a5b44610a0b2cc9efa52a2b847f7ec448c",
+        "sig": "161fcd21c7be1c411f86b4a46a41812052426928c76b1e13f2efce8ffb1a4acc0bdcbc1e1468eef40825abeac13d5d8a16fdd772adf3e89c836639710551fc38"
+      }
+    },
+    {
+      "name": "double-result",
+      "expect": "IGNORE",
+      "code": "ALREADY_RESOLVED",
+      "why": "ya se procesó un 1341 para este contrato; el primero válido gana",
+      "event": {
+        "kind": 1341,
+        "created_at": 1751760200,
+        "tags": [
+          [
+            "e",
+            "fa8ca30e031dafe37afef791dfff9968259cd5b7bf735099b5db7f0fd5043c75"
+          ],
+          [
+            "a",
+            "30023:9ac20335eb38768d2052be1dbbc3c8f6178407458e51e6b4ad22f1d91758895b:pacman-pwa"
+          ],
+          [
+            "p",
+            "2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991"
+          ],
+          [
+            "status",
+            "win"
+          ],
+          [
+            "t",
+            "nge"
+          ]
+        ],
+        "content": "",
+        "pubkey": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+        "id": "9c068a2f644780d7bd24059f60218a84c19571367bbf40e5ea7e6761a304d19a",
+        "sig": "89ccc3f2b6f1fd5db86eb3e9d9965f866abd3b0f0e7890354a0affc90a58a186da53bbf6431f84e03ae50dc2106daa5fb7d30f89a7abfefbe3501e8859320a8d"
+      }
+    }
+  ]
+}
