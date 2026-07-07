@@ -61,6 +61,26 @@ function markProcessed(id: string): void {
   }
 }
 
+// Resultados VISTOS pero todavía SIN destino definitivo: la apuesta aún no está
+// `ready` (recién fondea), o el settle devolvió NOT_READY/SETTLE_FAILED. El cursor
+// temporal avanza en cada corrida, así que su `created_at` cae fuera de la ventana
+// `since` a los pocos ticks; sin re-consultarlos por id, el 1341 se perdía y la
+// apuesta terminaba expirando (el ganador se quedaba sin premio). Se re-piden por id
+// hasta liquidarse o hasta que la apuesta se vuelva terminal (ahí pasan a processed).
+const pending = new Set<string>();
+const PENDING_MAX = 500;
+
+function rememberPending(id: string): void {
+  if (pending.has(id)) return;
+  pending.add(id);
+  if (pending.size > PENDING_MAX) {
+    for (const old of pending) {
+      pending.delete(old);
+      if (pending.size <= PENDING_MAX / 2) break;
+    }
+  }
+}
+
 export async function syncNgpBetResults(): Promise<void> {
   if (!NGP_BETS_ENABLED) return;
 
@@ -79,6 +99,24 @@ export async function syncNgpBetResults(): Promise<void> {
     return; // relays caídos: reintentamos en el próximo tick (cursor intacto)
   }
 
+  // Re-consulta EXPLÍCITA de los resultados pendientes por id: su `created_at` ya
+  // quedó fuera de la ventana `since`, pero siguen sin liquidar. Best-effort: si esta
+  // query falla, quedan en `pending` y se reintentan en el próximo tick. Dedup por id
+  // contra los que ya trajo la ventana temporal.
+  if (pending.size > 0) {
+    try {
+      const retried = await pool().querySync(
+        RELAYS,
+        { kinds: [NGP_BET_RESULT_KIND], ids: [...pending] },
+        { maxWait: 5000 },
+      );
+      const seen = new Set(events.map((e) => e.id));
+      for (const ev of retried) if (!seen.has(ev.id)) events.push(ev);
+    } catch {
+      // ignore: los pendientes siguen en el set para el próximo tick
+    }
+  }
+
   // Orden cronológico: si llegan dos 1341 contradictorios, gana el primero.
   events.sort((a, b) => a.created_at - b.created_at);
   for (const ev of events) {
@@ -93,6 +131,11 @@ export async function syncNgpBetResults(): Promise<void> {
         context: { eventId: ev.id, pubkey: ev.pubkey },
       });
     }
+    // Sincronizamos `pending` con lo que decidió handleNgpResultEvent: si el evento
+    // quedó `processed` (destino definitivo) deja de reintentarse; si no —apuesta aún
+    // no `ready` o settle reintentable— hay que volver a pedirlo por id la próxima vez.
+    if (processed.has(ev.id)) pending.delete(ev.id);
+    else rememberPending(ev.id);
   }
   lastCheckedAt = startedAt;
 }
