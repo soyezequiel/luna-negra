@@ -429,6 +429,25 @@ model Game {
   zapBets   ZapBet[]
   zaps      Zap[]
   comments  GameComment[]
+
+  ngeCredential NgeCredential?
+}
+
+// Credencial NGE (Nostr Game Escrow) por juego: la "NWC del escrow". Luna genera
+// un par de servicio, publica el bind event (kind:31340 `d`=bind:<pubkey>) y le
+// entrega al dev la URI `nostr+nge://<escrow>?relay=…&secret=…` para pegar en
+// NGE_CONNECTION. El secreto va CIFRADO (crypto-vault) para re-emitir la MISMA
+// credencial de forma idempotente y rotarla. La `servicePubkey` es el oráculo del
+// juego vía TOFU (queda en `ZapBet.oraclePubkey` al materializar el 1339). Ver
+// docs/nge/ y src/lib/nge-credential.ts.
+model NgeCredential {
+  id               String    @id @default(cuid())
+  gameId           String    @unique
+  game             Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  servicePubkey    String    @unique // pubkey (hex) del oráculo/servicio del juego
+  serviceSecretEnc String // secreto cifrado (AES-256-GCM); nunca se loguea
+  createdAt        DateTime  @default(now())
+  rotatedAt        DateTime? // última rotación (null = nunca rotada)
 }
 
 // Comentario (kind:1) de un juego, CACHEADO desde Nostr. La fuente de verdad es
