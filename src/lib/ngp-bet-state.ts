@@ -82,6 +82,17 @@ function nextStateTimestamp(anchorId: string): number {
 
 const sats = (msat: bigint) => Number(msatToSats(msat));
 
+/** ¿La apuesta nació por NGE v2 (RPC privado)? Marca `nge` en metadataJson. */
+export function isNgeV2Bet(metadataJson: string | null): boolean {
+  if (!metadataJson) return false;
+  try {
+    const meta = JSON.parse(metadataJson) as Record<string, unknown>;
+    return Boolean(meta && typeof meta === "object" && meta.nge);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Publica (o re-publica) el estado NGP de una apuesta v2. Best-effort: nunca
  * lanza y nunca bloquea al caller — los call sites la disparan fire-and-forget
@@ -98,6 +109,10 @@ export async function publishNgpBetState(betId: string): Promise<void> {
       },
     });
     if (!bet?.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-")) return;
+    // Apuestas NGE v2: el protocolo elige privacidad sobre transparencia (spec
+    // §2) — nada de sombra pública 31340. Se detectan por la marca `nge` que el
+    // servicio deja en metadataJson (ver src/lib/nge-service.ts).
+    if (isNgeV2Bet(bet.metadataJson)) return;
     const mapped = ngpStatusFor(bet.status);
     if (!mapped) return;
 

@@ -1,15 +1,14 @@
 import { providerIdFromRequest } from "@/lib/provider-auth";
 import { prisma } from "@/lib/prisma";
-import { siteUrl } from "@/lib/site-url";
 import { issueNgeCredential, getNgeCredential } from "@/lib/nge-credential";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
 import { BETS_V2_ENABLED } from "@/lib/escrow-v2-config";
-import { NGP_BETS_ENABLED } from "@/lib/ngp-bet-state";
 
-// Emisor de la credencial NGE (la "NWC del escrow"). El dueño del juego (sesión del
-// panel o API key del proveedor) pide su credencial; Luna genera/reusa el par de
-// servicio, publica el bind event y devuelve la URI nostr+nge:// para pegar en
-// NGE_CONNECTION. Ver src/lib/nge-credential.ts y docs/nge/.
+// Emisor de la credencial NGE v2 (la "NWC del escrow"). El dueño del juego
+// (sesión del panel o API key del proveedor) pide su credencial; Luna genera o
+// reusa la clave de cliente y devuelve la URI nostr+nge:// para pegar en
+// NGE_CONNECTION. Sin bind event: la config viaja por RPC (`get_info`). Rotar =
+// revocar la clave anterior. Ver src/lib/nge-credential.ts y docs/nge/.
 
 export function OPTIONS() {
   return corsPreflight();
@@ -49,8 +48,8 @@ async function authorizeGame(
 }
 
 export async function POST(req: Request) {
-  if (!BETS_V2_ENABLED || !NGP_BETS_ENABLED) {
-    return apiError("NGP_DISABLED", "Las apuestas NGP están desactivadas", 503);
+  if (!BETS_V2_ENABLED) {
+    return apiError("BETS_V2_DISABLED", "Las apuestas v2 están desactivadas", 503);
   }
   const body = (await req.json().catch(() => ({}))) as { gameId?: unknown; rotate?: unknown };
   const gameId = typeof body.gameId === "string" ? body.gameId.trim() : "";
@@ -59,24 +58,22 @@ export async function POST(req: Request) {
   const auth = await authorizeGame(req, gameId);
   if (!auth.ok) return apiError(auth.code, auth.message, auth.status);
 
-  const res = await issueNgeCredential({ gameId: auth.gameId, baseUrl: siteUrl(req), rotate });
+  const res = await issueNgeCredential({ gameId: auth.gameId, rotate });
   if (!res.ok) return apiError(res.code, res.message, statusFor(res.code));
 
   return apiOk({
     uri: res.uri,
     escrowPubkey: res.escrowPubkey,
     servicePubkey: res.servicePubkey,
-    gameCoord: res.gameCoord,
     relays: res.relays,
     rotated: res.rotated,
-    bindPublished: res.bindPublished,
     envVar: "NGE_CONNECTION",
   });
 }
 
 export async function GET(req: Request) {
-  if (!BETS_V2_ENABLED || !NGP_BETS_ENABLED) {
-    return apiError("NGP_DISABLED", "Las apuestas NGP están desactivadas", 503);
+  if (!BETS_V2_ENABLED) {
+    return apiError("BETS_V2_DISABLED", "Las apuestas v2 están desactivadas", 503);
   }
   const gameId = new URL(req.url).searchParams.get("gameId")?.trim() || "";
   const auth = await authorizeGame(req, gameId);

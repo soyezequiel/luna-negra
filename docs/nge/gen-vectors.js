@@ -1,11 +1,19 @@
 /**
- * Generador de test vectors para NGE (Nostr Game Escrow).
- * Claves FIJAS y reproducibles: cualquiera puede re-firmar y verificar.
- * Los `id` son deterministas (sha256 de la serialización NIP-01);
- * las firmas schnorr llevan aux aleatorio, así que se VERIFICAN, no se comparan.
+ * Generador de test vectors para NGE v2 (Nostr Game Escrow) — RPC estilo NWC.
+ *
+ * El protocolo es request/response cifrado (NIP-44) sobre eventos EFÍMEROS:
+ *   - request  kind:24940, lo firma el cliente `C`, cifrado hacia el escrow `S`
+ *   - response kind:24941, lo firma `S`, cifrado hacia `C`, tag e=<id request>
+ *
+ * Claves y NONCE NIP-44 FIJOS → el `content` cifrado y el `id` del evento son
+ * deterministas y reproducibles. Las firmas schnorr llevan aux aleatorio: se
+ * VERIFICAN, no se comparan. La clave de conversación es simétrica (C↔S), así que
+ * un mismo ciphertext lo cifra `C` y lo descifra `S` (y viceversa).
+ *
+ * Correr:  node docs/nge/gen-vectors.js   (regenera test-vectors.json)
  */
 const { finalizeEvent, getPublicKey, verifyEvent } = require("nostr-tools/pure");
-const { nip19 } = require("nostr-tools");
+const { nip19, nip44 } = require("nostr-tools");
 const fs = require("fs");
 const path = require("path");
 
@@ -14,383 +22,244 @@ function hexToBytes(hex) {
   for (let i = 0; i < b.length; i++) b[i] = parseInt(hex.substr(i * 2, 2), 16);
   return b;
 }
+const bytesToHex = (b) => Buffer.from(b).toString("hex");
 
 // ── Actores (claves de prueba, NO usar en producción) ───────────────────────
 const SK = {
-  escrow: "11".repeat(32), // Luna Negra (custodio)
-  service: "22".repeat(32), // clave de servicio del juego = oráculo (self-signed)
-  alice: "33".repeat(32), // participante A
-  bob: "44".repeat(32), // participante B
-  dev: "55".repeat(32), // autor del artículo 30023 del juego
-  attacker: "66".repeat(32), // clave hostil (para casos adversariales)
+  escrow: "11".repeat(32), // Luna Negra (custodio) = `S`, host de la URI
+  client: "22".repeat(32), // clave del juego = `C`, el `secret` de la URI
+  attacker: "66".repeat(32), // clave hostil sin credencial (adversarial)
 };
 const PK = Object.fromEntries(
   Object.entries(SK).map(([k, v]) => [k, getPublicKey(hexToBytes(v))]),
 );
 
 const T0 = 1751760000; // created_at base (fijo)
-const DEADLINE = T0 + 3600; // ventana de fondeo
-const GAME_COORD = `30023:${PK.dev}:pacman-pwa`;
-const STAKE_SATS = 1000;
-const STAKE_MSAT = STAKE_SATS * 1000;
 const RELAY = "wss://relay.luna.fit";
-const LUD16 = "luna@luna.naranja.fit";
-const TAG = "nge"; // tag de descubrimiento (alias legacy: "ngp-bet")
+// Nonce NIP-44 fijo SOLO para reproducibilidad de los vectores. En producción
+// nip44.encrypt genera un nonce aleatorio por mensaje.
+const NONCE = hexToBytes("ab".repeat(32));
 
-function sign(sk, tmpl) {
-  return finalizeEvent(tmpl, hexToBytes(SK[sk]));
-}
+const KIND = { request: 24940, response: 24941 };
 
-// ── La URI de conexión NGE (self-signed / keyless) — MÍNIMA: 3 campos ────────
-// Solo lo irreducible: a quién te conectás (host), dónde (relay) y con qué firmás
-// (secret). Todo lo demás (coordenada del juego, lud16, límites, fees) lo deriva
-// la SDK del `bindEvent` que publica el escrow (ver más abajo).
+// Clave de conversación NIP-44 entre C y S (simétrica).
+const CK = nip44.getConversationKey(hexToBytes(SK.client), PK.escrow);
+const enc = (payload) => nip44.encrypt(JSON.stringify(payload), CK, NONCE);
+const dec = (content) => JSON.parse(nip44.decrypt(content, CK));
+
+// ── La URI de conexión NGE v2 — MÍNIMA: 3 campos ─────────────────────────────
+// host = pubkey estable del escrow; relay = transporte; secret = clave de `C`.
+// TODO lo demás (límites, fees, métodos) se pide por RPC (`get_info`): sin bind.
 function buildUri() {
   const q = new URLSearchParams();
   q.set("relay", RELAY);
-  q.set("secret", SK.service);
+  q.set("secret", nip19.nsecEncode(hexToBytes(SK.client)));
   return `nostr+nge://${PK.escrow}?${q.toString()}`;
 }
 const uri = buildUri();
 const parsed = (() => {
   const u = new URL(uri);
   const p = u.searchParams;
+  const d = nip19.decode(p.get("secret"));
   return {
     escrowPubkey: u.host,
     relays: p.getAll("relay"),
-    serviceSecret: p.get("secret"),
-    oraclePubkey: getPublicKey(hexToBytes(p.get("secret"))), // derivado del secret
-    mode: "self-signed", // sin apikey => el juego firma sus 1341
+    clientPubkey: getPublicKey(d.data),
   };
 })();
 
-// ── Eventos canónicos (camino feliz) ────────────────────────────────────────
-// 1) terms (condiciones publicadas por el escrow)
-const termsContent = {
-  minStakeSats: 100,
-  maxStakeSats: 100000,
-  feePct: 2,
-  devFeePct: 1,
-  feeMinSats: 1,
-  depositWindowSec: 3600,
-  resolveWindowSec: 86400,
-};
-const terms = sign("escrow", {
-  kind: 31340,
-  created_at: T0 - 10,
-  tags: [
-    ["d", "terms"],
-    ["t", TAG],
-  ],
-  content: JSON.stringify(termsContent),
-});
-
-// bind: el escrow ata oráculo -> juego + config, firmado y verificable. Es lo que
-// la URI ya NO carga (coordenada + lud16 + límites). addressable con
-// d="bind:<oraclePubkey>". La SDK lo resuelve al arrancar:
-//   { kinds:[31340], authors:[escrow], "#d":["bind:<oracle>"] }
-const bindEvent = sign("escrow", {
-  kind: 31340,
-  created_at: T0 - 5,
-  tags: [
-    ["d", `bind:${PK.service}`],
-    ["p", PK.service], // el oráculo/servicio al que aplica
-    ["a", GAME_COORD], // la coordenada del juego (lo que sacamos de la URI)
-    ["t", TAG],
-  ],
-  content: JSON.stringify({ lud16: LUD16, ...termsContent }),
-});
-
-// 2) contrato 1339 (firma la clave de servicio = retador; oráculo = ella misma)
-const contract = sign("service", {
-  kind: 1339,
-  created_at: T0,
-  tags: [
-    ["a", GAME_COORD],
-    ["p", PK.alice],
-    ["p", PK.bob],
-    ["p", PK.escrow, RELAY, "escrow"],
-    ["p", PK.service, RELAY, "oracle"],
-    ["stake", String(STAKE_SATS)],
-    ["deadline", String(DEADLINE)],
-    ["t", TAG],
-  ],
-  content: "Apuesta 1v1 en Pac-Toshi, tablero clásico. Gana el mejor de 3.",
-});
-
-// 3) depósitos: zap request 9734 de cada participante (e = contrato)
-function depositReq(who) {
-  return sign(who, {
-    kind: 9734,
-    created_at: T0 + 30,
-    tags: [
-      ["e", contract.id],
-      ["p", PK.escrow],
-      ["amount", String(STAKE_MSAT)],
-      ["relays", RELAY],
-    ],
-    content: "",
-  });
+// ── Helpers de firma ─────────────────────────────────────────────────────────
+function signRequest(payload, createdAt = T0, extraTags = []) {
+  const tmpl = {
+    kind: KIND.request,
+    created_at: createdAt,
+    tags: [["p", PK.escrow], ...extraTags],
+    content: enc(payload),
+  };
+  return finalizeEvent(tmpl, hexToBytes(SK.client));
 }
-const depositAlice = depositReq("alice");
-const depositBob = depositReq("bob");
-
-// 4) estado del escrow: accepted -> funded -> resolved
-function state(status, extra, at) {
-  return sign("escrow", {
-    kind: 31340,
-    created_at: at,
-    tags: [
-      ["d", contract.id],
-      ["e", contract.id],
-      ["a", GAME_COORD],
-      ["status", status],
-      ["t", TAG],
-    ],
-    content: JSON.stringify(extra),
-  });
+function signResponse(payload, requestId, createdAt = T0 + 1) {
+  const tmpl = {
+    kind: KIND.response,
+    created_at: createdAt,
+    tags: [["p", PK.client], ["e", requestId]],
+    content: enc(payload),
+  };
+  return finalizeEvent(tmpl, hexToBytes(SK.escrow));
 }
-const stateAccepted = state("accepted", { potSats: 0, ...termsSlice() }, T0 + 5);
-const stateFunded = state(
-  "funded",
+
+// Un par request/response canónico (camino feliz) para un método.
+function rpcPair({ method, params, resultType, result }) {
+  const requestPayload = { method, params };
+  const request = signRequest(requestPayload);
+  const responsePayload = { result_type: resultType ?? method, result };
+  const response = signResponse(responsePayload, request.id);
+  return { method, requestPayload, request, responsePayload, response };
+}
+
+// ── Datos del flujo canónico (una apuesta 1v1) ───────────────────────────────
+const BET_ID = "clbet0000000000000000000n"; // cuid de ejemplo (estable)
+const STAKE = 1000;
+const DEADLINE = T0 + 3600;
+const SEATS = [
+  { seatId: "alice", pubkey: getPublicKey(hexToBytes("33".repeat(32))), payoutAddress: "alice@getalby.com" },
+  { seatId: "bob" }, // sin pubkey ni lud16 → cobra por QR de retiro
+];
+
+const canonical = [
+  rpcPair({
+    method: "get_info",
+    params: {},
+    result: {
+      methods: ["get_info", "create_bet", "get_bet", "report_result", "cancel_bet"],
+      version: "1.0",
+      currency: "sat",
+      minStakeSats: 100,
+      maxStakeSats: 500000,
+      feePct: 2,
+      devFeePct: 1,
+    },
+  }),
+  rpcPair({
+    method: "create_bet",
+    params: { seats: SEATS, stakeSats: STAKE, condition: "Mejor de 3 en Pac-Toshi", clientRef: "match-42" },
+    result: {
+      betId: BET_ID,
+      status: "pending_deposits",
+      deposits: [
+        { seatId: "alice", bolt11: "lnbc10u1p...alice", amountSats: STAKE, expiresAt: DEADLINE },
+        { seatId: "bob", bolt11: "lnbc10u1p...bob", amountSats: STAKE, expiresAt: DEADLINE },
+      ],
+    },
+  }),
+  rpcPair({
+    method: "get_bet",
+    params: { betId: BET_ID },
+    result: {
+      betId: BET_ID,
+      status: "funded",
+      stakeSats: STAKE,
+      potSats: STAKE * 2,
+      deadlineSec: DEADLINE,
+      seats: [
+        { seatId: "alice", deposited: true, payout: null },
+        { seatId: "bob", deposited: true, payout: null },
+      ],
+      result: null,
+    },
+  }),
+  rpcPair({
+    method: "report_result",
+    params: { betId: BET_ID, winners: ["alice"] },
+    result: { ok: true, status: "settled" },
+  }),
+];
+
+// ── Casos adversariales — qué debe DECIDIR el escrow ─────────────────────────
+// No son "eventos válidos"; documentan la respuesta correcta ante entradas
+// hostiles o mal formadas. El escrow (src/lib/nge-service.ts) debe cumplirlos.
+const attackerCK = nip44.getConversationKey(hexToBytes(SK.attacker), PK.escrow);
+const attackerRequest = finalizeEvent(
   {
-    deposits: [
-      { p: PK.alice, receipt: "<id 9735 alice>" },
-      { p: PK.bob, receipt: "<id 9735 bob>" },
-    ],
-    potSats: STAKE_SATS * 2,
-    ...termsSlice(),
+    kind: KIND.request,
+    created_at: T0,
+    tags: [["p", PK.escrow]],
+    content: nip44.encrypt(JSON.stringify({ method: "get_info", params: {} }), attackerCK, NONCE),
   },
-  T0 + 40,
+  hexToBytes(SK.attacker),
 );
-function termsSlice() {
-  return { feePct: termsContent.feePct, devFeePct: termsContent.devFeePct };
-}
+const staleRequest = signRequest({ method: "get_info", params: {} }, T0 - 4000);
 
-// 5) resultado 1341 (firma el oráculo = clave de servicio)
-const result = sign("service", {
-  kind: 1341,
-  created_at: T0 + 120,
-  tags: [
-    ["e", contract.id],
-    ["a", GAME_COORD],
-    ["p", PK.alice], // ganadora
-    ["status", "win"],
-    ["t", TAG],
-  ],
-  content: JSON.stringify({ score: "3-1" }),
-});
-
-// 6) estado resolved
-const stateResolved = state(
-  "resolved",
+const adversarial = [
   {
-    resultEvent: result.id,
-    winners: [PK.alice],
-    payoutReceipt: "<id 9735 premio>",
-    devFeeReceipt: "<id 9735 dev>",
-    feeSats: 40,
-    potSats: STAKE_SATS * 2,
+    name: "cliente sin credencial",
+    request: attackerRequest,
+    expect: { error: { code: "UNAUTHORIZED" } },
+    why: "El request está bien firmado y descifra, pero la pubkey no tiene credencial emitida (§6). El escrow no atiende clientes desconocidos.",
   },
-  T0 + 130,
-);
+  {
+    name: "request fuera de la ventana de frescura",
+    request: staleRequest,
+    expect: { error: { code: "EXPIRED_REQUEST" } },
+    why: "created_at está a >5 min del ahora del escrow (§6). Anti-replay: se rechaza aunque venga de una `C` válida.",
+  },
+  {
+    name: "stake fuera de rango",
+    method: "create_bet",
+    params: { seats: SEATS, stakeSats: 5 },
+    expect: { error: { code: "STAKE_OUT_OF_RANGE" } },
+    why: "stakeSats por debajo de minStakeSats de get_info. El escrow valida contra sus propios límites, no confía en el cliente.",
+  },
+  {
+    name: "ganador no fondeado",
+    method: "report_result",
+    params: { betId: BET_ID, winners: ["carol"] },
+    expect: { error: { code: "BAD_WINNER" } },
+    why: "El seatId ganador no existe / no está fondeado (§7). winners debe ser subconjunto de asientos pagados.",
+  },
+  {
+    name: "reporte sobre apuesta no fondeada",
+    method: "report_result",
+    params: { betId: BET_ID, winners: ["alice"] },
+    expect: { error: { code: "NOT_FUNDED" } },
+    why: "report_result solo vale con status=funded (§7). En pending_deposits se rechaza.",
+  },
+  {
+    name: "resultado ya liquidado con otro ganador",
+    method: "report_result",
+    params: { betId: BET_ID, winners: ["bob"] },
+    expect: { error: { code: "ALREADY_SETTLED" } },
+    why: "Finalidad (§7): una vez settled, el resultado no se reescribe. Un reintento IDÉNTICO devolvería ok; uno distinto es error.",
+  },
+  {
+    name: "cancelar apuesta ya fondeada",
+    method: "cancel_bet",
+    params: { betId: BET_ID },
+    expect: { error: { code: "NOT_CANCELLABLE" } },
+    why: "cancel_bet solo pre-fondeo total (§8). Fondeada, la única salida es report_result (winners vacío = anular).",
+  },
+];
 
-// ── Casos adversariales: el escrow DEBE rechazar ────────────────────────────
-const adversarial = [];
-
-// A1: stake por encima del máximo publicado
-adversarial.push({
-  name: "stake-over-max",
-  expect: "REJECT",
-  code: "STAKE_OUT_OF_RANGE",
-  why: `stake ${200000} > maxStakeSats ${termsContent.maxStakeSats}`,
-  event: sign("service", {
-    kind: 1339,
-    created_at: T0,
-    tags: [
-      ["a", GAME_COORD],
-      ["p", PK.alice],
-      ["p", PK.bob],
-      ["p", PK.escrow, RELAY, "escrow"],
-      ["p", PK.service, RELAY, "oracle"],
-      ["stake", "200000"],
-      ["deadline", String(DEADLINE)],
-      ["t", TAG],
-    ],
-    content: "stake fuera de rango",
-  }),
-});
-
-// A2: contrato que nombra a OTRO como escrow (no a Luna)
-adversarial.push({
-  name: "wrong-escrow",
-  expect: "REJECT",
-  code: "WRONG_ESCROW",
-  why: "el p-tag 'escrow' no es la pubkey del escrow que emite la URI",
-  event: sign("service", {
-    kind: 1339,
-    created_at: T0,
-    tags: [
-      ["a", GAME_COORD],
-      ["p", PK.alice],
-      ["p", PK.bob],
-      ["p", PK.attacker, RELAY, "escrow"], // <-- no es el escrow real
-      ["p", PK.service, RELAY, "oracle"],
-      ["stake", String(STAKE_SATS)],
-      ["deadline", String(DEADLINE)],
-      ["t", TAG],
-    ],
-    content: "escrow equivocado",
-  }),
-});
-
-// A3: resultado firmado por una clave que NO es el oráculo del contrato
-adversarial.push({
-  name: "result-wrong-oracle",
-  expect: "REJECT",
-  code: "ORACLE_MISMATCH",
-  why: "el 1341 lo firma attacker, pero el oráculo del contrato es service",
-  event: sign("attacker", {
-    kind: 1341,
-    created_at: T0 + 120,
-    tags: [
-      ["e", contract.id],
-      ["a", GAME_COORD],
-      ["p", PK.attacker],
-      ["status", "win"],
-      ["t", TAG],
-    ],
-    content: JSON.stringify({ score: "9-0" }),
-  }),
-});
-
-// A4: resultado que declara ganador que NO es participante
-adversarial.push({
-  name: "winner-not-participant",
-  expect: "REJECT",
-  code: "WINNER_NOT_PARTICIPANT",
-  why: "attacker no está entre los p-participantes del contrato",
-  event: sign("service", {
-    kind: 1341,
-    created_at: T0 + 120,
-    tags: [
-      ["e", contract.id],
-      ["a", GAME_COORD],
-      ["p", PK.attacker], // <-- no es asiento del contrato
-      ["status", "win"],
-      ["t", TAG],
-    ],
-    content: "",
-  }),
-});
-
-// A5: depósito 9734 con monto distinto al stake
-adversarial.push({
-  name: "deposit-wrong-amount",
-  expect: "REJECT",
-  code: "AMOUNT_MISMATCH",
-  why: `amount ${500 * 1000} msat != stake ${STAKE_MSAT} msat`,
-  event: sign("alice", {
-    kind: 9734,
-    created_at: T0 + 30,
-    tags: [
-      ["e", contract.id],
-      ["p", PK.escrow],
-      ["amount", String(500 * 1000)],
-      ["relays", RELAY],
-    ],
-    content: "",
-  }),
-});
-
-// A6: segundo 1341 válido (replay/doble resultado) -> idempotente, se ignora
-adversarial.push({
-  name: "double-result",
-  expect: "IGNORE",
-  code: "ALREADY_RESOLVED",
-  why: "ya se procesó un 1341 para este contrato; el primero válido gana",
-  event: sign("service", {
-    kind: 1341,
-    created_at: T0 + 200,
-    tags: [
-      ["e", contract.id],
-      ["a", GAME_COORD],
-      ["p", PK.bob], // contradice el primero (ganó alice)
-      ["status", "win"],
-      ["t", TAG],
-    ],
-    content: "",
-  }),
-});
-
-// ── Sanity: todo evento canónico y adversarial debe VERIFICAR firma ──────────
+// ── Sanity: todo evento canónico/adversarial debe VERIFICAR firma y round-trip ──
 const allEvents = [
-  terms,
-  bindEvent,
-  contract,
-  depositAlice,
-  depositBob,
-  stateAccepted,
-  stateFunded,
-  result,
-  stateResolved,
-  ...adversarial.map((a) => a.event),
+  ...canonical.flatMap((c) => [c.request, c.response]),
+  attackerRequest,
+  staleRequest,
 ];
 for (const ev of allEvents) {
-  if (!verifyEvent(ev)) throw new Error(`firma inválida en ${ev.id}`);
+  if (!verifyEvent(ev)) throw new Error(`evento no verifica: kind ${ev.kind} id ${ev.id}`);
+}
+for (const c of canonical) {
+  const back = dec(c.request.content);
+  if (JSON.stringify(back) !== JSON.stringify(c.requestPayload)) {
+    throw new Error(`round-trip roto en request de ${c.method}`);
+  }
+  const backR = dec(c.response.content);
+  if (JSON.stringify(backR) !== JSON.stringify(c.responsePayload)) {
+    throw new Error(`round-trip roto en response de ${c.method}`);
+  }
 }
 
-// ── Salida ──────────────────────────────────────────────────────────────────
-const out = {
-  $schema: "NGE test vectors v1",
+// ── Serialización ────────────────────────────────────────────────────────────
+const vectors = {
+  version: "1.0",
   note:
-    "Claves de prueba deterministas. Los `id` son estables; las firmas se VERIFICAN (aux aleatorio de BIP340), no se comparan carácter a carácter.",
-  actors: Object.fromEntries(
-    Object.keys(SK).map((k) => [
-      k,
-      { sk: SK[k], pubkey: PK[k], npub: nip19.npubEncode(PK[k]) },
-    ]),
-  ),
-  constants: { T0, DEADLINE, GAME_COORD, STAKE_SATS, STAKE_MSAT, RELAY, LUD16, tag: TAG },
-  connectionUri: {
-    uri,
-    fields: 3,
-    parsed,
-    explain:
-      "El dev pega esto en NGE_CONNECTION. 3 campos: host=escrow, relay, secret. La SDK deriva oraclePubkey del secret y resuelve gameCoord/lud16/límites del bindEvent. mode=self-signed => sin API key.",
-    bootstrapFilter: {
-      kinds: [31340],
-      authors: [PK.escrow],
-      "#d": [`bind:${PK.service}`],
-    },
+    "NGE v2 (RPC cifrado estilo NWC). Claves y nonce NIP-44 fijos → content e id " +
+    "deterministas; las firmas se verifican, no se comparan. Regenera con " +
+    "`node docs/nge/gen-vectors.js`.",
+  kinds: KIND,
+  keys: {
+    escrow: { sk: SK.escrow, pubkey: PK.escrow, npub: nip19.npubEncode(PK.escrow) },
+    client: { sk: SK.client, pubkey: PK.client, nsec: nip19.nsecEncode(hexToBytes(SK.client)) },
+    attacker: { sk: SK.attacker, pubkey: PK.attacker },
   },
-  terms: { event: terms, content: termsContent },
-  bind: {
-    event: bindEvent,
-    resolves: { gameCoord: GAME_COORD, lud16: LUD16, ...termsContent },
-    explain:
-      "Lo que la URI ya no carga. La SDK lo lee una vez al arrancar (cacheable). Si cambia la coordenada o el lud16 del escrow, se actualiza sin reemitir la credencial.",
-  },
-  happyPath: {
-    contract,
-    deposits: { alice: depositAlice, bob: depositBob },
-    states: { accepted: stateAccepted, funded: stateFunded, resolved: stateResolved },
-    result,
-  },
-  adversarial: adversarial.map((a) => ({
-    name: a.name,
-    expect: a.expect,
-    code: a.code,
-    why: a.why,
-    event: a.event,
-  })),
+  uri,
+  parsed,
+  crypto: { conversationKey: bytesToHex(CK), nonce: bytesToHex(NONCE) },
+  canonical,
+  adversarial,
 };
 
-const dir = path.join("F:/proyectos/Tienda juegos PC Nostr/docs/nge");
-fs.mkdirSync(dir, { recursive: true });
-fs.writeFileSync(path.join(dir, "test-vectors.json"), JSON.stringify(out, null, 2) + "\n");
-console.log("OK ->", path.join(dir, "test-vectors.json"));
-console.log("contract.id =", contract.id);
-console.log("result.id   =", result.id);
-console.log("uri         =", uri);
-console.log("events verificados:", allEvents.length);
+const outPath = path.join(__dirname, "test-vectors.json");
+fs.writeFileSync(outPath, JSON.stringify(vectors, null, 2) + "\n");
+console.log(`✓ ${canonical.length} pares canónicos + ${adversarial.length} adversariales → ${path.relative(process.cwd(), outPath)}`);

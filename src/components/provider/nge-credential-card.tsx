@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
-// Tarjeta de la credencial NGE (Nostr Game Escrow) de UN juego: la "NWC del
-// escrow". Un solo string (`NGE_CONNECTION`) reemplaza API key + oráculo propio +
-// fetch a ngp-config para el flujo de apuestas por eventos. Self-contenida
-// (fetch/estado propios) siguiendo el patrón de ZapLeaderboard/IntegrationMatrix.
-// Ver docs/nge/ y src/app/api/provider/nge/credential/route.ts.
+// Tarjeta de la credencial NGE v2 (Nostr Game Escrow) de UN juego: la "NWC del
+// escrow". Un solo string (`NGE_CONNECTION`) da apuestas por RPC cifrado (crear,
+// depósitos bolt11, estado, resultado) sin API key ni eventos públicos.
+// Self-contenida (fetch/estado propios) siguiendo el patrón de
+// ZapLeaderboard/IntegrationMatrix. Ver docs/nge/ y
+// src/app/api/provider/nge/credential/route.ts.
 
 type NgeCredential = {
   uri: string;
   escrowPubkey: string;
   servicePubkey: string;
-  gameCoord: string;
   relays: string[];
   envVar: string;
 };
@@ -54,7 +54,7 @@ export function NgeCredentialCard({ gameId }: { gameId: string }) {
     if (
       rotate &&
       !confirm(
-        "Rotar la credencial invalida la anterior: el game server que la tenga pegada en NGE_CONNECTION deja de poder firmar contratos/resultados hasta que actualices la variable. ¿Continuar?",
+        "Rotar la credencial REVOCA la anterior: el game server que la tenga pegada en NGE_CONNECTION pasa a recibir UNAUTHORIZED hasta que actualices la variable. ¿Continuar?",
       )
     ) {
       return;
@@ -85,16 +85,16 @@ export function NgeCredentialCard({ gameId }: { gameId: string }) {
         <h2 className="font-semibold">Credencial NGE</h2>
         <span
           className="inline-flex items-center rounded-full bg-ln-luna/15 px-2 py-0.5 text-[10px] font-semibold text-ln-luna"
-          title="Nostr Game Escrow: apuestas por eventos (kinds 1339/1341/31340) sobre el mismo motor de escrow."
+          title="Nostr Game Escrow v2: RPC cifrado estilo NWC (kinds efímeros 24940/24941) sobre el mismo motor de escrow."
         >
-          NGE
+          NGE v2
         </span>
       </div>
       <p className="mb-3 mt-1 text-xs text-faint">
-        Un solo string para el game server de este juego: reemplaza clave propia +
-        oráculo + límites por config. Pegalo en <code>NGE_CONNECTION</code> y tenés
-        contrato, depósito, estado y resultado por eventos Nostr —{" "}
-        <strong>sin API key ni backend server-to-server</strong>.
+        Un solo string para el game server de este juego. Pegalo en{" "}
+        <code>NGE_CONNECTION</code> y tenés crear apuesta, depósitos por bolt11,
+        estado y resultado por RPC cifrado sobre Nostr —{" "}
+        <strong>sin API key y sin exponer nada en relays públicos</strong>.
       </p>
 
       {error ? <p className="mb-3 text-xs text-[var(--lose)]">{error}</p> : null}
@@ -128,12 +128,8 @@ export function NgeCredentialCard({ gameId }: { gameId: string }) {
               <dd className="font-mono text-ink">{short(cred.escrowPubkey)}</dd>
             </div>
             <div>
-              <dt className="text-ln-faint">Oráculo (servicio)</dt>
+              <dt className="text-ln-faint">Cliente (este juego)</dt>
               <dd className="font-mono text-ink">{short(cred.servicePubkey)}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-ln-faint">Coordenada</dt>
-              <dd className="truncate font-mono text-ink">{cred.gameCoord}</dd>
             </div>
             <div>
               <dt className="text-ln-faint">Relays</dt>

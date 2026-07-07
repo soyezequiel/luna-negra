@@ -36,6 +36,15 @@ export function getStorePubkey(): string | null {
   return sk ? getPublicKey(sk) : null;
 }
 
+/**
+ * Clave privada de la tienda (bytes) para módulos server-side que necesitan
+ * cifrar/descifrar además de firmar (el servicio NGE v2 usa NIP-44 entre la
+ * tienda `S` y cada cliente `C`). Nunca sale del proceso. Null si no hay clave.
+ */
+export function getStoreSecretKey(): Uint8Array | null {
+  return getSecretKey();
+}
+
 // Memo a nivel PROCESO (globalThis): Turbopack duplica este módulo en varios
 // chunks del server (rutas vs instrumentation), cada uno con su top-level. Con un
 // `let` local, el warm-up del boot memoizaba en UNA copia y la ruta de crear

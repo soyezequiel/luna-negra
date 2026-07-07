@@ -10,6 +10,7 @@ export async function registerNode() {
   void warmUpStoreZapProfileAtBoot();
   void warmUpNgpTermsAtBoot();
   await startEscrowTick();
+  await startNgeV2Service();
   await startNwcPaymentWatcher();
   await startZapSync();
   await startZapBetSync();
@@ -21,6 +22,25 @@ export async function registerNode() {
   await startLivePresenceSync();
   await startPresenceSampler();
   await startStorePresenceSampler();
+}
+
+/**
+ * Servicio NGE v2 IN-PROCESS (self-host): el lado escrow del RPC estilo NWC.
+ * Suscripción persistente a los requests kind:24940 cifrados dirigidos a la
+ * tienda; despacha al motor de apuestas v2 y responde con 24941 firmados. Sin
+ * esto, los juegos con credencial NGE v2 no reciben respuesta (sus reenvíos
+ * expiran por timeout). Ver src/lib/nge-service.ts y docs/nge/nge-v2-spec.md.
+ */
+async function startNgeV2Service() {
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+  try {
+    const { BETS_V2_ENABLED } = await import("./lib/escrow-v2-config");
+    if (!BETS_V2_ENABLED) return;
+    const { startNgeV2Service } = await import("./lib/nge-service");
+    startNgeV2Service();
+  } catch (err) {
+    await reportBackgroundFailure("nge-service", err);
+  }
 }
 
 /**

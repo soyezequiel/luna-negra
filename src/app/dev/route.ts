@@ -544,7 +544,7 @@ await Promise.any(new SimplePool().publish(PUBLIC_WRITE_RELAYS, evt));
 GET  /api/v2/bets/{id}        // estado + por participante: depositZapRequest + depositCallback
 POST /api/v2/bets/{id}/result { "winners": ["npub1..."] }   // vacío = empate/anulación (refund)
 POST /api/v2/bets/{id}/cancel</code></pre></div>
-          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado viene del game server con API key</strong>, no del marcador cliente. Luna firma el resultado con el oráculo gestionado; el juego no toca Nostr para esto. <code>winners</code> vacío = empate/anulación → reembolso. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>.</p></div>
+          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado viene del game server</strong>, no del marcador cliente. Por defecto con API key: Luna firma el resultado con el oráculo gestionado y el juego no toca Nostr. Modo keyless opcional: declarás tu clave de oráculo una vez y firmás vos el <code>kind:1341</code> (la firma es la auth, sin API key) — detalle en la skill. <code>winners</code> vacío = empate/anulación → reembolso. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>.</p></div>
         </div>
       </details>
 
