@@ -89,7 +89,14 @@ describe("POST /api/v1/rooms/invite", () => {
     const { status, json } = await postRoomLink({ gameId: "game1", roomId: "ROOM1" });
 
     expect(status).toBe(200);
-    expect(json.launchQueued).toBe(false);
+    expect(json).toMatchObject({
+      roomId: "ROOM1",
+      launchQueued: false,
+    });
+    expect(json.lnInvite).toBeUndefined();
+    expect(json.inviteUrl).toContain("lnRoom=ROOM1");
+    expect(json.inviteUrl).not.toContain("lnInvite=");
+    expect(mocks.signRoomInvite).not.toHaveBeenCalled();
     expect(mocks.queueRoomLinkLaunchRequest).not.toHaveBeenCalled();
   });
 });

@@ -230,17 +230,17 @@ export function FriendsSidebar() {
   }
 
   // Despacha el "Invitar a jugar": si el juego soporta Luna Room Link (sala del
-  // propio juego) usa el enlace dirigido `?lnRoom=&lnInvite=`; si no, el flujo
-  // clásico de salas hosteadas por Luna (DM con `/game/<slug>?room=`).
+  // propio juego) usa un enlace general `?lnRoom=`; si no, el flujo clásico de
+  // salas hosteadas por Luna (DM con `/game/<slug>?room=`).
   function handleInvite(recipientPubkey: string, name: string) {
     if (isRoomLink) void inviteViaRoomLink(recipientPubkey, name);
     else void inviteToGame(recipientPubkey, name);
   }
 
-  // "Luna Room Link" dirigido: pide a Luna un enlace atado al npub del amigo (con el
-  // dominio del juego) y lo manda por DM. Si el host todavía NO tiene el juego
-  // abierto en la sala, lo abre automáticamente (para quedar esperando adentro).
-  // Reusa `linkRoomId` para que todos —host e invitados— caigan en la misma sala.
+  // "Luna Room Link" general: pide a Luna un enlace público con el dominio del
+  // juego y lo manda por DM. Si el host todavía NO tiene el juego abierto en la
+  // sala, lo abre automáticamente (para quedar esperando adentro). Reusa
+  // `linkRoomId` para que todos —host e invitados— caigan en la misma sala.
   async function inviteViaRoomLink(recipientPubkey: string, name: string) {
     if (!currentGame || invitingPk) return;
     const game = currentGame;
@@ -253,14 +253,12 @@ export function FriendsSidebar() {
     let opened = false;
     setInvitingPk(recipientPubkey);
     try {
-      const toNpub = npubOf(recipientPubkey);
       const r = await fetch("/api/v1/rooms/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId: game.gameId,
           roomId: linkRoomId ?? undefined,
-          toNpub,
         }),
       });
       const d = await r.json().catch(() => ({}));
@@ -507,7 +505,7 @@ export function FriendsSidebar() {
         : "Invitar a jugar";
 
   // Con salas de Luna, invitar requiere el juego abierto (sala activa). Con Luna
-  // Room Link no: Luna arma el enlace dirigido sin abrir el juego, así que el botón
+  // Room Link no: Luna arma un enlace general sin abrir el juego, así que el botón
   // queda habilitado directamente.
   const inviteDisabledFor = (pk: string) =>
     invited.has(pk) || invitingPk === pk || (!isRoomLink && !roomForGame);

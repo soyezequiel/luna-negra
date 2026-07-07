@@ -25,8 +25,9 @@ Queremos un estándar donde:
 2. El enlace **lleva el dominio del juego** (p. ej. `https://tetra.tu-dominio/…`),
    no el de Luna.
 3. La sala **no necesita pre-existir**: el juego la crea *lazy* al primer acceso.
-4. Hay **dos variantes**: enlace **público** (cualquiera lo abre y entra) y enlace
-   **dirigido** (solo el `npub` invitado entra).
+4. La UI principal usa enlace **público** (cualquiera lo abre y entra). La variante
+   **dirigida** (solo el `npub` invitado entra) queda como capacidad técnica para
+   retos cerrados, torneos o apuestas.
 5. Cualquier juego que implemente el contrato (§ "Contrato del juego") **aparece
    con botón "Invitar"** en Luna, sin código a medida por juego.
 
@@ -62,9 +63,11 @@ https://<Game.gameUrl>/?lnRoom=<roomId>[&lnInvite=<jwt>]
 ### Variante pública vs dirigida
 
 - **Pública** (sin `lnInvite`): cualquiera con el enlace entra. El juego solo exige
-  identidad (que el que abre esté logueado, vía `lnToken`).
+  identidad (que el que abre esté logueado, vía `lnToken`). Es el flujo por defecto
+  para "Invitar a jugar" y para compartir con amigos.
 - **Dirigida** (con `lnInvite`): el juego verifica el `lnInvite` contra el JWKS y
-  **exige que el jugador == `toNpub`** del token. Encaja con el reto 1v1 NIP-17.
+  **exige que el jugador == `toNpub`** del token. Queda reservada para flujos
+  cerrados donde haga falta fijar participantes.
 
 ## Handoff de identidad (la pieza crítica)
 
@@ -187,7 +190,7 @@ Ver mecánica NIP-17 en [`nostr-games-protocol-salas-invitaciones.md`](nostr-gam
 | 3 | **Token `lnInvite`** (`scope:"room-invite"`, atado a `toNpub`, sin semántica de sala-Luna): `signRoomInvite`/`verifyRoomInvite` en [`auth.ts`](src/lib/auth.ts). | El `invite` actual va atado al que abre y asume sala de Luna. | S |
 | 4 | **Variante `?lnRoom=` en el launcher** cliente ([`room-launch.ts`](src/lib/room-launch.ts)): abrir `<gameUrl>?lnRoom=&lnToken=` para el camino "desde Luna". | Hoy solo hay `launchStandaloneGame` (`lnToken`) y `launchGameRoom` (`inviteToken`+`room`). | S |
 | 5 | **Capability `roomLink`** en el catálogo de integración ([`integration-ngp.ts`](src/lib/integration-ngp.ts)) + toggle en el panel del proveedor + **gating del botón "Invitar"** en la ficha ([`game/[slug]/page.tsx`](src/app/game/[slug]/page.tsx), hoy usa `supportsRooms = Boolean(game.gameUrl)`). | No hay flag para "soporta sala hosteada por el juego con Luna Room Link". | S |
-| 6 | **UI "Invitar"**: botón en la ficha / panel multijugador que llama a `POST /api/v1/rooms/invite`, muestra el link para copiar (público) y/o selector de amigo (dirigido). | El panel actual ([`multiplayer-panel.tsx`](src/components/multiplayer-panel.tsx)) crea salas hosteadas por Luna. | M |
+| 6 | **UI "Invitar"**: botón en la ficha / panel multijugador que llama a `POST /api/v1/rooms/invite` y usa el link público como flujo normal para copiar o mandar a amigos. | El panel actual ([`multiplayer-panel.tsx`](src/components/multiplayer-panel.tsx)) crea salas hosteadas por Luna. | M |
 | 7 | **Extender el parseo de invitaciones** ([`invite.ts`](src/lib/invite.ts) `INVITE_RE`) para reconocer enlaces `?lnRoom=` con dominio del juego (además del `/game/<slug>?room=` actual). | El regex actual matchea solo el path de Luna. | S |
 | 8 | **Doc del contrato para proveedores** (los 6 pasos de "Contrato del juego") en la guía de integración / skill `integrar-luna-negra-1-0`. | Nuevo. | S |
 
