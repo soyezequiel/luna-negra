@@ -65,6 +65,12 @@ export function encodeLnurl(url: string): string {
   return bech32.encode("lnurl", words, 2000);
 }
 
+/** Decodifica un LNURL bech32 (lnurl1…) a su URL. Lanza si no es un bech32 válido. */
+export function decodeLnurl(lnurl: string): string {
+  const { words } = bech32.decode(lnurl as `${string}1${string}`, 2000);
+  return new TextDecoder().decode(Uint8Array.from(bech32.fromWords(words)));
+}
+
 /**
  * Motivo por el que una Lightning Address NO puede recibir zaps NIP-57:
  *  - `bad_address`: no es un `name@domain` válido.

@@ -12,6 +12,7 @@ import {
 } from "@/lib/lightning";
 import {
   buildUnsignedZapRequest,
+  decodeLnurl,
   encodeLnurl,
   type UnsignedZapRequest,
 } from "@/lib/zap";
@@ -25,7 +26,7 @@ import { prewarmPayoutDestinations } from "@/lib/escrow-payout";
 import { RESOLVE_WINDOW_MS } from "@/lib/escrow-v2-config";
 import { emitDepositReceivedV2, emitBetFundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
-import { storeLnurlUrl } from "@/lib/site-url";
+import { STORE_LNURL_USERNAME, storeLnurlUrl } from "@/lib/site-url";
 import { notifyBetPaymentDiagnostic, notifyNonSocialZap } from "@/lib/discord";
 import { publishNgpBetState } from "@/lib/ngp-bet-state";
 
@@ -101,20 +102,41 @@ export function validateDepositZapRequest(
   const storePubkey = getStorePubkey();
   const anchor = bet.anchorEventId;
   const anchorIsReal = !!anchor && !anchor.startsWith("dev-anchor-");
-  const requestLnurl = tagValue(signed, "lnurl");
-  const allowedLnurls = baseUrl
-    ? new Set([
-        encodeLnurl(storeLnurlUrl(baseUrl)),
-        encodeLnurl(participantLnurlUrl(baseUrl, part.id)),
-      ])
-    : null;
+  // El tag `lnurl` lo arma el CLIENTE del depósito (en NGP eventos, el propio juego
+  // desde SU base URL configurada). No exigimos igualdad exacta contra nuestro
+  // `siteUrl`: un host alterno que igual enruta a esta tienda (www, otro host del
+  // túnel) o un http/https distinto rechazaría TODOS los depósitos. Alcanza con que
+  // decodifique a una de nuestras RUTAS LNURL (tienda o participante) — el pago real
+  // va al callback HTTP, no a este tag, así que la ruta es lo que importa acá.
+  const lnurlOk = baseUrl ? lnurlTargetsStore(tagValue(signed, "lnurl"), part.id) : true;
   const ok =
     Number.isInteger(amountMsat) &&
     BigInt(amountMsat) === bet.stakeMsat &&
     tagValue(signed, "p") === storePubkey &&
     (anchorIsReal ? tagValue(signed, "e") === anchor : true) &&
-    (!allowedLnurls || (!!requestLnurl && allowedLnurls.has(requestLnurl)));
+    lnurlOk;
   return ok ? { ok: true } : { ok: false, error: "El zap request no coincide con la apuesta" };
+}
+
+const STORE_LNURL_PATH = `/.well-known/lnurlp/${STORE_LNURL_USERNAME}`;
+
+/**
+ * ¿El tag `lnurl` del 9734 apunta a una ruta LNURL de esta tienda (la del store o la
+ * de un participante)? Compara por PATHNAME, no por URL exacta: el host y el esquema
+ * pueden diferir entre lo que configuró el juego y el `siteUrl` de la tienda sin que
+ * el depósito deje de ser legítimo. No abre un vector de robo: los otros checks
+ * (`p`, `e`, monto, firmante) siguen atando el zap al contrato, y el dinero va al
+ * callback HTTP real, no a lo que diga este tag.
+ */
+function lnurlTargetsStore(requestLnurl: string | undefined, partId: string): boolean {
+  if (!requestLnurl) return false;
+  let path: string;
+  try {
+    path = new URL(decodeLnurl(requestLnurl)).pathname.replace(/\/+$/, "");
+  } catch {
+    return false;
+  }
+  return path === STORE_LNURL_PATH || path === `/api/v2/lnurlp/${partId}`;
 }
 
 type UnsignedComment = { kind: 1111; created_at: number; tags: string[][]; content: string };
