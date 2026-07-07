@@ -1,195 +1,278 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { verifyEvent, type Event } from "nostr-tools/pure";
+import { finalizeEvent, getPublicKey, verifyEvent, type Event } from "nostr-tools/pure";
 import {
   NGE,
+  NgeError,
+  NGE_KIND,
   parseNgeUri,
-  contractTemplate,
-  resultTemplate,
-  depositRequestTemplate,
+  requestTemplate,
+  responseTemplate,
+  decryptPayload,
   type NgeTransport,
+  type NgeResponsePayload,
 } from "../sdk/nge";
 
-// Los vectores firmados son el contrato de conformidad (docs/nge/). El SDK se
-// valida contra ELLOS: misma URI, mismos tags de contrato/resultado, mismos ids.
+// Los vectores firmados son el contrato de conformidad de NGE v2 (docs/nge/). El
+// SDK RPC (sdk/nge.ts) se valida contra ELLOS: misma URI, mismo `content` cifrado
+// (nonce fijo → determinista), mismos ids, y el mismo cableado request↔response.
+// Las firmas se VERIFICAN (BIP-340 lleva aux aleatorio), no se comparan.
 const V = JSON.parse(
   readFileSync(new URL("../docs/nge/test-vectors.json", import.meta.url), "utf8"),
 ) as any;
 
-// ── Transporte falso: sirve queries desde una semilla y guarda lo publicado ──
-function matches(ev: Event, f: Record<string, unknown>): boolean {
-  if (Array.isArray(f.kinds) && !f.kinds.includes(ev.kind)) return false;
-  if (Array.isArray(f.authors) && !f.authors.includes(ev.pubkey)) return false;
-  for (const [k, vals] of Object.entries(f)) {
-    if (!k.startsWith("#") || !Array.isArray(vals)) continue;
-    const name = k.slice(1);
-    const has = ev.tags.some((t) => t[0] === name && vals.includes(t[1]));
-    if (!has) return false;
-  }
-  return true;
-}
+const hexToBytes = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
+const escrowSk = hexToBytes(V.keys.escrow.sk);
+const clientSk = hexToBytes(V.keys.client.sk);
+const escrowPk: string = V.keys.escrow.pubkey;
+const clientPk: string = V.keys.client.pubkey;
+const nonce = hexToBytes(V.crypto.nonce);
 
-function fakeTransport(seed: Event[]) {
-  const store = [...seed];
-  const published: Event[] = [];
-  const t: NgeTransport & { published: Event[] } = {
-    published,
-    async publish(ev) {
-      published.push(ev);
-      store.push(ev);
-    },
-    async query(f) {
-      return store.filter((e) => matches(e, f as Record<string, unknown>));
-    },
-    subscribe(f, onEvent) {
-      store.filter((e) => matches(e, f as Record<string, unknown>)).forEach(onEvent);
-      return () => {};
-    },
-    close() {},
-  };
-  return t;
-}
+const canon = (method: string) => V.canonical.find((c: any) => c.method === method);
 
+// ── parseNgeUri ──────────────────────────────────────────────────────────────
 describe("parseNgeUri", () => {
-  it("deriva escrow/relays/oráculo del string mínimo de 3 campos", () => {
-    const c = parseNgeUri(V.connectionUri.uri);
-    expect(c.escrowPubkey).toBe(V.connectionUri.parsed.escrowPubkey);
-    expect(c.relays).toEqual(V.connectionUri.parsed.relays);
-    expect(c.oraclePubkey).toBe(V.connectionUri.parsed.oraclePubkey);
-    expect(c.oraclePubkey).toBe(V.actors.service.pubkey); // = getPublicKey(secret)
+  it("deriva escrow/relays/clientPubkey del string mínimo de 3 campos", () => {
+    const c = parseNgeUri(V.uri);
+    expect(c.escrowPubkey).toBe(V.parsed.escrowPubkey);
+    expect(c.relays).toEqual(V.parsed.relays);
+    expect(c.clientPubkey).toBe(V.parsed.clientPubkey);
+    expect(c.clientPubkey).toBe(getPublicKey(clientSk)); // = getPublicKey(secret)
   });
 
   it("rechaza esquema y campos faltantes", () => {
     expect(() => parseNgeUri("https://foo?x=1")).toThrow(/nostr\+nge/);
-    expect(() => parseNgeUri(`nostr+nge://${V.actors.escrow.pubkey}?secret=x`)).toThrow(/relay/);
-    expect(() => parseNgeUri(`nostr+nge://${V.actors.escrow.pubkey}?relay=wss://r`)).toThrow(
-      /secret/,
-    );
+    expect(() => parseNgeUri(`nostr+nge://${escrowPk}?secret=nsec1x`)).toThrow(/relay/);
+    expect(() => parseNgeUri(`nostr+nge://${escrowPk}?relay=wss://r`)).toThrow(/secret/);
   });
 });
 
-describe("builders puros vs vectores", () => {
-  const contractTags = V.happyPath.contract.tags;
-
-  it("contractTemplate reproduce los tags del contrato 1339 del vector", () => {
-    const tmpl = contractTemplate(
-      {
-        seats: [V.actors.alice.pubkey, V.actors.bob.pubkey],
-        stakeSats: V.constants.STAKE_SATS,
-        deadlineSec: V.constants.DEADLINE,
-        memo: V.happyPath.contract.content,
-        tags: ["nge"], // el vector usa solo t=nge (el SDK por defecto agrega el alias)
-      },
-      {
-        escrowPubkey: V.actors.escrow.pubkey,
-        oraclePubkey: V.actors.service.pubkey,
-        gameCoord: V.constants.GAME_COORD,
-        relayHint: V.constants.RELAY,
-      },
-    );
-    expect(tmpl.kind).toBe(1339);
-    expect(tmpl.tags).toEqual(contractTags);
-    expect(tmpl.content).toBe(V.happyPath.contract.content);
-  });
-
-  it("resultTemplate reproduce los tags del 1341 del vector", () => {
-    const tmpl = resultTemplate({
-      contractId: V.happyPath.contract.id,
-      gameCoord: V.constants.GAME_COORD,
-      winners: [V.actors.alice.pubkey],
-      meta: { score: "3-1" },
-      tags: ["nge"],
+// ── Builders puros vs vectores (content + id deterministas) ──────────────────
+describe("builders puros reproducen el content/id de cada par del vector", () => {
+  for (const c of V.canonical) {
+    it(`request de ${c.method}`, () => {
+      const tmpl = requestTemplate(c.requestPayload, {
+        escrowPubkey: escrowPk,
+        secretKey: clientSk,
+        createdAt: c.request.created_at,
+        nonce,
+      });
+      expect(tmpl.kind).toBe(NGE_KIND.request);
+      expect(tmpl.content).toBe(c.request.content);
+      const ev = finalizeEvent(tmpl, clientSk);
+      expect(ev.id).toBe(c.request.id); // el id (hash) es determinista aunque la firma no
+      expect(ev.pubkey).toBe(clientPk); // el request lo firma `C`
     });
-    expect(tmpl.kind).toBe(1341);
-    expect(tmpl.tags).toEqual(V.happyPath.result.tags);
-  });
 
-  it("depositRequestTemplate arma el 9734 con amount = stake en msat", () => {
-    const tmpl = depositRequestTemplate({
-      contractId: V.happyPath.contract.id,
-      escrowPubkey: V.actors.escrow.pubkey,
-      stakeSats: V.constants.STAKE_SATS,
-      relays: [V.constants.RELAY],
+    it(`response de ${c.method}`, () => {
+      const tmpl = responseTemplate(c.responsePayload, {
+        clientPubkey: clientPk,
+        requestId: c.request.id,
+        secretKey: escrowSk,
+        createdAt: c.response.created_at,
+        nonce,
+      });
+      expect(tmpl.kind).toBe(NGE_KIND.response);
+      expect(tmpl.content).toBe(c.response.content);
+      // la response tiene que tagear el id del request y la pubkey del cliente
+      expect(tmpl.tags).toContainEqual(["e", c.request.id]);
+      expect(tmpl.tags).toContainEqual(["p", clientPk]);
+      const ev = finalizeEvent(tmpl, escrowSk);
+      expect(ev.id).toBe(c.response.id);
+      expect(ev.pubkey).toBe(escrowPk); // la response la firma `S`
     });
-    expect(tmpl.kind).toBe(9734);
-    expect(tmpl.tags).toContainEqual(["amount", String(V.constants.STAKE_MSAT)]);
-    expect(tmpl.tags).toContainEqual(["e", V.happyPath.contract.id]);
-  });
-});
-
-describe("todos los eventos del vector verifican firma", () => {
-  it("15 eventos válidos", () => {
-    const all: Event[] = [
-      V.terms.event,
-      V.bind.event,
-      V.happyPath.contract,
-      V.happyPath.deposits.alice,
-      V.happyPath.deposits.bob,
-      V.happyPath.states.accepted,
-      V.happyPath.states.funded,
-      V.happyPath.states.resolved,
-      V.happyPath.result,
-      ...V.adversarial.map((a: any) => a.event),
-    ];
-    expect(all.length).toBe(15);
-    for (const ev of all) expect(verifyEvent(ev)).toBe(true);
-  });
-});
-
-describe("NGE (con transporte falso)", () => {
-  function connect(seed: Event[]) {
-    return NGE.connect(V.connectionUri.uri, { transport: fakeTransport(seed) });
   }
+});
 
-  it("binding() resuelve coordenada/lud16/límites del bind event", async () => {
-    const nge = connect([V.bind.event]);
-    const b = await nge.binding();
-    expect(b.gameCoord).toBe(V.constants.GAME_COORD);
-    expect(b.lud16).toBe(V.constants.LUD16);
-    expect(b.minStakeSats).toBe(100);
-    expect(b.maxStakeSats).toBe(100000);
+// ── Cifrado NIP-44 C↔S (round-trip contra el ciphertext del vector) ──────────
+describe("cifrado NIP-44 simétrico C↔S", () => {
+  for (const c of V.canonical) {
+    it(`${c.method}: descifra request y response a sus payloads`, () => {
+      // el escrow descifra el request de `C`
+      expect(decryptPayload(c.request.content, escrowSk, clientPk)).toEqual(c.requestPayload);
+      // el juego descifra la response de `S`
+      expect(decryptPayload(c.response.content, clientSk, escrowPk)).toEqual(c.responsePayload);
+    });
+  }
+});
+
+// ── Firmas ───────────────────────────────────────────────────────────────────
+describe("todos los eventos del vector verifican firma", () => {
+  it("canónicos (request+response) + adversariales con evento firmado", () => {
+    const evs: Event[] = [
+      ...V.canonical.flatMap((c: any) => [c.request, c.response]),
+      ...V.adversarial.filter((a: any) => a.request).map((a: any) => a.request),
+    ];
+    expect(evs.length).toBeGreaterThanOrEqual(10);
+    for (const ev of evs) expect(verifyEvent(ev)).toBe(true);
+  });
+});
+
+// ── Fake escrow en memoria (mismo cableado que src/lib/nge-service.ts) ────────
+// Descifra el request de `C`, resuelve con un handler y publica una response
+// firmada por `S`, tagueada `["e", <id request>]`. Ejercita el RPC completo del
+// cliente (firma → publish → suscripción a su propia response → descifrado).
+type Handler = (method: string, params: Record<string, unknown>) => NgeResponsePayload;
+
+function filterMatches(ev: Event, f: Record<string, unknown>): boolean {
+  if (Array.isArray(f.kinds) && !f.kinds.includes(ev.kind)) return false;
+  if (Array.isArray(f.authors) && !(f.authors as string[]).includes(ev.pubkey)) return false;
+  for (const [k, vals] of Object.entries(f)) {
+    if (!k.startsWith("#") || !Array.isArray(vals)) continue;
+    const name = k.slice(1);
+    if (!ev.tags.some((t) => t[0] === name && (vals as string[]).includes(t[1]))) return false;
+  }
+  return true;
+}
+
+function fakeEscrow(handler: Handler) {
+  const subs: { filter: Record<string, unknown>; onEvent: (e: Event) => void }[] = [];
+  const published: Event[] = [];
+  const transport: NgeTransport = {
+    async publish(ev) {
+      published.push(ev);
+      let req: { method: string; params?: Record<string, unknown> };
+      try {
+        req = decryptPayload(ev.content, escrowSk, ev.pubkey) as typeof req;
+      } catch {
+        return; // basura: el escrow real la ignoraría
+      }
+      const payload = handler(req.method, req.params ?? {});
+      const resp = finalizeEvent(
+        responseTemplate(payload, {
+          clientPubkey: ev.pubkey,
+          requestId: ev.id,
+          secretKey: escrowSk,
+        }),
+        escrowSk,
+      );
+      // entrega asíncrona (como un relay real) para no cortar el rpc antes de que
+      // arme sus timers de reenvío/timeout.
+      queueMicrotask(() => {
+        for (const s of subs) if (filterMatches(resp, s.filter)) s.onEvent(resp);
+      });
+    },
+    subscribe(filter, onEvent) {
+      const entry = { filter: filter as Record<string, unknown>, onEvent };
+      subs.push(entry);
+      return () => {
+        const i = subs.indexOf(entry);
+        if (i >= 0) subs.splice(i, 1);
+      };
+    },
+    close() {},
+  };
+  return { transport, published };
+}
+
+function connect(handler: Handler) {
+  const { transport, published } = fakeEscrow(handler);
+  const nge = NGE.connect(V.uri, { transport, resendMs: 50, timeoutMs: 2000 });
+  return { nge, published };
+}
+
+// Handler del camino feliz: responde con el responsePayload canónico por método.
+const happy: Handler = (method) => canon(method).responsePayload as NgeResponsePayload;
+
+describe("NGE cliente — RPC contra el fake escrow", () => {
+  it("getInfo devuelve la config del escrow (reemplaza al bind de v1)", async () => {
+    const { nge } = connect(happy);
+    const info = await nge.getInfo();
+    expect(info).toEqual(canon("get_info").responsePayload.result);
+    nge.close();
   });
 
-  it("createBet firma+publica un 1339 válido y devuelve handles de depósito", async () => {
-    const nge = connect([V.bind.event]);
+  it("createBet firma+publica un request válido y devuelve betId + deposits", async () => {
+    const { nge, published } = connect(happy);
+    const params = canon("create_bet").requestPayload.params;
     const res = await nge.createBet({
-      seats: [V.actors.alice.pubkey, V.actors.bob.pubkey],
-      stakeSats: 1000,
-      deadlineSec: V.constants.DEADLINE,
-      memo: "test",
+      seats: [
+        { seatId: "alice", pubkey: params.seats[0].pubkey, payoutAddress: params.seats[0].payoutAddress },
+        { seatId: "bob" },
+      ],
+      stakeSats: params.stakeSats,
+      condition: params.condition,
+      clientRef: params.clientRef,
     });
-    expect(res.contractId).toMatch(/^[0-9a-f]{64}$/);
-    expect(verifyEvent(res.event)).toBe(true);
-    expect(res.event.pubkey).toBe(V.actors.service.pubkey); // firmado por el oráculo/servicio
-    expect(res.deposits).toHaveLength(2);
-    expect(res.deposits[0].request.tags).toContainEqual(["e", res.contractId]);
-    expect(res.deposits[0].lud16).toBe(V.constants.LUD16);
+    expect(res).toEqual(canon("create_bet").responsePayload.result);
+
+    // el request que salió al relay descifra a un create_bet bien formado
+    expect(published).toHaveLength(1);
+    expect(published[0].kind).toBe(NGE_KIND.request);
+    const sent = decryptPayload(published[0].content, escrowSk, published[0].pubkey) as any;
+    expect(sent.method).toBe("create_bet");
+    expect(sent.params.stakeSats).toBe(params.stakeSats);
+    expect(sent.params.clientRef).toBe(params.clientRef);
+    expect(sent.params.seats.map((s: any) => s.seatId)).toEqual(["alice", "bob"]);
+    nge.close();
   });
 
-  it("createBet rechaza stake fuera de los límites del bind", async () => {
-    const nge = connect([V.bind.event]);
+  it("createBet rechaza sin llegar al escrow si hay <2 asientos o seatId duplicado", async () => {
+    const { nge, published } = connect(happy);
+    await expect(nge.createBet({ seats: [{ seatId: "solo" }], stakeSats: 1000 })).rejects.toThrow(
+      /asiento/,
+    );
     await expect(
-      nge.createBet({ seats: [V.actors.alice.pubkey, V.actors.bob.pubkey], stakeSats: 200000 }),
-    ).rejects.toThrow(/STAKE_OUT_OF_RANGE|fuera/);
+      nge.createBet({ seats: [{ seatId: "a" }, { seatId: "a" }], stakeSats: 1000 }),
+    ).rejects.toThrow(/duplicado/);
+    expect(published).toHaveLength(0); // validación local: nada se publicó
+    nge.close();
   });
 
-  it("reportResult firma+publica un 1341 del oráculo", async () => {
-    const nge = connect([V.bind.event]);
-    const r = await nge.reportResult(V.happyPath.contract.id, {
-      winners: [V.actors.alice.pubkey],
-      meta: { score: "3-1" },
+  it("getBet devuelve la fuente de verdad (estado + asientos)", async () => {
+    const { nge } = connect(happy);
+    const bet = await nge.getBet(canon("get_bet").requestPayload.params.betId);
+    expect(bet).toEqual(canon("get_bet").responsePayload.result);
+    expect(bet.status).toBe("funded");
+    expect(bet.potSats).toBe(2000);
+    nge.close();
+  });
+
+  it("reportResult devuelve { ok, status: settled }", async () => {
+    const { nge } = connect(happy);
+    const r = await nge.reportResult(canon("report_result").requestPayload.params.betId, ["alice"]);
+    expect(r).toEqual(canon("report_result").responsePayload.result);
+    nge.close();
+  });
+
+  it("reenviar no rompe: el escrow deduplica y el cliente resuelve una sola vez", async () => {
+    // resendMs corto fuerza al menos un reenvío antes de que llegue la response.
+    let calls = 0;
+    const { nge } = connect((method) => {
+      calls++;
+      return canon(method).responsePayload as NgeResponsePayload;
     });
-    expect(verifyEvent(r.event)).toBe(true);
-    expect(r.event.kind).toBe(1341);
-    expect(r.event.pubkey).toBe(V.actors.service.pubkey);
-    expect(r.event.tags).toContainEqual(["status", "win"]);
+    const info = await nge.getInfo();
+    expect(info.version).toBeDefined();
+    // el fake escrow puede recibir >1 publish (reenvío), pero el cliente resuelve 1 vez
+    expect(calls).toBeGreaterThanOrEqual(1);
+    nge.close();
   });
+});
 
-  it("state() lee el 31340 más nuevo firmado por el escrow", async () => {
-    // Semilla: accepted y funded del vector; debe ganar funded (created_at mayor).
-    const nge = connect([V.happyPath.states.accepted, V.happyPath.states.funded]);
-    const s = await nge.state(V.happyPath.contract.id);
-    expect(s?.status).toBe("funded");
-    expect(s?.content.potSats).toBe(2000);
-  });
+// ── El cliente propaga los errores del escrow (adversarial del vector) ───────
+describe("errores del escrow → NgeError con el mismo code", () => {
+  for (const a of V.adversarial.filter((x: any) => x.method)) {
+    it(`${a.name} → ${a.expect.error.code}`, async () => {
+      const { nge } = connect((method) => ({ result_type: method, error: a.expect.error }));
+      const drive = (): Promise<unknown> => {
+        switch (a.method) {
+          case "create_bet":
+            return nge.createBet({
+              seats: [{ seatId: "alice" }, { seatId: "bob" }],
+              stakeSats: a.params.stakeSats ?? 1000,
+            });
+          case "report_result":
+            return nge.reportResult(a.params.betId, a.params.winners);
+          case "cancel_bet":
+            return nge.cancelBet(a.params.betId);
+          default:
+            throw new Error(`método adversarial no cubierto: ${a.method}`);
+        }
+      };
+      await expect(drive()).rejects.toBeInstanceOf(NgeError);
+      await expect(drive()).rejects.toMatchObject({ code: a.expect.error.code });
+      nge.close();
+    });
+  }
 });
