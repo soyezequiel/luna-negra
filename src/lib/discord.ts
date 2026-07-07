@@ -267,6 +267,7 @@ export async function notifyNonSocialZap(args: NonSocialZapArgs): Promise<void> 
 
 /** Aviso de un juego nuevo enviado a revisión. */
 export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs): Promise<void> {
+  if (!shouldSendBetPaymentDiagnostic(args)) return;
   const key = args.fingerprint ?? `bet-payment:${args.source}:${args.stage}`;
   if (!shouldSendAlert(key, args.cooldownMs ?? DEFAULT_ALERT_COOLDOWN_MS)) return;
 
@@ -309,6 +310,21 @@ export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs)
       timestamp: new Date().toISOString(),
     },
   ]);
+}
+
+function shouldSendBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs): boolean {
+  switch (args.stage) {
+    case "invoice-reused":
+    case "invoice-lost-race":
+    case "invoice-issued":
+    case "lnurl-invoice-response":
+      return false;
+    case "poll-checked":
+    case "sync-checked":
+      return Number(args.context?.settled ?? 0) > 0;
+    default:
+      return true;
+  }
 }
 
 export async function notifyGameSubmitted(args: {
