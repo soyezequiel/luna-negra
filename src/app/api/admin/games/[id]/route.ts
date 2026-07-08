@@ -91,10 +91,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
   }
 
-  const activeBets = await prisma.bet.count({
-    where: { gameId: id, status: { in: ACTIVE_BET_STATES } },
-  });
-  if (activeBets > 0) {
+  // Escrow retenido en cualquiera de los dos motores (v1 Bet / v2 ZapBet): si hay
+  // dinero en vuelo no borramos, perderíamos el rastro de la custodia.
+  const [activeBets, activeZapBets] = await Promise.all([
+    prisma.bet.count({
+      where: { gameId: id, status: { in: ACTIVE_BET_STATES } },
+    }),
+    prisma.zapBet.count({
+      where: { gameId: id, status: { in: ACTIVE_BET_STATES } },
+    }),
+  ]);
+  if (activeBets > 0 || activeZapBets > 0) {
     return NextResponse.json(
       {
         error:
@@ -105,6 +112,7 @@ export async function DELETE(
   }
 
   await prisma.$transaction(async (tx) => {
+    // Apuestas v1 (Bet) → primero ledger y participantes, luego la apuesta.
     const bets = await tx.bet.findMany({
       where: { gameId: id },
       select: { id: true },
@@ -116,9 +124,25 @@ export async function DELETE(
       await tx.bet.deleteMany({ where: { id: { in: betIds } } });
     }
 
+    // Apuestas v2 (ZapBet) → mismo orden con sus tablas espejo.
+    const zapBets = await tx.zapBet.findMany({
+      where: { gameId: id },
+      select: { id: true },
+    });
+    const zapBetIds = zapBets.map((b) => b.id);
+    if (zapBetIds.length > 0) {
+      await tx.zapLedgerEntry.deleteMany({ where: { betId: { in: zapBetIds } } });
+      await tx.zapBetParticipant.deleteMany({
+        where: { betId: { in: zapBetIds } },
+      });
+      await tx.zapBet.deleteMany({ where: { id: { in: zapBetIds } } });
+    }
+
     await tx.leaderboard.deleteMany({ where: { gameId: id } });
     await tx.room.deleteMany({ where: { gameId: id } });
     await tx.review.deleteMany({ where: { gameId: id } });
+    await tx.zap.deleteMany({ where: { gameId: id } });
+    await tx.gameComment.deleteMany({ where: { gameId: id } });
     await tx.purchase.deleteMany({ where: { gameId: id } });
 
     await tx.game.delete({ where: { id } });
