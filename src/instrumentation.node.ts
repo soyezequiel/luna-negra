@@ -2,6 +2,14 @@ import { notifyOperationalError } from "@/lib/discord";
 
 async function reportBackgroundFailure(source: string, error: unknown): Promise<void> {
   console.error(`[${source}] fallo:`, error);
+  // Los workers in-process (escrow-tick, *-sync, samplers) corren en TODA instancia,
+  // incluida la de desarrollo. Cuando la DB/túnel está caída en dev, cada tick tira
+  // PrismaClientInitializationError y, si el dev tiene el webhook seteado, esto
+  // paginaba el canal de alertas con un "Fallo operativo" + auto-tarea para Claude.
+  // Eso no es accionable (es la DB local caída, no un incidente de prod), y el canal
+  // es solo-accionable por política. Solo alertamos en producción; en dev basta la
+  // consola de arriba. En prod un DB-unreachable SÍ es accionable (revivir túnel/DB).
+  if (process.env.NODE_ENV !== "production") return;
   await notifyOperationalError({ source, error });
 }
 
