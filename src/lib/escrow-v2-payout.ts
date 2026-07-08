@@ -18,6 +18,27 @@ import { notifyOperationalError } from "@/lib/discord";
 type MarkPaid = { preimage: string; payoutKind: "zap" | "lnurl"; zapRequestId?: string };
 
 /**
+ * Pubkey REAL del jugador de un asiento NGE (la que manda el juego), leída del
+ * seatsMeta del contrato por el npub del invitado. En NGE cada asiento envuelve al
+ * jugador en una cuenta invitada efímera (para el depósito custodial), pero el PAYOUT
+ * debe ir al jugador real —su lud16 de perfil— para que el premio le llegue solo y no
+ * quede varado en el invitado. Null si no es NGE o el asiento es anónimo (sin pubkey):
+ * ahí se cobra por QR de retiro, como antes.
+ */
+export function ngeSeatRealPubkey(bet: Pick<ZapBet, "metadataJson">, guestNpub: string): string | null {
+  try {
+    const meta = JSON.parse(bet.metadataJson ?? "{}") as {
+      nge?: { seats?: Array<{ npub?: string; pubkey?: string }> };
+    };
+    const seat = meta.nge?.seats?.find((s) => s.npub === guestNpub);
+    const pk = seat?.pubkey;
+    return typeof pk === "string" && /^[0-9a-f]{64}$/.test(pk) ? pk : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Mueve plata a un participante (payout o refund) como profile-zap.
  * Idempotente vía ledger; sin destino → withdraw_pending (QR); dev sin NWC simula.
  */
@@ -50,7 +71,14 @@ export async function payParticipantV2(args: {
     return;
   }
 
-  const dest = await resolveZapDestination(participant.npub);
+  // NGE: pagamos al JUGADOR real (su pubkey vino en el asiento), no al invitado
+  // efímero. Así el premio le llega solo como zap social a su perfil. Si el asiento es
+  // anónimo (sin pubkey real) → resolvemos contra el invitado (sin lud16 → QR de retiro).
+  const realPubkey = ngeSeatRealPubkey(bet, participant.npub);
+  const recipientPubkey = realPubkey ?? participant.pubkey;
+  const dest = await resolveZapDestination(
+    realPubkey ? nip19.npubEncode(realPubkey) : participant.npub,
+  );
 
   const markPaid = async (res: MarkPaid) => {
     await prisma.zapLedgerEntry.update({
@@ -106,7 +134,7 @@ export async function payParticipantV2(args: {
     kind === "payout" ? (participant.commentEventId ?? bet.anchorEventId) : bet.anchorEventId;
   const res = await sendZapPayout({
     anchorEventId: payoutAnchor,
-    recipientPubkey: participant.pubkey,
+    recipientPubkey,
     address: dest,
     amountMsat,
     comment: `Luna Negra ${kind} ${bet.id}`,
