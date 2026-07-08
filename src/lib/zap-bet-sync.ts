@@ -3,10 +3,17 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { getStorePubkey, publishSettleNote } from "./nostr-server";
 import { notifyOperationalError, notifyNonSocialZap } from "./discord";
-import { publishNgpBetState } from "./ngp-bet-state";
+import { publishNgpBetState, isUnlistedBet } from "./ngp-bet-state";
+import { BET_SETTLE_NOTE_MIN_POT_SATS } from "./escrow-v2-config";
 import { msatToSats } from "./money";
 
 const MISSING_RECEIPT_GRACE_MS = 10 * 60_000;
+// Cierre definitivo: si tras esta ventana el wallet del ganador no publicó su
+// 9735, se deja de esperar y el payout se DEGRADA a `lnurl` (pago plano, tier
+// "zap no social" de la spec §8 — el dinero ya se pagó; solo falta el anclaje
+// social). Sin este cierre, el pendiente vivía para siempre y la alerta de
+// Discord se repetía cada 30 min hasta el fin de los tiempos.
+const MISSING_RECEIPT_FINAL_MS = 6 * 60 * 60_000;
 
 /**
  * Reconciliación de recibos de PAYOUT de apuestas v2. Cuando Luna Negra zapea al
@@ -57,7 +64,17 @@ export async function syncZapBetReceipts(): Promise<void> {
       pubkey: true,
       createdAt: true,
       settledAt: true,
-      bet: { select: { anchorEventId: true, anchorEventKind: true, resultEventId: true } },
+      bet: {
+        select: {
+          anchorEventId: true,
+          anchorEventKind: true,
+          resultEventId: true,
+          resultEventKind: true,
+          stakeMsat: true,
+          metadataJson: true,
+          _count: { select: { participants: true } },
+        },
+      },
     },
   });
   if (pending.length === 0) return;
@@ -108,14 +125,43 @@ export async function syncZapBetReceipts(): Promise<void> {
   }
 
   const staleBefore = Date.now() - MISSING_RECEIPT_GRACE_MS;
+  const finalBefore = Date.now() - MISSING_RECEIPT_FINAL_MS;
   for (const part of pending) {
     if (!part.payoutZapRequestId || resolvedRequestIds.has(part.payoutZapRequestId)) continue;
     const payoutTime = (part.settledAt ?? part.createdAt).getTime();
     if (payoutTime > staleBefore) continue;
+
+    // Cierre definitivo: el wallet del ganador no publica recibos. El pago ya
+    // salió (el 9734 firmado queda como auditoría interna); degradamos el tier a
+    // `lnurl` para que el pendiente no viva para siempre (ni la alerta se repita
+    // cada 30 min) y el 31340 refleje el tier real del payout.
+    if (payoutTime < finalBefore) {
+      await prisma.zapBetParticipant.update({
+        where: { id: part.id },
+        data: { payoutKind: "lnurl" },
+      });
+      void publishNgpBetState(part.betId);
+      await notifyNonSocialZap({
+        flow: "payout al ganador (cerrado sin recibo)",
+        reason:
+          "Pasaron 6 h sin recibo kind:9735 del receptor: se deja de esperar. El pago salió bien; queda registrado como LNURL plano (tier no social). No se vuelve a alertar por este payout.",
+        fingerprint: `zap-bet-sync:final:${part.id}`,
+        cooldownMs: 24 * 60 * 60_000,
+        context: {
+          betId: part.betId,
+          participantId: part.id,
+          recipientPubkey: part.pubkey,
+          payoutZapRequestId: part.payoutZapRequestId,
+          waitingMinutes: Math.floor((Date.now() - payoutTime) / 60_000),
+        },
+      });
+      continue;
+    }
+
     await notifyNonSocialZap({
       flow: "payout al ganador (recibo faltante)",
       reason:
-        "El payout se pagó como zap NIP-57 pero el recibo kind:9735 del receptor no aparece en los relays tras la ventana de gracia. Puede que el wallet del ganador no publique recibos: el pago no se ve como zap social en Nostr.",
+        "El payout se pagó como zap NIP-57 pero el recibo kind:9735 del receptor no aparece en los relays tras la ventana de gracia. Puede que el wallet del ganador no publique recibos: el pago no se ve como zap social en Nostr. Si a las 6 h sigue sin recibo, se cierra solo como LNURL plano.",
       fingerprint: `zap-bet-sync:missing:${part.id}`,
       cooldownMs: 30 * 60_000,
       context: {
@@ -129,21 +175,30 @@ export async function syncZapBetReceipts(): Promise<void> {
   }
 }
 
+type PendingPayoutBet = {
+  anchorEventId: string | null;
+  anchorEventKind: number | null;
+  resultEventId: string | null;
+  resultEventKind: number | null;
+  stakeMsat: bigint;
+  metadataJson: string | null;
+  _count: { participants: number };
+};
+
+type PendingPayout = {
+  id: string;
+  betId: string;
+  userId: string;
+  npub: string;
+  pubkey: string;
+  payoutMsat: bigint | null;
+  payoutZapRequestId: string | null;
+  bet: PendingPayoutBet;
+};
+
 async function recordPayoutReceipt(
   receipt: Event,
-  byRequestId: Map<
-    string,
-    {
-      id: string;
-      betId: string;
-      userId: string;
-      npub: string;
-      pubkey: string;
-      payoutMsat: bigint | null;
-      payoutZapRequestId: string | null;
-      bet: { anchorEventId: string | null; anchorEventKind: number | null; resultEventId: string | null };
-    }
-  >,
+  byRequestId: Map<string, PendingPayout>,
   storePubkey: string,
 ): Promise<string | null> {
   if (receipt.kind !== 9735) return null;
@@ -199,18 +254,17 @@ function nostrEventRef(id: string, kind?: number): string {
 }
 
 async function publishPayoutProofNote(
-  part: {
-    betId: string;
-    npub: string;
-    pubkey: string;
-    payoutMsat: bigint | null;
-    payoutZapRequestId: string | null;
-    bet: { anchorEventId: string | null; anchorEventKind: number | null; resultEventId: string | null };
-  },
+  part: PendingPayout,
   receipt: Event,
 ): Promise<void> {
   const anchor = part.bet.anchorEventId;
   if (!anchor || anchor.startsWith("dev-anchor-")) return;
+  // Mismas reglas EDITORIALES que la nota de liquidación (escrow-v2-settle):
+  // sin nota para apuestas unlisted ni para pozos bajo el umbral. La auditoría
+  // máquina no se pierde: el recibo ya quedó en el 31340 re-publicado.
+  if (isUnlistedBet(part.bet.metadataJson)) return;
+  const potSats = Number(msatToSats(part.bet.stakeMsat)) * part.bet._count.participants;
+  if (potSats < BET_SETTLE_NOTE_MIN_POT_SATS) return;
 
   const lines = [
     "🌑 Pago confirmado — Luna Negra",
@@ -218,7 +272,9 @@ async function publishPayoutProofNote(
     `Ganador: ${part.npub}`,
     `Monto: ${part.payoutMsat != null ? Number(msatToSats(part.payoutMsat)) : "?"} sats`,
     `Contrato: ${nostrEventRef(anchor, part.bet.anchorEventKind ?? 1)}`,
-    part.bet.resultEventId ? `Resultado firmado: ${nostrEventRef(part.bet.resultEventId)}` : null,
+    part.bet.resultEventId
+      ? `Resultado firmado: ${nostrEventRef(part.bet.resultEventId, part.bet.resultEventKind ?? 30078)}`
+      : null,
     `Prueba de pago (recibo 9735): ${nostrEventRef(receipt.id, 9735)}`,
     part.payoutZapRequestId ? `Zap request firmado por Luna: ${part.payoutZapRequestId}` : null,
   ].filter((line): line is string => Boolean(line));
