@@ -3,8 +3,9 @@
 > **NGE = Nostr Game Escrow.** Vectores de prueba para validar cualquier
 > implementación del **RPC cifrado estilo NWC** de [NGE v2](nge-v2-spec.md):
 > requests `kind:24940` y responses `kind:24941`, cifrados con **NIP-44** entre el
-> juego (`C`) y el escrow (`S`). No hay eventos públicos: la fuente de verdad vive
-> en el escrow y se consulta por RPC.
+> juego (`C`) y el escrow (`S`). Estos vectores cubren **sólo la coordinación** (el
+> canal privado): la fuente de verdad vive en el escrow y se consulta por RPC. La
+> liquidación (contrato/resultado/payout) es pública en Nostr y no se testea acá (§2).
 
 Los datos vivos están en [`test-vectors.json`](test-vectors.json) (generado por
 [`gen-vectors.js`](gen-vectors.js), claves y nonce fijos). Este doc los explica.
@@ -69,14 +70,17 @@ una apuesta 1v1:
 | # | Método | request (firma `C`) | response (firma `S`) |
 |---|---|---|---|
 | 1 | `get_info` | `{}` | `{ methods, version, currency, min/maxStakeSats, feePct, devFeePct }` |
-| 2 | `create_bet` | `{ seats:[alice, bob], stakeSats, condition, clientRef }` | `{ betId, status:"pending_deposits", deposits:[{seatId, bolt11, amountSats, expiresAt}] }` |
+| 2 | `create_bet` | `{ seats:[alice, bob], stakeSats, condition, clientRef, roomId }` | `{ betId, status:"pending_deposits", deposits:[{seatId, bolt11, amountSats, expiresAt}] }` |
 | 3 | `get_bet` (polling) | `{ betId }` | `{ betId, status:"funded", stakeSats, potSats, deadlineSec, seats[], result:null }` |
 | 4 | `report_result` | `{ betId, winners:["alice"] }` | `{ ok:true, status:"settled" }` |
 
-- **`seats`**: `alice` trae `pubkey` + `payoutAddress` (lud16) → habilita el payout
-  social/LNURL; `bob` va pelado → cobra por **QR de retiro**.
+- **`seats`**: `alice` trae `pubkey` + `payoutAddress` (lud16) → su asiento es una
+  **cuenta real** y cobra el premio automático (zap social/LNURL); `bob` va pelado →
+  asiento anónimo, cobra por **QR de retiro**.
 - **`clientRef`**: clave de idempotencia (§6.1 de la spec). Reintentar `create_bet`
   con el mismo `clientRef` devuelve el **mismo `betId`**.
+- **`roomId`**: opcional, sala/partida del juego (correlación + display). Opaco: no
+  participa de la idempotencia ni del estado.
 - **Wire check**: `dec(request.content)` == `requestPayload` y
   `dec(response.content)` == `responsePayload` con la `conversationKey` del JSON.
 

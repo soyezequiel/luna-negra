@@ -1,8 +1,16 @@
 # NGE v2 — Nostr Game Escrow (reimaginado, estilo NWC)
 
-> **Estado:** borrador de diseño. Reemplaza por completo a NGE v1 (contratos/estados/
-> resultados públicos 1339/1341/31340). No busca compatibilidad: los únicos que lo
-> implementan son **Luna Negra** (escrow) y **Tetra** (juego), y ambos se reescriben.
+> **Estado:** **implementado y en producción** — Luna Negra (escrow) + Tetris/Tetra
+> (juego). Reemplaza a NGE v1. No busca compatibilidad con v1.
+>
+> **Nota de privacidad (importante).** El diseño original buscaba un escrow *privado*
+> (todo cifrado, no auditable por terceros). Por decisión del operador, **eso se
+> descartó**: en la práctica NGE v2 es **coordinación RPC privada + liquidación PÚBLICA**.
+> El canal juego↔escrow (`create_bet`/`get_bet`/`report_result`) va cifrado, pero la
+> apuesta se **ancla y liquida en Nostr con eventos públicos** (contrato, resultado,
+> payout) y es **auditable por cualquiera** en `/apuestas/{betId}`. Ver §2 y §8. Las
+> menciones a "privacidad total" / "no auditable" de abajo quedan como **contexto del
+> diseño original**, no como el comportamiento actual.
 >
 > **Qué es.** La pieza de **escrow y apuestas** del [Nostr Games Protocol (NGP)](../nostr-games-protocol.md).
 > NGP estandariza cómo los juegos hablan con plataformas como Luna Negra (identidad,
@@ -18,23 +26,40 @@ NGE v2 es un **protocolo request/response (RPC)** calcado de [NWC / NIP-47](http
 - El **escrow** (Luna) tiene una **pubkey estable** publicada en la URI de conexión.
 - El **juego** (Tetra) tiene una clave de **cliente** (el `secret` de la URI), que el
   escrow autorizó al emitir la credencial.
-- Los mensajes viajan como **eventos Nostr efímeros y cifrados (NIP-44)**. El relay es
-  un **caño tonto**: solo transporta, no guarda historial.
-- **La fuente de verdad y la auditoría viven en el escrow**, no en los relays.
+- Los mensajes de **coordinación** viajan como **eventos Nostr efímeros y cifrados
+  (NIP-44)**. El relay es un **caño tonto**: solo transporta, no guarda historial.
+- **La fuente de verdad vive en el escrow** (su DB), no en los relays. La coordinación
+  RPC es privada; la **liquidación** (contrato, resultado, payout) se ancla en Nostr
+  con **eventos públicos** y es auditable por cualquiera (§2, §8).
 
 ## 2. Garantías y no-objetivos (la parte honesta)
 
-**Garantiza:** rapidez (RPC directo, sin grafo público que reconciliar), **privacidad**
-(todo cifrado C↔S), **autenticación bidireccional** (el juego prueba ser el cliente
-autorizado; el escrow firma toda respuesta con su clave estable), **custodia** del
-pozo por el escrow, y **destinos acotados**: los payouts sólo pueden ir a las
-direcciones declaradas en `create_bet`. Un `C` comprometido puede *elegir* al ganador,
-**no redirigir fondos** a una dirección arbitraria (§8) — eso contiene el daño de una
-fuga del `secret`.
+**Garantiza:** rapidez (RPC directo, sin grafo público que reconciliar para
+coordinar), **coordinación privada** (el canal juego↔escrow va cifrado C↔S:
+`create_bet`/`get_bet`/`report_result` no son observables), **autenticación
+bidireccional** (el juego prueba ser el cliente autorizado; el escrow firma toda
+respuesta con su clave estable), **custodia** del pozo por el escrow, y **destinos
+acotados**: los payouts sólo pueden ir a las direcciones/identidades declaradas en
+`create_bet`. Un `C` comprometido puede *elegir* al ganador, **no redirigir fondos** a
+una dirección arbitraria (§8) — eso contiene el daño de una fuga del `secret`.
 
-**Trade-off aceptado (giro respecto de v1):** NGE v2 **no es auditable por terceros**.
-v1 se vendía como "escrow transparente verificable en Nostr"; v2 elige **privacidad
-sobre transparencia**. La única fuga pública y deliberada es el *payout social* (§8).
+**Qué es privado y qué es público (lo implementado).** Sólo la **coordinación** RPC es
+privada. La **liquidación es pública y auditable**, igual que el "escrow transparente"
+de v1:
+
+| Pieza | Visibilidad | Cómo |
+|---|---|---|
+| Coordinación (`create_bet`/`get_bet`/`report_result`/…) | **privada** | RPC cifrado NIP-44 (kinds efímeros 24940/24941) |
+| Contrato de la apuesta | **pública** | nota `kind:1` firmada por el escrow (pubkeys de los asientos, stake, hash de términos, condición) |
+| Resultado | **público** | `kind:1341` firmado por el oráculo gestionado del escrow |
+| Payout al ganador | **público** | zap NIP-57 (`kind:9735`) a su lud16, anclado al contrato |
+| Nota de liquidación | **pública** | `kind:1` con el resumen (ganador, montos, fees, recibos) |
+| Depósito (el pago en sí) | privado | bolt11 plano al nodo del escrow (sin evento público) |
+
+> La página `/apuestas/{betId}` de Luna Negra muestra **todo** el detalle. O sea: la
+> apuesta **sí es auditable por terceros**. El diseño original pretendía lo contrario
+> ("privacidad sobre transparencia"); se descartó a propósito. Lo único que v2 ganó de
+> privacidad frente a v1 es que **la coordinación** ya no es un grafo público.
 
 **No es trustless.** Custodia = tercero de confianza. Trustless real = DLCs sobre
 Bitcoin, fuera de alcance.
@@ -48,7 +73,7 @@ componentes de NGP, no NGE.
 |---|---|---|
 | **Escrow (servicio)** | pubkey estable `S` (en la URI) | custodia el pozo, es la fuente de verdad, emite invoices, detecta pagos, paga premios, reembolsa. Firma toda respuesta. |
 | **Juego (cliente)** | keypair `C` (`secret` de la URI) | orquesta las apuestas y **es el oráculo** (reporta resultados). Una `C` por juego. |
-| **Jugadores** | — (identidad **opcional**) | pagan el invoice de su asiento; opcionalmente dan un destino de cobro (§8). No necesitan clave para apostar. |
+| **Jugadores** | pubkey Nostr (recomendado) o anónimo | pagan el bolt11 de su asiento (**no firman nada**). Con `pubkey`, el asiento **es su cuenta real** en el escrow (§8): la apuesta aparece en su perfil / `/bets` y el premio va a su lud16. Sin `pubkey` → asiento **anónimo** (invitado efímero; cobra por QR de retiro). |
 
 ## 4. URI de conexión
 
@@ -93,6 +118,11 @@ nostr+nge://<S-pubkey>?relay=wss://relay.luna.fit&secret=<C-secret>
 - **El oráculo es el cliente.** `report_result` se confía porque viene firmado y
   cifrado por la `C` autorizada. **Sin TOFU, sin oráculo declarado en un evento público.**
   La autenticación reemplaza a la confianza-al-primer-uso de v1.
+  > **Implementación:** la *confianza* la da el RPC autenticado de `C`, pero el `kind:1341`
+  > **público** de resultado lo firma un **oráculo GESTIONADO** que Luna custodia por
+  > proveedor (no el juego). Emitir una credencial NGE **garantiza** ese oráculo gestionado
+  > (guard en la emisión, `ensureManagedOracle`); un proveedor con oráculo propio/BYO no
+  > puede liquidar por NGE → `SELF_SIGNED_ORACLE` (§7).
 - **Revocación de `C`.** El escrow puede invalidar una credencial (p. ej. `secret`
   filtrado): a partir de ahí todo request firmado por esa `C` → error `UNAUTHORIZED`.
   Es **estado interno del escrow**, no hay evento público de revocación. Recuperarse =
@@ -176,10 +206,16 @@ AES-GCM que no autentica): `ORACLE_KEY_ERROR`; oráculo gestionado sin provision
 
 ## 8. Depósitos y payouts
 
-**Depósitos (privados).** `create_bet` devuelve un `bolt11` **distinto por asiento**.
-El jugador paga el suyo; el escrow mapea invoice→asiento y detecta el pago con su nodo.
-**Sin zaps públicos, sin 9734/9735.** El pozo no se puede reconstruir desde datos
-públicos.
+**Depósitos (bolt11 plano).** `create_bet` devuelve un `bolt11` **distinto por asiento**,
+emitido directo por el nodo del escrow (**sin zap, sin 9734/9735**). El jugador paga el
+suyo; el escrow mapea invoice→asiento y detecta el pago por su `paymentHash`. El pago en
+sí no es un evento público, pero **los asientos y el stake quedan públicos** en la
+nota-contrato (§2) — el pozo es reconstruible desde Nostr.
+
+**Identidad del asiento.** Con `pubkey`, el participante es la **cuenta real** del jugador
+(match o alta por pubkey): la apuesta le pertenece —aparece en su perfil / `/bets`— y el
+payout va a su lud16. Sin `pubkey`, el asiento es un **invitado efímero** que Luna custodia
+(cobra por QR de retiro). **Ningún jugador firma su depósito**: el bolt11 plano lo cubre.
 
 **Ciclo de fondeo y bordes.**
 - `funded` requiere **todos** los asientos pagados antes de `deadlineSec`. Con fondeo
@@ -194,19 +230,23 @@ públicos.
 - `cancel_bet` (§7) sólo pre-fondeo total; una vez `funded` la única salida es
   `report_result` (incl. `winners` vacío = anulación con reembolso).
 
-**Payouts — cascada de 3 niveles por capacidad del destino del ganador:**
+**Payouts — cascada de 3 niveles por capacidad del destino del ganador.** El destino se
+resuelve de la **identidad real** del ganador: el `lud16` de su perfil Nostr (kind:0)
+—vía la `pubkey` del asiento— o el `payoutAddress` explícito. **No** del invitado efímero
+(por eso se paga a la cuenta real, no a un asiento anónimo varado).
 
-| El ganador tiene… | Payout | Público |
+| El ganador tiene… | Payout | Zap en su perfil |
 |---|---|---|
-| `payoutAddress` lud16 **con NIP-57** (`allowsNostr`) + `pubkey` | **zap social** (9735 público, tag `["nge","payout"]`) | sí |
+| `lud16` **con NIP-57** (perfil o `payoutAddress`) + `pubkey` | **zap social** (9735, tag `["nge","payout"]`) | sí |
 | dirección Lightning **sin** zaps | pago LNURL plano ("zap no social") | no |
 | nada | **retiro por QR** (lo reclama) | no |
 
 - El nivel social **no se puede forzar**: un 9735 solo valida si el lud16 soporta
-  NIP-57. Lo elige el *setup del jugador* → eso es lo "opcional".
-- El nivel social **filtra ganador y monto**: el 9735 expone la pubkey que cobró y el
-  importe (≈ pozo neto, o sea revela el tamaño de la apuesta). Es la fuga deliberada de
-  §2 y es opt-in del jugador; los otros dos niveles no filtran nada.
+  NIP-57. Depende del *setup del jugador* → eso es lo "opcional".
+- La cascada sólo cambia **cómo** cobra el ganador (auto vs. reclamo por QR), **no la
+  privacidad**: la apuesta ya es pública (§2). El zap social además **ancla el premio al
+  perfil** del ganador (queda como zap recibido); los otros niveles pagan igual, sin ese
+  anclaje.
 - El tag `nge-payout` permite a la capa social de NGP renderizarlo como **"ganó una
   apuesta"** (no como propina) y **excluir al escrow del leaderboard de "top zappers"**.
 - **Comisiones y reparto.** Pozo neto `= potSats − houseFee − devFee` (`feePct`,
@@ -223,12 +263,21 @@ públicos.
   cliente, pero `get_bet` **sigue siendo la fuente confiable** y el polling queda como
   respaldo. El push nunca transporta estado autoritativo.
 
-## 10. Qué borra respecto de v1
+## 10. Qué cambia respecto de v1
 
-`bind` event · kinds públicos 1339/1341/31340 · 9734/9735 para depósitos · TOFU y
-oráculo declarado · reconciliación por relays (`zap-bet-sync`) · hash de términos
-firmado (la integridad ahora es server-side, sobre un canal autenticado). Adelgaza
-fuerte tanto a Luna como a Tetra.
+**Se va (de la coordinación):**
+- `bind` event → `get_info` (RPC).
+- estado público `kind:31340` → `get_bet` (RPC privado).
+- contrato `kind:1339` firmado **por el juego** → lo arma el escrow por `create_bet`.
+- `9734/9735` de **depósito** → **bolt11 plano** del nodo del escrow.
+- TOFU / oráculo declarado en evento público → **oráculo gestionado** + auth por RPC.
+- reconciliación por relays (`zap-bet-sync`) para coordinar → el escrow es la fuente de verdad.
+
+**Se queda (liquidación pública, §2):** el escrow **sí** publica en Nostr una
+**nota-contrato `kind:1`** (ancla + hash de términos + asientos), el **resultado
+`kind:1341`** (oráculo gestionado), el **payout `kind:9735`** (zap al ganador) y la
+**nota de liquidación `kind:1`**. La apuesta es **auditable**, como el escrow transparente
+de v1. Lo que v2 privatizó es **la coordinación**, no la liquidación.
 
 ## 11. Versionado
 

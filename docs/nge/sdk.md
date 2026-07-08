@@ -8,7 +8,9 @@ NGE v2 es la **"NWC del escrow"**: un RPC request/response calcado de NIP-47. El
 juego (`C`, el `secret`) le habla al escrow (`S`, el host de la URI) por eventos
 Nostr **efímeros cifrados con NIP-44**. El relay es un caño tonto; la fuente de
 verdad vive en el escrow y se consulta con `get_bet` (polling). Sin API key, sin
-eventos públicos (murió el grafo `1339/1341/31340` de v1), sin `bind` event.
+`bind` event. La **coordinación** es privada (RPC cifrado); la **liquidación**
+(contrato, resultado, payout) se ancla en Nostr con **eventos públicos** y es auditable
+(ver [spec §2](nge-v2-spec.md)).
 
 ## 1. Una variable de entorno
 
@@ -43,6 +45,7 @@ const bet = await nge.createBet({
   stakeSats: 1000, // sats POR ASIENTO; el pozo objetivo es stake × asientos
   condition: "Mejor de 3 en Pac-Toshi",
   clientRef: "match-42", // idempotencia: reintentar con el mismo ref → mismo betId
+  roomId: "sala-8vdu", // opcional: sala/partida (correlación + display en el escrow)
 });
 for (const d of bet.deposits) {
   showQr(d.seatId, d.bolt11); // el jugador del asiento paga su invoice
@@ -63,6 +66,12 @@ await nge.reportResult(bet.betId, ["alice"]);
 
 Eso es todo el flujo. Sin `LUNA_NEGRA_NGP_*`, sin `fetchNgpConfig`, sin oráculo
 declarado: la URI + el RPC `get_info` los reemplazan.
+
+> **Identidad y cobro.** Pasá la `pubkey` Nostr del jugador en su asiento: el escrow lo
+> trata como su **cuenta real** (la apuesta aparece en su perfil / `/bets`) y le paga el
+> premio **automático** al `lud16` de su perfil (zap social). Sin `pubkey`, el asiento es
+> anónimo y cobra por **QR de retiro**. El jugador **no firma** nada: paga el `bolt11` y
+> listo (depósito plano).
 
 ## API
 
