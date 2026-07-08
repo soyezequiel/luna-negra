@@ -229,6 +229,16 @@ const STYLE = `
   .time { font-family: 'Geist Mono', monospace; font-size: 11.5px; font-variant-numeric: tabular-nums; color: #9a93ad; flex-shrink: 0; white-space: nowrap; }
   .time .sep { color: #5f5872; }
 
+  /* Feedback visual de la barra de transporte */
+  .tbtn:active { transform: scale(0.9); }
+  .tbtn.pp.is-playing { background: rgba(var(--acc-rgb),0.3); border-color: rgba(var(--acc-rgb),0.62); }
+  .transport.loading .tbtn:not(.pp), .transport.loading .track { opacity: 0.38; pointer-events: none; }
+  .transport.loading .pp { pointer-events: none; }
+  .transport.loading .time { opacity: 0.5; }
+  .tbtn.pp.spin > svg { display: none; }
+  .tbtn.pp.spin::after { content: ""; width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.22); border-top-color: var(--acc); animation: tp-spin 0.7s linear infinite; }
+  @keyframes tp-spin { to { transform: rotate(360deg); } }
+
   .note { display: flex; gap: 12px; padding: 16px 20px; border-radius: 16px; align-items: flex-start; }
   .note.kbd { margin-top: 56px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); }
   .note.kbd p { font-size: 13px; line-height: 1.6; color: #9a93ad; margin: 0; max-width: 820px; }
@@ -338,7 +348,12 @@ const SCRIPT = `
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
   function fmt(t) { t = Math.max(0, t || 0); var m = Math.floor(t / 60), s = Math.floor(t % 60); return m + ":" + ("" + s).padStart(2, "0"); }
 
-  // Lee el estado real de una animación desde su iframe (mismo origen).
+  // Lee el estado real de una animación desde su iframe (mismo origen) y ubica
+  // los controles reales del motor. En vez de inferir el estado o sintetizar
+  // teclas, manejamos su propia barra: los <button> del chrome disparan los
+  // handlers de React aunque el chrome esté display:none (igual que un input
+  // file oculto), y el estado play/pausa se LEE del glifo del botón (dos barras
+  // = reproduciendo, un triángulo = en pausa). Eso elimina el desfasaje.
   function ctl(frame) {
     if (!frame) return null;
     try {
@@ -346,13 +361,18 @@ const SCRIPT = `
       if (!doc) return null;
       var svg = doc.querySelector("svg[data-om-exportable-video-with-duration-secs]");
       if (!svg) return null;
+      var chrome = doc.querySelector("[data-omelette-chrome]");
+      if (!chrome) return null;
+      var btns = chrome.querySelectorAll("button");
+      var btnReset = chrome.querySelector('button[title^="Return to start"]') || btns[0];
+      var btnToggle = chrome.querySelector('button[title^="Play/pause"]') || btns[1];
+      if (!btnToggle) return null;
       var dur = parseFloat(svg.getAttribute("data-om-exportable-video-with-duration-secs")) || 0;
-      var t = 0, chrome = doc.querySelector("[data-omelette-chrome]");
-      if (chrome) {
-        var m = chrome.textContent.match(/(\\d+):(\\d\\d)\\.(\\d\\d)/);
-        if (m) t = (+m[1]) * 60 + (+m[2]) + (+m[3]) / 100;
-      }
-      return { win: win, doc: doc, svg: svg, dur: dur, t: t };
+      var t = 0;
+      var m = chrome.textContent.match(/(\\d+):(\\d\\d)\\.(\\d\\d)/);
+      if (m) t = (+m[1]) * 60 + (+m[2]) + (+m[3]) / 100;
+      var playing = btnToggle.querySelectorAll("rect").length >= 2;
+      return { win: win, doc: doc, svg: svg, chrome: chrome, dur: dur, t: t, playing: playing, btnReset: btnReset, btnToggle: btnToggle };
     } catch (e) { return null; }
   }
 
@@ -369,8 +389,11 @@ const SCRIPT = `
   }
 
   // Un controlador maneja un iframe a través de una barra de transporte (los
-  // elementos de UI). Usa los hooks documentados del motor: evento de seek en
-  // el <svg> y tecla espacio para play/pausa.
+  // elementos de UI). Play/pausa y reinicio van por CLICK a los botones reales
+  // del motor (fiable, sincroniza estado); ±1s y scrub por el evento de seek
+  // del <svg> (que pausa) restaurando la reproducción si venía andando. El
+  // ícono se pinta con el estado REAL leído en cada tick, con swap optimista al
+  // instante del click para que el feedback no espere al próximo sondeo.
   function makeController(getFrame, tp) {
     var ui = {
       pp: tp.querySelector(".pp"),
@@ -380,59 +403,103 @@ const SCRIPT = `
       cur: tp.querySelector(".cur"),
       dur: tp.querySelector(".dur"),
     };
-    var playing = false, last = null;
+    var ready = false, playing = false;
 
-    function seek(time, resume) {
+    function setReady(on) {
+      if (ready === on) return;
+      ready = on;
+      tp.classList.toggle("loading", !on);
+      ui.pp.classList.toggle("spin", !on);
+    }
+    function setPlayIcon(on) {
+      playing = on;
+      ui.pp.innerHTML = on ? ICON_PAUSE : ICON_PLAY;
+      ui.pp.classList.toggle("is-playing", on);
+    }
+
+    // Reanuda la reproducción tras un seek (el motor pausa al recibir el seek).
+    function resumeSoon() {
+      setTimeout(function () {
+        var c = ctl(getFrame());
+        if (c && !c.playing) c.btnToggle.click();
+      }, 60);
+    }
+    function seekTo(time) {
       var c = ctl(getFrame());
-      if (!c) return;
+      if (!c) return null;
       var t = clamp(time, 0, c.dur || time);
       c.svg.dispatchEvent(new c.win.CustomEvent("data-om-seek-to-time-frame", { detail: { time: t } }));
-      if (resume) setTimeout(function () {
-        var c2 = ctl(getFrame());
-        if (c2) c2.win.dispatchEvent(new c2.win.KeyboardEvent("keydown", { code: "Space", bubbles: true, cancelable: true }));
-      }, 45);
+      return c;
     }
     function toggle() {
       var c = ctl(getFrame());
       if (!c) return;
-      c.win.dispatchEvent(new c.win.KeyboardEvent("keydown", { code: "Space", bubbles: true, cancelable: true }));
+      c.btnToggle.click();
+      setPlayIcon(!c.playing); // optimista; el tick reconcilia con el estado real
+    }
+    function reset() {
+      var c = ctl(getFrame());
+      if (c) c.btnReset.click();
     }
     function skip(d) {
       var c = ctl(getFrame());
       if (!c) return;
-      seek(c.t + d, playing);
+      var wasPlaying = c.playing;
+      if (seekTo(c.t + d) && wasPlaying) resumeSoon();
     }
-    function scrubX(clientX) {
-      var c = ctl(getFrame());
-      if (!c) return;
-      var r = ui.track.getBoundingClientRect();
-      var frac = clamp((clientX - r.left) / r.width, 0, 1);
-      seek(frac * c.dur, playing);
-    }
+
     function tick() {
       var c = ctl(getFrame());
-      if (!c) return;
-      playing = last != null && Math.abs(c.t - last) > 0.0005;
-      last = c.t;
+      if (!c) { setReady(false); return; }
+      setReady(true);
       var pct = c.dur > 0 ? (c.t / c.dur * 100) : 0;
       ui.fill.style.width = pct + "%";
       ui.knob.style.left = pct + "%";
       ui.cur.textContent = fmt(c.t);
       ui.dur.textContent = fmt(c.dur);
-      ui.pp.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+      if (c.playing !== playing) setPlayIcon(c.playing);
     }
 
-    tp.querySelector('[data-act="reset"]').addEventListener("click", function () { seek(0, false); });
+    tp.querySelector('[data-act="reset"]').addEventListener("click", reset);
     tp.querySelector('[data-act="back"]').addEventListener("click", function () { skip(-1); });
     tp.querySelector('[data-act="toggle"]').addEventListener("click", toggle);
     tp.querySelector('[data-act="fwd"]').addEventListener("click", function () { skip(1); });
 
-    var dragging = false;
-    ui.track.addEventListener("mousedown", function (e) { dragging = true; scrubX(e.clientX); e.preventDefault(); });
+    // Scrub: mientras se arrastra seguimos el cursor (cada seek pausa); al
+    // soltar, reanudamos una sola vez si la animación venía reproduciéndose.
+    var dragging = false, wasPlaying = false;
+    function scrubX(clientX) {
+      var c = ctl(getFrame());
+      if (!c) return;
+      var r = ui.track.getBoundingClientRect();
+      var frac = clamp((clientX - r.left) / r.width, 0, 1);
+      seekTo(frac * c.dur);
+    }
+    ui.track.addEventListener("mousedown", function (e) {
+      var c = ctl(getFrame());
+      if (!c) return;
+      dragging = true; wasPlaying = c.playing;
+      scrubX(e.clientX); e.preventDefault();
+    });
     window.addEventListener("mousemove", function (e) { if (dragging) scrubX(e.clientX); });
-    window.addEventListener("mouseup", function () { dragging = false; });
+    window.addEventListener("mouseup", function () {
+      if (!dragging) return;
+      dragging = false;
+      if (wasPlaying) resumeSoon();
+    });
 
-    return { tick: tick, reset: function () { last = null; playing = false; ui.pp.innerHTML = ICON_PLAY; ui.fill.style.width = "0%"; ui.knob.style.left = "0%"; } };
+    return {
+      tick: tick,
+      reset: function () {
+        ready = false; playing = false;
+        tp.classList.add("loading");
+        ui.pp.classList.add("spin");
+        ui.pp.classList.remove("is-playing");
+        ui.pp.innerHTML = ICON_PLAY;
+        ui.fill.style.width = "0%"; ui.knob.style.left = "0%";
+        ui.cur.textContent = "0:00"; ui.dur.textContent = "0:00";
+      },
+    };
   }
 
   // ── Pantalla completa ─────────────────────────────────────────────────────
@@ -447,7 +514,7 @@ const SCRIPT = `
     fsFrame.src = src;
     fs.classList.add("open");
     fs.setAttribute("aria-hidden", "false");
-    fsIv = setInterval(fsCtrl.tick, 140);
+    fsIv = setInterval(fsCtrl.tick, 120);
   }
   function closeFs() {
     fs.classList.remove("open");
@@ -511,7 +578,8 @@ const SCRIPT = `
       fsBtn.hidden = false;
       transport.hidden = false;
       var ctrl = makeController(function () { return frame; }, transport);
-      tickIv = setInterval(ctrl.tick, 140);
+      ctrl.reset(); // estado "cargando" hasta que el motor exponga sus controles
+      tickIv = setInterval(ctrl.tick, 120);
 
       // Watchdog: el motor debería exponer su hook de seek en pocos segundos.
       var checks = 0;

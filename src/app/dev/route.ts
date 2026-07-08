@@ -1,8 +1,14 @@
-// Guía del desarrollador — Nostr Games Protocol (NGP).
+// Guía del desarrollador — Nostr Games Protocol (NGP) + Nostr Game Escrow (NGE).
 //
-// Documento público autocontenido (HTML + CSS + JS inline, sin bundle). El
-// jugador firma eventos Nostr; los relays los guardan; cualquier cliente los
-// lee. La vieja interfaz REST v1 (dependiente de Luna Negra) sigue en /dev/luna.
+// Documento público autocontenido (HTML + CSS + JS inline, sin bundle). Dos capas:
+//   · NGP — el FORMATO público: el jugador firma eventos Nostr, los relays los
+//     guardan y cualquier cliente los lee (identidad, marcador, presencia, retos,
+//     reseñas, zaps). Funciona aunque Luna Negra desaparezca.
+//   · NGE — el CANAL de escrow: RPC cifrado estilo NWC (una URI de conexión) para
+//     apuestas con custodia. La coordinación es privada; la liquidación se publica
+//     como eventos NGP auditables.
+// La vieja interfaz REST 1.0 (dependiente de Luna Negra) sigue en /dev/luna; hoy
+// solo cubre compra de pago y webhooks firmados.
 //
 // Diseño "Eclipse": fondo negro, marca Luna (violeta) / Corona (dorado) /
 // Aurora (verde), tipografías Bricolage Grotesque + Geist. El hero trae un
@@ -251,23 +257,39 @@ const BODY = `
     </a>
     <nav class="top-links">
       <a href="#skill">Skill IA</a>
+      <a href="#capas">Capas</a>
       <a href="#niveles">Niveles</a>
       <a href="#guia">Guía manual</a>
+      <a href="#apuestas">Escrow NGE</a>
       <a href="#kinds">Kinds</a>
-      <a href="/dev/animaciones">Animaciones</a>
       <a href="/dev/luna">Versión REST 1.0</a>
     </nav>
     <div class="status"><span class="dot"></span>Corre en producción · Tetris</div>
   </header>
 
   <section class="hero" id="inicio">
-    <div class="eyebrow">Nostr Games Protocol · NGP</div>
+    <div class="eyebrow">Nostr Games Protocol · NGP + NGE</div>
     <h1>Tu juego habla Nostr.<br><span class="accent">Nadie en el medio.</span></h1>
-    <p class="lead">El jugador <strong>firma</strong> el evento con su propia llave. Los <strong>relays</strong> lo guardan. Y <strong>cualquier cliente Nostr</strong> lo lee — sin API central, sin cuentas propias. Sigue funcionando aunque Luna Negra desaparezca.</p>
+    <p class="lead">Lo social va por <strong>NGP</strong>: el jugador <strong>firma</strong> el evento con su propia llave, los relays lo guardan y cualquier cliente Nostr lo lee. El dinero con custodia va por <strong>NGE</strong>: un canal de escrow cifrado estilo NWC. Sin API central, sin cuentas propias.</p>
     <div class="hero-actions">
-      <a class="btn primary" href="#skill">Instalar skill NGP</a>
-      <a class="btn ghost" href="#guia">Ver la guía manual</a>
+      <a class="btn primary" href="#skill">Instalar la skill</a>
+      <a class="btn ghost" href="#capas">Ver las dos capas</a>
     </div>
+  </section>
+
+  <section class="card" id="capas">
+    <div class="card-label">Dos protocolos, dos capas — adoptá el que necesites</div>
+    <div class="cards2">
+      <div class="mini violet">
+        <strong>NGP · el formato público</strong>
+        <span>Eventos Nostr firmados que cualquiera lee: identidad, marcador, presencia, retos, reseñas y zaps. Es la parte social y abierta — el jugador firma, no vos. Funciona aunque Luna Negra desaparezca.</span>
+      </div>
+      <div class="mini">
+        <strong>NGE · el canal de escrow</strong>
+        <span>RPC cifrado estilo NWC (una URI de conexión) para apuestas con custodia: crear el pozo, cobrar depósitos y pagar premios. La coordinación es <em style="font-style:normal;color:#cfc8de">privada</em>; la liquidación se publica como eventos NGP <em style="font-style:normal;color:#cfc8de">auditables</em>.</span>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:14px"><span style="font-size:15px">💡</span><p><strong>Se apilan, no compiten.</strong> Un mismo juego usa NGP para lo social y, si quiere apuestas custodiadas, NGE como canal — y la apuesta termina siendo auditable en Nostr con el formato NGP. Lo único que queda fuera de ambos es la compra de juegos de pago y los webhooks firmados: eso vive en la <a href="/dev/luna" style="color:#c2b5ff">REST 1.0</a>.</p></div>
   </section>
 
   <section class="card" id="niveles">
@@ -330,11 +352,11 @@ const BODY = `
       <h2 class="section-title" style="margin:0">Integrá con una skill de IA</h2>
       <span class="badge-rec">Recomendado</span>
     </div>
-    <p class="section-sub">Instalá el contexto de NGP una vez y pedile a tu agente que conecte solo lo que necesitás: login Nostr, marcador firmado, presencia, retos 1v1, reseñas, zaps o apuestas v2.</p>
+    <p class="section-sub">Instalá el contexto de NGP + NGE una vez y pedile a tu agente que conecte solo lo que necesitás: login Nostr, marcador firmado, presencia, retos 1v1, reseñas, zaps o apuestas con escrow por NGE.</p>
 
     <div class="skill-hero">
       <div class="label">Recomendado · cualquier agente</div>
-      <h3>Instalá la skill NGP desde este deploy</h3>
+      <h3>Instalá la skill NGP + NGE desde este deploy</h3>
       <div class="cmd">
         <div class="cmd-head"><span>PowerShell</span><button class="copy violet">Copiar</button></div>
         <pre><code>iwr -useb "__LUNA_NEGRA_BASE__/dev/install?version=ngp&amp;ps" | iex</code></pre>
@@ -343,18 +365,18 @@ const BODY = `
         <div class="cmd-head"><span>bash</span><button class="copy violet">Copiar</button></div>
         <pre><code>curl -fsSL "__LUNA_NEGRA_BASE__/dev/install?version=ngp" | sh</code></pre>
       </div>
-      <p class="skill-note">Deja el <code>SKILL.md</code> de <code>integrar-ngp-v2</code> en la carpeta de skills de tu agente, con la URL de este deploy ya configurada. Reinicialo y pedí: <em style="color:#cfc8de;font-style:normal">"integrá mi juego con NGP"</em>.</p>
+      <p class="skill-note">Deja el <code>SKILL.md</code> de <code>integrar-ngp-v2</code> en la carpeta de skills de tu agente, con la URL de este deploy ya configurada. Reinicialo y pedí: <em style="color:#cfc8de;font-style:normal">"integrá mi juego con NGP"</em> o <em style="color:#cfc8de;font-style:normal">"agregá apuestas por NGE"</em>.</p>
     </div>
 
     <div class="honesty">
       <span style="font-size:17px;line-height:1.3">⚡</span>
-      <p><strong>NGP es experimental, pero ya corre en producción en Tetris.</strong> Identidad, marcador, presencia, retos, reseñas, zaps y apuestas v2 están probados ahí. Escrow REST, webhooks y compra de pago siguen en la <a href="/dev/luna">versión REST 1.0</a>.</p>
+      <p><strong>NGP y NGE ya corren en producción en Tetris.</strong> Identidad, marcador, presencia, retos, reseñas y zaps van por NGP; las apuestas con custodia van por el canal NGE (murió la API key REST). Solo la compra de juegos de pago y los webhooks firmados siguen en la <a href="/dev/luna">versión REST 1.0</a>.</p>
     </div>
   </section>
 
   <section class="section" id="guia">
-    <h2 class="section-title">Guía manual de eventos NGP</h2>
-    <p class="section-sub" style="margin-bottom:20px">Abrí solo la sección que necesites. Cada una es un evento Nostr, en orden. Todo probado en Tetris.</p>
+    <h2 class="section-title">Guía manual — NGP y NGE</h2>
+    <p class="section-sub" style="margin-bottom:20px">Abrí solo la sección que necesites. Las 01–06 son eventos Nostr firmados por el jugador (NGP); la 07 es el canal de escrow (NGE). Todo probado en Tetris.</p>
     <div class="acc" id="acc">
 
       <details class="item" id="relays">
@@ -521,7 +543,7 @@ await Promise.any(new SimplePool().publish(PUBLIC_WRITE_RELAYS, evt));
   "tags": [["a", "30023:&lt;tienda&gt;:&lt;slug&gt;"]],
   "content": "Gran juego, nuevo logro desbloqueado"
 }</code></pre></div>
-          <div class="hint"><span style="font-size:15px">💡</span><p><strong>No mezcles</strong> zaps libres con apuestas custodiadas. Si hay depósito, pozo y payout, usá el flujo de apuestas v2 por zaps (abajo).</p></div>
+          <div class="hint"><span style="font-size:15px">💡</span><p><strong>No mezcles</strong> zaps libres con apuestas custodiadas. Un zap es una propina firmada por el usuario, sin custodia. Si hay depósito, pozo y payout, usá el canal de escrow NGE (abajo).</p></div>
         </div>
       </details>
 
@@ -529,23 +551,46 @@ await Promise.any(new SimplePool().publish(PUBLIC_WRITE_RELAYS, evt));
         <summary>
           <span class="item-num">07</span>
           <span class="item-txt">
-            <span class="item-titlerow"><span class="item-title">Apuestas v2 por zaps</span><span class="tag aurora">Tetris</span><span class="tag corona">Gated</span></span>
-            <span class="item-sub">Escrow custodial con depósitos por zap.</span>
+            <span class="item-titlerow"><span class="item-title">Apuestas y escrow — NGE</span><span class="tag aurora">Tetris</span><span class="tag corona">Gated</span></span>
+            <span class="item-sub">Canal RPC cifrado estilo NWC. La liquidación se publica en NGP.</span>
           </span>
           <span class="chev">▾</span>
         </summary>
         <div class="item-body">
-          <p>Probado en producción, gated por deploy (<code>BETS_V2_ENABLED</code>). Aunque use zaps NIP-57 públicos, sigue siendo escrow custodial server-to-server: lo que cambia frente a la apuesta REST v1 es el riel — depósitos, premio y cortes quedan auditables como zaps en relays.</p>
+          <p><strong>NGE es "la NWC del escrow":</strong> un RPC request/response calcado de NIP-47. El juego (<code>C</code>, el <code>secret</code>) le habla al escrow (<code>S</code>, el host de la URI) por eventos Nostr <strong>efímeros cifrados con NIP-44</strong> (kinds <code>24940/24941/24942</code>). El relay es un caño tonto; la fuente de verdad vive en el escrow. Sin API key, sin <code>bind</code> event, sin polling público. Corre server-side (guarda el <code>secret</code>) y está gated por deploy (<code>BETS_V2_ENABLED</code>).</p>
+          <p>La <strong>coordinación</strong> es privada, pero la <strong>liquidación es pública y auditable</strong>: el escrow declara <code>transparency: "public"</code> y ancla contrato, estado <code>kind:31340</code>, resultado <code>kind:1341</code> y payout <code>kind:9735</code> en relays (formato NGP). Todo el detalle en <code>/apuestas/{betId}</code>.</p>
           <div class="steps3">
-            <div class="step"><span class="n">01</span><strong>Crear pozo</strong><span><code>POST /api/v2/bets</code> desde tu game server con API key.</span></div>
-            <div class="step"><span class="n">02</span><strong>Depósito por zap</strong><span>El jugador firma un <code>kind:9734</code>; el server lo reenvía al callback y obtiene el invoice.</span></div>
-            <div class="step"><span class="n">03</span><strong>Resolver</strong><span><code>POST /api/v2/bets/{id}/result</code> desde el game server.</span></div>
+            <div class="step"><span class="n">01</span><strong>Conectar</strong><span>El escrow te da una URI; la pegás en <code>NGE_CONNECTION</code>.</span></div>
+            <div class="step"><span class="n">02</span><strong>Crear + cobrar</strong><span><code>createBet</code> devuelve un <code>bolt11</code> por asiento; el jugador lo paga (no firma nada).</span></div>
+            <div class="step"><span class="n">03</span><strong>Resolver</strong><span><code>reportResult</code> por <code>seatId</code>: el juego es el oráculo.</span></div>
           </div>
-          <div class="term"><div class="term-head"><span class="term-title">endpoints v2</span><button class="copy">Copiar</button></div><pre class="sm"><code>POST /api/v2/bets             { gameId, participants, stakeSats, victoryCondition, roomId }
-GET  /api/v2/bets/{id}        // estado + por participante: depositZapRequest + depositCallback
-POST /api/v2/bets/{id}/result { "winners": ["npub1..."] }   // vacío = empate/anulación (refund)
-POST /api/v2/bets/{id}/cancel</code></pre></div>
-          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado viene del game server</strong>, no del marcador cliente. Por defecto con API key: Luna firma el resultado con el oráculo gestionado y el juego no toca Nostr. Modo keyless opcional: declarás tu clave de oráculo una vez y firmás vos el <code>kind:1341</code> (la firma es la auth, sin API key) — detalle en la skill. <code>winners</code> vacío = empate/anulación → reembolso. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>.</p></div>
+          <div class="term"><div class="term-head"><span class="term-title">.env</span><button class="copy">Copiar</button></div><pre class="sm"><code>NGE_CONNECTION="nostr+nge://&lt;escrow-pubkey&gt;?relay=wss://relay.luna.fit&amp;secret=&lt;client-nsec&gt;"
+# host = pubkey estable del escrow · secret = la clave del cliente (te la da el escrow)</code></pre></div>
+          <div class="term"><div class="term-head"><span class="term-title">nge.ts · el flujo entero</span><button class="copy">Copiar</button></div><pre class="sm"><code>import { NGE } from "./sdk/nge";
+const nge = NGE.fromEnv();               // lee NGE_CONNECTION
+
+// 0) Config del escrow: límites, fees, métodos, transparencia.
+const info = await nge.getInfo();
+
+// 1) Crear la apuesta → detalle completo + un bolt11 POR ASIENTO (mostralo como QR).
+const bet = await nge.createBet({
+  seats: [
+    { seatId: "alice", pubkey: alicePubkey },  // con pubkey: cobra el premio a su lud16
+    { seatId: "bob" },                          // pelado: cobra por QR de retiro
+  ],
+  stakeSats: 1000,                              // sats POR ASIENTO
+  condition: "Mejor de 3 en Pac-Toshi",
+  clientRef: "match-42",                        // idempotencia: reintento = mismo betId
+});
+for (const d of bet.deposits) showQr(d.seatId, d.bolt11);
+
+// 2) Seguir el estado (push 24942 + polling de respaldo; confirma con get_bet).
+const stop = nge.watchBet(bet.betId, (b) => render(b.status, b.seats));
+
+// 3) Reportar el ganador por seatId (vacío = empate/anulación → reembolso).
+await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
+          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado lo firma el juego (oráculo), no el marcador cliente.</strong> El <code>kind:31337</code> es falsificable y nunca reparte dinero. El escrow custodia el pozo y solo paga a los destinos declarados en <code>createBet</code>: un <code>secret</code> filtrado puede elegir ganador, <strong>no redirigir fondos</strong>. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>. SDK: <code>sdk/nge.ts</code> (solo depende de <code>nostr-tools</code>).</p></div>
+          <div class="hint"><span style="font-size:15px">💡</span><p><strong>Serverless:</strong> usá <code>nge.pollBet</code> en vez de <code>watchBet</code> (solo polling, sin listener persistente). La entrega es at-least-once: el SDK reenvía el mismo request firmado hasta la response y el escrow deduplica por id — reintentar nunca duplica apuestas.</p></div>
         </div>
       </details>
 
@@ -553,17 +598,17 @@ POST /api/v2/bets/{id}/cancel</code></pre></div>
         <summary>
           <span class="item-num">08</span>
           <span class="item-txt">
-            <span class="item-titlerow"><span class="item-title">Lo que NO se hace solo con eventos</span></span>
-            <span class="item-sub">Dinero, compra de pago y webhooks: eso queda en la 1.0.</span>
+            <span class="item-titlerow"><span class="item-title">Lo que NO se hace solo con eventos NGP</span></span>
+            <span class="item-sub">Custodia va por NGE; compra de pago y webhooks quedan en la 1.0.</span>
           </span>
           <span class="chev">▾</span>
         </summary>
         <div class="item-body">
-          <p>Nostr es mensajería firmada, no liquidación de dinero. Estas piezas se quedan en la interfaz REST 1.0 — es lo único que las cubre hoy.</p>
+          <p>Nostr es mensajería firmada, no liquidación de dinero. Retener un stake y pagar al ganador exige un custodio (trustless real = DLCs sobre Bitcoin, fuera de alcance). Por eso el dinero no vive en eventos públicos NGP puros:</p>
           <div class="rows">
-            <div class="row2"><strong>Escrow / apuestas</strong><span>Retener stake y pagar al ganador exige un custodio. El escrow v1 vive en 1.0; apuestas v2 por zaps siguen siendo custodiales.</span></div>
-            <div class="row2"><strong>Compra de juego de pago</strong><span>Alguien tiene que validar el pago Lightning antes de dar acceso.</span></div>
-            <div class="row2"><strong>Webhooks firmados</strong><span>Avisos server-to-server con HMAC — no hay evento Nostr equivalente.</span></div>
+            <div class="row2"><strong>Escrow / apuestas → NGE</strong><span>La custodia del pozo se coordina por el canal cifrado NGE (arriba), no por eventos públicos. La liquidación sí se publica en NGP y queda auditable.</span></div>
+            <div class="row2"><strong>Compra de juego de pago → 1.0</strong><span>Alguien tiene que validar el pago Lightning antes de dar acceso. Sigue en la REST 1.0.</span></div>
+            <div class="row2"><strong>Webhooks firmados → 1.0</strong><span>Avisos server-to-server con HMAC — no hay evento Nostr equivalente. Siguen en la REST 1.0.</span></div>
           </div>
         </div>
       </details>
@@ -573,16 +618,26 @@ POST /api/v2/bets/{id}/cancel</code></pre></div>
 
   <section class="section" id="kinds">
     <h2 class="section-title">Resumen de kinds</h2>
-    <p class="section-sub">La spec completa vive en <code class="inline-code">docs/nostr-games-protocol.md</code>. Los propuestos pueden cambiar.</p>
-    <div class="ktable">
+    <p class="section-sub">La spec completa vive en <code class="inline-code">docs/nostr-games-protocol.md</code> (NGP) y <code class="inline-code">docs/nge/nge-v2-spec.md</code> (NGE). Los propuestos pueden cambiar.</p>
+    <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#9d8cff;margin:0 0 10px 2px">NGP · formato público</div>
+    <div class="ktable" style="margin-bottom:22px">
       <div class="krow"><span class="kkind">0</span><span class="kwhat">Perfil del jugador (NIP-01)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">1</span><span class="kwhat">Reseñas / comentarios / logros (tag a=GAME)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">30023</span><span class="kwhat">Artículo del juego (define la coordenada)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">30315</span><span class="kwhat">Presencia "jugando X" (NIP-38)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">1059</span><span class="kwhat">Reto / invitación gift-wrap (NIP-17)</span><span class="kstate">estándar</span></div>
-      <div class="krow"><span class="kkind">9735</span><span class="kwhat">Recibo de zap (NIP-57)</span><span class="kstate">estándar</span></div>
+      <div class="krow"><span class="kkind">9735</span><span class="kwhat">Recibo de zap / payout (NIP-57)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">31337</span><span class="kwhat">Mejor puntaje del jugador</span><span class="kstate aurora">implementado</span></div>
       <div class="krow"><span class="kkind">31338</span><span class="kwhat">Atestación de puntaje (oráculo)</span><span class="kstate corona">diseño</span></div>
+    </div>
+    <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#ffb648;margin:0 0 10px 2px">Apuestas · liquidación pública (NGP) + canal (NGE)</div>
+    <div class="ktable">
+      <div class="krow"><span class="kkind">1339</span><span class="kwhat">Contrato de apuesta (ancla, inmutable)</span><span class="kstate aurora">estable</span></div>
+      <div class="krow"><span class="kkind">1341</span><span class="kwhat">Resultado / anulación (oráculo)</span><span class="kstate aurora">estable</span></div>
+      <div class="krow"><span class="kkind">31340</span><span class="kwhat">Estado del escrow + terms (addressable)</span><span class="kstate aurora">estable</span></div>
+      <div class="krow"><span class="kkind">24940</span><span class="kwhat">NGE request (efímero, cifrado NIP-44)</span><span class="kstate aurora">implementado</span></div>
+      <div class="krow"><span class="kkind">24941</span><span class="kwhat">NGE response (firmado por el escrow)</span><span class="kstate aurora">implementado</span></div>
+      <div class="krow"><span class="kkind">24942</span><span class="kwhat">NGE notification (bet_updated, push)</span><span class="kstate aurora">implementado</span></div>
     </div>
   </section>
 
@@ -596,14 +651,15 @@ POST /api/v2/bets/{id}/cancel</code></pre></div>
       <div class="check"><span class="cb luna">N1</span><span class="t">Leo el ranking con el filtro { kinds:[31337], "#a":[GAME] }.</span></div>
       <div class="check"><span class="cb aurora">N2</span><span class="t">Presencia NIP-38 (kind 30315) con expiration. Opcional.</span></div>
       <div class="check"><span class="cb aurora">N2</span><span class="t">Reseñas y logros: kind 1 con tag a = GAME. Opcional.</span></div>
-      <div class="check"><span class="cb corona">N3</span><span class="t">Zaps NIP-57 para propinas y premios. Opcional.</span></div>
-      <div class="check"><span class="cb corona">1.0</span><span class="t">Apuestas y compra de pago → API REST 1.0, no NGP puro.</span></div>
+      <div class="check"><span class="cb corona">N3</span><span class="t">Zaps NIP-57 para propinas y premios sin custodia. Opcional.</span></div>
+      <div class="check"><span class="cb corona">NGE</span><span class="t">Apuestas con custodia → canal NGE (URI + SDK sdk/nge.ts). Opcional.</span></div>
+      <div class="check"><span class="cb corona">1.0</span><span class="t">Compra de juego de pago y webhooks → API REST 1.0.</span></div>
     </div>
   </section>
 
   <footer class="foot">
     <span style="font-size:15px">⚠️</span>
-    <p>NGP es una capa experimental sobre eventos Nostr, ya en producción en Tetris. La interfaz REST 1.0 dependiente de Luna Negra vive en <a href="/dev/luna">/dev/luna</a> y se está dejando de usar. Los <code>kind</code> marcados como <em style="font-style:normal;color:#9a93ad">propuesto</em> (31337, 31338) pueden cambiar hasta congelar la v1 de la spec.</p>
+    <p>NGP (formato público) y NGE (canal de escrow) ya corren en producción en Tetris. Los kinds de apuestas (1339 / 1341 / 31340) y el wire NGE (24940–24942) están congelados en v1. La interfaz REST 1.0 dependiente de Luna Negra vive en <a href="/dev/luna">/dev/luna</a> y hoy solo cubre compra de pago y webhooks. Los <code>kind</code> marcados como <em style="font-style:normal;color:#9a93ad">diseño</em> (31338) pueden cambiar.</p>
   </footer>
 
 </div>
@@ -644,11 +700,11 @@ const SCRIPT = `
       },
       N3: {
         color: "corona", active: ["jugador","relays","clientes"], packet: "zap · NIP-57",
-        name: "Económico", nip: "NIP-57 · kind 9735 · estándar",
-        desc: "Para juegos gratis o para premiar al ganador: un zap (NIP-57) firmado por el usuario al dev o al ganador. El recibo (kind 9735) es verificable → podés armar un \\"top de zappers\\" por juego. Es NIP-57 estándar, no requiere nada propio de Luna Negra. Pero escrow, apuestas y compra de pago exigen un custodio: eso se queda en la API REST 1.0.",
-        tip: "Regla de oro: el dinero y la custodia se quedan en la 1.0. NGP publica la prueba de lo que pasó, no mueve los fondos.",
+        name: "Económico", nip: "NIP-57 · kind 9735 · estándar · escrow → NGE",
+        desc: "Para juegos gratis o para premiar al ganador: un zap (NIP-57) firmado por el usuario al dev o al ganador. El recibo (kind 9735) es verificable → podés armar un \\"top de zappers\\" por juego. Es NIP-57 estándar, sin custodia. Cuando SÍ hay custodia —depósito, pozo y payout— usás el canal de escrow NGE (RPC cifrado, sección Escrow NGE): la coordinación es privada y la liquidación se publica igual como eventos NGP auditables.",
+        tip: "Regla de oro: los zaps son propinas sin custodia; las apuestas con pozo van por NGE. La compra de juegos de pago y los webhooks quedan en la REST 1.0.",
         codeTitle: "propina / premio (zap)",
-        code: "// NIP-57 estándar — el usuario zapea\\n// al dev o al ganador.\\n{\\n  \\"kind\\": 9735,                 // recibo de zap\\n  \\"tags\\": [\\n    [\\"a\\", \\"30023:npub1dev…:pacman-pwa\\"],\\n    [\\"p\\", \\"<pubkey del dev / ganador>\\"]\\n  ]\\n}\\n\\n// escrow / compra de pago → API REST 1.0\\n// (no NGP puro)"
+        code: "// NIP-57 estándar — el usuario zapea\\n// al dev o al ganador (sin custodia).\\n{\\n  \\"kind\\": 9735,                 // recibo de zap\\n  \\"tags\\": [\\n    [\\"a\\", \\"30023:npub1dev…:pacman-pwa\\"],\\n    [\\"p\\", \\"<pubkey del dev / ganador>\\"]\\n  ]\\n}\\n\\n// apuestas con custodia → canal NGE\\n// compra de pago / webhooks → REST 1.0"
       }
     };
 
@@ -758,8 +814,8 @@ function doc(): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Integra tu juego con Luna Negra usando eventos Nostr (NGP): login NIP-07/46, marcador kind:31337, presencia NIP-38, retos NIP-17, reseñas, zaps y apuestas v2." />
-<title>Luna Negra · Nostr Games Protocol (NGP) para developers</title>
+<meta name="description" content="Integra tu juego con Luna Negra: NGP (formato público de eventos Nostr — login NIP-07/46, marcador kind:31337, presencia NIP-38, retos NIP-17, reseñas, zaps) + NGE (canal de escrow cifrado estilo NWC para apuestas con custodia)." />
+<title>Luna Negra · NGP + NGE para developers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />

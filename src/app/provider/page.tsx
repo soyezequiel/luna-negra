@@ -119,29 +119,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// Etiqueta la interfaz a la que pertenece cada bloque de integración:
-// "1.0" = REST server-to-server (estable), "ngp" = NGP (experimental).
-function IfaceBadge({ kind }: { kind: "1.0" | "ngp" }) {
-  const is10 = kind === "1.0";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-        is10
-          ? "bg-blue/15 text-blue"
-          : "bg-ln-luna/15 text-ln-luna",
-      )}
-      title={
-        is10
-          ? "Interfaz 1.0 (REST, server-to-server). Estable — es lo que usa este panel."
-          : "Nostr Games Protocol (NGP): eventos Nostr firmados. Experimental — no usa estas claves."
-      }
-    >
-      {is10 ? "1.0 · REST" : "NGP"}
-    </span>
-  );
-}
-
 function TabNav({
   tab,
   setTab,
@@ -181,16 +158,6 @@ function TabNav({
   );
 }
 
-type ApiKeyRow = {
-  id: string;
-  name: string;
-  prefix: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  gameId: string | null;
-  gameTitle: string | null;
-};
-
 export default function ProviderPage() {
   const { user, login, loading } = useSession();
   const [provider, setProvider] = useState<Provider | null>(null);
@@ -202,15 +169,8 @@ export default function ProviderPage() {
     pendingSats: number;
     failedSats: number;
   } | null>(null);
-  const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
-  const [keyName, setKeyName] = useState("");
-  // Juego al que acotar la clave nueva ("" = todos los juegos / a nivel proveedor).
-  const [keyGameId, setKeyGameId] = useState("");
-  const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [origin, setOrigin] = useState("");
+  // Juego al que emitir la credencial NGE ("" = primer juego).
   const [envGameId, setEnvGameId] = useState("");
 
   const [tab, setTab] = useState<Tab>("games");
@@ -227,23 +187,10 @@ export default function ProviderPage() {
   const [uploading, setUploading] = useState(false);
   const [, startLoadTransition] = useTransition();
 
-  useEffect(() => {
-    // Se lee tras montar (no en el initializer) para no provocar un mismatch de
-    // hidratación: el server no conoce window.location.origin.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOrigin(window.location.origin);
-  }, []);
-
-  function copy(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    setMsg(label);
-  }
-
   const load = useCallback(async () => {
-    const [d, s, k, e] = await Promise.all([
+    const [d, s, e] = await Promise.all([
       fetch("/api/provider").then((r) => r.json()).catch(() => null),
       fetch("/api/provider/sales").then((r) => r.json()).catch(() => ({ sales: [] })),
-      fetch("/api/provider/api-keys").then((r) => r.json()).catch(() => ({ keys: [] })),
       fetch("/api/provider/earnings").then((r) => r.json()).catch(() => ({ earnings: null })),
     ]);
     if (d?.provider) {
@@ -252,59 +199,11 @@ export default function ProviderPage() {
       setImageUrl(d.provider.imageUrl ?? "");
       setLn(d.provider.lightningAddress ?? "");
       setBetDevFee(String(d.provider.betDevFeePct ?? 0));
-      setWebhookUrl(d.provider.webhookUrl ?? "");
-      setWebhookSecret(d.provider.webhookSecret ?? null);
     }
     setGames(d?.games ?? []);
     setSales(s?.sales ?? []);
-    setApiKeys(k?.keys ?? []);
     setBetEarnings(e?.earnings ?? null);
   }, []);
-
-  async function createKey() {
-    setMsg(null);
-    const r = await fetch("/api/provider/api-keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: keyName.trim() || "Clave de API",
-        ...(keyGameId ? { gameId: keyGameId } : {}),
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) return setMsg(d.error ?? "No se pudo crear la clave");
-    setCreatedKey(d.key); // se muestra una sola vez
-    setKeyName("");
-    setKeyGameId("");
-    load();
-  }
-
-  async function revokeKey(id: string) {
-    if (!confirm("¿Revocar esta clave? Dejará de funcionar al instante.")) return;
-    await fetch(`/api/provider/api-keys/${id}`, { method: "DELETE" });
-    load();
-  }
-
-  async function saveWebhook(regenerate = false) {
-    if (
-      regenerate &&
-      !confirm(
-        "Regenerar el secreto invalida el anterior: los webhooks firmados con el viejo dejarán de validar hasta que actualices tu game server. ¿Continuar?",
-      )
-    ) {
-      return;
-    }
-    setMsg(null);
-    const r = await fetch("/api/provider/webhook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ webhookUrl: webhookUrl.trim(), regenerate }),
-    });
-    const d = await r.json();
-    if (!r.ok) return setMsg(d.error ?? "No se pudo guardar el webhook");
-    setWebhookSecret(d.webhookSecret ?? null);
-    setMsg("Webhook guardado.");
-  }
 
   useEffect(() => {
     if (!user) return;
@@ -471,12 +370,6 @@ export default function ProviderPage() {
   const publishedCount = games.filter((g) => g.status === "published").length;
 
   const selectedGameId = envGameId || games[0]?.id || "";
-  const envText = [
-    `LUNA_NEGRA_BASE=${origin || "https://tu-deploy"}`,
-    `LUNA_NEGRA_API_KEY=${createdKey ?? "ln_sk_…"}`,
-    `LUNA_NEGRA_WEBHOOK_SECRET=${webhookSecret ?? "whsec_…"}`,
-    `LUNA_NEGRA_GAME_ID=${selectedGameId || "game_…"}`,
-  ].join("\n");
 
   // Sin perfil aún: pantalla enfocada en crearlo (sin pestañas ni KPIs).
   if (!provider) {
@@ -809,276 +702,94 @@ export default function ProviderPage() {
       {/* ===== INTEGRACIÓN ===== */}
       {tab === "integration" ? (
         <section className="mt-6 grid animate-ln-rise items-start gap-3.5 lg:grid-cols-2">
-          {/* env vars */}
+          {/* Protagonista: NGP + NGE */}
           <div className="rounded-ln-lg border border-ln-luna/30 bg-ln-card/60 p-5 lg:col-span-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-semibold text-ink">Variables de entorno</h2>
-                <IfaceBadge kind="1.0" />
-              </div>
-              <button
-                type="button"
-                onClick={() => copy(envText, "Variables de entorno copiadas.")}
-                className="text-xs text-blue hover:underline"
-              >
-                Copiar todo
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-faint">
-              Todo lo que tu <strong>game server</strong> necesita para la{" "}
-              <strong>interfaz 1.0 (REST)</strong>: login, verificar compras,
-              presencia, salas y <strong>apuestas</strong> (tanto las clásicas
-              como las <strong>v2 por zaps</strong> de <code>/api/v2/bets</code>,
-              que reusan la misma API key). Pegalo en el archivo <code>.env</code>{" "}
-              de tu servidor. La API key solo se ve al crearla (en{" "}
-              <strong>Claves de API</strong>, abajo); el resto lo podés copiar
-              cuando quieras.
-            </p>
-            <p className="mt-2 rounded-ln-md border border-ln-luna/25 bg-ln-luna/5 px-3 py-2 text-xs text-muted">
-              <IfaceBadge kind="ngp" />{" "}
-              <span className="ml-1">
-                ¿Solo vas a usar Nostr Games Protocol (NGP) (presencia NIP-38,
-                marcador <code>kind:31337</code>, retos NIP-17, zaps)?{" "}
-                <strong>No necesitás ninguna de estas variables.</strong> El login
-                es NIP-07/46 (el jugador firma con su propio signer) y los eventos
-                se anclan al <code>gameCoord</code> del juego, que obtenés de los
-                relays (<code>{"{ kinds:[30023], \"#d\":[\"<slug>\"] }"}</code>) o
-                lo hardcodeás. NGP no toca los servidores de Luna Negra. Para{" "}
-                <strong>apuestas por eventos</strong> (NGE), generá la credencial
-                más abajo en vez de configurar variables sueltas.
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold text-ink">
+                Nostr Games Protocol (NGP) + NGE
+              </h2>
+              <span className="rounded-full bg-ln-luna/15 px-2 py-0.5 text-[10px] font-semibold text-ln-luna">
+                Estándar
               </span>
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-faint">
+              El estándar para integrar tu juego. <strong>NGP</strong> (presencia
+              NIP-38, marcador <code>kind:31337</code>, retos NIP-17, reseñas
+              NIP-23, zaps) <strong>no necesita variables de entorno ni API key</strong>:
+              el login es NIP-07/46 (el jugador firma con su propio signer) y los
+              eventos se anclan al <code>gameCoord</code> del juego, que obtenés de
+              los relays (<code>{"{ kinds:[30023], \"#d\":[\"<slug>\"] }"}</code>) o
+              hardcodeás. Para <strong>apuestas y escrow</strong> usá{" "}
+              <strong>NGE</strong>: una sola credencial (<code>NGE_CONNECTION</code>)
+              por juego, más abajo — sin exponer nada en relays públicos.
             </p>
-
-            {games.length > 1 ? (
-              <label className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-                Juego para <code>LUNA_NEGRA_GAME_ID</code>:
-                <select
-                  className={cn(inputCls, "max-w-xs")}
-                  value={selectedGameId}
-                  onChange={(e) => setEnvGameId(e.target.value)}
-                >
-                  {games.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <pre className="mt-3 overflow-x-auto rounded-ln-md bg-black/40 px-3 py-3 font-mono text-xs text-ink">{envText}</pre>
-
-            <dl className="mt-3 space-y-2 text-xs">
-              <div className="flex flex-col gap-0.5">
-                <dt className="flex items-center gap-2">
-                  <code className="text-ink">LUNA_NEGRA_BASE</code>
-                  <IfaceBadge kind="1.0" />
-                </dt>
-                <dd className="text-faint">
-                  URL de este deploy: base de todas las llamadas REST 1.0,{" "}
-                  <strong>siempre requerida</strong>. NGP no la usa
-                  (login NIP-07/46 y eventos directo a relays).
-                </dd>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <dt className="flex items-center gap-2">
-                  <code className="text-ink">LUNA_NEGRA_API_KEY</code>
-                  <IfaceBadge kind="1.0" />
-                </dt>
-                <dd className="text-faint">
-                  Llave secreta server-to-server (<code>ln_sk_…</code>) para crear
-                  apuestas (v1 y v2 por zaps), presencia global, invitaciones y
-                  amigos. <strong>Nunca va al navegador.</strong> NGP no la usa.
-                </dd>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <dt className="flex items-center gap-2">
-                  <code className="text-ink">LUNA_NEGRA_WEBHOOK_SECRET</code>
-                  <IfaceBadge kind="1.0" />
-                </dt>
-                <dd className="text-faint">
-                  Verifica la firma HMAC de los webhooks entrantes. Opcional: solo
-                  si escuchás eventos (compras, apuestas liquidadas, payouts).
-                </dd>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <dt className="flex items-center gap-2">
-                  <code className="text-ink">LUNA_NEGRA_GAME_ID</code>
-                  <IfaceBadge kind="1.0" />
-                  <span className="rounded-full bg-green/15 px-2 py-0.5 text-[10px] font-semibold text-green">
-                    opcional
-                  </span>
-                </dt>
-                <dd className="text-faint">
-                  El <code>gameId</code> para crear apuestas desde el backend.{" "}
-                  <strong>No hace falta si creás una clave acotada a un juego</strong>{" "}
-                  (abajo, en <strong>Claves de API</strong>): esa clave ya sabe a
-                  qué juego pertenece. (NGP ancla por <code>gameCoord</code>, no
-                  por este id.)
-                </dd>
-              </div>
-            </dl>
-            <p className="mt-3 rounded-ln-md border border-green/25 bg-green/5 px-3 py-2 text-xs text-muted">
-              <strong className="text-green">Mínimo para apuestas/escrow:</strong>{" "}
-              <code>LUNA_NEGRA_BASE</code> + <code>LUNA_NEGRA_API_KEY</code> (con la
-              clave acotada a un juego). <code>GAME_ID</code> y{" "}
-              <code>WEBHOOK_SECRET</code> quedan opcionales.
-            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href="/provider/integracion" className="btn btn-outline">
+                Ver estado de integración
+              </Link>
+              <Link href="/dev" className="btn btn-ghost">
+                Guía /dev
+              </Link>
+              <a href="/developers" className="btn btn-ghost">
+                Referencia interactiva
+              </a>
+            </div>
           </div>
 
-          {/* credencial NGE (apuestas por eventos, por juego) */}
-          {selectedGameId ? (
-            <div className="lg:col-span-2">
-              <NgeCredentialCard gameId={selectedGameId} />
-            </div>
-          ) : null}
-
-          {/* api keys */}
-          <div id="api-keys" className="scroll-mt-20 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold">Claves de API</h2>
-              <IfaceBadge kind="1.0" />
-            </div>
-            <p className="mb-3 mt-1 text-xs text-faint">
-              Para que tu game server cree apuestas (Bearer) — tanto las clásicas
-              como las v2 por zaps. Solo en tu backend, nunca en el navegador.{" "}
-              <strong>Acotala a un juego</strong> y tu server no necesita mandar{" "}
-              <code>gameId</code> (una env var menos). Ver{" "}
-              <a href="/developers" className="text-blue hover:underline">
-                /developers
-              </a>
-              .
-            </p>
-
-            {createdKey ? (
-              <div className="mb-3 rounded-ln-md border border-green/30 bg-green/10 p-4">
-                <p className="text-sm text-green">
-                  Copiá tu clave ahora — no se vuelve a mostrar:
-                </p>
-                <code className="mt-2 block break-all rounded bg-black/40 px-3 py-2 font-mono text-xs text-ink">
-                  {createdKey}
-                </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(createdKey);
-                    setMsg("Clave copiada.");
-                  }}
-                  className="mt-2 text-xs text-blue hover:underline"
-                >
-                  Copiar
-                </button>
-                <button
-                  onClick={() => setCreatedKey(null)}
-                  className="ml-4 text-xs text-faint hover:text-ink"
-                >
-                  Listo
-                </button>
-              </div>
-            ) : null}
-
-            <div className="flex flex-wrap gap-2">
-              <input
-                className={cn(inputCls, "min-w-[160px] flex-1")}
-                placeholder="Nombre (ej. servidor-prod)"
-                value={keyName}
-                onChange={(e) => setKeyName(e.target.value)}
-              />
+          {/* credencial NGE (apuestas por eventos, por juego) — protagonista */}
+          {games.length > 1 ? (
+            <label className="flex flex-wrap items-center gap-2 text-xs text-muted lg:col-span-2">
+              Credencial NGE para el juego:
               <select
-                className={cn(inputCls, "max-w-[200px]")}
-                value={keyGameId}
-                onChange={(e) => setKeyGameId(e.target.value)}
-                title="Acotar la clave a un juego (opcional)"
+                className={cn(inputCls, "max-w-xs")}
+                value={selectedGameId}
+                onChange={(e) => setEnvGameId(e.target.value)}
               >
-                <option value="">Todos los juegos</option>
                 {games.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.title}
                   </option>
                 ))}
               </select>
-              <Button type="button" variant="outline" onClick={createKey}>
-                Crear
-              </Button>
-            </div>
-            <p className="mt-1 text-xs text-faint">
-              Acotada a un juego, tu server puede omitir <code>gameId</code> al
-              crear apuestas. «Todos los juegos» = clave a nivel proveedor (el body
-              debe mandar <code>gameId</code>).
-            </p>
+            </label>
+          ) : null}
 
-            {apiKeys.length > 0 ? (
-              <ul className="mt-3 space-y-2">
-                {apiKeys.map((k) => (
-                  <li
-                    key={k.id}
-                    className="flex items-center justify-between rounded-ln-md border border-ln-border px-4 py-2 text-sm"
-                  >
-                    <div>
-                      <span className="font-medium">{k.name}</span>{" "}
-                      <code className="text-xs text-faint">{k.prefix}…</code>
-                      <span className="ml-2 text-xs text-faint">
-                        {k.lastUsedAt ? "usada" : "sin usar"}
-                      </span>
-                      <span
-                        className={cn(
-                          "ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                          k.gameId
-                            ? "bg-ln-luna/15 text-ln-luna"
-                            : "bg-white/10 text-ln-muted",
-                        )}
-                      >
-                        {k.gameId ? k.gameTitle ?? "juego" : "todos los juegos"}
-                      </span>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)}>
-                      Revocar
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-
-          {/* webhooks */}
-          <div className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold">Webhooks</h2>
-              <IfaceBadge kind="1.0" />
+          {selectedGameId ? (
+            <div className="lg:col-span-2">
+              <NgeCredentialCard gameId={selectedGameId} />
             </div>
-            <p className="mb-3 mt-1 text-xs text-faint">
-              Luna Negra notifica a esta URL los eventos{" "}
-              <code>purchase.completed</code>, <code>bet.settled</code> y{" "}
-              <code>payout.sent</code> (firmados con HMAC). Las apuestas v2 por
-              zaps llegan por acá también, con <code>apiVersion: 2</code>.
+          ) : (
+            <p className="text-sm text-ln-faint lg:col-span-2">
+              Creá un juego para emitir su credencial NGE.
             </p>
-            <div className="flex gap-2">
-              <input
-                className={inputCls}
-                placeholder="https://tu-server.com/webhooks/luna"
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-              />
-              <Button type="button" variant="outline" onClick={() => saveWebhook()}>
-                Guardar
-              </Button>
-            </div>
-            {webhookSecret ? (
-              <div className="mt-3 rounded-ln-md border border-ln-border bg-ln-bg-deep/60 p-3">
-                <p className="text-xs text-muted">
-                  Secreto de firma (verificá la cabecera{" "}
-                  <code>X-LunaNegra-Signature</code>):
+          )}
+
+          {/* Retrocompatibilidad: interfaz 1.0 (REST) detrás de un botón */}
+          <div className="rounded-ln-lg border border-dashed border-ln-corona/35 bg-ln-corona/[.04] p-5 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-ink">
+                    Interfaz 1.0 (REST) · compatibilidad
+                  </h3>
+                  <span className="rounded-full bg-ln-corona/15 px-2 py-0.5 text-[10px] font-semibold text-ln-corona">
+                    Se dejará de usar
+                  </span>
+                </div>
+                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-faint">
+                  Variables de entorno, claves de API y webhooks server-to-server.
+                  Se mantiene para las integraciones que ya la usan, pero{" "}
+                  <strong>no es recomendable para juegos nuevos</strong>: migrá a
+                  NGP/NGE cuando puedas.
                 </p>
-                <code className="mt-1 block break-all font-mono text-xs text-ink">
-                  {webhookSecret}
-                </code>
-                <button
-                  onClick={() => saveWebhook(true)}
-                  className="mt-2 text-xs text-blue hover:underline"
-                >
-                  Regenerar secreto
-                </button>
               </div>
-            ) : null}
+              <Link
+                href="/provider/integracion/compat"
+                className="btn btn-outline shrink-0 self-start sm:self-center"
+              >
+                Ver interfaz 1.0
+              </Link>
+            </div>
           </div>
         </section>
       ) : null}
