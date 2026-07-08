@@ -124,12 +124,14 @@ o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
 → `{ methods: [...], version, currency: "sat", minStakeSats, maxStakeSats, feePct, devFeePct }`
 
 ### `create_bet`
-`params`: `{ seats: [{ seatId, pubkey?, payoutAddress? }], stakeSats, condition?, deadlineSec?, clientRef? }`
+`params`: `{ seats: [{ seatId, pubkey?, payoutAddress? }], stakeSats, condition?, deadlineSec?, clientRef?, roomId? }`
 → `{ betId, status, deposits: [{ seatId, bolt11, amountSats, expiresAt }] }`
 - `seatId`: id estable que asigna el juego (puede ser una pubkey o lo que sea).
 - `pubkey` / `payoutAddress`: opcionales; definen el **nivel de payout** (§8).
 - `clientRef`: opcional, clave de idempotencia del juego (§6.1). Reintentar con el
   mismo `clientRef` devuelve el **mismo `betId`**, no crea otra apuesta.
+- `roomId`: opcional, sala/partida del juego (correlación y display en el escrow).
+  Opaco para el protocolo: no participa de la idempotencia ni del estado.
 - `stakeSats` es **por asiento**; el pozo objetivo es `stakeSats × seats.length`.
 
 ### `get_bet`  — **la fuente de verdad; se hace polling de esto**

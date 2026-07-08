@@ -122,7 +122,7 @@ const canonical = [
   }),
   rpcPair({
     method: "create_bet",
-    params: { seats: SEATS, stakeSats: STAKE, condition: "Mejor de 3 en Pac-Toshi", clientRef: "match-42" },
+    params: { seats: SEATS, stakeSats: STAKE, condition: "Mejor de 3 en Pac-Toshi", clientRef: "match-42", roomId: "SALA-P7Q2" },
     result: {
       betId: BET_ID,
       status: "pending_deposits",

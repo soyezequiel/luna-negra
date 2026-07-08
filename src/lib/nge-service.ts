@@ -228,6 +228,12 @@ async function doCreateBet(
     typeof params.clientRef === "string" && params.clientRef.trim()
       ? params.clientRef.trim().slice(0, 128)
       : null;
+  // Sala/partida del juego (spec §7): correlación y display ("Sala" en el detalle).
+  // Opaca para el protocolo: no participa de la idempotencia ni del estado.
+  const roomId =
+    typeof params.roomId === "string" && params.roomId.trim()
+      ? params.roomId.trim().slice(0, 128)
+      : null;
 
   // Idempotencia por clave natural (§6.1): mismo clientRef → mismo betId, aun si
   // el reintento llega en un evento nuevo (id distinto) o tras un reinicio.
@@ -302,6 +308,7 @@ async function doCreateBet(
         feePct,
         devFeePct,
         victoryCondition: condition,
+        ...(roomId ? { roomId } : {}),
         metadataJson: JSON.stringify({
           nge: { seats: seatsMeta, ...(clientRef ? { clientRef } : {}) },
         }),
