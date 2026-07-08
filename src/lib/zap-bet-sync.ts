@@ -62,6 +62,7 @@ export async function syncZapBetReceipts(): Promise<void> {
       payoutZapRequestId: true,
       payoutMsat: true,
       pubkey: true,
+      depositStatus: true,
       createdAt: true,
       settledAt: true,
       bet: {
@@ -73,6 +74,7 @@ export async function syncZapBetReceipts(): Promise<void> {
           stakeMsat: true,
           metadataJson: true,
           ngeUnlisted: true,
+          game: { select: { title: true } },
           _count: { select: { participants: true } },
         },
       },
@@ -185,6 +187,7 @@ type PendingPayoutBet = {
   resultEventKind: number | null;
   stakeMsat: bigint;
   metadataJson: string | null;
+  game: { title: string } | null;
   _count: { participants: number };
 };
 
@@ -196,6 +199,7 @@ type PendingPayout = {
   pubkey: string;
   payoutMsat: bigint | null;
   payoutZapRequestId: string | null;
+  depositStatus: string;
   bet: PendingPayoutBet;
 };
 
@@ -262,6 +266,10 @@ async function publishPayoutProofNote(
 ): Promise<void> {
   const anchor = part.bet.anchorEventId;
   if (!anchor || anchor.startsWith("dev-anchor-")) return;
+  // Solo PREMIOS: los reembolsos de un empate/anulación no ameritan una nota
+  // "pago confirmado" por participante (y decir "ganador" sería mentira). El
+  // recibo del refund queda igual en el 31340 y en el ledger.
+  if (part.depositStatus === "refunded") return;
   // Mismas reglas EDITORIALES que la nota de liquidación (escrow-v2-settle):
   // sin nota para apuestas unlisted ni para pozos bajo el umbral. La auditoría
   // máquina no se pierde: el recibo ya quedó en el 31340 re-publicado.
@@ -269,18 +277,29 @@ async function publishPayoutProofNote(
   const potSats = Number(msatToSats(part.bet.stakeMsat)) * part.bet._count.participants;
   if (potSats < BET_SETTLE_NOTE_MIN_POT_SATS) return;
 
-  const lines = [
-    "🌑 Pago confirmado — Luna Negra",
-    `Apuesta: ${part.betId}`,
-    `Ganador: ${part.npub}`,
-    `Monto: ${part.payoutMsat != null ? Number(msatToSats(part.payoutMsat)) : "?"} sats`,
+  // Redacción para HUMANOS: mención real (`nostr:npub…` → los clientes muestran
+  // el nombre del perfil), juego y monto en la primera línea; las referencias
+  // probatorias van compactas al final (el desglose vive en la página de detalle).
+  const enDonde = part.bet.game?.title ? ` en ${part.bet.game.title}` : "";
+  const premio =
+    part.payoutMsat != null ? `${Number(msatToSats(part.payoutMsat))} sats` : "su premio";
+  const detailUrl = `${(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "")}/apuestas/${part.betId}`;
+
+  const refs = [
     `Contrato: ${nostrEventRef(anchor, part.bet.anchorEventKind ?? 1)}`,
     part.bet.resultEventId
-      ? `Resultado firmado: ${nostrEventRef(part.bet.resultEventId, part.bet.resultEventKind ?? 30078)}`
+      ? `Resultado: ${nostrEventRef(part.bet.resultEventId, part.bet.resultEventKind ?? 30078)}`
       : null,
-    `Prueba de pago (recibo 9735): ${nostrEventRef(receipt.id, 9735)}`,
-    part.payoutZapRequestId ? `Zap request firmado por Luna: ${part.payoutZapRequestId}` : null,
+    `Recibo: ${nostrEventRef(receipt.id, 9735)}`,
   ].filter((line): line is string => Boolean(line));
+
+  const lines = [
+    `🌑 Pago confirmado: nostr:${part.npub} cobró ${premio} por ganar la apuesta${enDonde}.`,
+    ``,
+    `El recibo 9735 lo firma el wallet del ganador (no Luna Negra), así que el pago es verificable por cualquiera.`,
+    `Detalle y pruebas: ${detailUrl}`,
+    refs.join(" · "),
+  ];
 
   await publishSettleNote(lines.join("\n"), [
     ["t", "lunanegra:payout-proof:v2"],
