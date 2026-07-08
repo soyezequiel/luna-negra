@@ -40,7 +40,7 @@ const RELAY = "wss://relay.luna.fit";
 // nip44.encrypt genera un nonce aleatorio por mensaje.
 const NONCE = hexToBytes("ab".repeat(32));
 
-const KIND = { request: 24940, response: 24941 };
+const KIND = { request: 24940, response: 24941, notification: 24942 };
 
 // Clave de conversación NIP-44 entre C y S (simétrica).
 const CK = nip44.getConversationKey(hexToBytes(SK.client), PK.escrow);
@@ -112,24 +112,44 @@ const canonical = [
     params: {},
     result: {
       methods: ["get_info", "create_bet", "get_bet", "report_result", "cancel_bet"],
-      version: "1.0",
+      version: "1.1",
       currency: "sat",
       minStakeSats: 100,
       maxStakeSats: 500000,
       feePct: 2,
       devFeePct: 1,
+      // v1.1: piso de comisión (para que auditSettlement no adivine).
+      feeMinSats: 10,
       // Capacidad del ESCROW (no del canal): liquida en público con eventos NGP.
       // `visibilityOptions` = modos que acepta `create_bet.visibility`.
       transparency: "public",
       visibilityOptions: ["public", "unlisted"],
+      // v1.1: tipos de notification 24942 que emite (§9). Ausente = solo polling.
+      notifications: ["bet_updated"],
+      // v1.1: límites por credencial; excederlos → error RATE_LIMITED (§7).
+      limits: { createBetPerMin: 30, maxPendingBets: 50 },
+      // v1.1: ventana de disputa (§7.1). 0 = liquidación inmediata.
+      settleDelaySec: 0,
+      settleDelayMinPotSats: 0,
     },
   }),
   rpcPair({
     method: "create_bet",
     params: { seats: SEATS, stakeSats: STAKE, condition: "Mejor de 3 en Pac-Toshi", clientRef: "match-42", roomId: "SALA-P7Q2" },
+    // v1.1: la response ES el detalle completo (mismo shape que get_bet) MÁS los
+    // handles de depósito — la creación queda en un solo RPC. Recién creada, el
+    // detalle es trivial: nadie depositó y no hay resultado.
     result: {
       betId: BET_ID,
       status: "pending_deposits",
+      stakeSats: STAKE,
+      potSats: 0,
+      deadlineSec: DEADLINE,
+      seats: [
+        { seatId: "alice", deposited: false, bolt11: "lnbc10u1p...alice", payout: null },
+        { seatId: "bob", deposited: false, bolt11: "lnbc10u1p...bob", payout: null },
+      ],
+      result: null,
       deposits: [
         { seatId: "alice", bolt11: "lnbc10u1p...alice", amountSats: STAKE, expiresAt: DEADLINE },
         { seatId: "bob", bolt11: "lnbc10u1p...bob", amountSats: STAKE, expiresAt: DEADLINE },
@@ -157,6 +177,31 @@ const canonical = [
     params: { betId: BET_ID, winners: ["alice"] },
     result: { ok: true, status: "settled" },
   }),
+];
+
+// ── Notification 24942 `bet_updated` (push, §9, v1.1) ────────────────────────
+// La firma `S`, cifrada hacia `C`, tag p=<C> y SIN tag `e` (no responde a ningún
+// request). NO autoritativa: despierta al cliente, que confirma con get_bet.
+function signNotification(payload, createdAt = T0 + 2) {
+  const tmpl = {
+    kind: KIND.notification,
+    created_at: createdAt,
+    tags: [["p", PK.client]],
+    content: enc(payload),
+  };
+  return finalizeEvent(tmpl, hexToBytes(SK.escrow));
+}
+
+const notificationPayload = {
+  notification_type: "bet_updated",
+  notification: { betId: BET_ID, status: "funded", deposited: ["alice", "bob"] },
+};
+const notifications = [
+  {
+    name: "bet_updated (segundo depósito acreditado → funded)",
+    payload: notificationPayload,
+    event: signNotification(notificationPayload),
+  },
 ];
 
 // ── Casos adversariales — qué debe DECIDIR el escrow ─────────────────────────
@@ -222,11 +267,19 @@ const adversarial = [
     expect: { error: { code: "NOT_CANCELLABLE" } },
     why: "cancel_bet solo pre-fondeo total (§8). Fondeada, la única salida es report_result (winners vacío = anular).",
   },
+  {
+    name: "credencial que excede el límite de creación",
+    method: "create_bet",
+    params: { seats: SEATS, stakeSats: STAKE },
+    expect: { error: { code: "RATE_LIMITED" } },
+    why: "v1.1 (§7): el escrow limita create_bet por credencial (get_info.limits: createBetPerMin, maxPendingBets). Excederlo devuelve RATE_LIMITED; el cliente reintenta con backoff. Los reintentos del MISMO evento no cuentan (dedup por id).",
+  },
 ];
 
 // ── Sanity: todo evento canónico/adversarial debe VERIFICAR firma y round-trip ──
 const allEvents = [
   ...canonical.flatMap((c) => [c.request, c.response]),
+  ...notifications.map((n) => n.event),
   attackerRequest,
   staleRequest,
 ];
@@ -243,14 +296,23 @@ for (const c of canonical) {
     throw new Error(`round-trip roto en response de ${c.method}`);
   }
 }
+for (const n of notifications) {
+  if (JSON.stringify(dec(n.event.content)) !== JSON.stringify(n.payload)) {
+    throw new Error(`round-trip roto en notification "${n.name}"`);
+  }
+  if (n.event.tags.some((t) => t[0] === "e")) {
+    throw new Error(`la notification "${n.name}" no debe llevar tag e (§9)`);
+  }
+}
 
 // ── Serialización ────────────────────────────────────────────────────────────
 const vectors = {
-  version: "1.0",
+  version: "1.1",
   note:
-    "NGE v2 (RPC cifrado estilo NWC). Claves y nonce NIP-44 fijos → content e id " +
-    "deterministas; las firmas se verifican, no se comparan. Regenera con " +
-    "`node docs/nge/gen-vectors.js`.",
+    "NGE v2 (RPC cifrado estilo NWC), spec v1.1: create_bet devuelve el detalle " +
+    "completo, push 24942 bet_updated, RATE_LIMITED + limits, ventana de disputa. " +
+    "Claves y nonce NIP-44 fijos → content e id deterministas; las firmas se " +
+    "verifican, no se comparan. Regenera con `node docs/nge/gen-vectors.js`.",
   kinds: KIND,
   keys: {
     escrow: { sk: SK.escrow, pubkey: PK.escrow, npub: nip19.npubEncode(PK.escrow) },
@@ -261,6 +323,7 @@ const vectors = {
   parsed,
   crypto: { conversationKey: bytesToHex(CK), nonce: bytesToHex(NONCE) },
   canonical,
+  notifications,
   adversarial,
 };
 

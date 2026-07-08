@@ -9,6 +9,7 @@ import { canPayout } from "@/lib/ledger-math";
 import { lightningConfigured } from "@/lib/lightning";
 import { sendZapPayout } from "@/lib/zap-payout";
 import { WITHDRAW_WINDOW_MS } from "@/lib/escrow-v2-config";
+import { displayNameForPubkey } from "@/lib/profile-cache";
 import { notifyOperationalError } from "@/lib/discord";
 
 // Payouts de apuestas v2: Luna Negra ZAPEA al ganador / refund / dev fee (o cae a
@@ -117,12 +118,19 @@ export async function payParticipantV2(args: {
   // el reembolso va al post del contrato. Sin comentario, el premio cae al post.
   const payoutAnchor =
     kind === "payout" ? (participant.commentEventId ?? bet.anchorEventId) : bet.anchorEventId;
+  // Comentario legible por humanos: en los clientes (Jumble, etc.) el zap anclado
+  // muestra solo al emisor + este texto, así que el nombre del destinatario tiene
+  // que ir acá. El sufijo con la cola del bet.id conserva la trazabilidad pública.
+  const recipientName = await displayNameForPubkey(recipientPubkey);
   const res = await sendZapPayout({
     anchorEventId: payoutAnchor,
     recipientPubkey,
     address: dest,
     amountMsat,
-    comment: `Luna Negra ${kind} ${bet.id}`,
+    comment:
+      kind === "payout"
+        ? `Luna Negra: premio para ${recipientName} 🏆 (apuesta …${bet.id.slice(-6)})`
+        : `Luna Negra: reembolso para ${recipientName} (apuesta …${bet.id.slice(-6)})`,
   });
   if (res.kind === "zap") {
     await markPaid({ preimage: res.preimage, payoutKind: "zap", zapRequestId: res.zapRequestId });
@@ -211,7 +219,7 @@ export async function payProviderFeeV2(args: {
     recipientPubkey: owner.pubkey,
     address: dest,
     amountMsat,
-    comment: `Luna Negra dev_fee ${bet.id}`,
+    comment: `Luna Negra: corte del dev para ${bet.provider.name} (apuesta …${bet.id.slice(-6)})`,
   });
   if (res.kind === "zap") await markPaid(res.preimage, res.zapRequestId);
   else if (res.kind === "lnurl") await markPaid(res.preimage);
@@ -323,12 +331,16 @@ export async function retryFailedPayoutV2(
 
   const retryAnchor =
     kind === "payout" ? (part.commentEventId ?? part.bet.anchorEventId) : part.bet.anchorEventId;
+  const retryName = await displayNameForPubkey(part.pubkey);
   const res = await sendZapPayout({
     anchorEventId: retryAnchor,
     recipientPubkey: part.pubkey,
     address: dest,
     amountMsat,
-    comment: `Luna Negra ${kind} ${part.betId} (reintento)`,
+    comment:
+      kind === "payout"
+        ? `Luna Negra: premio para ${retryName} 🏆 (apuesta …${part.betId.slice(-6)})`
+        : `Luna Negra: reembolso para ${retryName} (apuesta …${part.betId.slice(-6)})`,
   });
   if (res.kind === "zap" || res.kind === "lnurl") {
     await prisma.zapLedgerEntry.update({

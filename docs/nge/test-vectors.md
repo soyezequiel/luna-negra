@@ -1,9 +1,10 @@
 # NGE v2 — Test Vectors
 
 > **NGE = Nostr Game Escrow.** Vectores de prueba para validar cualquier
-> implementación del **RPC cifrado estilo NWC** de [NGE v2](nge-v2-spec.md):
-> requests `kind:24940` y responses `kind:24941`, cifrados con **NIP-44** entre el
-> juego (`C`) y el escrow (`S`). Estos vectores cubren **sólo la coordinación** (el
+> implementación del **RPC cifrado estilo NWC** de [NGE v2](nge-v2-spec.md), spec
+> **v1.1**: requests `kind:24940`, responses `kind:24941` y notifications
+> `kind:24942` (push `bet_updated`, §9), cifrados con **NIP-44** entre el juego
+> (`C`) y el escrow (`S`). Estos vectores cubren **sólo la coordinación** (el
 > canal privado): la fuente de verdad vive en el escrow y se consulta por RPC. La
 > liquidación (contrato/resultado/payout) es pública en Nostr y no se testea acá (§2).
 
@@ -69,10 +70,10 @@ una apuesta 1v1:
 
 | # | Método | request (firma `C`) | response (firma `S`) |
 |---|---|---|---|
-| 1 | `get_info` | `{}` | `{ methods, version, currency, min/maxStakeSats, feePct, devFeePct, transparency, visibilityOptions }` |
-| 2 | `create_bet` | `{ seats:[alice, bob], stakeSats, condition, clientRef, roomId, visibility? }` | `{ betId, status:"pending_deposits", deposits:[{seatId, bolt11, amountSats, expiresAt}] }` |
+| 1 | `get_info` | `{}` | `{ methods, version:"1.1", currency, min/maxStakeSats, feePct, devFeePct, feeMinSats, transparency, visibilityOptions, notifications, limits, settleDelaySec, settleDelayMinPotSats }` |
+| 2 | `create_bet` | `{ seats:[alice, bob], stakeSats, condition, clientRef, roomId, visibility? }` | el **detalle completo** (mismo shape que `get_bet`) **+** `deposits:[{seatId, bolt11, amountSats, expiresAt}]` — la creación es UN solo RPC (v1.1) |
 | 3 | `get_bet` (polling) | `{ betId }` | `{ betId, status:"funded", stakeSats, potSats, deadlineSec, seats[], result:null }` |
-| 4 | `report_result` | `{ betId, winners:["alice"] }` | `{ ok:true, status:"settled" }` |
+| 4 | `report_result` | `{ betId, winners:["alice"] }` | `{ ok:true, status:"settled" }` (con ventana de disputa activa: `{ ok, status:"resolving", settleAt }`, §7.1) |
 
 - **`seats`**: `alice` trae `pubkey` + `payoutAddress` (lud16) → su asiento es una
   **cuenta real** y cobra el premio automático (zap social/LNURL); `bob` va pelado →
@@ -86,6 +87,17 @@ una apuesta 1v1:
   (`"unlisted"` omite la sombra 31340 y la nota social de esa apuesta).
 - **Wire check**: `dec(request.content)` == `requestPayload` y
   `dec(response.content)` == `responsePayload` con la `conversationKey` del JSON.
+
+---
+
+## 2.5 Notifications (`notifications` en el JSON) — push §9, v1.1
+
+Un `kind:24942` firmado por `S`, cifrado hacia `C`, tag `["p", C]` y **sin tag
+`e`** (no responde a ningún request). Payload:
+`{ notification_type:"bet_updated", notification:{ betId, status, deposited[] } }`.
+**No es autoritativo**: despierta al cliente, que confirma con `get_bet`. Un
+escrow que no lo emite es válido (el cliente cae a polling); si lo emite, lo
+anuncia en `get_info.notifications`.
 
 ---
 
@@ -104,6 +116,7 @@ ante entradas hostiles o mal formadas. Un implementador de escrow
 | reporte sin fondear | `NOT_FUNDED` | `report_result` solo con `status=funded` (§7) |
 | resultado ya liquidado | `ALREADY_SETTLED` | finalidad (§7): no se reescribe; reintento idéntico → ok |
 | cancelar apuesta fondeada | `NOT_CANCELLABLE` | `cancel_bet` solo pre-fondeo total (§8) |
+| exceso de creación por credencial | `RATE_LIMITED` | límites por credencial de `get_info.limits` (§7, v1.1); reintentar con backoff |
 
 Los dos primeros traen un **evento firmado real** (`request` en el JSON) para
 ejercitar auth y frescura; el resto define `method`/`params` de la mutación.

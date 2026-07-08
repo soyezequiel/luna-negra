@@ -8,7 +8,10 @@ import {
   parseNgeUri,
   requestTemplate,
   responseTemplate,
+  notificationTemplate,
   decryptPayload,
+  auditSettlement,
+  type NgeBet,
   type NgeTransport,
   type NgeResponsePayload,
 } from "../sdk/nge";
@@ -247,6 +250,119 @@ describe("NGE cliente — RPC contra el fake escrow", () => {
     // el fake escrow puede recibir >1 publish (reenvío), pero el cliente resuelve 1 vez
     expect(calls).toBeGreaterThanOrEqual(1);
     nge.close();
+  });
+});
+
+// ── Notification 24942 `bet_updated` (push §9, v1.1) ─────────────────────────
+describe("notification 24942 bet_updated", () => {
+  const N = V.notifications[0];
+
+  it("notificationTemplate reproduce content/id del vector; tag p, SIN tag e", () => {
+    const tmpl = notificationTemplate(N.payload, {
+      clientPubkey: clientPk,
+      secretKey: escrowSk,
+      createdAt: N.event.created_at,
+      nonce,
+    });
+    expect(tmpl.kind).toBe(NGE_KIND.notification);
+    expect(tmpl.content).toBe(N.event.content);
+    expect(tmpl.tags).toContainEqual(["p", clientPk]);
+    expect(tmpl.tags.some((t: string[]) => t[0] === "e")).toBe(false);
+    const ev = finalizeEvent(tmpl, escrowSk);
+    expect(ev.id).toBe(N.event.id);
+    expect(ev.pubkey).toBe(escrowPk); // la notification la firma `S`
+  });
+
+  it("subscribeNotifications entrega el payload del vector y descarta impostores", () => {
+    const subs: { filter: Record<string, unknown>; onEvent: (e: Event) => void }[] = [];
+    const transport: NgeTransport = {
+      async publish() {},
+      subscribe(filter, onEvent) {
+        subs.push({ filter: filter as Record<string, unknown>, onEvent });
+        return () => {};
+      },
+      close() {},
+    };
+    const nge = NGE.connect(V.uri, { transport });
+    const got: unknown[] = [];
+    nge.subscribeNotifications((n) => got.push(n));
+
+    expect(subs).toHaveLength(1);
+    expect(subs[0].filter.kinds).toEqual([NGE_KIND.notification]);
+    expect(subs[0].filter.authors).toEqual([escrowPk]);
+
+    // evento legítimo del vector → llega el payload descifrado
+    subs[0].onEvent(N.event as Event);
+    // impostor: mismo content pero firmado por el attacker → se descarta en silencio
+    const forged = finalizeEvent(
+      {
+        kind: NGE_KIND.notification,
+        created_at: N.event.created_at,
+        tags: [["p", clientPk]],
+        content: N.event.content,
+      },
+      hexToBytes(V.keys.attacker.sk),
+    );
+    subs[0].onEvent(forged);
+
+    expect(got).toEqual([N.payload]);
+    nge.close();
+  });
+});
+
+// ── auditSettlement (auditoría de liquidación del lado cliente, v1.1) ────────
+describe("auditSettlement", () => {
+  // get_info del vector: feePct 2 + devFeePct 1, feeMinSats 10.
+  const info = canon("get_info").responsePayload.result;
+  const settledBet = (): NgeBet => ({
+    betId: "b1",
+    status: "settled",
+    stakeSats: 1000,
+    potSats: 2000,
+    deadlineSec: null,
+    seats: [
+      // pozo 2000 - 3% (60 sats) = 1940 exacto: consistente con lo declarado.
+      { seatId: "alice", deposited: true, payout: { tier: "zap", sats: 1940, status: "paid" } },
+      { seatId: "bob", deposited: true, payout: null },
+    ],
+    result: { winners: ["alice"] },
+  });
+
+  it("liquidación consistente con get_info → sin anomalías", () => {
+    expect(auditSettlement(settledBet(), info)).toEqual([]);
+  });
+
+  it("no audita apuestas no terminales", () => {
+    const bet = settledBet();
+    bet.status = "funded";
+    expect(auditSettlement(bet, info)).toEqual([]);
+  });
+
+  it("pagos que superan el pozo → anomalía", () => {
+    const bet = settledBet();
+    bet.seats[0].payout!.sats = 2500;
+    expect(auditSettlement(bet, info).join(" ")).toMatch(/pozo/);
+  });
+
+  it("ganador que cobró menos que pozo - fees declaradas → anomalía", () => {
+    const bet = settledBet();
+    bet.seats[0].payout!.sats = 1000;
+    expect(auditSettlement(bet, info).length).toBeGreaterThan(0);
+  });
+
+  it("ganador sin payout reportado → anomalía", () => {
+    const bet = settledBet();
+    bet.seats[0].payout = null;
+    expect(auditSettlement(bet, info).join(" ")).toMatch(/sin payout/);
+  });
+
+  it("reembolso por debajo del stake → anomalía", () => {
+    const bet = settledBet();
+    bet.status = "refunded";
+    bet.result = null;
+    bet.seats[0].payout = { tier: "lnurl", sats: 500, status: "paid" };
+    bet.seats[1].payout = { tier: "lnurl", sats: 1000, status: "paid" };
+    expect(auditSettlement(bet, info).join(" ")).toMatch(/stake/);
   });
 });
 
