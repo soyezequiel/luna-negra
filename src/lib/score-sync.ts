@@ -2,6 +2,7 @@ import { SimplePool, nip19, verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { submitScore } from "./leaderboard";
+import { recordIntegration } from "./integration-telemetry";
 import { NGP_KIND, parseScoreEvent } from "../../sdk/ngp-core";
 
 /**
@@ -96,6 +97,15 @@ export async function recordScoreEvent(
 
   const gameId = byCoord.get(parsed.gameCoord);
   if (!gameId) return; // no es un juego nuestro (o no publicado)
+
+  // Detección automática de la capacidad "marcador" (NGP): ver un kind:31337 válido
+  // firmado por el jugador y anclado a la coordenada del juego ES la evidencia de que
+  // integró el marcador Nostr. La persistimos como ping "ngp:marcador" (throttle 1/min
+  // por juego) para que el panel marque "Detectado" SIEMPRE, sin depender de que este
+  // score en particular mejore el récord. Antes la detección colgaba de
+  // `Score.sourceEventId`, que `submitScore` solo setea si `improved` — así un récord
+  // fijado antes por REST 1.0 dejaba el marcador Nostr invisible aunque existiera.
+  void recordIntegration("ngp:marcador", { gameId });
 
   const board = parsed.board ?? "clasico";
   const score = parsed.score;
