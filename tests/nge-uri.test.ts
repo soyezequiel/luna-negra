@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { buildNgeUri } from "@/lib/nge-uri";
-import { parseNgeUri } from "../sdk/nge";
+import { parseNgeUri } from "../sdk/nge-core";
 
 // NGE v2: el emisor (Luna, src/lib/nge-uri.ts) arma la URI y el consumidor
-// (sdk/nge.ts, el juego) la parsea. Deben encajar byte a byte. Ya no hay `bind`
+// (sdk/nge-core.ts, el juego) la parsea. Deben encajar byte a byte. Ya no hay `bind`
 // event ni oráculo declarado: la URI es TODA la credencial (§4 de la spec).
 const V = JSON.parse(
   readFileSync(new URL("../docs/nge/test-vectors.json", import.meta.url), "utf8"),

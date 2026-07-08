@@ -10,7 +10,7 @@
 
 import { finalizeEvent, type Event } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools";
-import { notificationTemplate, type NgeNotificationPayload } from "../../sdk/nge";
+import { notificationTemplate, type NgeNotificationPayload } from "../../sdk/nge-core";
 import { prisma } from "@/lib/prisma";
 import { RELAYS } from "@/lib/constants";
 import { getStoreSecretKey } from "@/lib/nostr-server";
