@@ -272,3 +272,53 @@ export function onPendingInvitesChange(cb: () => void): () => void {
   window.addEventListener(PENDING_INVITES_EVENT, cb);
   return () => window.removeEventListener(PENDING_INVITES_EVENT, cb);
 }
+
+// --- DMs/invitaciones ya notificadas (dedup entre recargas) ---
+// La sub de DMs mira una ventana hacia atrás para pescar invitaciones recibidas
+// con Luna Negra cerrada. Sin esto, cada recarga dentro de esa ventana volvería a
+// disparar el toast de la misma invitación —incluso una ya descartada—. Guardamos
+// los ids de evento ya mostrados (con TTL y tope) para avisar cada uno una sola vez.
+
+const SURFACED_KEY = "ln_surfaced_dm_ids";
+const SURFACED_TTL_MS = 3_600_000; // 1h (igual que la vigencia de las invitaciones)
+const SURFACED_CAP = 300;
+
+type SurfacedId = { id: string; at: number };
+
+function readSurfaced(): SurfacedId[] {
+  try {
+    const raw = localStorage.getItem(SURFACED_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as SurfacedId[];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (e) =>
+        e &&
+        typeof e.id === "string" &&
+        typeof e.at === "number" &&
+        Date.now() - e.at <= SURFACED_TTL_MS,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** ¿Ya mostramos (toast) este evento en esta u otra carga reciente? */
+export function wasNotified(id: string): boolean {
+  return readSurfaced().some((e) => e.id === id);
+}
+
+/** Marca un evento como ya notificado (persistente, con TTL). */
+export function markNotified(id: string): void {
+  const list = readSurfaced().filter((e) => e.id !== id);
+  list.push({ id, at: Date.now() });
+  try {
+    // Cap: conservamos los más nuevos para no crecer sin límite.
+    localStorage.setItem(
+      SURFACED_KEY,
+      JSON.stringify(list.slice(-SURFACED_CAP)),
+    );
+  } catch {
+    /* sin localStorage: no pasa nada */
+  }
+}

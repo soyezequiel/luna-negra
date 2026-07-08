@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": false
+    },
+    {
+      "name": "tetris",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "F:/proyectos/tetris", "run", "dev"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

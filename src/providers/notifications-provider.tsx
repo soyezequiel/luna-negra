@@ -28,6 +28,8 @@ import {
   parseInviteTitle,
   inviteHref,
   addPendingInvite,
+  wasNotified,
+  markNotified,
 } from "@/lib/invite";
 import {
   joinRoomAndPlay,
@@ -99,6 +101,10 @@ const TOAST_TTL = 6000;
 // Las invitaciones a jugar viven más (como en Steam): dan tiempo a decidir.
 const INVITE_TTL = 20000;
 const DECRYPT_FAIL = "[no se pudo descifrar]";
+// La sub de DMs mira esta ventana hacia atrás (además del presente) para pescar
+// invitaciones recibidas con Luna Negra cerrada y mostrarlas al abrir la página.
+// Coincide con la vigencia de las invitaciones (1h): las más viejas ya expiraron.
+const INVITE_LOOKBACK_SEC = 3600;
 
 export function NotificationsProvider({
   children,
@@ -254,14 +260,35 @@ export function NotificationsProvider({
   useEffect(() => {
     if (!user) return;
     const myPubkey = user.pubkey;
-    const sub = subscribeDms(myPubkey, (ev) => {
-      if (ev.pubkey === myPubkey) return; // propio
-      if (seen.current.has(ev.id)) return; // dedup multi-relay
-      seen.current.add(ev.id);
-      void handleIncoming(ev);
-    });
+    // La sub mira una ventana hacia atrás (INVITE_LOOKBACK_SEC) además del
+    // presente: así una invitación recibida con Luna Negra cerrada aparece al
+    // abrir la página. Guardamos el arranque de la sesión para distinguir lo "en
+    // vivo" (recién llegado) de lo histórico (recibido offline).
+    const sessionStart = Math.floor(Date.now() / 1000);
+    const sub = subscribeDms(
+      myPubkey,
+      (ev) => {
+        if (ev.pubkey === myPubkey) return; // propio
+        if (seen.current.has(ev.id)) return; // dedup multi-relay (en memoria)
+        seen.current.add(ev.id);
+        void handleIncoming(ev, sessionStart);
+      },
+      sessionStart - INVITE_LOOKBACK_SEC,
+    );
 
-    async function handleIncoming(ev: Parameters<typeof decryptDm>[0]) {
+    async function handleIncoming(
+      ev: Parameters<typeof decryptDm>[0],
+      sessionStart: number,
+    ) {
+      // Ya avisado antes (otra pestaña o una carga previa): no repetir el toast.
+      // Sin esto, la ventana de lookback re-dispararía en cada recarga la misma
+      // invitación —incluso una ya descartada— porque volvería a entrar por la sub.
+      if (wasNotified(ev.id)) return;
+      // Histórico = recibido con Luna cerrada (antes de abrir esta sesión). Los
+      // mensajes de chat viejos no se re-notifican al abrir (evita un aluvión de
+      // toasts del backlog); las invitaciones sí, que es lo que queremos rescatar.
+      const live = ev.created_at >= sessionStart;
+
       const senderPubkey = ev.pubkey;
       const { name, picture } = await profileOf(senderPubkey);
       const npub = npubOf(senderPubkey);
@@ -270,6 +297,20 @@ export function NotificationsProvider({
       // juego en la sala del reto, sin pasar por el chat.
       const challengeUrl = challengeUrlFromEvent(ev);
       if (challengeUrl) {
+        markNotified(ev.id);
+        // Anclamos también en la barra de amigos si el enlace lleva sala, para que
+        // el reto no se pierda si se pasa el toast.
+        const chInvite = parseInvite(challengeUrl);
+        const chLink = chInvite ? null : parseRoomLink(challengeUrl);
+        if (chInvite || chLink) {
+          addPendingInvite({
+            fromPubkey: senderPubkey,
+            title: "una partida",
+            at: Date.now(),
+            roomId: chInvite?.roomId ?? chLink!.roomId,
+            ...(chInvite ? { slug: chInvite.slug } : { url: chLink!.url }),
+          });
+        }
         const title = `${name} te retó a jugar`;
         const body = "Tocá para unirte a la partida";
         notify({
@@ -295,6 +336,7 @@ export function NotificationsProvider({
       if (plain && plain !== DECRYPT_FAIL) {
         const invite = parseInvite(plain);
         if (invite) {
+          markNotified(ev.id);
           // Persistimos la invitación para que quede anclada en la barra de
           // amigos (no solo como toast efímero).
           const game = parseInviteTitle(plain) ?? invite.slug;
@@ -322,6 +364,7 @@ export function NotificationsProvider({
         // ancla igual que una invitación de Luna, pero unirse = abrir esa URL.
         const roomLink = parseRoomLink(plain);
         if (roomLink) {
+          markNotified(ev.id);
           const game = parseInviteTitle(plain) ?? "una sala";
           addPendingInvite({
             roomId: roomLink.roomId,
@@ -345,6 +388,10 @@ export function NotificationsProvider({
         }
       }
 
+      // DM genérico (no invitación): solo se notifica en vivo. Un mensaje recibido
+      // con Luna cerrada no dispara toast al abrir (sí aparece en el chat).
+      if (!live) return;
+      markNotified(ev.id);
       const title = `Nuevo mensaje de ${name}`;
       const href = `/messages?to=${npub}`;
       notify({ title, href });
@@ -366,6 +413,22 @@ export function NotificationsProvider({
         ? await profileOf(fromPubkey)
         : { name: shortId(inv.fromNpub), picture: undefined };
       const game = inv.game ?? "una sala";
+      // Anclamos la invitación en la barra de amigos (además del toast efímero),
+      // igual que las invitaciones por DM. Así sobrevive si el usuario no llegó a
+      // ver el toast al cargar la página: el buzón (SSE) la entrega una sola vez y
+      // la marca vista, pero acá queda persistida en localStorage (TTL 1h). El
+      // inviteUrl first-party (`/game/<slug>?room=`) trae el slug; si es una URL
+      // externa del juego, guardamos la URL cruda (unirse = abrirla).
+      if (fromPubkey) {
+        const firstParty = parseInvite(inv.inviteUrl);
+        addPendingInvite({
+          fromPubkey,
+          title: game,
+          at: Date.now(),
+          roomId: inv.roomId,
+          ...(firstParty ? { slug: firstParty.slug } : { url: inv.inviteUrl }),
+        });
+      }
       const title = `${name} te invitó a jugar`;
       const body = "Tocá para unirte";
       notify({
