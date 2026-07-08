@@ -42,11 +42,10 @@ describe("NIP-57 de apuestas", () => {
     expect(siteUrl(new Request(`${base}/api/test`))).toBe(base);
   });
 
-  it("marca el contrato con el receptor zap explicito", () => {
+  it("marca el contrato con el receptor zap explicito y sin p-tags de jugadores", () => {
     const tags = buildContractTagsV2({
       betId: "bet-1",
       contractHash: "hash",
-      pubkeys: ["participant"],
       zapReceiver: {
         pubkey: "store",
         relay: "wss://relay.primal.net",
@@ -58,6 +57,9 @@ describe("NIP-57 de apuestas", () => {
       "store",
       "wss://relay.primal.net",
     ]);
+    // Editorial: el ancla no menciona (p-tag) a los jugadores — eso notificaba
+    // a cada uno en todos sus clientes por cada apuesta. Asientos → 31340.
+    expect(tags.some((t) => t[0] === "p")).toBe(false);
   });
 
   it("incluye e y k en el zap request del post", () => {

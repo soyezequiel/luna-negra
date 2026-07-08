@@ -7,8 +7,11 @@
 //
 // El dev pega UN string en `NGE_CONNECTION` y ya puede crear apuestas, cobrar
 // depósitos por bolt11, consultar estado y reportar el ganador. Sin API key, sin
-// eventos públicos (muere el grafo 1339/1341/31340 de v1), sin `bind` event: la
-// config se pide por RPC (`get_info`). Spec: docs/nge/nge-v2-spec.md.
+// `bind` event: la config se pide por RPC (`get_info`). NGE es SOLO el canal de
+// coordinación (privado): la liquidación pública (contrato, estado 31340,
+// resultado 1341, payouts) es una capacidad del ESCROW que éste declara en
+// `get_info.transparency` — su formato vive en NGP, no acá.
+// Spec: docs/nge/nge-v2-spec.md.
 //
 // Entrega sobre relay efímero (§6.1 de la spec): si el escrow está offline el
 // mensaje se pierde, así que el cliente REENVÍA EL MISMO evento firmado hasta
@@ -258,6 +261,13 @@ export type NgeCreateBetInput = {
   clientRef?: string;
   /** Sala/partida del juego (correlación y display en el escrow). Opaco. */
   roomId?: string;
+  /**
+   * Visibilidad de la liquidación pública (si el escrow la soporta, ver
+   * `get_info.visibilityOptions`): "public" (default) publica la sombra de estado
+   * y la liquidación en Nostr; "unlisted" omite la sombra 31340 y la nota social
+   * (el contrato-ancla y los recibos de pago existen igual: son el riel del escrow).
+   */
+  visibility?: "public" | "unlisted";
 };
 
 export type NgeDeposit = {
@@ -277,6 +287,14 @@ export type NgeInfo = {
   maxStakeSats: number;
   feePct: number;
   devFeePct: number;
+  /**
+   * Capacidad declarada del escrow (no del canal): "public" = liquida en Nostr
+   * con eventos públicos auditables (formato NGP: contrato + 31340 + 1341 +
+   * 9735); "none" = solo coordinación privada, sin rastro público.
+   */
+  transparency?: "public" | "none";
+  /** Modos de visibilidad por-apuesta que acepta `create_bet.visibility`. */
+  visibilityOptions?: string[];
 };
 
 export type NgePayout = {
@@ -466,6 +484,7 @@ export class NGE {
       ...(input.deadlineSec ? { deadlineSec: input.deadlineSec } : {}),
       ...(input.clientRef ? { clientRef: input.clientRef } : {}),
       ...(input.roomId ? { roomId: input.roomId } : {}),
+      ...(input.visibility ? { visibility: input.visibility } : {}),
     });
   }
 

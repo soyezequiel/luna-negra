@@ -197,12 +197,12 @@ async function createZapBet(
     devFeePct,
     feeMinSats: BET_FEE_MIN_SATS,
     providerName: game.provider.name,
+    detailUrl: `${baseUrl}/apuestas/${bet.id}`,
   });
   const storePubkey = getStorePubkey();
   const tags = buildContractTagsV2({
     betId: bet.id,
     contractHash,
-    pubkeys: participantSeats.map((p) => p.pubkey),
     zapReceiver: storePubkey
       ? { pubkey: storePubkey, relay: RELAYS[RELAYS.length - 1] }
       : null,

@@ -215,6 +215,13 @@ El juego se suscribe con:
 Lo firma el **oráculo** declarado en el contrato. Regular e inmutable.
 Reemplaza `POST /result` + API key: la autenticación ES la firma.
 
+> **Un solo formato de resultado.** Desde jul 2026 el oráculo **gestionado**
+> (flujos REST con API key y NGE `report_result`) también firma **este mismo
+> kind:1341** (antes publicaba un `kind:30078` propietario con tags `d`/`winner`).
+> El 1341 gestionado lleva además un tag `["bet", <betId>]` de correlación
+> interna. Los 30078 viejos siguen linkeados desde el detalle con su kind
+> original (`ZapBet.resultEventKind`).
+
 ```jsonc
 {
   "kind": 1341,                          // (estable) regular, inmutable

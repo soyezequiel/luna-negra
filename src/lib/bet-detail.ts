@@ -56,6 +56,7 @@ export type AdminBetDetail = {
   contractEventId: string | null; // v1 contractEventId / v2 anchorEventId
   contractHash: string | null;
   resultEventId: string | null;
+  resultEventKind: number; // 1341 = spec NGP; 30078 = legado (v1 y v2 viejas)
   createdAt: string;
   settledAt: string | null;
   participants: AdminBetParticipant[];
@@ -93,6 +94,7 @@ export function buildZapBetDetail(b: ZapBetWithDetail): AdminBetDetail {
     contractEventId: b.anchorEventId,
     contractHash: b.contractHash,
     resultEventId: b.resultEventId,
+    resultEventKind: b.resultEventKind ?? 30078,
     createdAt: b.createdAt.toISOString(),
     settledAt: b.settledAt?.toISOString() ?? null,
     participants: b.participants.map((p, i) => ({
@@ -148,6 +150,8 @@ export function buildV1BetDetail(b: BetWithDetail): AdminBetDetail {
     contractEventId: b.contractEventId,
     contractHash: b.contractHash,
     resultEventId: b.resultEventId,
+    resultEventKind: 30078, // v1 sigue firmando el kind legado
+
     createdAt: b.createdAt.toISOString(),
     settledAt: b.settledAt?.toISOString() ?? null,
     participants: b.participants.map((p, i) => ({

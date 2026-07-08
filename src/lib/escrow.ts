@@ -232,7 +232,11 @@ export function buildResultEventTemplate(p: {
   };
 }
 
-/** Texto legible por humanos del contrato (se publica en Nostr). */
+/**
+ * Texto legible por humanos del contrato (se publica en Nostr). Editorial: la
+ * prosa corta y con link arriba; el detalle probatorio (hash, asientos, recibos)
+ * vive en los tags del evento, el 31340 y la página de detalle — no acá.
+ */
 export function buildContractText(p: {
   betId: string;
   gameTitle: string;
@@ -245,17 +249,21 @@ export function buildContractText(p: {
   /** Comisión mínima absoluta en sats (piso anti-routing). 0/omitido = sin piso. */
   feeMinSats?: number;
   providerName: string;
+  /** URL de la página de detalle (/apuestas/{id} en v2): el CTA del post. */
+  detailUrl?: string;
 }): string {
+  const satsWord = (n: number) => (n === 1 ? "sat" : "sats");
   const comisionCasa = p.feeMinSats
-    ? `${p.feePct}% (mínimo ${p.feeMinSats} sats)`
+    ? `${p.feePct}% (mínimo ${p.feeMinSats} ${satsWord(p.feeMinSats)})`
     : `${p.feePct}%`;
   const comision =
     p.devFeePct && p.devFeePct > 0
       ? `${comisionCasa} de Luna Negra + ${p.devFeePct}% del desarrollador`
       : comisionCasa;
   // Menciones NIP-27: los clientes las renderizan como pills con el nombre del
-  // perfil en lugar del npub crudo (menos ruido visual). Los `p` tags del evento
-  // los agrega quien publica el contrato.
+  // perfil en lugar del npub crudo. A propósito NO van como `p` tags (eso
+  // notificaría a los jugadores en cada apuesta): la mención es solo visual y
+  // el registro máquina de los asientos vive en el 31340.
   const participantes = p.npubs.length
     ? p.npubs.map((n) => `nostr:${n}`).join(" vs ")
     : null;
@@ -263,11 +271,12 @@ export function buildContractText(p: {
     `🌑 Apuesta en ${p.gameTitle}`,
     ``,
     participantes,
-    `${p.stakeSats} sats cada uno · gana ${p.victoryCondition || "según el juego"}`,
+    `${p.stakeSats} ${satsWord(p.stakeSats)} por asiento · ${p.victoryCondition || "resuelve el juego"}`,
     ``,
-    `El ganador se lleva el pozo menos ${comision} (empate: se divide).`,
-    `10 min para depositar y 15 min para el resultado; si no, se reembolsa.`,
+    `El pozo (menos ${comision}) va al ganador; empate = se divide.`,
+    `Sin depósitos o sin resultado a tiempo, se reembolsa solo.`,
     `Resuelve ${p.providerName}.`,
+    p.detailUrl ? `Detalle y estado en vivo: ${p.detailUrl}` : null,
     `ID ${p.betId}`,
   ]
     .filter((l) => l !== null)

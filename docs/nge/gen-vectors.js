@@ -118,6 +118,10 @@ const canonical = [
       maxStakeSats: 500000,
       feePct: 2,
       devFeePct: 1,
+      // Capacidad del ESCROW (no del canal): liquida en público con eventos NGP.
+      // `visibilityOptions` = modos que acepta `create_bet.visibility`.
+      transparency: "public",
+      visibilityOptions: ["public", "unlisted"],
     },
   }),
   rpcPair({

@@ -81,7 +81,11 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
 
   const bet = await prisma.zapBet.findUnique({
     where: { id: betId },
-    include: { provider: { include: { owner: true } }, participants: true },
+    include: {
+      provider: { include: { owner: true } },
+      participants: true,
+      game: { select: { nostrCoord: true } },
+    },
   });
   if (!bet) return apiError("BET_NOT_FOUND", "Apuesta no encontrada", 404);
   if (bet.providerId !== providerId) {
@@ -131,7 +135,13 @@ async function handleApiKey(req: Request, betId: string, body: unknown) {
       409,
     );
   }
-  const resultEvent = signResultEventV2(sk, betId, winnerNpubs, bet.anchorEventId);
+  const resultEvent = signResultEventV2(
+    sk,
+    betId,
+    winnerNpubs,
+    bet.anchorEventId,
+    bet.game.nostrCoord,
+  );
 
   const result = await settleZapBetWithResult({ bet, winnerNpubs, resultEvent });
   return toResponse(result);

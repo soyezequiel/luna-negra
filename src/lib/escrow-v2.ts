@@ -1,5 +1,6 @@
-import { buildContractText, buildResultEventTemplate } from "./escrow";
+import { buildContractText, pubkeyFromNpub } from "./escrow";
 import { BET_V2_CONTRACT_TAG } from "./escrow-v2-config";
+import { NGP_BET_RESULT_KIND, NGP_BET_TAG } from "./ngp-kinds";
 
 // Helpers específicos del contrato v2. Todo lo PURO (validación, hash, economía)
 // se reutiliza tal cual de escrow.ts / escrow-math.ts: v2 comparte el mismo
@@ -8,44 +9,64 @@ import { BET_V2_CONTRACT_TAG } from "./escrow-v2-config";
 
 /**
  * Texto del contrato v2 (kind:1, ancla de depósitos y liquidación). Reutiliza el
- * texto de v1 y le agrega una línea aclarando que el dinero se mueve por zaps
- * públicos. `Parameters<typeof buildContractText>[0]` mantiene la
+ * texto de v1 y le agrega una línea aclarando que el movimiento del pozo queda
+ * anclado a este evento. `Parameters<typeof buildContractText>[0]` mantiene la
  * firma acoplada a la de v1 sin re-declarar el shape.
  */
 export function buildContractTextV2(
   p: Parameters<typeof buildContractText>[0],
 ): string {
   return `${buildContractText(p)}
-Depósitos: zaps públicos anclados a este contrato. Premio: profile-zap público de Luna Negra al ganador.`;
+Depósitos y premio quedan anclados a este contrato con recibos públicos.`;
 }
 
 /**
- * Plantilla del evento de resultado v2 (kind:30078). Igual que v1 pero con un tag
- * `["e", anchorEventId]` para que el resultado también cuelgue del ancla y sea
- * navegable desde el contrato. Si no se pasa ancla (dev sin nsec), es idéntico a v1.
+ * Plantilla del evento de resultado v2: **kind:1341 de la spec NGP** (regular,
+ * inmutable — docs/nostr-games-protocol-apuestas.md §5), el MISMO formato que
+ * publican los oráculos BYO y que ingiere ngp-bet-result-sync. Antes v2 publicaba
+ * un kind:30078 propietario (tags `d`/`winner`) que divergía de la spec; ahora el
+ * resultado gestionado y el externo hablan un solo formato.
+ *
+ * Tags: `e` = ancla del contrato (navegable), `a` = coordenada del juego,
+ * `p` = pubkey de cada ganador, `status` = win|draw, `bet` = id interno
+ * (correlación), `t` = ngp-bet (descubrimiento). `winners` vacío = empate/
+ * anulación → `status=draw`, sin `p`.
  */
 export function buildResultEventTemplateV2(p: {
   betId: string;
   winnerNpubs: string[];
   anchorEventId?: string | null;
+  gameCoord?: string | null;
   createdAt?: number;
 }): { kind: number; created_at: number; tags: string[][]; content: string } {
-  const tpl = buildResultEventTemplate({
-    betId: p.betId,
-    winnerNpubs: p.winnerNpubs,
-    createdAt: p.createdAt,
-  });
-  if (p.anchorEventId && !p.anchorEventId.startsWith("dev-anchor-")) {
-    tpl.tags.push(["e", p.anchorEventId]);
-  }
-  return tpl;
+  const winnerPubkeys = p.winnerNpubs
+    .map((n) => pubkeyFromNpub(n))
+    .filter((pk): pk is string => Boolean(pk));
+  const anchorReal = p.anchorEventId && !p.anchorEventId.startsWith("dev-anchor-");
+  return {
+    kind: NGP_BET_RESULT_KIND,
+    created_at: p.createdAt ?? Math.floor(Date.now() / 1000),
+    tags: [
+      ...(anchorReal ? [["e", p.anchorEventId!]] : []),
+      ...(p.gameCoord ? [["a", p.gameCoord]] : []),
+      ...winnerPubkeys.map((pk) => ["p", pk]),
+      ["status", winnerPubkeys.length > 0 ? "win" : "draw"],
+      ["bet", p.betId],
+      ["t", NGP_BET_TAG],
+    ],
+    content: "",
+  };
 }
 
-/** Tags del evento ancla del contrato v2. `t` distinto de v1 para filtrar. */
+/**
+ * Tags del evento ancla del contrato v2. `t` distinto de v1 para filtrar.
+ * Editorial: SIN `p` tags de jugadores — cada apuesta les generaba una mención/
+ * notificación pública en todos sus clientes Nostr. El registro máquina de los
+ * asientos vive en el 31340 (`participants`); el hash `terms` sella los npubs.
+ */
 export function buildContractTagsV2(p: {
   betId: string;
   contractHash: string;
-  pubkeys: string[];
   zapReceiver?: { pubkey: string; relay: string } | null;
 }): string[][] {
   return [
@@ -55,6 +76,5 @@ export function buildContractTagsV2(p: {
     ...(p.zapReceiver
       ? [["zap", p.zapReceiver.pubkey, p.zapReceiver.relay]]
       : []),
-    ...p.pubkeys.map((pk) => ["p", pk]),
   ];
 }

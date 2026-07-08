@@ -254,15 +254,17 @@ export function signResultEvent(
   return finalizeEvent(buildResultEventTemplate({ betId, winnerNpubs }), sk);
 }
 
-/** Igual que signResultEvent pero anclado (`e`) al contrato v2 (apuestas v2). */
+/** Resultado v2: kind:1341 de la spec NGP, anclado (`e`) al contrato y (`a`) al
+ *  juego. Mismo formato que los oráculos BYO — un solo formato de resultado. */
 export function signResultEventV2(
   sk: Uint8Array,
   betId: string,
   winnerNpubs: string[],
   anchorEventId: string | null,
+  gameCoord?: string | null,
 ): Event {
   return finalizeEvent(
-    buildResultEventTemplateV2({ betId, winnerNpubs, anchorEventId }),
+    buildResultEventTemplateV2({ betId, winnerNpubs, anchorEventId, gameCoord }),
     sk,
   );
 }

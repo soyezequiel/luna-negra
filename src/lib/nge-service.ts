@@ -38,6 +38,7 @@ import { signResultEventV2 } from "@/lib/nostr-server";
 import { isTerminal } from "@/lib/bet-state";
 import { emitBetCancelledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { beginIdempotent } from "@/lib/idempotency";
+import { publishNgpBetState, ensureNgpEscrowTerms } from "@/lib/ngp-bet-state";
 import { msatToSats } from "@/lib/money";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import { notifyOperationalError } from "@/lib/discord";
@@ -54,9 +55,11 @@ import type { ZapBet, ZapBetParticipant } from "@prisma/client";
 //    así el depósito SIEMPRE sale como bolt11 directo (Luna firma internamente
 //    el 9734 custodial). `payoutAddress` se vuelca al lud16 del invitado y la
 //    cascada de payouts existente paga ahí; sin dirección → retiro por QR.
-//  - El mapeo seatId↔asiento y el `clientRef` viajan en ZapBet.metadataJson bajo
-//    la clave `nge`; esa marca además EXCLUYE a la apuesta de la sombra pública
-//    31340 (privacidad, spec §2 — ver isNgeV2Bet en ngp-bet-state.ts).
+//  - El mapeo seatId↔asiento, el `clientRef` y la `visibility` viajan en
+//    ZapBet.metadataJson bajo la clave `nge`. La liquidación pública (31340 +
+//    1341 + nota social) corre por la capa NGP como en cualquier apuesta v2;
+//    `visibility: "unlisted"` omite la sombra 31340 y la nota social de ESA
+//    apuesta (ver isUnlistedBet en ngp-bet-state.ts).
 //  - Dedup por id de request (§6.1): la response firmada se cachea en memoria y
 //    un reenvío del MISMO evento la re-publica sin re-ejecutar nada. Las
 //    mutaciones además son idempotentes por clave natural (betId / clientRef),
@@ -90,7 +93,7 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 const sats = (msat: bigint) => Number(msatToSats(msat));
 
 type NgeSeatMeta = { seatId: string; npub: string; pubkey?: string };
-type NgeMeta = { seats: NgeSeatMeta[]; clientRef?: string };
+type NgeMeta = { seats: NgeSeatMeta[]; clientRef?: string; visibility?: "unlisted" };
 
 function parseNgeMeta(metadataJson: string | null): NgeMeta | null {
   if (!metadataJson) return null;
@@ -165,6 +168,11 @@ async function doGetInfo(cred: Credential): Promise<NgeResponsePayload> {
     maxStakeSats: BET_MAX_SATS,
     feePct,
     devFeePct,
+    // Capacidad declarada del ESCROW (no del canal): Luna liquida en público
+    // (formato NGP: contrato + 31340 + 1341 + 9735). El juego puede pedir
+    // "unlisted" por apuesta para omitir la sombra 31340 y la nota social.
+    transparency: "public",
+    visibilityOptions: ["public", "unlisted"],
   });
 }
 
@@ -234,6 +242,9 @@ async function doCreateBet(
     typeof params.roomId === "string" && params.roomId.trim()
       ? params.roomId.trim().slice(0, 128)
       : null;
+  // Visibilidad de la liquidación pública (spec §7): "unlisted" omite la sombra
+  // 31340 y la nota social de ESTA apuesta. Cualquier otro valor = "public".
+  const unlisted = params.visibility === "unlisted";
 
   // Idempotencia por clave natural (§6.1): mismo clientRef → mismo betId, aun si
   // el reintento llega en un evento nuevo (id distinto) o tras un reinicio.
@@ -310,7 +321,11 @@ async function doCreateBet(
         victoryCondition: condition,
         ...(roomId ? { roomId } : {}),
         metadataJson: JSON.stringify({
-          nge: { seats: seatsMeta, ...(clientRef ? { clientRef } : {}) },
+          nge: {
+            seats: seatsMeta,
+            ...(clientRef ? { clientRef } : {}),
+            ...(unlisted ? { visibility: "unlisted" } : {}),
+          },
         }),
         depositDeadline,
         participants: {
@@ -343,12 +358,12 @@ async function doCreateBet(
       devFeePct,
       feeMinSats: BET_FEE_MIN_SATS,
       providerName: cred.game.provider.name,
+      detailUrl: `${baseUrl()}/apuestas/${bet.id}`,
     });
     const storePubkey = getStorePubkey();
     const tags = buildContractTagsV2({
       betId: bet.id,
       contractHash,
-      pubkeys: identities.map((g) => g.pubkey),
       zapReceiver: storePubkey
         ? { pubkey: storePubkey, relay: RELAYS[RELAYS.length - 1] }
         : null,
@@ -396,6 +411,11 @@ async function doCreateBet(
     );
 
     trackIntegration("bets", { providerId: cred.game.providerId, gameId: cred.gameId });
+
+    // Sombra pública NGP (kind:31340) + terms del escrow, como el POST REST.
+    // Best-effort fuera del camino de respuesta; isUnlistedBet filtra adentro.
+    void ensureNgpEscrowTerms().catch(() => {});
+    void publishNgpBetState(bet.id).catch(() => {});
 
     const result = { betId: bet.id, status: "pending_deposits", deposits };
     if (idem) await idem.commit(200, result);
@@ -608,7 +628,13 @@ async function doReportResult(
       "el proveedor no tiene clave de oráculo gestionada; contactá soporte para provisionarla",
     );
   }
-  const resultEvent = signResultEventV2(sk, bet.id, winnerNpubs, bet.anchorEventId);
+  const resultEvent = signResultEventV2(
+    sk,
+    bet.id,
+    winnerNpubs,
+    bet.anchorEventId,
+    cred.game.nostrCoord,
+  );
 
   const full = (await prisma.zapBet.findUnique({
     where: { id: bet.id },
@@ -658,6 +684,7 @@ async function doCancelBet(
   await prisma.zapBet.update({ where: { id: bet.id }, data: { status: "cancelled_admin" } });
   void emitBetCancelledV2(bet.id).catch(() => {});
   void emitBetRefundedV2(bet.id, "cancelled").catch(() => {});
+  void publishNgpBetState(bet.id).catch(() => {});
   return ok(method, { ok: true, status: "cancelled" });
 }
 

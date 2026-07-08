@@ -29,14 +29,15 @@ function nameOf(p: AdminBetParticipant) {
 function njump(eventId: string) {
   return `https://njump.me/${eventId}`;
 }
-// El evento de resultado es kind:30078 (app-data): njump no lo levanta por id
-// crudo (su indexador ignora ese kind). Lo linkeamos como `nevent` con relay-hints
-// para que lo traiga directo del relay.
-function njumpResult(eventId: string) {
+// El evento de resultado se linkea como `nevent` con relay-hints y kind-hint:
+// las apuestas nuevas firman kind:1341 (spec NGP) y las viejas el 30078 legado
+// (app-data que el indexador de njump ignora sin el hint). El kind viene del
+// detalle (resultEventKind).
+function njumpResult(eventId: string, kind: number) {
   return `https://njump.me/${nip19.neventEncode({
     id: eventId,
     relays: RELAYS.slice(0, 3),
-    kind: 30078,
+    kind,
   })}`;
 }
 function fmtTime(iso: string | null) {
@@ -153,7 +154,7 @@ export function BetDetailView({
         <Field label="Resultado Nostr">
           {d.resultEventId ? (
             <a
-              href={njumpResult(d.resultEventId)}
+              href={njumpResult(d.resultEventId, d.resultEventKind)}
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-blue hover:underline"

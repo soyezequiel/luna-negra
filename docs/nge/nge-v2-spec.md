@@ -3,14 +3,24 @@
 > **Estado:** **implementado y en producción** — Luna Negra (escrow) + Tetris/Tetra
 > (juego). Reemplaza a NGE v1. No busca compatibilidad con v1.
 >
-> **Nota de privacidad (importante).** El diseño original buscaba un escrow *privado*
-> (todo cifrado, no auditable por terceros). Por decisión del operador, **eso se
-> descartó**: en la práctica NGE v2 es **coordinación RPC privada + liquidación PÚBLICA**.
-> El canal juego↔escrow (`create_bet`/`get_bet`/`report_result`) va cifrado, pero la
-> apuesta se **ancla y liquida en Nostr con eventos públicos** (contrato, resultado,
-> payout) y es **auditable por cualquiera** en `/apuestas/{betId}`. Ver §2 y §8. Las
-> menciones a "privacidad total" / "no auditable" de abajo quedan como **contexto del
-> diseño original**, no como el comportamiento actual.
+> **Capas (importante).** NGE es **solo el canal de coordinación** (RPC cifrado).
+> Lo demás vive en su propia capa, a propósito:
+>
+> 1. **NGE (este documento)** — el canal: URI, kinds efímeros, métodos, auth.
+>    No define qué se publica en Nostr.
+> 2. **NGP-apuestas** — el **formato de la transparencia**: contrato, estado
+>    `kind:31340`, resultado `kind:1341`, payouts 9735. Es una **capacidad del
+>    escrow**, que éste **declara** en `get_info.transparency` y el juego puede
+>    modular por apuesta con `create_bet.visibility` (§7). Spec:
+>    [nostr-games-protocol-apuestas.md](../nostr-games-protocol-apuestas.md).
+> 3. **Política editorial de Luna Negra** — las notas `kind:1` humanas (anuncio
+>    del contrato, nota de liquidación). Son **producto, no protocolo**: umbral,
+>    tono y menciones los decide el operador y pueden cambiar sin tocar esta spec.
+>
+> El diseño original buscaba un escrow *privado* (todo cifrado, no auditable).
+> Eso se **descartó**: Luna Negra declara `transparency: "public"` — coordinación
+> RPC privada + **liquidación pública auditable** en `/apuestas/{betId}`. Las
+> menciones a "privacidad total" de abajo quedan como contexto histórico.
 >
 > **Qué es.** La pieza de **escrow y apuestas** del [Nostr Games Protocol (NGP)](../nostr-games-protocol.md).
 > NGP estandariza cómo los juegos hablan con plataformas como Luna Negra (identidad,
@@ -44,22 +54,25 @@ acotados**: los payouts sólo pueden ir a las direcciones/identidades declaradas
 una dirección arbitraria (§8) — eso contiene el daño de una fuga del `secret`.
 
 **Qué es privado y qué es público (lo implementado).** Sólo la **coordinación** RPC es
-privada. La **liquidación es pública y auditable**, igual que el "escrow transparente"
-de v1:
+privada. La **liquidación es pública y auditable** (formato NGP), salvo que la apuesta
+pida `visibility: "unlisted"` (§7):
 
-| Pieza | Visibilidad | Cómo |
-|---|---|---|
-| Coordinación (`create_bet`/`get_bet`/`report_result`/…) | **privada** | RPC cifrado NIP-44 (kinds efímeros 24940/24941) |
-| Contrato de la apuesta | **pública** | nota `kind:1` firmada por el escrow (pubkeys de los asientos, stake, hash de términos, condición) |
-| Resultado | **público** | `kind:1341` firmado por el oráculo gestionado del escrow |
-| Payout al ganador | **público** | zap NIP-57 (`kind:9735`) a su lud16, anclado al contrato |
-| Nota de liquidación | **pública** | `kind:1` con el resumen (ganador, montos, fees, recibos) |
-| Depósito (el pago en sí) | privado | bolt11 plano al nodo del escrow (sin evento público) |
+| Pieza | Visibilidad | Capa | Cómo |
+|---|---|---|---|
+| Coordinación (`create_bet`/`get_bet`/`report_result`/…) | **privada** | NGE | RPC cifrado NIP-44 (kinds efímeros 24940/24941) |
+| Contrato de la apuesta (ancla) | **pública** | NGP | nota `kind:1` firmada por el escrow (menciones NIP-27, stake, hash `terms`, condición; **sin p-tags** de jugadores) |
+| Estado del escrow | **pública**¹ | NGP | `kind:31340` addressable (`d`=ancla): asientos, depósitos, payouts, recibos — el registro máquina completo |
+| Resultado | **público** | NGP | `kind:1341` firmado por el oráculo gestionado del escrow (mismo formato que un oráculo BYO) |
+| Payout al ganador | **público** | NGP | zap NIP-57 (`kind:9735`) a su lud16, anclado al contrato |
+| Nota de liquidación | **editorial**¹ | Luna | `kind:1` humana; solo con pozo ≥ `BET_SETTLE_NOTE_MIN_POT_SATS`, p-tag **solo a ganadores** |
+| Depósito (el pago en sí) | privado | — | bolt11 plano al nodo del escrow (sin evento público) |
 
+> ¹ `visibility: "unlisted"` omite la sombra 31340 y la nota de liquidación de esa
+> apuesta. El ancla y los recibos existen igual (son el riel del escrow).
+>
 > La página `/apuestas/{betId}` de Luna Negra muestra **todo** el detalle. O sea: la
-> apuesta **sí es auditable por terceros**. El diseño original pretendía lo contrario
-> ("privacidad sobre transparencia"); se descartó a propósito. Lo único que v2 ganó de
-> privacidad frente a v1 es que **la coordinación** ya no es un grafo público.
+> apuesta **sí es auditable por terceros**. Lo único que v2 ganó de privacidad frente
+> a v1 es que **la coordinación** ya no es un grafo público.
 
 **No es trustless.** Custodia = tercero de confianza. Trustless real = DLCs sobre
 Bitcoin, fuera de alcance.
@@ -151,10 +164,16 @@ Payload descifrado de la response: `{ "result_type": "...", "result": { ... } }`
 o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
 
 ### `get_info`  — reemplaza el `bind`
-→ `{ methods: [...], version, currency: "sat", minStakeSats, maxStakeSats, feePct, devFeePct }`
+→ `{ methods: [...], version, currency: "sat", minStakeSats, maxStakeSats, feePct, devFeePct, transparency, visibilityOptions }`
+- `transparency`: capacidad declarada del **escrow** (no del canal): `"public"` =
+  liquida en Nostr con eventos públicos auditables (formato NGP: contrato + 31340 +
+  1341 + 9735); `"none"` = solo coordinación privada. El juego decide con esta
+  información **antes** de mandar plata.
+- `visibilityOptions`: modos que acepta `create_bet.visibility` (Luna:
+  `["public", "unlisted"]`).
 
 ### `create_bet`
-`params`: `{ seats: [{ seatId, pubkey?, payoutAddress? }], stakeSats, condition?, deadlineSec?, clientRef?, roomId? }`
+`params`: `{ seats: [{ seatId, pubkey?, payoutAddress? }], stakeSats, condition?, deadlineSec?, clientRef?, roomId?, visibility? }`
 → `{ betId, status, deposits: [{ seatId, bolt11, amountSats, expiresAt }] }`
 - `seatId`: id estable que asigna el juego (puede ser una pubkey o lo que sea).
 - `pubkey` / `payoutAddress`: opcionales; definen el **nivel de payout** (§8).
@@ -162,6 +181,10 @@ o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
   mismo `clientRef` devuelve el **mismo `betId`**, no crea otra apuesta.
 - `roomId`: opcional, sala/partida del juego (correlación y display en el escrow).
   Opaco para el protocolo: no participa de la idempotencia ni del estado.
+- `visibility`: opcional, `"public"` (default) | `"unlisted"`. Con `"unlisted"` el
+  escrow **omite** la sombra 31340 y la nota social de esta apuesta (la discreción
+  es un opt-in explícito, no un default). Solo válido si `get_info` lo anuncia en
+  `visibilityOptions`.
 - `stakeSats` es **por asiento**; el pozo objetivo es `stakeSats × seats.length`.
 
 ### `get_bet`  — **la fuente de verdad; se hace polling de esto**
@@ -273,11 +296,14 @@ resuelve de la **identidad real** del ganador: el `lud16` de su perfil Nostr (ki
 - TOFU / oráculo declarado en evento público → **oráculo gestionado** + auth por RPC.
 - reconciliación por relays (`zap-bet-sync`) para coordinar → el escrow es la fuente de verdad.
 
-**Se queda (liquidación pública, §2):** el escrow **sí** publica en Nostr una
-**nota-contrato `kind:1`** (ancla + hash de términos + asientos), el **resultado
-`kind:1341`** (oráculo gestionado), el **payout `kind:9735`** (zap al ganador) y la
-**nota de liquidación `kind:1`**. La apuesta es **auditable**, como el escrow transparente
-de v1. Lo que v2 privatizó es **la coordinación**, no la liquidación.
+**Se queda (liquidación pública, §2 — capa NGP, no NGE):** el escrow **sí** publica
+en Nostr una **nota-contrato `kind:1`** (ancla + hash de términos), la **sombra de
+estado `kind:31340`** (asientos, depósitos, payouts, recibos), el **resultado
+`kind:1341`** (oráculo gestionado, mismo formato que un BYO) y el **payout
+`kind:9735`** (zap al ganador). La apuesta es **auditable**, como el escrow
+transparente de v1. La **nota de liquidación `kind:1`** humana es editorial (umbral
+por pozo, p-tag solo a ganadores). Lo que v2 privatizó es **la coordinación**, no la
+liquidación.
 
 ## 11. Versionado
 

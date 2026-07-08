@@ -290,7 +290,7 @@ async function cancelNgpBetPreFunding(
   }
   await prisma.zapBet.update({
     where: { id: bet.id },
-    data: { status: "cancelled_admin", resultEventId: ev.id },
+    data: { status: "cancelled_admin", resultEventId: ev.id, resultEventKind: ev.kind },
   });
 
   await emitBetCancelledV2(bet.id);

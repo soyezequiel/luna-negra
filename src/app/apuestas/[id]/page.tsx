@@ -76,16 +76,16 @@ export default async function ApuestaV2Page({
         ["pending", "withdraw_pending", "failed"].includes(p.payoutStatus ?? ""),
       ));
 
-  // El evento de resultado es kind:30078 (direccionable, firmado por el oráculo
-  // del proveedor). Lo linkeamos como `nevent` con relay-hints + autor + kind: así
-  // njump lo trae directo del relay en vez de depender de su indexador, que no
-  // levanta app-data (kind:30078) y devolvía "no event found" con el id crudo.
+  // El evento de resultado se linkea como `nevent` con relay-hints + autor +
+  // kind-hint: las apuestas nuevas firman kind:1341 (spec NGP, regular); las
+  // viejas el 30078 legado (app-data que el indexador de njump no levanta sin
+  // el hint). El kind firmado quedó guardado en resultEventKind.
   const resultNevent = bet.resultEventId
     ? nip19.neventEncode({
         id: bet.resultEventId,
         relays: RELAYS.slice(0, 3),
         author: bet.provider.oraclePubkey ?? undefined,
-        kind: 30078,
+        kind: bet.resultEventKind ?? 30078,
       })
     : null;
 

@@ -23,13 +23,15 @@ import {
  * Ver docs/nostr-games-protocol-apuestas.md (spec, §2.1 y §4).
  */
 
-// Kinds propuestos por la spec (pueden cambiar hasta congelar la v1).
-export const NGP_BET_CONTRACT_KIND = 1339; // contrato (regular, firma el retador)
-export const NGP_BET_RESULT_KIND = 1341; // resultado (regular, firma el oráculo)
-export const NGP_BET_STATE_KIND = 31340; // estado del escrow / terms (addressable)
-
-// Tag `t` de descubrimiento de TODOS los eventos NGP de apuestas.
-export const NGP_BET_TAG = "ngp-bet";
+// Kinds congelados de la spec (viven en ngp-kinds.ts, módulo puro; acá se
+// re-exportan para no tocar a los importadores existentes).
+export {
+  NGP_BET_CONTRACT_KIND,
+  NGP_BET_RESULT_KIND,
+  NGP_BET_STATE_KIND,
+  NGP_BET_TAG,
+} from "./ngp-kinds";
+import { NGP_BET_STATE_KIND, NGP_BET_TAG } from "./ngp-kinds";
 
 // Flag maestro de la capa NGP de apuestas (independiente de BETS_V2_ENABLED,
 // que apaga el motor v2 entero). "false" explícito lo desactiva.
@@ -82,12 +84,22 @@ function nextStateTimestamp(anchorId: string): number {
 
 const sats = (msat: bigint) => Number(msatToSats(msat));
 
-/** ¿La apuesta nació por NGE v2 (RPC privado)? Marca `nge` en metadataJson. */
-export function isNgeV2Bet(metadataJson: string | null): boolean {
+/**
+ * ¿La apuesta pidió liquidación "unlisted"? (create_bet.visibility de NGE, spec
+ * §7). Omite la sombra 31340 y la nota social de ESA apuesta; el contrato-ancla
+ * y los recibos existen igual (son el riel del escrow). Antes TODA apuesta NGE
+ * quedaba excluida de la sombra "por privacidad" — incoherente: el ancla y los
+ * payouts ya eran públicos. Ahora la transparencia es el default y la discreción
+ * es un opt-in explícito por apuesta.
+ */
+export function isUnlistedBet(metadataJson: string | null): boolean {
   if (!metadataJson) return false;
   try {
-    const meta = JSON.parse(metadataJson) as Record<string, unknown>;
-    return Boolean(meta && typeof meta === "object" && meta.nge);
+    const meta = JSON.parse(metadataJson) as {
+      nge?: { visibility?: string };
+      visibility?: string;
+    };
+    return meta?.nge?.visibility === "unlisted" || meta?.visibility === "unlisted";
   } catch {
     return false;
   }
@@ -109,10 +121,8 @@ export async function publishNgpBetState(betId: string): Promise<void> {
       },
     });
     if (!bet?.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-")) return;
-    // Apuestas NGE v2: el protocolo elige privacidad sobre transparencia (spec
-    // §2) — nada de sombra pública 31340. Se detectan por la marca `nge` que el
-    // servicio deja en metadataJson (ver src/lib/nge-service.ts).
-    if (isNgeV2Bet(bet.metadataJson)) return;
+    // Solo se omite la sombra si la apuesta pidió "unlisted" explícito.
+    if (isUnlistedBet(bet.metadataJson)) return;
     const mapped = ngpStatusFor(bet.status);
     if (!mapped) return;
 
@@ -139,6 +149,9 @@ export async function publishNgpBetState(betId: string): Promise<void> {
       ...(mapped.reason ? { reason: mapped.reason } : {}),
       stakeSats: sats(bet.stakeMsat),
       seats: bet.participants.length,
+      // Asientos declarados (pubkeys, en orden). El registro máquina completo
+      // vive acá: el ancla kind:1 ya no lleva p-tags de jugadores (editorial).
+      participants: bet.participants.map((p) => p.pubkey),
       feePct: bet.feePct,
       devFeePct: bet.devFeePct,
       ...(bet.depositDeadline

@@ -34,6 +34,8 @@ import { NGE } from "./sdk/nge";
 const nge = NGE.fromEnv(); // lee NGE_CONNECTION (o NGE.connect(uri))
 
 // 0) Config del escrow (reemplaza al bind de v1): límites, fees, métodos.
+//    `info.transparency === "public"` = este escrow liquida en Nostr con eventos
+//    públicos auditables (formato NGP); `visibilityOptions` = modos por-apuesta.
 const info = await nge.getInfo();
 
 // 1) Crear la apuesta. Devuelve un bolt11 POR ASIENTO para mostrar como QR.
@@ -46,6 +48,7 @@ const bet = await nge.createBet({
   condition: "Mejor de 3 en Pac-Toshi",
   clientRef: "match-42", // idempotencia: reintentar con el mismo ref → mismo betId
   roomId: "sala-8vdu", // opcional: sala/partida (correlación + display en el escrow)
+  // visibility: "unlisted", // opcional: omite la sombra 31340 y la nota social
 });
 for (const d of bet.deposits) {
   showQr(d.seatId, d.bolt11); // el jugador del asiento paga su invoice
@@ -78,7 +81,7 @@ declarado: la URI + el RPC `get_info` los reemplazan.
 | Método | Qué hace |
 |---|---|
 | `NGE.fromEnv(envVar?, opts?)` / `NGE.connect(uri, opts?)` | crea el cliente desde la URI |
-| `nge.getInfo()` | config/capacidades del escrow: `min/maxStakeSats`, `feePct`, `devFeePct`, `methods`, `version` |
+| `nge.getInfo()` | config/capacidades del escrow: `min/maxStakeSats`, `feePct`, `devFeePct`, `methods`, `version`, `transparency`, `visibilityOptions` |
 | `nge.createBet(input)` | crea la apuesta; devuelve `{ betId, status, deposits:[{ seatId, bolt11, amountSats, expiresAt }] }` |
 | `nge.getBet(betId)` | la fuente de verdad: estado, asientos (con `deposited`/`bolt11` vigente/`payout`) y `result` |
 | `nge.reportResult(betId, winners)` | reporta ganadores por `seatId` (vacío = empate/anulación → reembolso) |

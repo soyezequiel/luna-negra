@@ -22,11 +22,12 @@ import {
   BET_FEE_MIN_MSAT,
   BET_FALLBACK_ROUTING_PCT,
   BET_V2_SETTLE_TAG,
+  BET_SETTLE_NOTE_MIN_POT_SATS,
 } from "@/lib/escrow-v2-config";
 import { emitBetSettledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { notifyOperationalError } from "@/lib/discord";
-import { publishNgpBetState } from "@/lib/ngp-bet-state";
+import { publishNgpBetState, isUnlistedBet } from "@/lib/ngp-bet-state";
 import { RELAYS } from "@/lib/constants";
 
 // `after()` tira fuera de un request scope, y este núcleo también corre desde el
@@ -186,7 +187,9 @@ async function runSettlement(args: {
       data: {
         status: "voided",
         settledAt: new Date(),
-        ...(resultAccepted > 0 ? { resultEventId: resultEvent.id } : {}),
+        ...(resultAccepted > 0
+          ? { resultEventId: resultEvent.id, resultEventKind: resultEvent.kind }
+          : {}),
         ...(noteId ? { settleNoteId: noteId } : {}),
       },
     });
@@ -275,7 +278,9 @@ async function runSettlement(args: {
     data: {
       status: "settled",
       settledAt: new Date(),
-      ...(resultAccepted > 0 ? { resultEventId: resultEvent.id } : {}),
+      ...(resultAccepted > 0
+        ? { resultEventId: resultEvent.id, resultEventKind: resultEvent.kind }
+        : {}),
       ...(noteId ? { settleNoteId: noteId } : {}),
     },
   });
@@ -286,9 +291,15 @@ async function runSettlement(args: {
 }
 
 /**
- * Publica la nota de liquidación (kind:1) anclada al contrato: resume ganadores,
- * montos, ids de recibos/preimages y fees. Devuelve el id (o null si no hay nsec o
- * ningún relay la aceptó). No bloquea el pago; es la capa de auditoría pública.
+ * Publica la nota de liquidación (kind:1) anclada al contrato. EDITORIAL, no
+ * normativa: la auditoría máquina completa vive en el 31340 y los recibos 9735
+ * (la nota puede no existir y la apuesta sigue siendo verificable). Reglas:
+ *  - Umbral: solo si el pozo llega a BET_SETTLE_NOTE_MIN_POT_SATS (las
+ *    microapuestas no ameritan un post).
+ *  - Apuestas "unlisted": sin nota.
+ *  - p-tag SOLO a los ganadores (celebración); nunca a los perdedores.
+ * Devuelve el id (o null si se omitió, no hay nsec o ningún relay la aceptó).
+ * No bloquea el pago.
  */
 async function publishSettleNoteFor(
   bet: ZapBet & { participants: ZapBetParticipant[] },
@@ -298,26 +309,41 @@ async function publishSettleNoteFor(
   resultEvent: Event,
 ): Promise<string | null> {
   if (!bet.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-")) return null;
+  if (isUnlistedBet(bet.metadataJson)) return null;
+  const potSats = sats(bet.stakeMsat) * bet.participants.length;
+  if (potSats < BET_SETTLE_NOTE_MIN_POT_SATS) return null;
 
-  const lines: string[] = [`🌑 Liquidación de apuesta — Luna Negra`, `ID: ${bet.id}`];
-  lines.push(`Contrato: ${nostrEventRef(bet.anchorEventId, bet.anchorEventKind ?? 1)}`);
-  lines.push(`Resultado firmado: ${nostrEventRef(resultEvent.id, resultEvent.kind)}`);
+  const game = await prisma.game
+    .findUnique({ where: { id: bet.gameId }, select: { title: true } })
+    .catch(() => null);
+  const enDonde = game?.title ? ` en ${game.title}` : "";
+  const detailUrl = `${(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "")}/apuestas/${bet.id}`;
+
+  const lines: string[] = [];
   if (winners.length === 0) {
-    lines.push(`Resultado: empate/anulación — se reembolsó el stake a cada participante por zap.`);
+    lines.push(`🤝 Empate${enDonde}: cada participante recuperó sus ${sats(bet.stakeMsat)} sats.`);
   } else {
-    lines.push(`Ganador${winners.length > 1 ? "es" : ""}:`);
-    for (const w of winners) {
-      const amt = w.payoutMsat ? `${sats(w.payoutMsat)} sats` : "—";
-      const via = w.payoutKind ?? "pendiente";
-      lines.push(`• ${w.npub}: ${amt} vía ${via}`);
-      if (w.payoutReceiptId) {
-        lines.push(`  Prueba de pago (recibo 9735): ${nostrEventRef(w.payoutReceiptId, 9735)}`);
-      } else if (w.payoutZapRequestId) {
-        lines.push(`  Pago enviado; recibo 9735 pendiente. Zap request: ${w.payoutZapRequestId}`);
-      }
-    }
-    lines.push(`Comisión de la casa: ${sats(houseFeeMsat)} sats.`);
-    if (devFeeMsat > 0n) lines.push(`Corte del desarrollador: ${sats(devFeeMsat)} sats.`);
+    const quien = winners.map((w) => `nostr:${w.npub}`).join(" y ");
+    const premio = winners[0].payoutMsat ? sats(winners[0].payoutMsat) : null;
+    const gano = winners.length > 1 ? "ganaron" : "ganó";
+    const cuanto = premio ? ` ${premio} sats${winners.length > 1 ? " cada uno" : ""}` : "";
+    lines.push(`🏆 ${quien} ${gano}${cuanto} apostando${enDonde}.`);
+  }
+  lines.push(``, `Detalle y pruebas: ${detailUrl}`);
+  // Referencias probatorias compactas (el desglose completo está en la página y
+  // en el 31340): contrato, resultado firmado y recibo del premio si ya existe.
+  const refs: string[] = [
+    `Contrato: ${nostrEventRef(bet.anchorEventId, bet.anchorEventKind ?? 1)}`,
+    `Resultado: ${nostrEventRef(resultEvent.id, resultEvent.kind)}`,
+  ];
+  for (const w of winners) {
+    if (w.payoutReceiptId) refs.push(`Recibo: ${nostrEventRef(w.payoutReceiptId, 9735)}`);
+  }
+  lines.push(refs.join(" · "));
+  if (winners.length > 0) {
+    const feeBits = [`casa ${sats(houseFeeMsat)} sats`];
+    if (devFeeMsat > 0n) feeBits.push(`dev ${sats(devFeeMsat)} sats`);
+    lines.push(`Comisiones: ${feeBits.join(" · ")}.`);
   }
 
   const tags: string[][] = [

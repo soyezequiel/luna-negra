@@ -38,3 +38,12 @@ export const ZAP_BET_SYNC_INTERVAL_MS = Number(
 // para poder filtrarlos en syncs/clientes sin confundirlos con los de v1.
 export const BET_V2_CONTRACT_TAG = "lunanegra:bet:v2";
 export const BET_V2_SETTLE_TAG = "lunanegra:settle:v2";
+
+// Umbral EDITORIAL de la nota de liquidación kind:1 (no afecta la auditoría):
+// solo se postea si el pozo llega a este mínimo en sats. Las microapuestas
+// quedan registradas igual en el 31340 y los recibos 9735 — pero no ameritan
+// una nota social que llena el perfil de la tienda de actas de 10 sats.
+// 0 = postear siempre (comportamiento previo).
+export const BET_SETTLE_NOTE_MIN_POT_SATS = Number(
+  process.env.BET_SETTLE_NOTE_MIN_POT_SATS ?? 1000,
+);

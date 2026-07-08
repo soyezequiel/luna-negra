@@ -758,6 +758,7 @@ model ZapBet {
   contractPubkey   String? // pubkey del firmante del contrato NGP kind:1339 (el "retador"). Autoriza el void pre-fondeo (cancel) por 1341. Null en apuestas v2 REST (no hay 1339)
   oraclePubkey     String? // pubkey del `oracle` declarado EN el 1339 (TOFU por-apuesta): contra esta se valida el 1341. Null en apuestas v2 REST (usa Provider.oraclePubkey gestionado)
   resultEventId    String? // evento Nostr del resultado firmado
+  resultEventKind  Int? // kind del resultado (1341 = spec NGP; null = legado 30078). Para el nevent con kind-hint del detalle
   settleNoteId     String? // nota de liquidación kind:1 (resumen público anclado)
   createdAt        DateTime  @default(now())
   readyAt          DateTime?
