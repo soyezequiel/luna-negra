@@ -15,11 +15,12 @@ El código NGP de apuestas está estratificado con frontera dura:
 
 | Capa | Módulos | Regla |
 |---|---|---|
-| **Protocolo (puro)** | `src/lib/ngp-kinds.ts` (kinds congelados), `src/lib/ngp-events.ts` (templates 31340/terms), `buildResultEventTemplateV2` en `src/lib/escrow-v2.ts` (template 1341) | Sin prisma, sin I/O, sin env. Cambiar esto = cambiar el protocolo. |
-| **Servicios** | `ngp-bet-state.ts` (publica la sombra), `ngp-bet-ingest.ts` (ingiere 1339), `ngp-bet-result-sync.ts` (ingiere 1341) | Leen DB/relays, mapean a datos planos y llaman a los builders puros. |
+| **Protocolo (puro)** | `sdk/ngp-core.ts` — el núcleo NGP compartido tienda ⇄ juegos: kinds congelados, templates (31340/terms, 1341, 31337, 30315) y parsers estructurales (31337, 30315, 1339) | Sin prisma, sin I/O, sin env, sin firma. Cambiar esto = cambiar el protocolo. Se sincroniza byte-idéntico a Tetris con `scripts/sync-nge-core.mjs` (`--check` detecta drift); conformance en `tests/ngp-core.test.ts`. |
+| **Servicios** | `ngp-bet-state.ts` (publica la sombra), `ngp-bet-ingest.ts` (ingiere 1339), `ngp-bet-result-sync.ts` (ingiere 1341), `score-sync.ts` (proyecta 31337), `live-presence.ts` (cuenta 30315) | Leen DB/relays, verifican firmas, mapean a datos planos y llaman a los builders/parsers puros del core. La política del escrow (rangos, ventanas, códigos de error) vive acá. |
 | **Producto** | notas `kind:1` humanas (`publishSettleNoteFor`, texto del ancla), umbrales editoriales | Puede cambiar sin tocar la spec. |
 
-Del lado juego, Tetris espeja lo mismo: `sdk/ngp.ts` (protocolo puro: reto NIP-17,
+Del lado juego, Tetris espeja lo mismo: `sdk/ngp-core.ts` (copia sincronizada del
+núcleo), `sdk/ngp.ts` (la capa de firma del juego: `NgpSigner`, reto NIP-17,
 presencia NIP-38, marcador 31337) y los puertos `src/online/nostr*.ts`.
 
 ---

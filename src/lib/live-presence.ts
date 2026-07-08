@@ -1,6 +1,7 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
+import { NGP_KIND, parsePresenceEvent } from "../../sdk/ngp-core";
 
 /**
  * "Jugando ahora" (Nostr Games Protocol (NGP)): para los juegos que NO integran la presencia
@@ -52,7 +53,7 @@ export async function syncLivePresence(): Promise<void> {
   try {
     events = await pool().querySync(
       RELAYS,
-      { kinds: [30315], "#a": [...byCoord.keys()], since },
+      { kinds: [NGP_KIND.presence], "#a": [...byCoord.keys()], since },
       { maxWait: 5000 },
     );
   } catch {
@@ -70,12 +71,12 @@ export async function syncLivePresence(): Promise<void> {
   const nowSec = Math.floor(Date.now() / 1000);
   const next = new Map<string, { providerId: string; npubs: Set<string> }>();
   for (const ev of latestByPubkey.values()) {
-    if (!ev.content) continue; // clearPlayingStatus publica contenido vacío
-    const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
-    if (exp && Number(exp) < nowSec) continue; // vencido (NIP-40)
+    // Vigencia y ancla las decide el protocolo (contenido vacío = presencia
+    // limpiada; expiración NIP-40 pasada = vencida).
+    const parsed = parsePresenceEvent(ev, nowSec);
+    if (!parsed || !parsed.active || !parsed.gameCoord) continue;
 
-    const coord = ev.tags.find((t) => t[0] === "a")?.[1];
-    const target = coord ? byCoord.get(coord) : undefined;
+    const target = byCoord.get(parsed.gameCoord);
     if (!target) continue;
 
     let grp = next.get(target.gameId);

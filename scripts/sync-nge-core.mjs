@@ -1,10 +1,12 @@
-// Sincroniza los artefactos COMPARTIDOS del protocolo NGE de Luna → Tetris.
+// Sincroniza los artefactos COMPARTIDOS de los protocolos (NGE y NGP) Luna → Tetris.
 //
-// Solo el WIRE del protocolo se comparte entre los dos repos; Luna es la fuente
-// de verdad y Tetris tiene copias byte-idénticas:
-//   - sdk/nge-core.ts            → núcleo puro (kinds, URI, cifrado, templates)
-//   - docs/nge/test-vectors.json → vectores de conformance firmados
-// La ergonomía del cliente (sdk/nge-client.ts) NO se sincroniza: la posee Tetris.
+// Solo el WIRE de cada protocolo se comparte entre los dos repos; Luna es la
+// fuente de verdad y Tetris tiene copias byte-idénticas:
+//   - sdk/nge-core.ts            → núcleo NGE puro (kinds, URI, cifrado, templates)
+//   - sdk/ngp-core.ts            → núcleo NGP puro (kinds, templates, parsers)
+//   - docs/nge/test-vectors.json → vectores de conformance NGE firmados
+// La ergonomía de cada punta NO se sincroniza: el cliente NGE (sdk/nge-client.ts)
+// y la capa de firma NGP del juego (sdk/ngp.ts) los posee Tetris.
 //
 // Uso:
 //   node scripts/sync-nge-core.mjs [ruta-repo-tetris]   # copia
@@ -26,6 +28,7 @@ const tetrisRoot = resolve(tetrisArg ?? join(lunaRoot, "..", "tetris"));
 // Pares { src (en Luna) → dest (en Tetris) } de los artefactos compartidos.
 const FILES = [
   { src: join("sdk", "nge-core.ts"), dest: join("sdk", "nge-core.ts") },
+  { src: join("sdk", "ngp-core.ts"), dest: join("sdk", "ngp-core.ts") },
   { src: join("docs", "nge", "test-vectors.json"), dest: join("sdk", "nge-test-vectors.json") },
 ];
 

@@ -1,6 +1,6 @@
 import { buildContractText, pubkeyFromNpub } from "./escrow";
 import { BET_V2_CONTRACT_TAG } from "./escrow-v2-config";
-import { NGP_BET_RESULT_KIND, NGP_BET_TAG } from "./ngp-kinds";
+import { buildBetResultTemplate } from "../../sdk/ngp-core";
 
 // Helpers específicos del contrato v2. Todo lo PURO (validación, hash, economía)
 // se reutiliza tal cual de escrow.ts / escrow-math.ts: v2 comparte el mismo
@@ -23,14 +23,10 @@ Depósitos y premio quedan anclados a este contrato con recibos públicos.`;
 /**
  * Plantilla del evento de resultado v2: **kind:1341 de la spec NGP** (regular,
  * inmutable — docs/nostr-games-protocol-apuestas.md §5), el MISMO formato que
- * publican los oráculos BYO y que ingiere ngp-bet-result-sync. Antes v2 publicaba
- * un kind:30078 propietario (tags `d`/`winner`) que divergía de la spec; ahora el
- * resultado gestionado y el externo hablan un solo formato.
- *
- * Tags: `e` = ancla del contrato (navegable), `a` = coordenada del juego,
- * `p` = pubkey de cada ganador, `status` = win|draw, `bet` = id interno
- * (correlación), `t` = ngp-bet (descubrimiento). `winners` vacío = empate/
- * anulación → `status=draw`, sin `p`.
+ * publican los oráculos BYO y que ingiere ngp-bet-result-sync. El wire vive en
+ * el core (`buildBetResultTemplate`, sdk/ngp-core.ts); acá queda lo de la
+ * tienda: la conversión npub→pubkey y el filtro de anclas sintéticas de dev
+ * (`dev-anchor-…`), que no son eventos reales y no deben salir en un `e`.
  */
 export function buildResultEventTemplateV2(p: {
   betId: string;
@@ -43,19 +39,13 @@ export function buildResultEventTemplateV2(p: {
     .map((n) => pubkeyFromNpub(n))
     .filter((pk): pk is string => Boolean(pk));
   const anchorReal = p.anchorEventId && !p.anchorEventId.startsWith("dev-anchor-");
-  return {
-    kind: NGP_BET_RESULT_KIND,
-    created_at: p.createdAt ?? Math.floor(Date.now() / 1000),
-    tags: [
-      ...(anchorReal ? [["e", p.anchorEventId!]] : []),
-      ...(p.gameCoord ? [["a", p.gameCoord]] : []),
-      ...winnerPubkeys.map((pk) => ["p", pk]),
-      ["status", winnerPubkeys.length > 0 ? "win" : "draw"],
-      ["bet", p.betId],
-      ["t", NGP_BET_TAG],
-    ],
-    content: "",
-  };
+  return buildBetResultTemplate({
+    betId: p.betId,
+    winnerPubkeys,
+    anchorEventId: anchorReal ? p.anchorEventId : null,
+    gameCoord: p.gameCoord,
+    createdAt: p.createdAt,
+  });
 }
 
 /**

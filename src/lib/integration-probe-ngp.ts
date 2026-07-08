@@ -1,5 +1,6 @@
 import { SimplePool, type Event } from "nostr-tools";
 import { RELAYS } from "./constants";
+import { NGP_KIND } from "../../sdk/ngp-core";
 
 // Probador en vivo de Nostr Games Protocol (NGP) (Nostr), análogo al health-check REST 1.0
 // (integration-probe.ts) pero por juego: consulta los relays por la coordenada
@@ -30,10 +31,10 @@ export type GameNostrRef = {
 // Filas NGP verificables consultando relays por la coordenada (#a), con el kind
 // que las prueba. (zaps va aparte: se ancla al anuncio con #e.)
 const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
-  { key: "marcador", kind: 31337, label: "puntajes kind:31337" },
-  { key: "presencia", kind: 30315, label: "presencia NIP-38 (kind:30315)" },
+  { key: "marcador", kind: NGP_KIND.score, label: "puntajes kind:31337" },
+  { key: "presencia", kind: NGP_KIND.presence, label: "presencia NIP-38 (kind:30315)" },
   { key: "resenas", kind: 1, label: "reseñas/comentarios kind:1" },
-  { key: "oraculo", kind: 31338, label: "atestaciones de oráculo kind:31338" },
+  { key: "oraculo", kind: NGP_KIND.scoreAttestation, label: "atestaciones de oráculo kind:31338" },
 ];
 
 // Filas NGP que NO se pueden probar en vivo, con el porqué (siempre se reportan

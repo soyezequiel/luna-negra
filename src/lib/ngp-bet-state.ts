@@ -25,21 +25,21 @@ import {
  * Ver docs/nostr-games-protocol-apuestas.md (spec, §2.1 y §4).
  */
 
-// Kinds congelados de la spec (viven en ngp-kinds.ts, módulo puro; acá se
-// re-exportan para no tocar a los importadores existentes). Los TEMPLATES de los
-// eventos (el formato del protocolo) viven en ngp-events.ts, también puro: este
-// módulo es solo el SERVICIO — leer la DB, mapear y publicar.
+// Kinds congelados de la spec (viven en sdk/ngp-core.ts, el núcleo de protocolo
+// compartido con los juegos; acá se re-exportan para no tocar a los importadores
+// existentes). Los TEMPLATES de los eventos (el formato del protocolo) también
+// viven en el core: este módulo es solo el SERVICIO — leer la DB, mapear y publicar.
 export {
   NGP_BET_CONTRACT_KIND,
   NGP_BET_RESULT_KIND,
   NGP_BET_STATE_KIND,
   NGP_BET_TAG,
-} from "./ngp-kinds";
+} from "../../sdk/ngp-core";
 import {
   buildNgpBetStateTemplate,
   buildNgpTermsTemplate,
   type NgpPayoutEntry,
-} from "./ngp-events";
+} from "../../sdk/ngp-core";
 
 // Flag maestro de la capa NGP de apuestas (independiente de BETS_V2_ENABLED,
 // que apaga el motor v2 entero). "false" explícito lo desactiva.

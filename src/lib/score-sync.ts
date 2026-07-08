@@ -2,6 +2,7 @@ import { SimplePool, nip19, verifyEvent, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { submitScore } from "./leaderboard";
+import { NGP_KIND, parseScoreEvent } from "../../sdk/ngp-core";
 
 /**
  * Reconciliación de PUNTAJES desde Nostr (Nostr Games Protocol (NGP)). El jugador firma su
@@ -18,9 +19,9 @@ import { submitScore } from "./leaderboard";
  * Ver docs/nostr-games-protocol.md (spec) y docs/nostr-games-protocol-implementacion.md.
  */
 
-// kind addressable del evento de puntaje (rango 30000-39999). Si se congela otro
-// número en la spec, cambiarlo acá y en la guía de integración.
-export const SCORE_KIND = 31337;
+// kind addressable del evento de puntaje (rango 30000-39999). Congelado en el
+// núcleo de protocolo compartido con los juegos (sdk/ngp-core.ts).
+export const SCORE_KIND = NGP_KIND.score;
 
 // Cadencia del sync corriendo IN-PROCESS (self-host). 0 = desactivado.
 export const SCORE_SYNC_INTERVAL_MS = Number(
@@ -87,18 +88,17 @@ export async function recordScoreEvent(
   ev: Event,
   byCoord: Map<string, string>,
 ): Promise<void> {
-  if (ev.kind !== SCORE_KIND) return;
+  // El desarme del evento (kind, coordenada, board, score) es del protocolo y
+  // vive en el core; el default de tabla y la proyección son política nuestra.
+  const parsed = parseScoreEvent(ev);
+  if (!parsed) return;
   if (!verifyEvent(ev)) return; // anti-forja: la firma tiene que cerrar con pubkey
 
-  const tag = (k: string) => ev.tags.find((t) => t[0] === k)?.[1];
-
-  const coord = tag("a");
-  const gameId = coord ? byCoord.get(coord) : undefined;
+  const gameId = byCoord.get(parsed.gameCoord);
   if (!gameId) return; // no es un juego nuestro (o no publicado)
 
-  const board = tag("board") ?? "clasico";
-  const score = Number(tag("score"));
-  if (!Number.isFinite(score)) return;
+  const board = parsed.board ?? "clasico";
+  const score = parsed.score;
 
   // El jugador es el firmante del evento: su pubkey → npub estable.
   const npub = nip19.npubEncode(ev.pubkey);

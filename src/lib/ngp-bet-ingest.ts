@@ -6,12 +6,8 @@ import { getStorePubkey } from "./nostr-server";
 import { computeContractHash } from "./escrow";
 import { getEconomySettings, resolveBetFees } from "./economy-settings";
 import { satsToMsat } from "./money";
-import {
-  NGP_BET_CONTRACT_KIND,
-  NGP_BET_TAG,
-  NGP_BETS_ENABLED,
-  publishNgpBetState,
-} from "./ngp-bet-state";
+import { NGP_BETS_ENABLED, publishNgpBetState } from "./ngp-bet-state";
+import { NGP_BET_CONTRACT_KIND, parseBetContractEvent } from "../../sdk/ngp-core";
 import {
   BET_MIN_SATS,
   BET_MAX_SATS,
@@ -49,16 +45,6 @@ export type MaterializeOpts = {
   /** Camino eager (POST /from-contract): el juego del contrato debe ser del proveedor. */
   expectedProviderId?: string;
 };
-
-// Un `p` tag es de ROL si trae "escrow"/"oracle" como token después de la pubkey
-// (índice 2 = relay hint opcional, 3 = marker NIP-10; aceptamos cualquiera de los
-// dos para no atarnos a que venga el relay). El resto son participantes.
-function roleOf(tag: string[]): "escrow" | "oracle" | null {
-  for (const token of tag.slice(2)) {
-    if (token === "escrow" || token === "oracle") return token;
-  }
-  return null;
-}
 
 /**
  * Trae el evento de contrato kind:1339 de los relays por id. Pool fresco por
@@ -104,16 +90,18 @@ export async function materializeNgpBet(
 
   const ev = await fetchContractEvent(contractEventId);
   if (!ev) return fail("CONTRACT_NOT_FOUND", "No se encontró el contrato en los relays");
-  if (ev.kind !== NGP_BET_CONTRACT_KIND) return fail("BAD_KIND", "El evento no es un contrato de apuesta");
+  // El DESARME estructural del 1339 (roles, participantes, stake, ancla raíz) es
+  // del protocolo y vive en el core; acá queda la POLÍTICA del escrow (firma,
+  // rangos, ventanas, dueño del juego) con sus códigos de error.
+  const contract = parseBetContractEvent(ev);
+  if (!contract) return fail("BAD_KIND", "El evento no es un contrato de apuesta");
   if (!verifyEvent(ev)) return fail("BAD_SIGNATURE", "La firma del contrato es inválida");
-  if (!ev.tags.some((t) => t[0] === "t" && t[1] === NGP_BET_TAG)) {
+  if (!contract.taggedNgpBet) {
     return fail("NOT_NGP_BET", "El contrato no está marcado como apuesta NGP");
   }
 
   // Escrow declarado: DEBE ser esta tienda (si no, el contrato es de otro custodio).
-  const pTags = ev.tags.filter((t) => t[0] === "p" && typeof t[1] === "string");
-  const escrowPk = pTags.find((t) => roleOf(t) === "escrow")?.[1];
-  if (escrowPk !== storePubkey) {
+  if (contract.escrowPubkey !== storePubkey) {
     return fail("WRONG_ESCROW", "El contrato no nombra a esta tienda como escrow");
   }
 
@@ -121,11 +109,11 @@ export async function materializeNgpBet(
   // oráculo y el resultado (1341) se valida contra ESA pubkey (ver ngp-bet-result-sync).
   // No exigimos registro previo del proveedor: el propio contrato es la fuente. Se
   // guarda en `bet.oraclePubkey`. (El chequeo `escrow == storePubkey` sí se mantiene.)
-  const oraclePk = pTags.find((t) => roleOf(t) === "oracle")?.[1];
+  const oraclePk = contract.oraclePubkey;
   if (!oraclePk) return fail("MISSING_ORACLE", "El contrato no declara un oráculo");
 
   // Juego por coordenada (`a` = 30023:<pubkey>:<slug>), publicado.
-  const gameCoord = ev.tags.find((t) => t[0] === "a")?.[1];
+  const gameCoord = contract.gameCoord;
   if (!gameCoord) return fail("MISSING_GAME", "El contrato no referencia un juego");
   const game = await prisma.game.findFirst({
     where: { nostrCoord: gameCoord, status: "published" },
@@ -137,7 +125,7 @@ export async function materializeNgpBet(
   }
 
   // Participantes: los `p` sin rol, en orden. El firmante del depósito debe ser uno.
-  const participantPubkeys = pTags.filter((t) => roleOf(t) === null).map((t) => t[1]);
+  const participantPubkeys = contract.participants;
   if (participantPubkeys.length < 2) {
     return fail("TOO_FEW_PARTICIPANTS", "El contrato necesita al menos 2 participantes");
   }
@@ -152,8 +140,8 @@ export async function materializeNgpBet(
   }
 
   // Stake dentro de las condiciones publicadas del escrow (§2.1).
-  const stakeSats = Number(ev.tags.find((t) => t[0] === "stake")?.[1]);
-  if (!Number.isInteger(stakeSats) || stakeSats < BET_MIN_SATS || stakeSats > BET_MAX_SATS) {
+  const stakeSats = contract.stakeSats;
+  if (stakeSats === null || stakeSats < BET_MIN_SATS || stakeSats > BET_MAX_SATS) {
     return fail(
       "STAKE_OUT_OF_RANGE",
       `El stake debe ser un entero entre ${BET_MIN_SATS} y ${BET_MAX_SATS} sats`,
@@ -164,11 +152,10 @@ export async function materializeNgpBet(
   // Deadline de depósito: el del contrato acotado por la ventana del escrow (la
   // política de la casa manda si el retador pidió una ventana más larga).
   const now = Date.now();
-  const contractDeadlineSec = Number(ev.tags.find((t) => t[0] === "deadline")?.[1]);
   const escrowCap = now + DEPOSIT_WINDOW_MS;
   let depositDeadlineMs = escrowCap;
-  if (Number.isFinite(contractDeadlineSec) && contractDeadlineSec > 0) {
-    const contractMs = contractDeadlineSec * 1000;
+  if (contract.deadlineSec !== null) {
+    const contractMs = contract.deadlineSec * 1000;
     if (contractMs <= now) return fail("CONTRACT_EXPIRED", "El contrato ya venció");
     depositDeadlineMs = Math.min(contractMs, escrowCap);
   }
@@ -182,17 +169,15 @@ export async function materializeNgpBet(
     economy,
   });
 
-  const victoryCondition = (ev.content ?? "").slice(0, 500);
-  const roomId = ev.tags.find((t) => t[0] === "room")?.[1] ?? null;
+  const victoryCondition = contract.victoryCondition.slice(0, 500);
+  const roomId = contract.roomId;
 
   // ANCLA: el POST HUMANO raíz (kind:1) del que cuelga este contrato como
   // comentario (`e` root), si existe. Así los depósitos, el estado (31340), los
   // comentarios de participación y el premio anclan a una nota LEGIBLE en
   // cualquier cliente Nostr (Jumble, Damus…) en vez de al kind:1339 que no
   // rinden. Si el 1339 no referencia un root (P2P puro), el ancla es él mismo.
-  const rootRef =
-    ev.tags.find((t) => t[0] === "e" && t[3] === "root")?.[1] ??
-    ev.tags.find((t) => t[0] === "e")?.[1];
+  const rootRef = contract.rootEventId;
   const anchorEventId = rootRef ?? contractEventId;
   if (anchorEventId !== contractEventId) {
     const alreadyByRoot = await prisma.zapBet.findUnique({
