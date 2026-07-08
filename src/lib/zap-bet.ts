@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { RELAYS } from "@/lib/constants";
 import {
   createDescriptionHashInvoice,
+  createInvoice,
   isInvoicePaid,
   lightningConfigured,
 } from "@/lib/lightning";
@@ -334,6 +335,56 @@ export async function ensureDepositInvoiceV2(
     },
   });
 
+  return { invoice: inv.invoice, paymentHash: inv.paymentHash, devMode };
+}
+
+/**
+ * Depósito NGE v2: invoice BOLT11 PLANO del nodo de la tienda (sin zap/9734 ni clave
+ * custodial). Cualquier participante —una cuenta real (NIP-07/46) o un invitado— paga
+ * este bolt11 y el pago se detecta por su `paymentHash` (`checkAndSettleDepositV2`),
+ * igual que el depósito-zap. Al no exigir firma custodial, el asiento puede ser la
+ * CUENTA REAL del jugador (no un invitado efímero): así la apuesta le pertenece
+ * (aparece en su `/bets`) y el premio va a su lud16. Idempotente: reusa el invoice
+ * vigente (claim atómico, mismo criterio que `ensureDepositInvoiceV2`).
+ */
+export async function ensurePlainDepositInvoiceV2(
+  bet: ZapBet,
+  part: ZapBetParticipant,
+): Promise<DepositInvoiceV2> {
+  const devMode = !lightningConfigured();
+  const storedIsDevPlaceholder = part.depositInvoice?.startsWith("lnbc-dev-") ?? false;
+  if (part.depositInvoice && part.depositPaymentHash && (devMode || !storedIsDevPlaceholder)) {
+    return { invoice: part.depositInvoice, paymentHash: part.depositPaymentHash, devMode };
+  }
+
+  const sats = Number(msatToSats(bet.stakeMsat));
+  const inv = devMode
+    ? {
+        invoice: `lnbc-dev-${randomBytes(12).toString("hex")}`,
+        paymentHash: `dev-${randomBytes(16).toString("hex")}`,
+      }
+    : await createInvoice(sats, `Luna Negra — depósito apuesta ${bet.id}`);
+
+  // Claim atómico: solo persiste si nadie emitió antes (o si lo guardado es un
+  // placeholder dev). Dos pedidos concurrentes (create + primer get_bet) emitirían
+  // invoices distintos; el perdedor descarta el suyo y devuelve el del ganador.
+  const claimed = await prisma.zapBetParticipant.updateMany({
+    where: {
+      id: part.id,
+      OR: [{ depositPaymentHash: null }, { depositPaymentHash: { startsWith: "dev-" } }],
+    },
+    data: { depositInvoice: inv.invoice, depositPaymentHash: inv.paymentHash },
+  });
+  if (claimed.count !== 1) {
+    const fresh = await prisma.zapBetParticipant.findUnique({
+      where: { id: part.id },
+      select: { depositInvoice: true, depositPaymentHash: true },
+    });
+    if (fresh?.depositInvoice && fresh.depositPaymentHash) {
+      return { invoice: fresh.depositInvoice, paymentHash: fresh.depositPaymentHash, devMode };
+    }
+    throw new Error("No se pudo persistir el invoice de depósito; reintentá");
+  }
   return { invoice: inv.invoice, paymentHash: inv.paymentHash, devMode };
 }
 

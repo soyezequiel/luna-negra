@@ -28,7 +28,7 @@ import { computeContractHash } from "@/lib/escrow";
 import { buildContractTextV2, buildContractTagsV2 } from "@/lib/escrow-v2";
 import { createGuestUsers } from "@/lib/guest-users";
 import {
-  ensureCustodialDepositInvoiceV2,
+  ensurePlainDepositInvoiceV2,
   checkAndSettleDepositV2,
 } from "@/lib/zap-bet";
 import { settleZapBetWithResult, type ZapBetWithRelations } from "@/lib/escrow-v2-settle";
@@ -248,15 +248,34 @@ async function doCreateBet(
       return fail(method, "INTERNAL", "el escrow no pudo publicar su Lightning Address");
     }
 
-    // Cada asiento NGE = identidad invitada del motor. El depósito sale como
-    // bolt11 directo (custodial) y el payout usa la cascada estándar.
-    const guests = await createGuestUsers(seats.length);
-    await Promise.all(
-      seats.map((s, i) =>
-        s.payoutAddress
-          ? prisma.user.update({ where: { id: guests[i].userId }, data: { lud16: s.payoutAddress } })
-          : Promise.resolve(null),
-      ),
+    // Identidad del participante por asiento. Con pubkey Nostr (jugador identificado)
+    // usamos SU CUENTA REAL (upsert por pubkey): así la apuesta le pertenece —aparece
+    // en su perfil / `/bets`— y el premio va a su lud16. Sin pubkey (asiento anónimo)
+    // cae a un invitado efímero (cobra por QR si gana sin lud16). El depósito es un
+    // bolt11 plano en ambos casos, así que no hace falta clave custodial ni invitado
+    // para los jugadores identificados.
+    const identities = await Promise.all(
+      seats.map(async (s): Promise<{ userId: string; npub: string; pubkey: string }> => {
+        if (s.pubkey) {
+          const npub = nip19.npubEncode(s.pubkey);
+          const user = await prisma.user.upsert({
+            where: { pubkey: s.pubkey },
+            update: {},
+            create: {
+              pubkey: s.pubkey,
+              npub,
+              ...(s.payoutAddress ? { lud16: s.payoutAddress } : {}),
+            },
+            select: { id: true },
+          });
+          return { userId: user.id, npub, pubkey: s.pubkey };
+        }
+        const [guest] = await createGuestUsers(1);
+        if (s.payoutAddress) {
+          await prisma.user.update({ where: { id: guest.userId }, data: { lud16: s.payoutAddress } });
+        }
+        return { userId: guest.userId, npub: guest.npub, pubkey: guest.pubkey };
+      }),
     );
 
     const economy = await getEconomySettings();
@@ -270,7 +289,7 @@ async function doCreateBet(
     const depositDeadline = new Date(Date.now() + windowMs);
     const seatsMeta: NgeSeatMeta[] = seats.map((s, i) => ({
       seatId: s.seatId,
-      npub: guests[i].npub,
+      npub: identities[i].npub,
       ...(s.pubkey ? { pubkey: s.pubkey } : {}),
     }));
 
@@ -288,12 +307,12 @@ async function doCreateBet(
         }),
         depositDeadline,
         participants: {
-          create: guests.map((g) => ({ userId: g.userId, npub: g.npub, pubkey: g.pubkey })),
+          create: identities.map((g) => ({ userId: g.userId, npub: g.npub, pubkey: g.pubkey })),
         },
       },
     });
 
-    const npubs = guests.map((g) => g.npub);
+    const npubs = identities.map((g) => g.npub);
     const contractHash = computeContractHash({
       betId: bet.id,
       gameId: cred.gameId,
@@ -322,7 +341,7 @@ async function doCreateBet(
     const tags = buildContractTagsV2({
       betId: bet.id,
       contractHash,
-      pubkeys: guests.map((g) => g.pubkey),
+      pubkeys: identities.map((g) => g.pubkey),
       zapReceiver: storePubkey
         ? { pubkey: storePubkey, relay: RELAYS[RELAYS.length - 1] }
         : null,
@@ -342,11 +361,12 @@ async function doCreateBet(
       data: { contractHash, anchorEventId, anchorEventKind: 1 },
     });
 
-    // Handles de depósito: bolt11 custodial por asiento (Luna firma el 9734 del
-    // invitado). Best-effort por asiento; los que fallen se re-emiten en get_bet.
+    // Handles de depósito: bolt11 PLANO por asiento (invoice directo del nodo de la
+    // tienda, sin zap ni clave custodial). Best-effort; los que fallen se re-emiten en
+    // get_bet.
     const fresh = await prisma.zapBet.findUnique({
       where: { id: bet.id },
-      include: { participants: { include: { user: { select: { nsecEnc: true } } } } },
+      include: { participants: true },
     });
     const byNpub = new Map(fresh!.participants.map((p) => [p.npub, p]));
     const deposits = await Promise.all(
@@ -354,7 +374,7 @@ async function doCreateBet(
         const part = byNpub.get(s.npub)!;
         let bolt11: string | null = null;
         try {
-          const inv = await ensureCustodialDepositInvoiceV2(fresh!, part, baseUrl());
+          const inv = await ensurePlainDepositInvoiceV2(fresh!, part);
           bolt11 = inv?.invoice ?? null;
         } catch (err) {
           console.error(`[nge] invoice de depósito falló para ${s.seatId} en ${bet.id}:`, err);
@@ -385,10 +405,7 @@ async function findBetFor(cred: Credential, betId: unknown) {
   const bet = await prisma.zapBet.findUnique({
     where: { id: betId.trim() },
     include: {
-      participants: {
-        orderBy: { createdAt: "asc" },
-        include: { user: { select: { nsecEnc: true } } },
-      },
+      participants: { orderBy: { createdAt: "asc" } },
     },
   });
   // Una apuesta ajena responde NOT_FOUND (no filtramos existencia entre juegos).
@@ -454,7 +471,7 @@ async function doGetBet(
         bolt11 = p.depositInvoice;
         if (!bolt11) {
           try {
-            const inv = await ensureCustodialDepositInvoiceV2(bet!, p, baseUrl());
+            const inv = await ensurePlainDepositInvoiceV2(bet!, p);
             bolt11 = inv?.invoice ?? null;
           } catch {
             /* best-effort: el próximo poll reintenta */
