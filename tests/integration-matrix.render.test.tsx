@@ -82,6 +82,12 @@ describe("IntegrationMatrix (verificación NGP + NGE)", () => {
     expect(html).toContain("get_info");
     // Sección de apuestas dentro del bloque NGE.
     expect(html).toContain("NGE · Apuestas y escrow");
+    // La presencia se detecta sola (job en background): ya no se declara a mano,
+    // así que su checkbox no debe renderizarse ni siquiera en modo editable.
+    expect(html).not.toContain("Declaro que uso la presencia en vivo");
+    // Las capacidades genuinamente inobservables SÍ conservan su checkbox.
+    expect(html).toContain("Declaro que integré salas Nostr");
+    expect(html).toContain("Declaro que integré invitaciones Nostr");
   });
 
   it("no rompe con un juego sin ninguna evidencia (todo null)", () => {

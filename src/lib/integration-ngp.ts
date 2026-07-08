@@ -125,8 +125,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-38",
           impl: "implementado",
           signal: "presence",
-          manual: true,
-          desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego. El probador de relays la detecta (y la evidencia queda persistida aunque el relay reemplace el evento); si nadie está jugando al probar, declarala manualmente.",
+          desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego. Se DETECTA SOLA: un job en background (live-presence) observa esos estados en los relays cada 30s y persiste la evidencia la primera vez que alguien juega — sin que el proveedor la declare a mano.",
         },
       },
       {

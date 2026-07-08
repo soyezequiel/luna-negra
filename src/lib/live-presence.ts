@@ -2,6 +2,7 @@ import { SimplePool, nip19, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { NGP_KIND, parsePresenceEvent } from "../../sdk/ngp-core";
+import { recordIntegration } from "./integration-telemetry";
 
 /**
  * "Jugando ahora" (Nostr Games Protocol (NGP)): para los juegos que NO integran la presencia
@@ -86,6 +87,17 @@ export async function syncLivePresence(): Promise<void> {
 
   liveByGame.clear();
   for (const [gameId, grp] of next) liveByGame.set(gameId, grp.npubs);
+
+  // Detección automática de la presencia NGP: ver un estado NIP-38 vivo anclado a
+  // la coordenada del juego ES la evidencia de que integró la presencia. La
+  // persistimos como ping "ngp:presencia" (best-effort; el throttle dedupea a
+  // 1/min por juego) para que el panel de integración marque "Detectado" solo,
+  // sin que el proveedor tenga que declararlo a mano. NIP-38 es efímero: sin este
+  // registro continuo, la evidencia se perdería entre corridas del probador.
+  for (const [gameId, grp] of next) {
+    if (grp.npubs.size === 0) continue;
+    void recordIntegration("ngp:presencia", { providerId: grp.providerId, gameId });
+  }
 
   // Histórico para el pico del día: una fila por juego con jugadores, mismo
   // patrón que presence-sampler.ts (source distinta: "live-2.0").
