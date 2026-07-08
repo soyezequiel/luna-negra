@@ -4,6 +4,7 @@ import { encryptSecret, decryptSecret } from "./crypto-vault";
 import { getStorePubkey } from "./nostr-server";
 import { RELAYS } from "./constants";
 import { buildNgeUri } from "./nge-uri";
+import { ensureManagedOracle } from "./oracle-keys";
 
 // Emisor de la credencial NGE v2 (la "NWC del escrow"). Genera/reusa la clave de
 // cliente `C` por juego y devuelve la URI nostr+nge://. En v2 la URI es TODA la
@@ -47,12 +48,18 @@ export async function issueNgeCredential(params: {
 
   const game = await prisma.game.findUnique({
     where: { id: params.gameId },
-    select: { status: true },
+    select: { status: true, providerId: true },
   });
   if (!game) return { ok: false, code: "GAME_NOT_FOUND", message: "Juego no encontrado" };
   if (game.status !== "published") {
     return { ok: false, code: "GAME_NOT_PUBLISHED", message: "El juego no está publicado" };
   }
+
+  // Guard NGE v2: garantizar que el proveedor tenga oráculo GESTIONADO. NGE v2 firma
+  // el resultado server-side (report_result no acepta un 1341 externo), así que un
+  // proveedor BYO/self-signed no podría cobrar (INTERNAL/SELF_SIGNED_ORACLE en el
+  // escrow). Al emitir la credencial lo dejamos gestionado y evitamos el callejón.
+  await ensureManagedOracle(game.providerId);
 
   const existing = await prisma.ngeCredential.findUnique({ where: { gameId: params.gameId } });
   let sk: Uint8Array;

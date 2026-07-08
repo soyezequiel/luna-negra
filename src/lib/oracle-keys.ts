@@ -173,3 +173,33 @@ export async function revertToManagedOracle(providerId: string): Promise<string>
   });
   return pubkey;
 }
+
+/**
+ * ¿El proveedor necesita que Luna le provisione un oráculo GESTIONADO? True si no
+ * custodia ningún secreto (sin oráculo) o firma con clave propia (BYO/self-signed).
+ * Puro (sin DB) para testear la decisión sin prisma.
+ */
+export function needsManagedOracle(p: {
+  oracleSecretEnc: string | null;
+  oracleSelfSigned: boolean;
+}): boolean {
+  return !p.oracleSecretEnc || p.oracleSelfSigned;
+}
+
+/**
+ * Garantiza que el proveedor tenga oráculo GESTIONADO (Luna custodia el secreto y
+ * puede firmar server-side). Idempotente: si ya es gestionado no toca nada; si no
+ * tiene oráculo o es BYO lo convierte a gestionado. Lo usa la emisión de credencial
+ * NGE v2, que REQUIERE custodia gestionada para firmar el resultado — un proveedor
+ * BYO no tiene forma de resolver por el RPC (`report_result` no acepta un evento
+ * firmado). Devuelve la pubkey gestionada vigente.
+ */
+export async function ensureManagedOracle(providerId: string): Promise<string> {
+  const p = await prisma.provider.findUnique({
+    where: { id: providerId },
+    select: { oraclePubkey: true, oracleSecretEnc: true, oracleSelfSigned: true },
+  });
+  if (!p) throw new Error(`Proveedor ${providerId} no encontrado`);
+  if (!needsManagedOracle(p)) return p.oraclePubkey!; // ya gestionado: no regenerar
+  return revertToManagedOracle(providerId);
+}
