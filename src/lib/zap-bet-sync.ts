@@ -163,7 +163,9 @@ export async function syncZapBetReceipts(): Promise<void> {
       reason:
         "El payout se pagó como zap NIP-57 pero el recibo kind:9735 del receptor no aparece en los relays tras la ventana de gracia. Puede que el wallet del ganador no publique recibos: el pago no se ve como zap social en Nostr. Si a las 6 h sigue sin recibo, se cierra solo como LNURL plano.",
       fingerprint: `zap-bet-sync:missing:${part.id}`,
-      cooldownMs: 30 * 60_000,
+      // Un solo aviso por payout: el próximo mensaje sobre este caso es el cierre
+      // definitivo (fingerprint `zap-bet-sync:final:`), no una repetición.
+      cooldownMs: MISSING_RECEIPT_FINAL_MS,
       context: {
         betId: part.betId,
         participantId: part.id,

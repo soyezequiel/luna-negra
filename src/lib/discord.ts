@@ -74,7 +74,7 @@ function redactSecrets(text: string): string {
     .replace(/nostr\+walletconnect:\/\/[^\s"']+/gi, "[nwc-redacted]");
 }
 
-function serializeContext(context: Record<string, unknown>): string {
+function serializeContext(context: Record<string, unknown>, indent: 0 | 2 = 2): string {
   const seen = new WeakSet<object>();
   try {
     return redactSecrets(
@@ -91,12 +91,42 @@ function serializeContext(context: Record<string, unknown>): string {
           }
           return value;
         },
-        2,
+        indent,
       ),
     );
   } catch {
     return redactSecrets(String(context));
   }
+}
+
+/**
+ * Campo "Para Claude Code": un prompt auto-contenido y copy-pasteable para que
+ * el operador lo pegue en Claude Code y éste diagnostique/arregle (kind
+ * "error") o investigue el rendimiento (kind "perf"). La regla de este canal:
+ * si un aviso no trae acción posible, no se manda (ver notifyNonSocialZap).
+ */
+function claudeCodeField(p: {
+  kind: "error" | "perf";
+  source: string;
+  summary: string;
+  context?: Record<string, unknown>;
+}): DiscordEmbedField {
+  const ctx =
+    p.context && Object.keys(p.context).length > 0
+      ? ` Contexto: ${serializeContext(p.context, 0)}.`
+      : "";
+  const instruccion =
+    p.kind === "error"
+      ? "Encontrá la causa raíz y arreglala."
+      : "Investigá por qué fue lento y optimizalo si vale la pena; si es esperable, subí el umbral del aviso.";
+  const text = redactSecrets(
+    `En el repo Luna Negra (F:\\proyectos\\Tienda juegos PC Nostr): ${p.summary}. ` +
+      `Origen del aviso: "${p.source}" (buscalo con grep en src/).${ctx} ${instruccion}`,
+  );
+  return {
+    name: "📋 Para Claude Code",
+    value: `\`\`\`\n${truncate(text, 990)}\n\`\`\``,
+  };
 }
 
 function errorDetails(error: unknown): { name: string; message: string; stack?: string } {
@@ -215,6 +245,14 @@ export async function notifyOperationalError(args: OperationalErrorArgs): Promis
       value: `\`\`\`\n${truncate(details.stack, 950)}\n\`\`\``,
     });
   }
+  fields.push(
+    claudeCodeField({
+      kind: "error",
+      source: args.source,
+      summary: `fallo operativo — ${details.name}: ${details.message}`,
+      context: args.context,
+    }),
+  );
 
   await postDiscordWebhook(url, "Fallo operativo en Luna Negra", [
     {
@@ -230,22 +268,25 @@ export async function notifyOperationalError(args: OperationalErrorArgs): Promis
  * Avisa que un pago que DEBÍA ser un zap social NIP-57 (recibo 9735 público)
  * terminó no siéndolo: cayó al riel LNURL normal, no se pudo publicar el recibo,
  * o nunca apareció en los relays. La plata igual se movió; lo que se pierde es la
- * visibilidad social. Va a un webhook dedicado (DISCORD_ZAP_WEBHOOK_URL) para no
- * mezclarse con los errores operativos; si no está, cae al de alertas y luego al
- * general. Mismo dedup/cooldown que notifyOperationalError.
+ * visibilidad social.
+ *
+ * ES TELEMETRÍA, NO UNA ALERTA: la causa casi siempre es el setup del receptor
+ * (su wallet no soporta NIP-57 o no publica recibos) — no hay nada que arreglar
+ * en el código ni acción posible del operador. Por eso es OPT-IN PURO: solo se
+ * manda si hay un webhook DEDICADO en `DISCORD_ZAP_WEBHOOK_URL`. Sin ese env, se
+ * loguea al server y listo — nunca cae al canal de alertas ni al general
+ * (política anti-spam: a Discord solo llega lo accionable).
  */
 export async function notifyNonSocialZap(args: NonSocialZapArgs): Promise<void> {
   const key = args.fingerprint ?? `non-social-zap:${args.flow}:${args.reason}`;
   if (!shouldSendAlert(key, args.cooldownMs ?? DEFAULT_ALERT_COOLDOWN_MS)) return;
 
-  const url =
-    process.env.DISCORD_ZAP_WEBHOOK_URL?.trim() ||
-    process.env.DISCORD_ALERT_WEBHOOK_URL?.trim() ||
-    process.env.DISCORD_WEBHOOK_URL?.trim();
+  const url = process.env.DISCORD_ZAP_WEBHOOK_URL?.trim();
   if (!url) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[zap-no-social] ${args.flow}: ${redactSecrets(args.reason)}`);
-    }
+    console.warn(
+      `[zap-no-social] ${args.flow}: ${redactSecrets(args.reason)}`,
+      args.context ? serializeContext(args.context, 0) : "",
+    );
     return;
   }
 
@@ -321,6 +362,15 @@ export async function notifyBetPaymentDiagnostic(args: BetPaymentDiagnosticArgs)
       value: `\`\`\`json\n${truncate(serializeContext(args.context), 950)}\n\`\`\``,
     });
   }
+  fields.push(
+    claudeCodeField({
+      // Lentitud/backlog → prompt de rendimiento; errores y degradaciones → arreglo.
+      kind: severity.level === "warn" && /lenta|backlog/i.test(severity.reason) ? "perf" : "error",
+      source: `${args.source} (etapa ${args.stage})`,
+      summary: `pagos de apuestas — ${severity.reason}`,
+      context: args.context,
+    }),
+  );
 
   const etiqueta = severity.level === "error" ? "Error" : "Advertencia";
   await postDiscordWebhook(url, `${etiqueta} en pagos de Luna Negra`, [

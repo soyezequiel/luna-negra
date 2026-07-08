@@ -69,10 +69,18 @@ describe("alertas operativas de Discord", () => {
     expect(serialized).toContain("21000");
   });
 
-  it("cae al webhook de alertas si no hay uno dedicado de zaps", async () => {
+  it("zap no social es OPT-IN: sin webhook dedicado NO cae a alertas ni al general", async () => {
+    // Política anti-spam: el zap no social es telemetría (no hay nada que
+    // arreglar en el código: depende del wallet del receptor), así que solo
+    // sale por DISCORD_ZAP_WEBHOOK_URL. Con los otros webhooks configurados,
+    // igual se queda en el log del server.
     vi.stubEnv(
       "DISCORD_ALERT_WEBHOOK_URL",
       "https://discord.com/api/webhooks/123/alert-token",
+    );
+    vi.stubEnv(
+      "DISCORD_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/123/general-token",
     );
     vi.stubEnv("NODE_ENV", "production");
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
@@ -85,10 +93,31 @@ describe("alertas operativas de Discord", () => {
       fingerprint: "zap-non-social-fallback",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe(
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("el fallo operativo lleva el prompt copy-pasteable para Claude Code", async () => {
+    vi.stubEnv(
+      "DISCORD_ALERT_WEBHOOK_URL",
       "https://discord.com/api/webhooks/123/alert-token",
     );
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyOperationalError } = await import("@/lib/discord");
+
+    await notifyOperationalError({
+      source: "escrow-v2-settle",
+      error: new Error("falló la liquidación"),
+      context: { betId: "bet-7" },
+      fingerprint: "prompt-test",
+    });
+
+    const serialized = JSON.stringify(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)));
+    expect(serialized).toContain("Para Claude Code");
+    expect(serialized).toContain("escrow-v2-settle");
+    expect(serialized).toContain("bet-7");
+    expect(serialized).toContain("causa raíz");
   });
 
   it("deduplica la misma falla durante el cooldown", async () => {
