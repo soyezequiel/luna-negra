@@ -167,9 +167,9 @@ async function startEscrowTick() {
   const { ESCROW_TICK_INTERVAL_MS } = await import("./lib/escrow-config");
   if (!ESCROW_TICK_INTERVAL_MS || ESCROW_TICK_INTERVAL_MS <= 0) return;
 
-  const { runTick } = await import("./lib/escrow-tick");
-  // Apuestas v2 (zaps): mismo scheduler, gateado por BETS_V2_ENABLED. Corre tras
-  // el tick v1 en la misma pasada (comparten intervalo y guard `running`).
+  // Cada motor con su flag: v1 (BETS_V1_ENABLED, camino de retiro) y v2
+  // (BETS_V2_ENABLED). Comparten intervalo y guard `running`.
+  const { BETS_V1_ENABLED } = await import("./lib/escrow-config");
   const { BETS_V2_ENABLED } = await import("./lib/escrow-v2-config");
 
   let running = false;
@@ -177,7 +177,10 @@ async function startEscrowTick() {
     if (running) return; // no encimar corridas si una tarda más que el intervalo
     running = true;
     try {
-      await runTick();
+      if (BETS_V1_ENABLED) {
+        const { runTick } = await import("./lib/escrow-tick");
+        await runTick();
+      }
       if (BETS_V2_ENABLED) {
         const { runTickV2 } = await import("./lib/escrow-v2-tick");
         await runTickV2();

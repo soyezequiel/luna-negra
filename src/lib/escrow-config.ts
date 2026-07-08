@@ -1,5 +1,11 @@
 import { satsToMsat } from "./money";
 
+// Flag del motor v1 (default ON: sin cambio de comportamiento). Camino de retiro
+// de v1: cuando el SDK público y los juegos migren a v2/NGE y no queden apuestas
+// v1 activas, poner BETS_V1_ENABLED=false apaga endpoints y tick sin desplegar;
+// después se borra el código. "false" explícito lo desactiva.
+export const BETS_V1_ENABLED = process.env.BETS_V1_ENABLED !== "false";
+
 // Límites y parámetros de la beta. Configurables por env.
 export const BET_MIN_SATS = Number(process.env.BET_MIN_SATS ?? 5);
 export const BET_MAX_SATS = Number(process.env.BET_MAX_SATS ?? 100);

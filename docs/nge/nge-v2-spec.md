@@ -119,7 +119,7 @@ nostr+nge://<S-pubkey>?relay=wss://relay.luna.fit&secret=<C-secret>
 |---|---|---|
 | `24940` | NGE request | 23194 |
 | `24941` | NGE response | 23195 |
-| `24942` | NGE notification | 23196/23197 |
+| `24942` | NGE notification (`bet_updated`, §9) | 23196/23197 |
 
 ## 6. Autenticación y anti-replay
 
@@ -164,17 +164,31 @@ Payload descifrado de la response: `{ "result_type": "...", "result": { ... } }`
 o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
 
 ### `get_info`  — reemplaza el `bind`
-→ `{ methods: [...], version, currency: "sat", minStakeSats, maxStakeSats, feePct, devFeePct, transparency, visibilityOptions }`
+→ `{ methods: [...], version, currency: "sat", minStakeSats, maxStakeSats, feePct, devFeePct, transparency, visibilityOptions, notifications?, limits?, settleDelaySec?, settleDelayMinPotSats? }`
 - `transparency`: capacidad declarada del **escrow** (no del canal): `"public"` =
   liquida en Nostr con eventos públicos auditables (formato NGP: contrato + 31340 +
   1341 + 9735); `"none"` = solo coordinación privada. El juego decide con esta
   información **antes** de mandar plata.
 - `visibilityOptions`: modos que acepta `create_bet.visibility` (Luna:
   `["public", "unlisted"]`).
+- `notifications` *(v1.1)*: tipos de notification `24942` que emite el escrow
+  (Luna: `["bet_updated"]`). Ausente = solo polling.
+- `limits` *(v1.1)*: límites de uso por credencial, informativos:
+  `{ createBetPerMin, maxPendingBets }`. Excederlos → error `RATE_LIMITED`.
+- `settleDelaySec` / `settleDelayMinPotSats` *(v1.1)*: **ventana de disputa**
+  opcional (§7.1). Si el pozo de una apuesta es ≥ `settleDelayMinPotSats`, el
+  escrow difiere el payout `settleDelaySec` segundos después de `report_result`.
+  Ausentes o `0` = liquidación inmediata.
 
 ### `create_bet`
 `params`: `{ seats: [{ seatId, pubkey?, payoutAddress? }], stakeSats, condition?, deadlineSec?, clientRef?, roomId?, visibility? }`
-→ `{ betId, status, deposits: [{ seatId, bolt11, amountSats, expiresAt }] }`
+→ *(v1.1)* **el detalle completo de la apuesta** — el mismo shape que `get_bet`
+(`betId, status, stakeSats, potSats, deadlineSec, seats, result`) **más**
+`deposits: [{ seatId, bolt11, amountSats, expiresAt }]`. Un solo RPC deja al
+juego con todo lo necesario para mostrar los QR y el estado inicial: **no hace
+falta un `get_bet` posterior a la creación**. (En v1.0 la response era solo
+`{ betId, status, deposits }`; los campos nuevos son aditivos y un cliente 1.0
+los ignora sin romperse.)
 - `seatId`: id estable que asigna el juego (puede ser una pubkey o lo que sea).
 - `pubkey` / `payoutAddress`: opcionales; definen el **nivel de payout** (§8).
 - `clientRef`: opcional, clave de idempotencia del juego (§6.1). Reintentar con el
@@ -197,7 +211,9 @@ o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
 
 ### `report_result`  — solo el juego (oráculo)
 `params`: `{ betId, winners: [seatId] }` (vacío = empate/anulación → reembolso)
-→ `{ ok, status }`. El escrow liquida y paga.
+→ `{ ok, status, settleAt? }`. El escrow liquida y paga. *(v1.1)* Si aplica la
+ventana de disputa (§7.1), `status` queda en `resolving` y `settleAt` (unix)
+indica cuándo se ejecutará el payout.
 - **Precondición:** sólo válido con `status = funded`. En `pending_deposits` → error
   `NOT_FUNDED`; en `resolving/settled` → ver finalidad.
 - **`winners` ⊆ asientos fondeados.** Un `seatId` inexistente o no fondeado → error
@@ -214,12 +230,33 @@ o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
 ### `cancel_bet`
 `params`: `{ betId }` → `{ ok, status }` (pre-fondeo → reembolso).
 
+### 7.1 Ventana de disputa *(v1.1, opcional)*
+
+Acota el daño de una credencial `C` comprometida sobre apuestas **en vuelo**: sin
+ventana, quien roba el `secret` puede resolver a gusto cualquier apuesta `funded`
+con `report_result`. Con ventana, los pozos grandes tienen margen de objeción
+antes de que salga la plata.
+
+- El escrow la anuncia en `get_info` (`settleDelaySec` + `settleDelayMinPotSats`).
+- Cuando el pozo (`potSats`) es **≥ `settleDelayMinPotSats`**, el primer
+  `report_result` válido **fija el resultado** (finalidad: no se reescribe, igual
+  que §7) pero **difiere el payout**: la apuesta queda en `resolving` y el escrow
+  ejecuta la liquidación recién en `settleAt = ahora + settleDelaySec`.
+- Durante la ventana **solo el operador del escrow** puede intervenir (anular →
+  reembolso, `refunded`), típicamente ante la objeción de un jugador por los
+  canales del producto (página de la apuesta, soporte). No hay método RPC para
+  objetar: la disputa es capa producto, no protocolo.
+- Pozos por debajo del umbral liquidan inmediato, como en v1.0. Un escrow sin
+  ventana (campos ausentes o `0`) se comporta exactamente como v1.0.
+
 ### Códigos de error
 `error: { code, message }`. Códigos: `UNAUTHORIZED` (`C` no autorizada/revocada, §6),
 `NOT_FOUND` (`betId` inexistente), `NOT_FUNDED` / `ALREADY_SETTLED` / `BAD_WINNER`
 (`report_result`, arriba), `NOT_CANCELLABLE` (`cancel_bet` post-fondeo),
 `STAKE_OUT_OF_RANGE` (fuera de `minStakeSats`/`maxStakeSats`), `EXPIRED_REQUEST`
-(fuera de la ventana de frescura, §6). En `report_result`, cuando el oráculo del
+(fuera de la ventana de frescura, §6), `RATE_LIMITED` *(v1.1)* (excedidos los
+`limits` de `get_info`: demasiados `create_bet` por minuto o demasiadas apuestas
+`pending_deposits` simultáneas para esta credencial — reintentable con backoff). En `report_result`, cuando el oráculo del
 proveedor es propio (BYO / self-signed) o la apuesta declaró su propio `oracle` en el
 1339: `SELF_SIGNED_ORACLE` — Luna no custodia el secreto y no puede firmar el 1341; el
 juego debe firmarlo y publicarlo/postearlo (**no reintentable** por el mismo camino).
@@ -281,10 +318,17 @@ resuelve de la **identidad real** del ganador: el `lud16` de su perfil Nostr (ki
 
 - La **DB del escrow es autoritativa**. `get_bet` la refleja. Los relays **nunca**
   guardan estado.
-- **v1 del protocolo: solo polling.** El juego hace `get_bet` periódicamente.
-- **Después: push.** Una `notification` (`bet_updated { betId }`) **despierta** al
-  cliente, pero `get_bet` **sigue siendo la fuente confiable** y el polling queda como
-  respaldo. El push nunca transporta estado autoritativo.
+- **Push (v1.1): notification `bet_updated`.** En cada transición observable de una
+  apuesta (depósito acreditado, `funded`, `settled`, `expired`, `refunded`,
+  `cancelled`) el escrow publica un evento `kind:24942` firmado por `S`, cifrado
+  NIP-44 hacia la `C` dueña de la apuesta, tag `["p", C]`. Payload descifrado:
+  `{ "notification_type": "bet_updated", "notification": { "betId", "status", "deposited": [seatId…] } }`.
+  Es **best-effort y no autoritativo**: despierta al cliente, que confirma con
+  `get_bet`. Sin `e`-tag (no responde a ningún request). El escrow lo anuncia en
+  `get_info.notifications`.
+- **El polling sigue siendo el respaldo.** Un cliente sin listener persistente
+  (p. ej. serverless) usa solo `get_bet` periódico, como en v1.0. El push nunca
+  transporta estado autoritativo ni reemplaza a `get_bet`.
 
 ## 10. Qué cambia respecto de v1
 
@@ -311,20 +355,28 @@ liquidación.
 la spec. Cambios incompatibles → bump de `version` + nuevo método, no reescritura de
 kinds.
 
+**v1.1** (jul 2026, aditiva — un cliente 1.0 sigue funcionando sin cambios):
+- `create_bet` devuelve el detalle completo (shape de `get_bet` + `deposits`, §7).
+- Notification `bet_updated` por `kind:24942` (§9), anunciada en
+  `get_info.notifications`.
+- `RATE_LIMITED` + `get_info.limits` (límites por credencial, §7).
+- Ventana de disputa opcional (§7.1): `get_info.settleDelaySec` /
+  `settleDelayMinPotSats`, `report_result` → `settleAt`.
+
 ---
 
 ## Apéndice — flujo de una apuesta 1v1
 
 ```
-Juego (C)                          Escrow (S)                     Jugadores
-  │  create_bet {seats, stake} ──▶  │
-  │  ◀── {betId, deposits[bolt11]}  │
-  │  (muestra el QR a cada jugador) │◀──── paga su bolt11 ────────── A, B
-  │  get_bet (polling) ──────────▶  │  (detecta pagos)
-  │  ◀── {status: funded}           │
-  │        …se juega la partida…    │
-  │  report_result {winners:[A]} ─▶ │  liquida, paga a A (§8), fee interna
-  │  ◀── {ok, status: settled}      │  ── zap social a A si tiene lud16 ──▶ feed/leaderboard
-  │  get_bet ────────────────────▶  │
-  │  ◀── {status: settled, result}  │
+Juego (C)                            Escrow (S)                     Jugadores
+  │  create_bet {seats, stake} ────▶  │
+  │  ◀── detalle completo + deposits  │   (un solo RPC: QRs + estado inicial)
+  │  (muestra el QR a cada jugador)   │◀──── paga su bolt11 ────────── A, B
+  │  ◀── 24942 bet_updated (push)     │  (detecta pagos; push best-effort)
+  │  get_bet (confirma / respaldo) ─▶ │
+  │  ◀── {status: funded}             │
+  │        …se juega la partida…      │
+  │  report_result {winners:[A]} ──▶  │  liquida, paga a A (§8), fee interna
+  │  ◀── {ok, status, settleAt?}      │  (pozo grande → ventana de disputa §7.1)
+  │  ◀── 24942 bet_updated (settled)  │  ── zap social a A si tiene lud16 ──▶ feed
 ```

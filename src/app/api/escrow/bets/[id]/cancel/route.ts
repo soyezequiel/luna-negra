@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { payParticipant } from "@/lib/escrow-payout";
@@ -9,6 +10,8 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const session = await getSession();
   if (!session || !isAdmin(session.pubkey)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });

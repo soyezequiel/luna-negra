@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ensureDepositInvoice } from "@/lib/escrow-deposit";
+import { BETS_V1_ENABLED } from "@/lib/escrow-config";
 
 // LNURL-pay (LUD-06) para el depósito de un participante. Dos pasos:
 //   1) GET sin `?amount`  → payRequest (callback + min/max = stake fijo).
@@ -15,6 +16,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ pid: string }> },
 ) {
+  // Guard v1 en formato LUD-06 (los wallets esperan { status: "ERROR" }).
+  if (!BETS_V1_ENABLED) return lnurlError("Las apuestas v1 fueron retiradas");
   const { pid } = await params;
   const part = await prisma.betParticipant.findUnique({
     where: { id: pid },

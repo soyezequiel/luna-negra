@@ -31,11 +31,12 @@ import {
   ensurePlainDepositInvoiceV2,
   checkAndSettleDepositV2,
 } from "@/lib/zap-bet";
-import { settleZapBetWithResult, type ZapBetWithRelations } from "@/lib/escrow-v2-settle";
 import { payParticipantV2 } from "@/lib/escrow-v2-payout";
-import { ensureOracleKey, getOracleSecret } from "@/lib/oracle-keys";
-import { signResultEventV2 } from "@/lib/nostr-server";
 import { isTerminal } from "@/lib/bet-state";
+import { ngeStatus, ngeStatusOf } from "@/lib/bet-status-public";
+import { ngeMetaOf, type NgeSeatMeta } from "@/lib/nge-meta";
+import { notifyNgeBetUpdated, ngePool, publishFirstAck } from "@/lib/nge-notify";
+import { settleNgeWithManagedOracle } from "@/lib/nge-settle";
 import { emitBetCancelledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { beginIdempotent } from "@/lib/idempotency";
 import { publishNgpBetState, ensureNgpEscrowTerms } from "@/lib/ngp-bet-state";
@@ -75,6 +76,14 @@ const ONDEMAND_CHECK_MIN_MS = 1500;
 /** Ventana de fondeo aceptada para `deadlineSec` (clamp). */
 const MIN_DEPOSIT_WINDOW_MS = 60_000;
 const MAX_DEPOSIT_WINDOW_MS = 24 * 60 * 60_000;
+/** Rate limiting por credencial (spec §7, RATE_LIMITED; anunciado en get_info.limits). */
+const NGE_CREATE_BET_PER_MIN = Number(process.env.NGE_CREATE_BET_PER_MIN ?? 10);
+const NGE_MAX_PENDING_BETS = Number(process.env.NGE_MAX_PENDING_BETS ?? 20);
+/** Ventana de disputa (spec §7.1): con pozo ≥ el umbral, el payout se difiere.
+ *  0 en cualquiera de los dos = liquidación inmediata (comportamiento v1.0). */
+const NGE_SETTLE_DELAY_SEC = Number(process.env.NGE_SETTLE_DELAY_SEC ?? 0);
+const NGE_SETTLE_DELAY_MIN_POT_SATS = Number(process.env.NGE_SETTLE_DELAY_MIN_POT_SATS ?? 0);
+const settleDelayActive = NGE_SETTLE_DELAY_SEC > 0;
 
 // Estado a nivel PROCESO en globalThis: Turbopack duplica módulos server en
 // varios chunks; con `let` locales habría un servicio (y un caché) por copia.
@@ -85,50 +94,28 @@ declare global {
   var lunaNgeResponseCache: Map<string, { ev: Event | null; expiresAt: number }> | undefined;
   // eslint-disable-next-line no-var
   var lunaNgeDepositCheckAt: Map<string, number> | undefined;
+  // eslint-disable-next-line no-var
+  var lunaNgeCreateWindow: Map<string, number[]> | undefined;
 }
 const responseCache = (globalThis.lunaNgeResponseCache ??= new Map());
 const depositCheckAt = (globalThis.lunaNgeDepositCheckAt ??= new Map());
+const createWindow = (globalThis.lunaNgeCreateWindow ??= new Map());
+
+/** Ventana deslizante de 60 s de `create_bet` por juego. Registra el intento. */
+function createBetRateExceeded(gameId: string): boolean {
+  const nowMs = Date.now();
+  const hits = (createWindow.get(gameId) ?? []).filter((t: number) => nowMs - t < 60_000);
+  if (hits.length >= NGE_CREATE_BET_PER_MIN) {
+    createWindow.set(gameId, hits);
+    return true;
+  }
+  hits.push(nowMs);
+  createWindow.set(gameId, hits);
+  return false;
+}
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const sats = (msat: bigint) => Number(msatToSats(msat));
-
-type NgeSeatMeta = { seatId: string; npub: string; pubkey?: string };
-type NgeMeta = { seats: NgeSeatMeta[]; clientRef?: string; visibility?: "unlisted" };
-
-function parseNgeMeta(metadataJson: string | null): NgeMeta | null {
-  if (!metadataJson) return null;
-  try {
-    const meta = JSON.parse(metadataJson) as { nge?: NgeMeta };
-    return meta?.nge && Array.isArray(meta.nge.seats) ? meta.nge : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Estado interno del motor → estado público NGE (spec §7). */
-function ngeStatus(internal: string): string {
-  switch (internal) {
-    case "created":
-    case "pending_deposits":
-      return "pending_deposits";
-    case "ready":
-      return "funded";
-    case "settling":
-    case "refunding":
-      return "resolving";
-    case "settled":
-      return "settled";
-    case "cancelled_admin":
-      return "cancelled";
-    case "cancelled_incomplete":
-      return "expired";
-    case "refunded_timeout":
-    case "voided":
-      return "refunded";
-    default:
-      return internal;
-  }
-}
 
 function ok(method: string, result: Record<string, unknown>): NgeResponsePayload {
   return { result_type: method, result };
@@ -168,11 +155,21 @@ async function doGetInfo(cred: Credential): Promise<NgeResponsePayload> {
     maxStakeSats: BET_MAX_SATS,
     feePct,
     devFeePct,
+    // Piso de comisión (v1.1): para que el cliente pueda auditar la liquidación
+    // (auditSettlement del SDK) sin adivinar.
+    feeMinSats: BET_FEE_MIN_SATS,
     // Capacidad declarada del ESCROW (no del canal): Luna liquida en público
     // (formato NGP: contrato + 31340 + 1341 + 9735). El juego puede pedir
     // "unlisted" por apuesta para omitir la sombra 31340 y la nota social.
     transparency: "public",
     visibilityOptions: ["public", "unlisted"],
+    // Push v1.1 (spec §9): el escrow emite bet_updated por kind:24942.
+    notifications: ["bet_updated"],
+    // Límites por credencial (v1.1): excederlos → RATE_LIMITED.
+    limits: { createBetPerMin: NGE_CREATE_BET_PER_MIN, maxPendingBets: NGE_MAX_PENDING_BETS },
+    // Ventana de disputa (v1.1, spec §7.1). 0 = liquidación inmediata.
+    settleDelaySec: settleDelayActive ? NGE_SETTLE_DELAY_SEC : 0,
+    settleDelayMinPotSats: settleDelayActive ? NGE_SETTLE_DELAY_MIN_POT_SATS : 0,
   });
 }
 
@@ -246,6 +243,29 @@ async function doCreateBet(
   // 31340 y la nota social de ESTA apuesta. Cualquier otro valor = "public".
   const unlisted = params.visibility === "unlisted";
 
+  // Rate limiting por credencial (spec §7, v1.1). Cada create_bet crea filas,
+  // invoices en el nodo y un kind:1 público firmado por la tienda: sin límite,
+  // una credencial filtrada (o un juego con un bug en un loop) puede spamear
+  // los tres. Reintentos del MISMO evento no llegan acá (dedup por id); los
+  // límites viven en get_info.limits.
+  if (createBetRateExceeded(cred.gameId)) {
+    return fail(
+      method,
+      "RATE_LIMITED",
+      `máximo ${NGE_CREATE_BET_PER_MIN} create_bet por minuto para este juego; reintentá con backoff`,
+    );
+  }
+  const pendingCount = await prisma.zapBet.count({
+    where: { gameId: cred.gameId, status: { in: ["created", "pending_deposits"] } },
+  });
+  if (pendingCount >= NGE_MAX_PENDING_BETS) {
+    return fail(
+      method,
+      "RATE_LIMITED",
+      `este juego ya tiene ${pendingCount} apuestas esperando depósitos (máximo ${NGE_MAX_PENDING_BETS}); cancelá o esperá a que expiren`,
+    );
+  }
+
   // Idempotencia por clave natural (§6.1): mismo clientRef → mismo betId, aun si
   // el reintento llega en un evento nuevo (id distinto) o tras un reinicio.
   let idem: Awaited<ReturnType<typeof beginIdempotent>> | null = null;
@@ -310,6 +330,9 @@ async function doCreateBet(
       ...(s.pubkey ? { pubkey: s.pubkey } : {}),
     }));
 
+    // El mapeo NGE va en columnas (v1.1): seatId en el participante, clientRef y
+    // visibility en la apuesta. Las filas viejas siguen leyéndose del JSON legacy
+    // vía nge-meta.ts; las nuevas ya no lo escriben.
     const bet = await prisma.zapBet.create({
       data: {
         gameId: cred.gameId,
@@ -320,16 +343,16 @@ async function doCreateBet(
         devFeePct,
         victoryCondition: condition,
         ...(roomId ? { roomId } : {}),
-        metadataJson: JSON.stringify({
-          nge: {
-            seats: seatsMeta,
-            ...(clientRef ? { clientRef } : {}),
-            ...(unlisted ? { visibility: "unlisted" } : {}),
-          },
-        }),
+        ...(clientRef ? { ngeClientRef: clientRef } : {}),
+        ngeUnlisted: unlisted,
         depositDeadline,
         participants: {
-          create: identities.map((g) => ({ userId: g.userId, npub: g.npub, pubkey: g.pubkey })),
+          create: identities.map((g, i) => ({
+            userId: g.userId,
+            npub: g.npub,
+            pubkey: g.pubkey,
+            ngeSeatId: seats[i].seatId,
+          })),
         },
       },
     });
@@ -417,7 +440,25 @@ async function doCreateBet(
     void ensureNgpEscrowTerms().catch(() => {});
     void publishNgpBetState(bet.id).catch(() => {});
 
-    const result = { betId: bet.id, status: "pending_deposits", deposits };
+    // Respuesta v1.1: el detalle COMPLETO (mismo shape que get_bet) más los
+    // handles de depósito. Un solo RPC deja al juego con los QR y el estado
+    // inicial — sin get_bet post-creación. Recién creada, el detalle es trivial:
+    // nadie depositó y no hay resultado.
+    const result = {
+      betId: bet.id,
+      status: "pending_deposits",
+      stakeSats,
+      potSats: 0,
+      deadlineSec: Math.floor(depositDeadline.getTime() / 1000),
+      seats: deposits.map((d) => ({
+        seatId: d.seatId,
+        deposited: false,
+        ...(d.bolt11 ? { bolt11: d.bolt11 } : {}),
+        payout: null,
+      })),
+      result: null,
+      deposits,
+    };
     if (idem) await idem.commit(200, result);
     return ok(method, result);
   } catch (err) {
@@ -464,7 +505,7 @@ async function doGetBet(
   const method = "get_bet";
   let bet = await findBetFor(cred, params.betId);
   if (!bet) return fail(method, "NOT_FOUND", "apuesta no encontrada");
-  const meta = parseNgeMeta(bet.metadataJson);
+  const meta = ngeMetaOf(bet, bet.participants);
   if (!meta) return fail(method, "NOT_FOUND", "la apuesta no es de NGE v2");
 
   // Detección on-demand (como el GET REST): verificar los depósitos pendientes
@@ -515,18 +556,34 @@ async function doGetBet(
   );
 
   const paidCount = bet.participants.filter((p) => p.depositStatus === "paid").length;
-  const winners = meta.seats
+  let winners = meta.seats
     .filter((s) => byNpub.get(s.npub)?.result === "won")
     .map((s) => s.seatId);
+  // Ventana de disputa (spec §7.1): el resultado ya está FIJADO (no se
+  // reescribe) pero el payout espera settleAt — se expone como resolving con
+  // los ganadores fijados, para que el juego pueda mostrarlo.
+  const inDisputeWindow = bet.status === "ready" && bet.settleAt != null;
+  if (inDisputeWindow && bet.pendingWinnersJson) {
+    try {
+      const fixedNpubs = new Set(JSON.parse(bet.pendingWinnersJson) as string[]);
+      winners = meta.seats.filter((s) => fixedNpubs.has(s.npub)).map((s) => s.seatId);
+    } catch {
+      /* JSON corrupto: se cae al comportamiento sin resultado */
+    }
+  }
+  const hasResult = bet.status === "settled" || bet.status === "voided" || inDisputeWindow;
 
   return ok(method, {
     betId: bet.id,
-    status: ngeStatus(bet.status),
+    status: ngeStatusOf(bet),
     stakeSats: sats(bet.stakeMsat),
     potSats: sats(bet.stakeMsat) * paidCount,
     deadlineSec: bet.depositDeadline ? Math.floor(bet.depositDeadline.getTime() / 1000) : null,
+    ...(inDisputeWindow && bet.settleAt
+      ? { settleAt: Math.floor(bet.settleAt.getTime() / 1000) }
+      : {}),
     seats,
-    result: bet.status === "settled" || bet.status === "voided" ? { winners } : null,
+    result: hasResult ? { winners } : null,
   });
 }
 
@@ -537,7 +594,7 @@ async function doReportResult(
   const method = "report_result";
   const bet = await findBetFor(cred, params.betId);
   if (!bet) return fail(method, "NOT_FOUND", "apuesta no encontrada");
-  const meta = parseNgeMeta(bet.metadataJson);
+  const meta = ngeMetaOf(bet, bet.participants);
   if (!meta) return fail(method, "NOT_FOUND", "la apuesta no es de NGE v2");
 
   const rawWinners = params.winners;
@@ -574,6 +631,31 @@ async function doReportResult(
     return fail(method, "NOT_FUNDED", "la apuesta todavía no está fondeada");
   }
 
+  // Ventana de disputa en curso (spec §7.1): el resultado ya está FIJADO. Un
+  // reintento idéntico devuelve el mismo estado; uno distinto no reescribe.
+  if (bet.status === "ready" && bet.settleAt && bet.pendingWinnersJson) {
+    let fixed: string[] = [];
+    try {
+      fixed = JSON.parse(bet.pendingWinnersJson) as string[];
+    } catch {
+      /* imposible salvo corrupción manual; cae al mismatch de abajo */
+    }
+    const same =
+      fixed.length === winnerNpubs.length && fixed.every((n) => winnerNpubs.includes(n));
+    if (same) {
+      return ok(method, {
+        ok: true,
+        status: "resolving",
+        settleAt: Math.floor(bet.settleAt.getTime() / 1000),
+      });
+    }
+    return fail(
+      method,
+      "ALREADY_SETTLED",
+      "el resultado ya está fijado y en ventana de disputa; no se puede reescribir",
+    );
+  }
+
   // Oráculo del proveedor. Espejo de las rutas REST (/api/v*/bets/[id]/result):
   //
   //  - BYO / self-signed → Luna NO custodia el secreto y NO puede firmar por él: el
@@ -600,48 +682,34 @@ async function doReportResult(
     );
   }
 
-  let sk: Uint8Array | null;
-  try {
-    sk = await getOracleSecret(bet.providerId);
-    if (!sk) {
-      await ensureOracleKey(bet.providerId);
-      sk = await getOracleSecret(bet.providerId);
-    }
-  } catch (err) {
-    console.error(`[nge] no se pudo acceder a la clave de oráculo de ${bet.providerId}:`, err);
-    await notifyOperationalError({
-      source: "nge-oracle-key",
-      error: err,
-      fingerprint: `nge-oracle-key:${bet.providerId}`,
-      context: { betId: bet.id, providerId: bet.providerId },
+  // Ventana de disputa (spec §7.1): con pozo grande, el primer report_result
+  // FIJA el resultado y difiere el payout a settleAt (el tick lo ejecuta). El
+  // claim optimista (pendingWinnersJson null → set) evita que dos requests
+  // concurrentes fijen resultados distintos.
+  const paidCount = bet.participants.filter((p) => p.depositStatus === "paid").length;
+  const potSats = sats(bet.stakeMsat) * paidCount;
+  if (settleDelayActive && potSats >= NGE_SETTLE_DELAY_MIN_POT_SATS) {
+    const settleAt = new Date(Date.now() + NGE_SETTLE_DELAY_SEC * 1000);
+    const claimed = await prisma.zapBet.updateMany({
+      where: { id: bet.id, status: "ready", pendingWinnersJson: null },
+      data: { pendingWinnersJson: JSON.stringify(winnerNpubs), settleAt },
     });
-    return fail(
-      method,
-      "ORACLE_KEY_ERROR",
-      "no se pudo acceder a la clave de oráculo del proveedor (revisá ORACLE_ENC_KEY en el servidor)",
-    );
+    if (claimed.count !== 1) {
+      return fail(method, "IN_PROGRESS", "otro report_result está fijando el resultado; consultá get_bet");
+    }
+    void notifyNgeBetUpdated(bet.id);
+    return ok(method, {
+      ok: true,
+      status: "resolving",
+      settleAt: Math.floor(settleAt.getTime() / 1000),
+    });
   }
-  if (!sk) {
-    return fail(
-      method,
-      "ORACLE_NOT_PROVISIONED",
-      "el proveedor no tiene clave de oráculo gestionada; contactá soporte para provisionarla",
-    );
-  }
-  const resultEvent = signResultEventV2(
-    sk,
-    bet.id,
-    winnerNpubs,
-    bet.anchorEventId,
-    cred.game.nostrCoord,
-  );
 
-  const full = (await prisma.zapBet.findUnique({
-    where: { id: bet.id },
-    include: { provider: { include: { owner: true } }, participants: true },
-  })) as ZapBetWithRelations;
-  const r = await settleZapBetWithResult({ bet: full, winnerNpubs, resultEvent });
+  // Sin ventana: liquidación inmediata con el oráculo gestionado (nge-settle.ts,
+  // compartido con la ejecución diferida del tick).
+  const r = await settleNgeWithManagedOracle(bet.id, winnerNpubs);
   if (r.ok) {
+    void notifyNgeBetUpdated(bet.id);
     return ok(method, { ok: true, status: r.finalStatus ?? (r.voided ? "refunded" : "settled") });
   }
   if (r.code === "NOT_READY") {
@@ -651,7 +719,7 @@ async function doReportResult(
     }
     return fail(method, "NOT_FUNDED", "la apuesta no está lista para resolver");
   }
-  return fail(method, "INTERNAL", r.message);
+  return fail(method, r.code, r.message);
 }
 
 async function doCancelBet(
@@ -685,6 +753,7 @@ async function doCancelBet(
   void emitBetCancelledV2(bet.id).catch(() => {});
   void emitBetRefundedV2(bet.id, "cancelled").catch(() => {});
   void publishNgpBetState(bet.id).catch(() => {});
+  void notifyNgeBetUpdated(bet.id);
   return ok(method, { ok: true, status: "cancelled" });
 }
 
@@ -716,10 +785,10 @@ function pruneCache(): void {
 }
 
 async function publishResponse(pool: SimplePool, ev: Event): Promise<void> {
-  const results = await Promise.allSettled(pool.publish(RELAYS, ev));
-  if (!results.some((r) => r.status === "fulfilled")) {
-    console.warn(`[nge] ningún relay aceptó la response ${ev.id}`);
-  }
+  // First-ack (v1.1): con que UN relay acepte, la response viaja; esperar a los
+  // 5 hacía que el más lento mandara la latencia de todo el RPC.
+  const okd = await publishFirstAck(pool, RELAYS, ev);
+  if (!okd) console.warn(`[nge] ningún relay aceptó la response ${ev.id}`);
 }
 
 /** Procesa un request 24940 verificado y publica su response 24941. */
@@ -801,7 +870,8 @@ export function startNgeV2Service(): void {
   }
   globalThis.lunaNgeServiceStarted = true;
 
-  const pool = new SimplePool();
+  // Pool compartido con los pushes 24942 (nge-notify.ts).
+  const pool = ngePool();
   const subscribe = () => {
     pool.subscribeMany(
       RELAYS,

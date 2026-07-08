@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 import { getSession } from "@/lib/auth";
 import { msatToSats } from "@/lib/money";
 
 export async function GET() {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });

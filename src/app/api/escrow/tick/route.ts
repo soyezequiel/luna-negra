@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { runTick } from "@/lib/escrow-tick";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 
 export async function POST(req: Request) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const body = await req.text();
   const current = process.env.QSTASH_CURRENT_SIGNING_KEY;
   const next = process.env.QSTASH_NEXT_SIGNING_KEY;

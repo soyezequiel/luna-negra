@@ -6,6 +6,7 @@ import { verifyApiKey } from "@/lib/api-keys";
 import { settleBetWithResult, type SettleResult } from "@/lib/escrow-settle";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 
 const MAX_AGE = 1800; // 30 min
 
@@ -39,6 +40,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const { id: betId } = await params;
   // Cualquier excepción inesperada (decrypt del oráculo, DB, firma…) se traduce a
   // un error con la forma estándar `{ error: { code, message } }`. Sin esto, Next

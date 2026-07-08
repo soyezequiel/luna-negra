@@ -8,6 +8,7 @@ import { signWithdrawToken } from "@/lib/auth";
 import { msatToSats } from "@/lib/money";
 import { BET_FEE_MIN_MSAT } from "@/lib/escrow-config";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 
 // Estado + economía + handles de pago de una apuesta, en una sola llamada
 // (Bearer API key del proveedor dueño). Incluye, por participante, cómo deposita
@@ -52,6 +53,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const providerId = await verifyApiKey(req);
   if (!providerId) {
     return apiError(

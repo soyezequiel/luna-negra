@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 import { getPlayerAuth } from "@/lib/escrow-auth";
 import { signWithdrawToken } from "@/lib/auth";
 import { encodeLnurl } from "@/lib/lnurl";
@@ -16,6 +17,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const { id } = await params;
   const auth = await getPlayerAuth(req);
 

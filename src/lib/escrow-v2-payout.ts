@@ -2,7 +2,8 @@ import { nip19 } from "nostr-tools";
 import type { ZapBet, ZapBetParticipant, Provider, User } from "@prisma/client";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
-import { resolveDestination, resolveZapDestination } from "@/lib/escrow-payout";
+import { resolveDestination, resolveZapDestination } from "@/lib/payout-destinations";
+import { ngeSeatRealPubkey } from "@/lib/nge-meta";
 import { recordOutflowV2 } from "@/lib/ledger-v2";
 import { canPayout } from "@/lib/ledger-math";
 import { lightningConfigured } from "@/lib/lightning";
@@ -17,26 +18,10 @@ import { notifyOperationalError } from "@/lib/discord";
 
 type MarkPaid = { preimage: string; payoutKind: "zap" | "lnurl"; zapRequestId?: string };
 
-/**
- * Pubkey REAL del jugador de un asiento NGE (la que manda el juego), leída del
- * seatsMeta del contrato por el npub del invitado. En NGE cada asiento envuelve al
- * jugador en una cuenta invitada efímera (para el depósito custodial), pero el PAYOUT
- * debe ir al jugador real —su lud16 de perfil— para que el premio le llegue solo y no
- * quede varado en el invitado. Null si no es NGE o el asiento es anónimo (sin pubkey):
- * ahí se cobra por QR de retiro, como antes.
- */
-export function ngeSeatRealPubkey(bet: Pick<ZapBet, "metadataJson">, guestNpub: string): string | null {
-  try {
-    const meta = JSON.parse(bet.metadataJson ?? "{}") as {
-      nge?: { seats?: Array<{ npub?: string; pubkey?: string }> };
-    };
-    const seat = meta.nge?.seats?.find((s) => s.npub === guestNpub);
-    const pk = seat?.pubkey;
-    return typeof pk === "string" && /^[0-9a-f]{64}$/.test(pk) ? pk : null;
-  } catch {
-    return null;
-  }
-}
+// El salto invitado→jugador real de los asientos NGE legacy vive en nge-meta.ts
+// (punto único de acceso a la metadata NGE). En filas nuevas devuelve null: los
+// asientos identificados ya usan la cuenta real del jugador.
+export { ngeSeatRealPubkey } from "@/lib/nge-meta";
 
 /**
  * Mueve plata a un participante (payout o refund) como profile-zap.

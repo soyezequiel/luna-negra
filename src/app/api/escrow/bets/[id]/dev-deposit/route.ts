@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 import { prisma } from "@/lib/prisma";
 import { getPlayerAuth } from "@/lib/escrow-auth";
 import { recordDeposit } from "@/lib/ledger";
@@ -11,6 +12,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "No disponible" }, { status: 403 });
   }

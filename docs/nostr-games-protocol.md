@@ -292,9 +292,9 @@ protocolos custom — ahí Nostr deja de ser la herramienta correcta y está bie
 | 9735 | Recibo de zap (propinas/premios) | NIP-57 | estándar |
 | 31337 | **Mejor puntaje del jugador** | esta spec | *propuesto* |
 | 31338 | **Atestación de puntaje (oráculo)** | esta spec | *propuesto* |
-| 1339 | **Contrato de apuesta** (firma el retador) | [apuestas](nostr-games-protocol-apuestas.md) | *propuesto* |
-| 1341 | **Resultado de apuesta** (firma el oráculo) | [apuestas](nostr-games-protocol-apuestas.md) | *propuesto* |
-| 31340 | **Estado del escrow / terms** (firma el escrow) | [apuestas](nostr-games-protocol-apuestas.md) | *propuesto* |
+| 1339 | **Contrato de apuesta** (firma el retador) | [apuestas](nostr-games-protocol-apuestas.md) | **estable (v1)** |
+| 1341 | **Resultado de apuesta** (firma el oráculo; desde jul 2026 también lo firma el oráculo gestionado de Luna) | [apuestas](nostr-games-protocol-apuestas.md) | **estable (v1)** |
+| 31340 | **Estado del escrow / terms** (firma el escrow; cubre también apuestas NGE salvo `visibility: unlisted`) | [apuestas](nostr-games-protocol-apuestas.md) | **estable (v1)** |
 | 20000–29999 | Estado multijugador efímero (no estándar) | NIP-01 | extensión |
 </content>
 </invoke>

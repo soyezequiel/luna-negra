@@ -760,6 +760,13 @@ model ZapBet {
   resultEventId    String? // evento Nostr del resultado firmado
   resultEventKind  Int? // kind del resultado (1341 = spec NGP; null = legado 30078). Para el nevent con kind-hint del detalle
   settleNoteId     String? // nota de liquidación kind:1 (resumen público anclado)
+  // NGE (RPC): clientRef y visibility promovidos de metadataJson.nge a columnas
+  // (las filas viejas conservan el JSON; nge-meta.ts lee con fallback).
+  ngeClientRef     String? // clave de idempotencia del juego (create_bet.clientRef)
+  ngeUnlisted      Boolean   @default(false) // visibility:"unlisted": omite sombra 31340 + nota social
+  // Ventana de disputa (NGE spec §7.1): resultado fijado, payout diferido al tick.
+  settleAt           DateTime?
+  pendingWinnersJson String? // npubs ganadores fijados por report_result (JSON array)
   createdAt        DateTime  @default(now())
   readyAt          DateTime?
   settledAt        DateTime?
@@ -770,6 +777,7 @@ model ZapBet {
   @@index([status])
   @@index([depositDeadline])
   @@index([resolveDeadline])
+  @@index([settleAt])
 }
 
 model ZapBetParticipant {
@@ -780,6 +788,7 @@ model ZapBetParticipant {
   user               User      @relation(fields: [userId], references: [id])
   npub               String // denormalizado para el contrato/display
   pubkey             String // hex denormalizado (v2 lo necesita para tags p/e)
+  ngeSeatId          String? // seatId que asignó el juego (mapeo asiento↔participante NGE; filas viejas: metadataJson.nge)
   // Depósito (zap entrante que Luna Negra recibe como receptor NIP-57)
   depositStatus      String    @default("pending") // pending | paid | refunded | failed
   depositZapRequest  String? // JSON del 9734 FIRMADO por el apostador (va en description del 9735)

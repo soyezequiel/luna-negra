@@ -69,8 +69,8 @@ una apuesta 1v1:
 
 | # | Método | request (firma `C`) | response (firma `S`) |
 |---|---|---|---|
-| 1 | `get_info` | `{}` | `{ methods, version, currency, min/maxStakeSats, feePct, devFeePct }` |
-| 2 | `create_bet` | `{ seats:[alice, bob], stakeSats, condition, clientRef, roomId }` | `{ betId, status:"pending_deposits", deposits:[{seatId, bolt11, amountSats, expiresAt}] }` |
+| 1 | `get_info` | `{}` | `{ methods, version, currency, min/maxStakeSats, feePct, devFeePct, transparency, visibilityOptions }` |
+| 2 | `create_bet` | `{ seats:[alice, bob], stakeSats, condition, clientRef, roomId, visibility? }` | `{ betId, status:"pending_deposits", deposits:[{seatId, bolt11, amountSats, expiresAt}] }` |
 | 3 | `get_bet` (polling) | `{ betId }` | `{ betId, status:"funded", stakeSats, potSats, deadlineSec, seats[], result:null }` |
 | 4 | `report_result` | `{ betId, winners:["alice"] }` | `{ ok:true, status:"settled" }` |
 
@@ -81,6 +81,9 @@ una apuesta 1v1:
   con el mismo `clientRef` devuelve el **mismo `betId`**.
 - **`roomId`**: opcional, sala/partida del juego (correlación + display). Opaco: no
   participa de la idempotencia ni del estado.
+- **`transparency`/`visibilityOptions`** (get_info): capacidad declarada del escrow
+  (liquidación pública NGP) y los modos que acepta `create_bet.visibility`
+  (`"unlisted"` omite la sombra 31340 y la nota social de esa apuesta).
 - **Wire check**: `dec(request.content)` == `requestPayload` y
   `dec(response.content)` == `responsePayload` con la `conversationKey` del JSON.
 

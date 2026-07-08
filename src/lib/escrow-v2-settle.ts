@@ -28,6 +28,7 @@ import { emitBetSettledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { notifyOperationalError } from "@/lib/discord";
 import { publishNgpBetState, isUnlistedBet } from "@/lib/ngp-bet-state";
+import { notifyNgeBetUpdated } from "@/lib/nge-notify";
 import { RELAYS } from "@/lib/constants";
 
 // `after()` tira fuera de un request scope, y este núcleo también corre desde el
@@ -195,6 +196,7 @@ async function runSettlement(args: {
     });
     scheduleAfter(() => emitBetRefundedV2(betId, "void"));
     scheduleAfter(() => publishNgpBetState(betId));
+    scheduleAfter(() => notifyNgeBetUpdated(betId));
     return { ok: true, voided: true };
   }
 
@@ -287,6 +289,7 @@ async function runSettlement(args: {
 
   scheduleAfter(() => emitBetSettledV2(betId));
   scheduleAfter(() => publishNgpBetState(betId));
+  scheduleAfter(() => notifyNgeBetUpdated(betId));
   return { ok: true };
 }
 
@@ -309,7 +312,7 @@ async function publishSettleNoteFor(
   resultEvent: Event,
 ): Promise<string | null> {
   if (!bet.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-")) return null;
-  if (isUnlistedBet(bet.metadataJson)) return null;
+  if (isUnlistedBet(bet)) return null;
   const potSats = sats(bet.stakeMsat) * bet.participants.length;
   if (potSats < BET_SETTLE_NOTE_MIN_POT_SATS) return null;
 

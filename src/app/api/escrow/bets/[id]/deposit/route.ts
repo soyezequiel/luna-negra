@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 import { getPlayerAuth } from "@/lib/escrow-auth";
 import { ensureDepositInvoice } from "@/lib/escrow-deposit";
 import { checkRateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
@@ -12,6 +13,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const auth = await getPlayerAuth(req);
   if (!auth) return fail("UNAUTHENTICATED", "No autenticado", 401);
   const rl = await checkRateLimit(`bet-deposit:${clientIp(req)}:${auth.sub}`, 30, 60_000);

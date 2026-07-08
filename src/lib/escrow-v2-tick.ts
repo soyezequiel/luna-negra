@@ -12,6 +12,8 @@ import {
   emitBetRefundedV2,
 } from "@/lib/webhooks";
 import { publishNgpBetState } from "@/lib/ngp-bet-state";
+import { notifyNgeBetUpdated } from "@/lib/nge-notify";
+import { runNgeDeferredSettlements } from "@/lib/nge-settle";
 import { notifyOperationalError } from "@/lib/discord";
 
 /**
@@ -41,35 +43,43 @@ export async function runTickV2(): Promise<{
   let commentsRepublished = 0;
 
   // A) Detectar depósitos pagados (lookup_invoice) en apuestas pending_deposits.
+  //    EN PARALELO: cada lookup son cientos de ms contra el nodo; en serie el
+  //    barrido escalaba con (apuestas × asientos) y demoraba todo lo demás.
+  //    Cada chequeo es independiente (filas distintas; settleDepositV2 hace
+  //    claim atómico), así que el lote entero puede volar junto.
   if (lightningConfigured()) {
     const pend = await prisma.zapBet.findMany({
       where: { status: "pending_deposits" },
       include: { participants: true },
     });
-    for (const bet of pend) {
-      for (const p of bet.participants) {
-        if (
-          p.depositStatus === "pending" &&
-          p.depositPaymentHash &&
-          !p.depositPaymentHash.startsWith("dev-")
-        ) {
-          const paid = await isInvoicePaid(p.depositPaymentHash).catch(async (error) => {
-            await notifyOperationalError({
-              source: "zap-deposit-invoice-lookup",
-              error,
-              fingerprint: `zap-deposit-invoice-lookup:${p.depositPaymentHash}`,
-              cooldownMs: 10 * 60_000,
-              context: { betId: bet.id, participantId: p.id },
-            });
-            return false;
+    const due = pend.flatMap((bet) =>
+      bet.participants
+        .filter(
+          (p) =>
+            p.depositStatus === "pending" &&
+            p.depositPaymentHash &&
+            !p.depositPaymentHash.startsWith("dev-"),
+        )
+        .map((p) => ({ bet, p })),
+    );
+    const settled = await Promise.all(
+      due.map(async ({ bet, p }) => {
+        const paid = await isInvoicePaid(p.depositPaymentHash as string).catch(async (error) => {
+          await notifyOperationalError({
+            source: "zap-deposit-invoice-lookup",
+            error,
+            fingerprint: `zap-deposit-invoice-lookup:${p.depositPaymentHash}`,
+            cooldownMs: 10 * 60_000,
+            context: { betId: bet.id, participantId: p.id },
           });
-          if (paid) {
-            await settleDepositV2(bet, p, now, "tick");
-            deposits++;
-          }
-        }
-      }
-    }
+          return false;
+        });
+        if (!paid) return false;
+        await settleDepositV2(bet, p, now, "tick");
+        return true;
+      }),
+    );
+    deposits += settled.filter(Boolean).length;
   }
 
   // B) pending_deposits con todos pagos → ready (claim optimista).
@@ -104,11 +114,17 @@ export async function runTickV2(): Promise<{
     await emitBetRefundedV2(bet.id, "expired");
     // Estado NGP: `expired` (fire-and-forget; no frena el barrido del tick).
     void publishNgpBetState(bet.id);
+    void notifyNgeBetUpdated(bet.id);
   }
 
+  // C.5) Liquidaciones NGE diferidas vencidas (ventana de disputa, spec §7.1).
+  await runNgeDeferredSettlements();
+
   // D) Timeout de resolución (sin resultado) → reembolso total por zap.
+  //    EXCLUYE apuestas con resultado fijado esperando su ventana de disputa
+  //    (pendingWinnersJson): esas ya tienen destino y las ejecuta C.5.
   const expiredRes = await prisma.zapBet.findMany({
-    where: { status: "ready", resolveDeadline: { lt: now } },
+    where: { status: "ready", resolveDeadline: { lt: now }, pendingWinnersJson: null },
     include: { participants: true },
   });
   for (const bet of expiredRes) {
@@ -128,6 +144,7 @@ export async function runTickV2(): Promise<{
     await emitBetRefundedV2(bet.id, "resolve_timeout");
     // Estado NGP: `void` por timeout de resolución (fire-and-forget).
     void publishNgpBetState(bet.id);
+    void notifyNgeBetUpdated(bet.id);
   }
 
   // E) Forfeit: retiros (QR) no reclamados pasada la ventana.

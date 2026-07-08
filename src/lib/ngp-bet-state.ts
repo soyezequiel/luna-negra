@@ -1,6 +1,8 @@
 import { prisma } from "./prisma";
 import { publishStoreEvent } from "./nostr-server";
 import { msatToSats } from "./money";
+import { ngpStatusFor } from "./bet-status-public";
+import { isUnlistedBet } from "./nge-meta";
 import { getEconomySettings } from "./economy-settings";
 import {
   BET_MIN_SATS,
@@ -43,30 +45,8 @@ import {
 // que apaga el motor v2 entero). "false" explícito lo desactiva.
 export const NGP_BETS_ENABLED = process.env.NGP_BETS_ENABLED !== "false";
 
-// Estado NGP público (spec §4) desde el estado interno de ZapBet. Los estados
-// transicionales (refunding/settling) no se publican: el terminal llega enseguida
-// y publicar el intermedio solo mete ruido en relays.
-function ngpStatusFor(internal: string): { status: string; reason?: string } | null {
-  switch (internal) {
-    case "created":
-    case "pending_deposits":
-      return { status: "accepted" };
-    case "ready":
-      return { status: "funded" };
-    case "settled":
-      return { status: "resolved" };
-    case "voided":
-      return { status: "void", reason: "oracle_void" };
-    case "refunded_timeout":
-      return { status: "void", reason: "resolve_timeout" };
-    case "cancelled_admin":
-      return { status: "void", reason: "cancelled" };
-    case "cancelled_incomplete":
-      return { status: "expired", reason: "deposit_timeout" };
-    default:
-      return null;
-  }
-}
+// Estado NGP público (spec §4) desde el estado interno de ZapBet: vista `ngp`
+// de la tabla única de bet-status-public.ts (los transicionales no se publican).
 
 // Memos a nivel PROCESO (globalThis): Turbopack duplica este módulo en varios
 // chunks del server (rutas vs instrumentation) — patrón [[turbopack-estado-duplicado-globalthis]].
@@ -90,26 +70,10 @@ function nextStateTimestamp(anchorId: string): number {
 
 const sats = (msat: bigint) => Number(msatToSats(msat));
 
-/**
- * ¿La apuesta pidió liquidación "unlisted"? (create_bet.visibility de NGE, spec
- * §7). Omite la sombra 31340 y la nota social de ESA apuesta; el contrato-ancla
- * y los recibos existen igual (son el riel del escrow). Antes TODA apuesta NGE
- * quedaba excluida de la sombra "por privacidad" — incoherente: el ancla y los
- * payouts ya eran públicos. Ahora la transparencia es el default y la discreción
- * es un opt-in explícito por apuesta.
- */
-export function isUnlistedBet(metadataJson: string | null): boolean {
-  if (!metadataJson) return false;
-  try {
-    const meta = JSON.parse(metadataJson) as {
-      nge?: { visibility?: string };
-      visibility?: string;
-    };
-    return meta?.nge?.visibility === "unlisted" || meta?.visibility === "unlisted";
-  } catch {
-    return false;
-  }
-}
+// El check de visibilidad vive en nge-meta.ts (punto único de acceso a la
+// metadata NGE, columna `ngeUnlisted` + fallback JSON legacy). Se re-exporta
+// para no repuntar a los importadores existentes.
+export { isUnlistedBet };
 
 /**
  * Publica (o re-publica) el estado NGP de una apuesta v2. Best-effort: nunca
@@ -128,7 +92,7 @@ export async function publishNgpBetState(betId: string): Promise<void> {
     });
     if (!bet?.anchorEventId || bet.anchorEventId.startsWith("dev-anchor-")) return;
     // Solo se omite la sombra si la apuesta pidió "unlisted" explícito.
-    if (isUnlistedBet(bet.metadataJson)) return;
+    if (isUnlistedBet(bet)) return;
     const mapped = ngpStatusFor(bet.status);
     if (!mapped) return;
 

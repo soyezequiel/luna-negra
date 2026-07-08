@@ -38,7 +38,9 @@ const nge = NGE.fromEnv(); // lee NGE_CONNECTION (o NGE.connect(uri))
 //    públicos auditables (formato NGP); `visibilityOptions` = modos por-apuesta.
 const info = await nge.getInfo();
 
-// 1) Crear la apuesta. Devuelve un bolt11 POR ASIENTO para mostrar como QR.
+// 1) Crear la apuesta. Devuelve EL DETALLE COMPLETO (mismo shape que get_bet)
+//    más un bolt11 POR ASIENTO para mostrar como QR — no hace falta un get_bet
+//    posterior a la creación (v1.1).
 const bet = await nge.createBet({
   seats: [
     { seatId: "alice", pubkey: alicePubkey, payoutAddress: "alice@getalby.com" }, // payout social/LNURL
@@ -54,9 +56,11 @@ for (const d of bet.deposits) {
   showQr(d.seatId, d.bolt11); // el jugador del asiento paga su invoice
 }
 
-// 2) Seguir el estado: get_bet es la fuente de verdad. `pollBet` avisa SOLO en
-//    las transiciones (pending_deposits → funded → settled).
-const stop = nge.pollBet(bet.betId, (b) => {
+// 2) Seguir el estado. Con un proceso persistente, `watchBet` combina el push
+//    24942 (`bet_updated`, latencia de segundos) con polling de respaldo; cada
+//    aviso se confirma con `get_bet` (la fuente de verdad). En serverless usá
+//    `pollBet` (solo polling), como en v1.0.
+const stop = nge.watchBet(bet.betId, (b) => {
   console.log(b.status, b.seats.map((s) => s.deposited));
 });
 
@@ -82,11 +86,12 @@ declarado: la URI + el RPC `get_info` los reemplazan.
 |---|---|
 | `NGE.fromEnv(envVar?, opts?)` / `NGE.connect(uri, opts?)` | crea el cliente desde la URI |
 | `nge.getInfo()` | config/capacidades del escrow: `min/maxStakeSats`, `feePct`, `devFeePct`, `methods`, `version`, `transparency`, `visibilityOptions` |
-| `nge.createBet(input)` | crea la apuesta; devuelve `{ betId, status, deposits:[{ seatId, bolt11, amountSats, expiresAt }] }` |
+| `nge.createBet(input)` | crea la apuesta; devuelve el **detalle completo** (shape de `getBet`) más `deposits:[{ seatId, bolt11, amountSats, expiresAt }]` |
 | `nge.getBet(betId)` | la fuente de verdad: estado, asientos (con `deposited`/`bolt11` vigente/`payout`) y `result` |
-| `nge.reportResult(betId, winners)` | reporta ganadores por `seatId` (vacío = empate/anulación → reembolso) |
+| `nge.reportResult(betId, winners)` | reporta ganadores por `seatId` (vacío = empate/anulación → reembolso); con ventana de disputa devuelve `settleAt` |
 | `nge.cancelBet(betId)` | cancela **pre-fondeo** (fondeada → usar `reportResult` con `winners` vacío) |
-| `nge.pollBet(betId, cb, intervalMs?)` | polling con azúcar: llama `cb` solo en cambios de estado; devuelve `stop` |
+| `nge.watchBet(betId, cb, intervalMs?)` | push 24942 + polling de respaldo; cada aviso se confirma con `getBet`; devuelve `stop` |
+| `nge.pollBet(betId, cb, intervalMs?)` | solo polling (para serverless): llama `cb` solo en cambios de estado; devuelve `stop` |
 | `nge.close()` | cierra los sockets |
 
 **Entrega sobre relay efímero (§6.1 de la spec).** El relay no persiste: si el

@@ -4,6 +4,7 @@ import { verifyApiKey } from "@/lib/api-keys";
 import { payParticipant } from "@/lib/escrow-payout";
 import { emitBetCancelled, emitBetRefunded } from "@/lib/webhooks";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 
 // Cancela una apuesta NO resuelta (Bearer API key del proveedor dueño) y
 // reembolsa los depósitos ya confirmados. El pozo queda reconciliado: cada
@@ -16,6 +17,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   const providerId = await verifyApiKey(req);
   if (!providerId) {
     return apiError(

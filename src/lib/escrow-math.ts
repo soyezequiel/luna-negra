@@ -86,30 +86,7 @@ export function splitWinnings(
   return { perWinner, dust: netMsat - perWinner * BigInt(winnerCount) };
 }
 
-/**
- * Mapea el estado interno del Bet al estado PÚBLICO que ven los proveedores en
- * la API v1. Los estados internos NO se renombran (romperían el tick/admin);
- * se traducen en el borde de la API.
- */
-export function publicBetStatus(internal: string): string {
-  switch (internal) {
-    case "created":
-    case "pending_deposits":
-      return "pending_deposits";
-    case "ready":
-    case "settling":
-      return "funded";
-    case "settled":
-      return "settled";
-    case "cancelled_admin":
-      return "cancelled";
-    case "cancelled_incomplete":
-      return "expired";
-    case "refunding":
-    case "refunded_timeout":
-    case "voided":
-      return "refunded";
-    default:
-      return internal;
-  }
-}
+// El mapeo interno→público de la API REST vive en la tabla única de
+// bet-status-public.ts (una fila por estado, tres vistas: REST/NGE/NGP).
+// Se re-exporta acá para no repuntar a los importadores existentes.
+export { publicBetStatus } from "./bet-status-public";

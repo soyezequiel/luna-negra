@@ -72,6 +72,7 @@ export async function syncZapBetReceipts(): Promise<void> {
           resultEventKind: true,
           stakeMsat: true,
           metadataJson: true,
+          ngeUnlisted: true,
           _count: { select: { participants: true } },
         },
       },
@@ -264,7 +265,7 @@ async function publishPayoutProofNote(
   // Mismas reglas EDITORIALES que la nota de liquidación (escrow-v2-settle):
   // sin nota para apuestas unlisted ni para pozos bajo el umbral. La auditoría
   // máquina no se pierde: el recibo ya quedó en el 31340 re-publicado.
-  if (isUnlistedBet(part.bet.metadataJson)) return;
+  if (isUnlistedBet(part.bet)) return;
   const potSats = Number(msatToSats(part.bet.stakeMsat)) * part.bet._count.participants;
   if (potSats < BET_SETTLE_NOTE_MIN_POT_SATS) return;
 

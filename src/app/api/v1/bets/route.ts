@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
+import { betsV1Gone } from "@/lib/bets-v1-gate";
 import { verifyApiKeyFull } from "@/lib/api-keys";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import {
@@ -226,6 +227,8 @@ async function createBet(
 }
 
 export async function POST(req: Request) {
+  const gone = betsV1Gone();
+  if (gone) return gone;
   // 1) Auth: API key del proveedor (con el juego al que quedó acotada, si aplica)
   const identity = await verifyApiKeyFull(req);
   if (!identity) {
