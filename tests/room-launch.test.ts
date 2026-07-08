@@ -88,6 +88,7 @@ describe("joinRoomAndPlay", () => {
     expect(mocks.startPlayingPresence).toHaveBeenCalledWith({
       title: "TETRA",
       link: "https://luna.example/game/tetris?room=ROOM1",
+      slug: "tetris",
     });
   });
 
@@ -215,6 +216,7 @@ describe("launchStandaloneGame", () => {
     expect(mocks.startPlayingPresence).toHaveBeenCalledWith({
       title: "TETRA",
       link: "https://luna.example/game/tetris",
+      slug: "tetris",
     });
   });
 

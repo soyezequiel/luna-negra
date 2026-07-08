@@ -159,7 +159,7 @@ export function launchStandaloneGame({
     const link = slug
       ? new URL(`/game/${slug}`, window.location.origin).toString()
       : undefined;
-    startPlayingPresence({ title, link });
+    startPlayingPresence({ title, link, slug });
   }
   return { ok: true };
 }
@@ -210,7 +210,7 @@ export function launchGameRoom({
     inviteHref({ slug, roomId }),
     window.location.origin,
   ).toString();
-  startPlayingPresence({ title, link });
+  startPlayingPresence({ title, link, slug });
 
   // Al cerrar la pestaña del juego: limpiar la sala activa (banner local).
   watchGameWindow(gameWin);

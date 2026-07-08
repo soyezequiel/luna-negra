@@ -625,9 +625,20 @@ export async function publishPlayingStatus(
   gameUrl?: string,
   ttlSeconds = 30,
   stateLabel?: string | null,
+  slug?: string,
 ): Promise<void> {
   const tags: string[][] = [["d", "general"], lunaNegraStatusTag()];
   if (gameUrl) tags.push(["r", gameUrl]);
+  // Ancla la presencia a la coordenada del juego (`a`=30023:<tienda>:<slug>),
+  // ADEMÁS de la etiqueta `l:luna-negra`. Sin este `a`, el sync de background del
+  // server (live-presence.ts, que consulta los relays por `#a`) no ve la presencia
+  // que firma la tienda → no cuenta "jugando ahora" NGP ni detecta la integración
+  // de presencia. El rail de amigos ya la aceptaba por etiqueta O coordenada, así
+  // que el tag extra no lo afecta.
+  if (slug) {
+    const storePubkey = await resolveStorePubkey();
+    if (storePubkey) tags.push(["a", `30023:${storePubkey}:${slug}`]);
+  }
   tags.push(["expiration", String(now() + ttlSeconds)]);
   const content = stateLabel
     ? `Jugando ${title} — ${stateLabel} en Luna Negra`

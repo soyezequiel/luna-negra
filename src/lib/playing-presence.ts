@@ -71,9 +71,14 @@ export async function reconcilePlayingPresence(pubkey: string): Promise<void> {
 export function startPlayingPresence({
   title,
   link,
+  slug,
 }: {
   title: string;
   link?: string;
+  // Slug del juego: ancla la presencia a su coordenada Nostr (tag `a`), para que
+  // el sync de background del server la vea (cuenta "jugando ahora" + detección
+  // de la integración de presencia). Sin slug, cae a solo etiqueta `l:luna-negra`.
+  slug?: string;
 }): () => void {
   // Cierra la sesión previa sin limpiar (el estado nuevo pisa al anterior).
   activeStop?.();
@@ -87,7 +92,7 @@ export function startPlayingPresence({
   let stateLabel: string | null = null;
 
   const refresh = () =>
-    publishPlayingStatus(title, link, STATUS_TTL_S, stateLabel).catch(() => {});
+    publishPlayingStatus(title, link, STATUS_TTL_S, stateLabel, slug).catch(() => {});
 
   const poll = async () => {
     if (stopped) return;
