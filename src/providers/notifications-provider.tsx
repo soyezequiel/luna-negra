@@ -48,6 +48,10 @@ type Toast = {
   href?: string;
   kind: ToastKind;
   actionLabel?: string;
+  // Clave de coalescencia: un toast nuevo con la misma `dedupKey` reemplaza al
+  // anterior en vez de apilarse (p. ej. varias invitaciones de la misma persona
+  // que llegan juntas al abrir la página → se muestra solo la última).
+  dedupKey?: string;
   // Invitación estilo Steam: si vienen estos campos, el toast se renderiza como
   // una tarjeta grande con la foto de quien invita y el nombre del juego.
   invite?: {
@@ -78,6 +82,8 @@ type NotifyOptions = {
   invite?: Toast["invite"];
   /** Reproduce el chime de invitación al aparecer. */
   sound?: boolean;
+  /** Coalesce: reemplaza el toast anterior con la misma clave (ver Toast.dedupKey). */
+  dedupKey?: string;
 };
 
 type NotificationsContextValue = {
@@ -135,11 +141,16 @@ export function NotificationsProvider({
       actionLabel,
       invite,
       sound,
+      dedupKey,
     }: NotifyOptions) => {
       const id = ++idSeq.current;
       setToasts((prev) => [
-        ...prev,
-        { id, title, body, href, kind, actionLabel, invite },
+        // Con dedupKey, sacamos el toast previo de la misma clave: así una ráfaga
+        // de invitaciones de la misma persona colapsa en la última. El updater
+        // funcional se aplica en serie, por lo que varias en el mismo tick igual
+        // convergen a un solo toast.
+        ...(dedupKey ? prev.filter((t) => t.dedupKey !== dedupKey) : prev),
+        { id, title, body, href, kind, actionLabel, invite, dedupKey },
       ]);
       if (sound) playInviteSound();
       setTimeout(() => dismiss(id), invite ? INVITE_TTL : TOAST_TTL);
@@ -190,11 +201,17 @@ export function NotificationsProvider({
 
   // Notificación nativa de Chrome (si hay permiso). Click → enfoca y abre.
   const fireDesktop = useCallback(
-    (title: string, body: string, href?: string) => {
+    (title: string, body: string, href?: string, tag?: string) => {
       if (typeof Notification === "undefined") return;
       if (Notification.permission !== "granted") return;
       try {
-        const n = new Notification(title, { body, icon: "/globe.svg" });
+        // `tag` coalesce las notificaciones nativas: varias de la misma persona
+        // (misma clave) se reemplazan en lugar de acumularse.
+        const n = new Notification(title, {
+          body,
+          icon: "/globe.svg",
+          ...(tag ? { tag } : {}),
+        });
         n.onclick = () => {
           window.focus();
           if (href) openHref(href);
@@ -320,8 +337,9 @@ export function NotificationsProvider({
           kind: "join",
           invite: { fromName: name, fromPicture: picture, game: "una partida" },
           sound: true,
+          dedupKey: `invite:${npub}`,
         });
-        fireDesktop(`🎮 ${title}`, body, challengeUrl);
+        fireDesktop(`🎮 ${title}`, body, challengeUrl, `invite:${npub}`);
         return;
       }
 
@@ -356,8 +374,9 @@ export function NotificationsProvider({
             kind: "join",
             invite: { fromName: name, fromPicture: picture, game },
             sound: true,
+            dedupKey: `invite:${npub}`,
           });
-          fireDesktop(`🎮 ${title}`, body, href);
+          fireDesktop(`🎮 ${title}`, body, href, `invite:${npub}`);
           return;
         }
         // "Luna Room Link": DM con un enlace `?lnRoom=` del dominio del juego. Se
@@ -382,8 +401,9 @@ export function NotificationsProvider({
             kind: "join",
             invite: { fromName: name, fromPicture: picture, game },
             sound: true,
+            dedupKey: `invite:${npub}`,
           });
-          fireDesktop(`🎮 ${title}`, body, roomLink.url);
+          fireDesktop(`🎮 ${title}`, body, roomLink.url, `invite:${npub}`);
           return;
         }
       }
@@ -438,8 +458,9 @@ export function NotificationsProvider({
         kind: "join",
         invite: { fromName: name, fromPicture: picture, game },
         sound: true,
+        dedupKey: `invite:${inv.fromNpub}`,
       });
-      fireDesktop(`🎮 ${title}`, body, inv.inviteUrl);
+      fireDesktop(`🎮 ${title}`, body, inv.inviteUrl, `invite:${inv.fromNpub}`);
     },
     [notify, fireDesktop, profileOf],
   );
