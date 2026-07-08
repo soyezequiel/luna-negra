@@ -164,7 +164,13 @@ o `{ "result_type": "...", "error": { "code": "...", "message": "..." } }`.
 `NOT_FOUND` (`betId` inexistente), `NOT_FUNDED` / `ALREADY_SETTLED` / `BAD_WINNER`
 (`report_result`, arriba), `NOT_CANCELLABLE` (`cancel_bet` post-fondeo),
 `STAKE_OUT_OF_RANGE` (fuera de `minStakeSats`/`maxStakeSats`), `EXPIRED_REQUEST`
-(fuera de la ventana de frescura, §6).
+(fuera de la ventana de frescura, §6). En `report_result`, cuando el oráculo del
+proveedor es propio (BYO / self-signed) o la apuesta declaró su propio `oracle` en el
+1339: `SELF_SIGNED_ORACLE` — Luna no custodia el secreto y no puede firmar el 1341; el
+juego debe firmarlo y publicarlo/postearlo (**no reintentable** por el mismo camino).
+Fallos de la bóveda de secretos server-side (`ORACLE_ENC_KEY` ausente/rotada o blob
+AES-GCM que no autentica): `ORACLE_KEY_ERROR`; oráculo gestionado sin provisionar:
+`ORACLE_NOT_PROVISIONED`.
 
 ## 8. Depósitos y payouts
 

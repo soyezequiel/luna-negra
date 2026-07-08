@@ -530,14 +530,60 @@ async function doReportResult(
     return fail(method, "NOT_FUNDED", "la apuesta todavía no está fondeada");
   }
 
-  // Oráculo gestionado: NGE v2 confía en el request autenticado de `C` (spec §6),
-  // y la firma del 1341 interno la pone la clave de oráculo que Luna custodia.
-  let sk = await getOracleSecret(bet.providerId);
-  if (!sk) {
-    await ensureOracleKey(bet.providerId);
-    sk = await getOracleSecret(bet.providerId);
+  // Oráculo del proveedor. Espejo de las rutas REST (/api/v*/bets/[id]/result):
+  //
+  //  - BYO / self-signed → Luna NO custodia el secreto y NO puede firmar por él: el
+  //    juego debe firmar su propio 1341 y publicarlo/postearlo. Antes esto caía al
+  //    INTERNAL "no se pudo acceder a la clave de oráculo" de más abajo, que el juego
+  //    presentaba como un «Reintentar cobro» inútil (el estado es determinista, no
+  //    transitorio). Devolvemos un código claro y NO reintentable.
+  //  - `getOracleSecret` puede LANZAR (no sólo devolver null) si `ORACLE_ENC_KEY`
+  //    falta/cambió o el blob AES-GCM no autentica. Sin este try/catch el throw se
+  //    escapa al catch del dispatch como "error interno del escrow", ocultando que el
+  //    problema es la clave maestra: lo convertimos en `ORACLE_KEY_ERROR` accionable.
+  const prov = await prisma.provider.findUnique({
+    where: { id: bet.providerId },
+    select: { oracleSelfSigned: true, oraclePubkey: true },
+  });
+  if (
+    prov?.oracleSelfSigned ||
+    (bet.oraclePubkey != null && bet.oraclePubkey !== prov?.oraclePubkey)
+  ) {
+    return fail(
+      method,
+      "SELF_SIGNED_ORACLE",
+      "esta apuesta la resuelve un oráculo propio (BYO): el juego debe firmar el kind:1341 y publicarlo o postearlo; Luna no puede firmar por él",
+    );
   }
-  if (!sk) return fail(method, "INTERNAL", "no se pudo acceder a la clave de oráculo");
+
+  let sk: Uint8Array | null;
+  try {
+    sk = await getOracleSecret(bet.providerId);
+    if (!sk) {
+      await ensureOracleKey(bet.providerId);
+      sk = await getOracleSecret(bet.providerId);
+    }
+  } catch (err) {
+    console.error(`[nge] no se pudo acceder a la clave de oráculo de ${bet.providerId}:`, err);
+    await notifyOperationalError({
+      source: "nge-oracle-key",
+      error: err,
+      fingerprint: `nge-oracle-key:${bet.providerId}`,
+      context: { betId: bet.id, providerId: bet.providerId },
+    });
+    return fail(
+      method,
+      "ORACLE_KEY_ERROR",
+      "no se pudo acceder a la clave de oráculo del proveedor (revisá ORACLE_ENC_KEY en el servidor)",
+    );
+  }
+  if (!sk) {
+    return fail(
+      method,
+      "ORACLE_NOT_PROVISIONED",
+      "el proveedor no tiene clave de oráculo gestionada; contactá soporte para provisionarla",
+    );
+  }
   const resultEvent = signResultEventV2(sk, bet.id, winnerNpubs, bet.anchorEventId);
 
   const full = (await prisma.zapBet.findUnique({
