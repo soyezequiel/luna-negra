@@ -42,7 +42,12 @@ export function LaunchGate({
     setStatus("minting");
     setError(null);
     try {
-      const r = await fetch(`/api/games/${gameId}/sessions`, { method: "POST" });
+      const r = await fetch(`/api/games/${gameId}/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Room Link no es retro-compatible: identidad SIEMPRE por Nostr, nunca lnToken.
+        body: JSON.stringify({ roomLink: true }),
+      });
       if (r.status === 401) {
         setStatus("needsLogin");
         return;

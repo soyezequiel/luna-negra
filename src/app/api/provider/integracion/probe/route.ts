@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { runProbe } from "@/lib/integration-probe";
 import { probeGamesNostr } from "@/lib/integration-probe-ngp";
+import { persistNgpProbeFindings } from "@/lib/integration-telemetry";
 import { siteUrl } from "@/lib/site-url";
 
 // Probador en vivo del proveedor logueado: golpea los endpoints reales del
@@ -43,5 +44,7 @@ export async function POST(req: Request) {
       games.map((g) => ({ ...g, betAnchorIds: anchorsByGame.get(g.id) ?? [] })),
     ),
   ]);
+  // Lo encontrado en relays queda persistido como evidencia ("detectado" fijo).
+  persistNgpProbeFindings(provider.id, nostr);
   return NextResponse.json({ results, nostr });
 }

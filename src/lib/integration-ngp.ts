@@ -24,10 +24,22 @@ export type Column = "solo-1.0" | "intermedio" | "solo-ngp";
 //   "diseño"       → especificado en la spec, todavía sin código.
 export type TwoZeroImpl = "implementado" | "declarado" | "diseño";
 
-// Señal de uso NGP derivable de la DB. "none" = sin señal por juego (login,
-// presencia, invitaciones: van cifradas o no dejan rastro).
-//   betsV2 → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2).
-export type TwoZeroSignal = "scores" | "zaps" | "comments" | "betsV2" | "none";
+// Señal de uso NGP derivable de la DB. "none" = sin señal por juego
+// (invitaciones/salas: van cifradas o no dejan rastro).
+//   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2).
+//   login    → INFERIDA de los puntajes 31337 firmados por el jugador (para
+//              firmarlos el juego tuvo que obtener su signer NIP-07/46).
+//   presence → presencia NIP-38 vista por el probador de relays (se persiste).
+//   oracle   → atestaciones kind:31338 vistas por el probador (se persisten).
+export type TwoZeroSignal =
+  | "scores"
+  | "zaps"
+  | "comments"
+  | "betsV2"
+  | "login"
+  | "presence"
+  | "oracle"
+  | "none";
 
 export type TwoZeroSide = {
   label: string; // estándar visible: "kind:31337", "NIP-38", …
@@ -89,9 +101,9 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         twoZero: {
           label: "NIP-07/46",
           impl: "implementado",
-          signal: "none",
+          signal: "login",
           manual: true,
-          desc: "El jugador se identifica con su pubkey (NIP-07/46) sin canjear lnToken. Es el login estándar de Luna Negra; no deja rastro por juego.",
+          desc: "El jugador se identifica con su pubkey (NIP-07/46) sin canjear lnToken. No deja un evento propio, pero SE INFIERE: un puntaje kind:31337 firmado por el jugador prueba que el juego obtuvo su signer. Sin marcador, declarala manualmente.",
         },
       },
       {
@@ -112,9 +124,9 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         twoZero: {
           label: "NIP-38",
           impl: "implementado",
-          signal: "none",
+          signal: "presence",
           manual: true,
-          desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego, sin que el game server lo reporte. El riel de amigos lo reconoce por la coordenada (tag `a`).",
+          desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego. El probador de relays la detecta (y la evidencia queda persistida aunque el relay reemplace el evento); si nadie está jugando al probar, declarala manualmente.",
         },
       },
       {
@@ -188,8 +200,8 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         twoZero: {
           label: "kind:31338",
           impl: "diseño",
-          signal: "none",
-          desc: "Un oráculo co-firma el score del jugador para premios/stakes (atestación). Propuesto en la spec, todavía sin implementar.",
+          signal: "oracle",
+          desc: "Un oráculo co-firma el score del jugador para premios/stakes (atestación). Propuesto en la spec, todavía sin implementar; si el probador encuentra 31338 en relays, cuenta como evidencia.",
         },
       },
     ],

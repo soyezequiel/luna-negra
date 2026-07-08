@@ -34,10 +34,14 @@ Queremos un estándar donde:
 ## Decisiones de diseño (fijadas)
 
 - **El estado de la sala vive en el backend del juego.** Luna **no** hostea el
-  tablero de esta sala ni registra una fila `Room`. Luna solo emite identidad y,
-  para la variante dirigida, un token de autorización. Esto la diferencia de
+  tablero de esta sala ni registra una fila `Room`. Esto la diferencia de
   [`multijugador-contrato.md`](multijugador-contrato.md), donde la sala es de Luna
   (tabla `Room` + `mintRoomInvite`). Los dos modelos **conviven**.
+- **La identidad la resuelve el juego, no Luna.** Room Link **no es
+  retro-compatible**: el juego loguea al jugador por **Nostr (NIP-07 / NIP-46)** en
+  su propio dominio. Luna **nunca** mintea un token de identidad (`lnToken`) para
+  este flujo. Para un juego **pago**, Luna sigue siendo el gate de compra (verifica
+  la propiedad por REST); para uno gratis, no interviene.
 - **El dinero y la custodia se quedan en la 1.0.** Este estándar es solo del enlace
   + entrada a sala. Apuestas/escrow siguen en §7 de la guía de integración.
 - **Interface-agnóstico.** El enlace es una URL normal. Nostr (NIP-17) es un
@@ -46,114 +50,107 @@ Queremos un estándar donde:
 ## El enlace canónico
 
 ```
-https://<Game.gameUrl>/?lnRoom=<roomId>[&lnInvite=<jwt>]
+https://<Game.gameUrl>/?lnRoom=<roomId>
 ```
 
 | Param      | Qué es | Quién lo pone | ¿Obligatorio? |
 |------------|--------|---------------|---------------|
 | `lnRoom`   | id de sala, string URL-safe opaco (`^[A-Za-z0-9_-]{1,64}$`). No pre-existe: el juego lo crea *lazy*. | Luna o el juego | sí |
-| `lnInvite` | JWT ES256 firmado por Luna que autoriza a **un** `npub` a esta sala. Solo en la variante **dirigida**. | Luna | no |
-| `lnToken`  | entitlement de identidad (§1 SSO). **No viaja en el enlace compartible**; se adjunta en el handoff de identidad (ver abajo). | Luna al abrir | en runtime |
+| `lnOrigin` | origen de Luna (informativo), cuando el link lo abre Luna. | Luna | no |
+
+> **Sin token de identidad.** El enlace es una URL pelada: **no** lleva `lnToken` ni
+> ningún token de sesión. La identidad la resuelve el juego por Nostr (ver
+> "Identidad" abajo). El viejo `lnInvite` (variante dirigida a un `npub`) fue
+> **removido**; Room Link es solo público.
 
 > **`lnRoom` es nuevo y distinto de `room`.** El par `room` + `inviteToken` que ya
 > usa el launcher (`launchGameRoom` en [`room-launch.ts`](src/lib/room-launch.ts))
 > es para salas **hosteadas por Luna**. `lnRoom` señala una sala **hosteada por el
 > juego**. Un juego puede soportar ambos; el contrato de abajo es solo para `lnRoom`.
 
-### Variante pública vs dirigida
+### Solo variante pública
 
-- **Pública** (sin `lnInvite`): cualquiera con el enlace entra. El juego solo exige
-  identidad (que el que abre esté logueado, vía `lnToken`). Es el flujo por defecto
-  para "Invitar a jugar" y para compartir con amigos.
-- **Dirigida** (con `lnInvite`): el juego verifica el `lnInvite` contra el JWKS y
-  **exige que el jugador == `toNpub`** del token. Queda reservada para flujos
-  cerrados donde haga falta fijar participantes.
+Cualquiera con el enlace entra: el enlace es público. El juego exige **identidad**
+(que quien abre tenga un `npub`, resuelto por Nostr — ver abajo), no un permiso por
+persona. La variante **dirigida** (un `lnInvite` atado a un `npub`) fue **removida**:
+para fijar participantes o retos cerrados se usa la capa NGP (retos NIP-17), no este
+estándar.
 
-## Handoff de identidad (la pieza crítica)
+## Identidad (la resuelve el juego, no Luna)
 
-El enlace lleva el dominio del juego, así que hay **dos formas de entrar** y el
-estándar cubre las dos:
+Room Link **no es retro-compatible**: no hay handoff de `lnToken` desde Luna. El
+enlace lleva el dominio del juego, y sea cual sea la forma de entrar, **el juego
+resuelve la identidad por Nostr en su propio cliente** (NIP-07 `window.nostr` o
+NIP-46 con un firmador remoto tipo Amber/Alby). Luna nunca mintea identidad para
+este flujo.
 
 ### 1. Abierto desde Luna (botón "Invitar" / "Jugar")
-Luna abre el juego adjuntando el entitlement, igual que hoy hace `launchStandaloneGame`
-([`room-launch.ts:101`](src/lib/room-launch.ts)):
+Luna abre el juego en su dominio con el link **limpio** (solo `lnRoom` + `lnOrigin`,
+sin token):
 
 ```
-https://<Game.gameUrl>/?lnRoom=<roomId>&lnToken=<entitlement>&lnOrigin=<luna>
+https://<Game.gameUrl>/?lnRoom=<roomId>&lnOrigin=<luna>
 ```
 
-La identidad ya viene resuelta. Es el camino feliz.
+El juego, al cargar, hace el login Nostr. Si el jugador ya tiene una identidad Nostr
+activa (NIP-07/46), el firmador la reusa sin re-preguntar.
 
 ### 2. Enlace crudo reenviado (WhatsApp, Discord…) — **cold open**
-El enlace `…/?lnRoom=<id>` cae en el juego **sin `lnToken`**. Contrato del juego:
-detectar "tengo `lnRoom` pero no `lnToken`" y **rebotar a Luna SSO preservando el
-room**:
+El enlace `…/?lnRoom=<id>` cae en el juego sin identidad. Contrato del juego:
+detectar "tengo `lnRoom` pero no sé quién es el jugador" y **pedir la firma por
+Nostr (NIP-07/46) ahí mismo** — sin rebotar a Luna. La identidad es el `npub` que
+firma.
 
-```
-https://<luna>/launch/<slug>?returnTo=<url-original-urlencoded>
-```
+### Juego pago: gate de compra (lo único que sigue en Luna)
+Verificar la **propiedad** de un juego pago no tiene equivalente Nostr (Luna es la
+vendedora/custodia — ver [`capability-mode.ts`](src/lib/capability-mode.ts)). Para
+eso, y solo eso, el juego consulta a Luna por REST
+([`GET /api/v1/entitlements/verify`](src/app/api/v1/entitlements/verify/route.ts))
+con el `npub` del jugador. Es una llamada de datos, **no** un redirect de identidad.
+Un juego **gratis** no toca Luna en absoluto.
 
-Luna autentica (o reusa la sesión), mintea un entitlement fresco y **redirige de
-vuelta al dominio del juego** con `lnToken` + `lnRoom` intactos. **Este endpoint de
-launch/return no existe hoy y es el mayor trabajo del lado tienda** (ver inventario).
-
-> Nota de seguridad: `returnTo` debe validarse contra `Game.gameUrl` del `slug` (o
-> la allowlist de hosts del proveedor, como ya hace `isAllowedInviteUrl` en
-> [`api/v1/invites/route.ts:42`](src/app/api/v1/invites/route.ts)). Nunca redirigir a
-> un host arbitrario (open-redirect).
+> Nota: el endpoint [`/launch/<slug>`](src/app/launch/[slug]/page.tsx) sigue
+> existiendo como **puerta de compra** (para juegos pagos: valida sesión y propiedad
+> y devuelve al juego con el link limpio), pero **ya no mintea `lnToken`** — su ramal
+> fuerza identidad Nostr
+> ([`sessions/route.ts`](src/app/api/games/[id]/sessions/route.ts)). `returnTo` se
+> valida siempre contra `Game.gameUrl` (anti open-redirect).
 
 ## Contrato del juego (qué implementa quien adopta el estándar)
 
 Al cargar, el juego:
 
 1. Lee `lnRoom`. Si falta → arranque normal (no hay sala).
-2. Si hay `lnRoom` pero **no** `lnToken` → **rebotar a Luna SSO** con `returnTo`
-   (cold open). Al volver, re-ejecuta desde el paso 1 ya con token.
-3. Con `lnToken`: verificar identidad (offline vía JWKS, como en §2 de la guía).
-4. Si hay `lnInvite`: verificar firma vía JWKS y **exigir `jugador == toNpub`**;
-   si no coincide, rechazar (o degradar a espectador, decisión del juego).
-5. **Si la sala `lnRoom` no existe en mi backend → crearla** (host = el primero en
+2. Si hay `lnRoom` pero **no sabe quién es el jugador** → **login Nostr**
+   (NIP-07 `window.nostr` / NIP-46) en su propio cliente. La identidad es el `npub`
+   firmante. **No** rebota a Luna.
+3. (Solo juegos pagos) verificar la propiedad contra Luna por REST
+   (`GET /api/v1/entitlements/verify` con el `npub`). Gratis → omitir.
+4. **Si la sala `lnRoom` no existe en mi backend → crearla** (host = el primero en
    entrar); si existe → unirse.
-6. Descartar los params de la URL (`history.replaceState`) para no dejar tokens en
+5. Descartar los params de la URL (`history.replaceState`) para no dejar basura en
    el historial.
 
 El juego declara soporte con un toggle en el panel de integración (capability
-`roomLink`, ver inventario) — solo así Luna muestra el botón "Invitar".
+`roomLink`, ver inventario) — solo así Luna muestra el botón "Invitar". Como la
+identidad es por Nostr, **implementar Room Link implica soportar login NIP-07/46**.
 
-## Token dirigido `lnInvite` (nuevo)
+## Token dirigido `lnInvite` — **removido**
 
-JWT ES256 firmado con las mismas claves que el entitlement (verificable offline por
-el juego con el JWKS que ya consume en §2). Payload propuesto:
-
-```jsonc
-{
-  "scope": "room-invite",     // distinto de "entitlement" y de "invite"
-  "gameId": "game_…",
-  "slug": "tetra",
-  "roomId": "<lnRoom>",
-  "toNpub": "npub1…",         // el único autorizado a entrar
-  "iss": "luna-negra",
-  "aud": "lunanegra:game",
-  "exp": "<~1h>"
-}
-```
-
-Se diferencia del token `invite` actual ([`auth.ts:249`](src/lib/auth.ts)) en dos
-cosas: (a) **no** va atado a la identidad del que abre (`npub`/`pubkey`), sino al
-**destinatario** (`toNpub`); (b) **no** asume una sala hosteada por Luna
-(sin `host`/`hostNpub`/`hostPubkey`). Es autocontenido: el juego lo valida sin
-llamar a `rooms/verify`.
+La variante dirigida (un JWT `lnInvite` que autorizaba a un solo `npub`) fue
+**eliminada**: Room Link es solo público y sin tokens en el enlace. Para fijar
+participantes en un reto cerrado, usar la capa NGP (retos NIP-17), no este estándar.
 
 ## Lo que provee Luna (endpoints)
 
-| Necesidad | Endpoint propuesto | Auth |
-|-----------|-------------------|------|
-| Generar enlace (público o dirigido) sin abrir el juego ni crear una `Room` | **`POST /api/v1/rooms/invite`** → `{ roomId, inviteUrl, lnInvite? }` | sesión del jugador (cookie) — **no** API key |
-| Cold-open SSO con retorno al dominio del juego | **`GET /launch/<slug>?returnTo=…`** → 302 a `<gameUrl>?lnRoom=…&lnToken=…` | sesión (o login) |
-| Firmar `lnInvite` | interno, reusa `getSigningKeys()` de [`auth.ts`](src/lib/auth.ts) | — |
+| Necesidad | Endpoint | Auth |
+|-----------|----------|------|
+| Generar el enlace público sin abrir el juego ni crear una `Room` | **`POST /api/v1/rooms/invite`** → `{ roomId, inviteUrl }` | sesión del jugador (cookie) — **no** API key |
+| Puerta de compra del cold-open (juegos pagos): valida propiedad y devuelve al juego con el link **limpio** | **`GET /launch/<slug>?returnTo=…`** → redirige a `<gameUrl>?lnRoom=…&lnOrigin=…` (sin `lnToken`) | sesión (o login) |
+| Verificar propiedad de un juego pago | **`GET /api/v1/entitlements/verify`** (por `npub`) | — |
 
-`inviteUrl` lo arma Luna con `Game.gameUrl`. Público = sin `lnInvite`; dirigido =
-se pasa `toNpub` y se firma el token.
+`inviteUrl` lo arma Luna con `Game.gameUrl`: `<Game.gameUrl>?lnRoom=…`. Siempre
+público, sin tokens en el enlace.
 
 ## Entrega por Nostr (opcional)
 
@@ -166,6 +163,12 @@ Ver mecánica NIP-17 en [`nostr-games-protocol-salas-invitaciones.md`](nostr-gam
 ---
 
 ## Inventario: qué existe hoy vs qué hay que construir
+
+> **Nota (histórica).** Esta tabla es el plan de build original. El estándar ya está
+> implementado y el **modelo de identidad cambió**: no hay `lnToken`/JWKS ni
+> `lnInvite` en Room Link — la identidad es por Nostr (NIP-07/46) del lado del juego.
+> Leé las filas de abajo con eso en mente (los ítems #1, #3 y #4 quedaron obsoletos
+> en su parte de identidad/token).
 
 ### Ya existe (reusar)
 
@@ -208,17 +211,16 @@ Ver mecánica NIP-17 en [`nostr-games-protocol-salas-invitaciones.md`](nostr-gam
   hace el juego.
 - **`returnTo` validado siempre** contra `Game.gameUrl`/hosts del proveedor
   (open-redirect / phishing).
-- **`lnInvite` es falsificable-resistente** (firmado por Luna) pero **no es dinero**:
-  autoriza entrada a sala, nada más. El resultado de una apuesta sigue viniendo del
-  game server (§7).
-- **Descartar tokens de la URL** tras canjearlos (paso 6 del contrato).
+- **Identidad = firma Nostr** (NIP-07/46): el juego confía en el `npub` que firma,
+  no en un token de Luna. No es dinero: autoriza a jugar/entrar, nada más. El
+  resultado de una apuesta sigue viniendo del game server (§7).
+- **Descartar los params de la URL** tras leerlos (paso 5 del contrato).
 
 ## Preguntas abiertas
 
 - ¿Nombre del param: `lnRoom` (propuesto) o reusar `room`? Reusar `room` ahorra un
   concepto pero se pisa con el flujo de sala-Luna (`room`+`inviteToken`). Propongo
   `lnRoom` para desambiguar.
-- ¿El cold-open (`/launch/<slug>`) abre el juego en la **misma** pestaña (redirect)
-  o preabre una nueva? Para un enlace reenviado, misma pestaña es lo natural.
-- ¿TTL del `lnInvite` dirigido? Propongo ~1h (como `GameInvite`,
-  [`api/invites/route.ts:9`](src/app/api/invites/route.ts)).
+- ¿El cold-open (`/launch/<slug>`, solo juegos pagos) abre el juego en la **misma**
+  pestaña (redirect) o preabre una nueva? Para un enlace reenviado, misma pestaña es
+  lo natural.

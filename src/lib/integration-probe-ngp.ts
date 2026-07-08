@@ -41,7 +41,7 @@ const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
 // como `skipped` para que la UI lo explique en vez de mostrar un falso fallo).
 const UNPROBEABLE: Array<{ key: string; reason: string }> = [
   { key: "invitaciones", reason: "Las invitaciones NGP son DMs NIP-17 cifrados E2E: no observables desde el server." },
-  { key: "identidad", reason: "El login NIP-07/46 no deja un evento por juego que consultar." },
+  { key: "identidad", reason: "El login NIP-07/46 no deja un evento por juego que consultar; se infiere del marcador firmado (kind:31337) o se declara manualmente." },
   { key: "salas", reason: "Las salas con estado (NIP-29) no se anclan a la coordenada del juego." },
 ];
 

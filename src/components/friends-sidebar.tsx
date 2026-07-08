@@ -307,9 +307,12 @@ export function FriendsSidebar() {
   ) {
     const sr = await fetch(`/api/games/${game.gameId}/sessions`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Room Link no es retro-compatible: identidad SIEMPRE por Nostr, nunca lnToken.
+      body: JSON.stringify({ roomLink: true }),
     });
     const sd = await sr.json().catch(() => ({}));
-    // Login migrado a Nostr: el endpoint no mintea `token` (responde `nostrLogin:true`).
+    // Login por Nostr: el endpoint no mintea `token` (responde `nostrLogin:true`).
     // No es un error: abrimos el juego con el link limpio (solo lnRoom + lnOrigin) y la
     // identidad la resuelve el juego por NIP-07/46. Solo tiramos si además falla el HTTP
     // o no vino ni token ni la señal de login por Nostr.

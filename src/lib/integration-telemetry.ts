@@ -2,8 +2,19 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   INTEGRATION_FEATURES,
+  INTEGRATION_FEATURE_KEYS,
   type IntegrationFeature,
 } from "@/lib/integration-features";
+
+// Además de las interfaces 1.0 (§1–§8), la telemetría registra:
+//   "nge"      → RPC NGE autenticado recibido (cualquier método, incluido
+//                get_info): es el "handshake" que prueba que el juego tiene la
+//                credencial pegada y llega hasta el escrow.
+//   "ngp:<capacidad>" → el probador de relays ENCONTRÓ eventos NGP de esa
+//                capacidad (marcador/presencia/reseñas/zaps/bets/oráculo). Se
+//                persiste para que la detección quede fija aunque el relay
+//                después olvide los eventos (presencia NIP-38 es reemplazable).
+export type TelemetryFeature = IntegrationFeature | "nge" | `ngp:${string}`;
 
 // Registro best-effort de uso de las interfaces de Luna Negra (§1–§8). Cada
 // endpoint del contrato público llama a recordIntegration() cuando lo ejercen de
@@ -47,7 +58,7 @@ const lastWriteAt = new Map<string, number>();
  * contextos sin request (p. ej. el sender de webhooks) llamala con `void`.
  */
 export async function recordIntegration(
-  feature: IntegrationFeature,
+  feature: TelemetryFeature,
   target: Target,
 ): Promise<void> {
   try {
@@ -98,7 +109,7 @@ export async function recordIntegration(
  * sigue vivo y la promesa flotante completa igual. Best-effort en ambos casos.
  */
 export function trackIntegration(
-  feature: IntegrationFeature,
+  feature: TelemetryFeature,
   target: Target,
 ): void {
   try {
@@ -431,8 +442,13 @@ export async function scoreGamesByIntegration(
     }),
   ]);
 
-  for (const p of gamePings) if (p.gameId) addGame(p.gameId, p.feature);
-  for (const p of providerPings) addProvider(p.providerId, p.feature);
+  // Solo cuentan interfaces del catálogo §1–§8 más NGE (interfaz propia). Los
+  // pings "ngp:<capacidad>" del probador NO suman acá: duplicarían capacidades
+  // que ya cuenta la evidencia de dominio (scores→leaderboards, etc.).
+  const scorable = (f: string) =>
+    (INTEGRATION_FEATURE_KEYS as string[]).includes(f) || f === "nge";
+  for (const p of gamePings) if (p.gameId && scorable(p.feature)) addGame(p.gameId, p.feature);
+  for (const p of providerPings) if (scorable(p.feature)) addProvider(p.providerId, p.feature);
   for (const p of purchases) addGame(p.gameId, "purchase");
   for (const r of rooms) addGame(r.gameId, "rooms");
   for (const b of bets) addGame(b.gameId, "bets");
@@ -472,9 +488,44 @@ export type GameRef = {
 //   zaps     → propinas/premios NIP-57 (tabla Zap)
 //   comments → reseñas/logros kind:1 colgando de la coordenada (GameComment)
 //   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2)
+//   presence → presencia NIP-38 (kind:30315 con la coordenada) VISTA por el
+//              probador de relays (ping "ngp:presencia"); la DB no la cachea.
+//   oracle   → atestaciones kind:31338 vistas por el probador ("ngp:oraculo").
+//   login    → INFERIDO: un puntaje kind:31337 firmado por el jugador prueba que
+//              el juego obtuvo su signer → integró el login NIP-07/46.
 // Los retos NIP-17 NO entran acá: van cifrados E2E (capacidad declarada, no
 // observable). Ver src/lib/integration-ngp.ts.
 export type NostrSignals = Record<string, PingInfo | null>;
+
+// Ping del probador ("ngp:<capacidad>") → señal NGP. Fuente única del mapeo que
+// usan readNostrEvidence (lectura) y persistNgpProbeFindings (escritura).
+const NGP_PING_TO_SIGNAL: Record<string, string> = {
+  "ngp:marcador": "scores",
+  "ngp:presencia": "presence",
+  "ngp:resenas": "comments",
+  "ngp:zaps": "zaps",
+  "ngp:bets": "betsV2",
+  "ngp:oraculo": "oracle",
+};
+
+/**
+ * Persiste (fire-and-schedule) los hallazgos del probador NGP de relays como
+ * pings "ngp:<capacidad>". Así "hubo evidencia una vez" queda fijo aunque el
+ * relay después olvide/reemplace los eventos (presencia NIP-38, retención
+ * corta). Compartido por el probe del proveedor y el de admin.
+ */
+export function persistNgpProbeFindings(
+  providerId: string,
+  nostrByGame: Record<string, Array<{ key: string; found: number; skipped: boolean }>>,
+): void {
+  for (const [gameId, results] of Object.entries(nostrByGame)) {
+    for (const r of results) {
+      if (r.skipped || r.found <= 0) continue;
+      if (!(`ngp:${r.key}` in NGP_PING_TO_SIGNAL)) continue;
+      trackIntegration(`ngp:${r.key}`, { providerId, gameId });
+    }
+  }
+}
 
 export type IntegrationView = {
   provider: {
@@ -491,6 +542,8 @@ export type IntegrationView = {
       features: Record<string, PingInfo | null>;
       // Evidencia NGP observada (null = sin telemetría NGP para este juego).
       nostr?: NostrSignals | null;
+      // Evidencia NGE (credencial + RPC + apuestas); null = sin credencial ni señal.
+      nge?: NgeEvidence | null;
     }
   >;
 };
@@ -507,6 +560,7 @@ export function buildIntegrationView(
   games: GameRef[],
   byGame: Map<string, Map<string, PingInfo>>,
   nostrByGame?: Map<string, NostrSignals>,
+  ngeByGame?: Map<string, NgeEvidence>,
 ): IntegrationView {
   const providerPings = byGame.get("") ?? new Map<string, PingInfo>();
   const providerLevel: Record<string, PingInfo | null> = {};
@@ -522,7 +576,12 @@ export function buildIntegrationView(
       for (const f of GAME_FEATURES) {
         features[f.key] = gamePings.get(f.key) ?? null;
       }
-      return { ...g, features, nostr: nostrByGame?.get(g.id) ?? null };
+      return {
+        ...g,
+        features,
+        nostr: nostrByGame?.get(g.id) ?? null,
+        nge: ngeByGame?.get(g.id) ?? null,
+      };
     }),
   };
 }
@@ -542,11 +601,24 @@ export async function readNostrEvidence(
 
   const ensure = (gameId: string): NostrSignals => {
     let r = out.get(gameId);
-    if (!r) out.set(gameId, (r = { scores: null, zaps: null, comments: null, betsV2: null }));
+    if (!r) {
+      out.set(
+        gameId,
+        (r = {
+          scores: null,
+          zaps: null,
+          comments: null,
+          betsV2: null,
+          presence: null,
+          oracle: null,
+          login: null,
+        }),
+      );
+    }
     return r;
   };
 
-  const [zaps, comments, scores, betsV2] = await Promise.all([
+  const [zaps, comments, scores, betsV2, probePings] = await Promise.all([
     prisma.zap.groupBy({
       by: ["gameId"],
       where: inGames,
@@ -579,6 +651,12 @@ export async function readNostrEvidence(
       _count: { _all: true },
       _min: { createdAt: true },
       _max: { createdAt: true },
+    }),
+    // Evidencia persistida por el probador de relays ("ngp:<capacidad>"): cubre
+    // señales que la DB no cachea (presencia NIP-38, atestaciones 31338) y deja
+    // fija la detección aunque el relay olvide los eventos.
+    prisma.integrationPing.findMany({
+      where: { gameId: { in: gameIds }, feature: { startsWith: "ngp:" } },
     }),
   ]);
 
@@ -617,6 +695,113 @@ export async function readNostrEvidence(
       firstSeenAt: iso(b._min.createdAt),
       lastSeenAt: iso(b._max.createdAt),
     };
+  }
+
+  // Pings del probador: se FUSIONAN con la evidencia de dominio (lo más
+  // reciente/acumulado gana), no la reemplazan.
+  for (const p of probePings) {
+    const signal = NGP_PING_TO_SIGNAL[p.feature];
+    if (!signal) continue;
+    const r = ensure(p.gameId);
+    r[signal] = mergePing(r[signal] ?? null, {
+      count: p.count,
+      firstSeenAt: iso(p.firstSeenAt),
+      lastSeenAt: iso(p.lastSeenAt),
+    });
+  }
+
+  // Login NIP-07/46 inferido: si hay puntajes firmados por el jugador, el juego
+  // obtuvo su signer — eso solo pasa con el login Nostr integrado.
+  for (const r of out.values()) {
+    if (r.scores) r.login = mergePing(r.login ?? null, r.scores);
+  }
+
+  return out;
+}
+
+// ── Evidencia NGE (Nostr Game Escrow) ────────────────────────────────────────
+
+export type NgeEvidence = {
+  // Credencial emitida para el juego (NgeCredential); null = nunca se emitió.
+  issuedAt: string | null;
+  rotatedAt: string | null;
+  // RPC NGE autenticados recibidos (telemetría "nge", cualquier método incluido
+  // get_info) FUSIONADOS con las apuestas creadas (una apuesta = un RPC seguro).
+  rpc: PingInfo | null;
+  // Apuestas creadas por el riel NGE (ZapBet con clientRef o con el oráculo TOFU
+  // de la credencial del juego).
+  bets: PingInfo | null;
+};
+
+/**
+ * Evidencia de integración NGE por juego: credencial emitida + RPC observados +
+ * apuestas creadas por el riel. "Detectado" = llegó al menos un RPC autenticado
+ * (el handshake get_info alcanza); la credencial sola es "configurado, sin señal".
+ */
+export async function readNgeEvidence(
+  gameIds: string[],
+): Promise<Map<string, NgeEvidence>> {
+  const out = new Map<string, NgeEvidence>();
+  if (gameIds.length === 0) return out;
+
+  const creds = await prisma.ngeCredential.findMany({
+    where: { gameId: { in: gameIds } },
+    select: { gameId: true, servicePubkey: true, createdAt: true, rotatedAt: true },
+  });
+  const servicePubkeys = creds.map((c) => c.servicePubkey);
+
+  const [pings, bets] = await Promise.all([
+    prisma.integrationPing.findMany({
+      where: { gameId: { in: gameIds }, feature: "nge" },
+    }),
+    // Apuestas del riel NGE: clientRef en columna (v1.1) O el oráculo TOFU de la
+    // credencial (filas viejas que guardaban el meta solo en metadataJson).
+    prisma.zapBet.groupBy({
+      by: ["gameId"],
+      where: {
+        gameId: { in: gameIds },
+        OR: [
+          { ngeClientRef: { not: null } },
+          ...(servicePubkeys.length ? [{ oraclePubkey: { in: servicePubkeys } }] : []),
+        ],
+      },
+      _count: { _all: true },
+      _min: { createdAt: true },
+      _max: { createdAt: true },
+    }),
+  ]);
+
+  const ensure = (gameId: string): NgeEvidence => {
+    let r = out.get(gameId);
+    if (!r) out.set(gameId, (r = { issuedAt: null, rotatedAt: null, rpc: null, bets: null }));
+    return r;
+  };
+
+  for (const c of creds) {
+    const r = ensure(c.gameId);
+    r.issuedAt = iso(c.createdAt);
+    r.rotatedAt = c.rotatedAt ? iso(c.rotatedAt) : null;
+  }
+  for (const p of pings) {
+    const r = ensure(p.gameId);
+    r.rpc = mergePing(r.rpc, {
+      count: p.count,
+      firstSeenAt: iso(p.firstSeenAt),
+      lastSeenAt: iso(p.lastSeenAt),
+    });
+  }
+  for (const b of bets) {
+    if (!b._min.createdAt || !b._max.createdAt) continue;
+    const info: PingInfo = {
+      count: b._count._all,
+      firstSeenAt: iso(b._min.createdAt),
+      lastSeenAt: iso(b._max.createdAt),
+    };
+    const r = ensure(b.gameId);
+    r.bets = info;
+    // Una apuesta creada implica un RPC recibido: cubre lo anterior a la
+    // telemetría "nge" (o lo perdido por el throttle).
+    r.rpc = mergePing(r.rpc, info);
   }
 
   return out;

@@ -831,6 +831,10 @@ async function handleRequest(pool: SimplePool, sk: Uint8Array, ev: Event): Promi
         if (!cred) {
           payload = fail(resultType, "UNAUTHORIZED", "cliente no autorizado (¿credencial rotada?)");
         } else {
+          // Cualquier RPC autenticado (incluido get_info) prueba que el juego
+          // tiene la credencial pegada y llega al escrow: es la señal que usa
+          // el panel de integración para marcar NGE como detectado.
+          trackIntegration("nge", { providerId: cred.game.providerId, gameId: cred.gameId });
           payload = await dispatch(cred, req);
         }
       }

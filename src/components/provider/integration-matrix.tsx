@@ -23,6 +23,16 @@ export type PingInfo = {
   firstSeenAt: string;
   lastSeenAt: string;
 };
+// Evidencia NGE de un juego (forma JSON de NgeEvidence, integration-telemetry).
+export type NgeEvidenceJson = {
+  issuedAt: string | null;
+  rotatedAt: string | null;
+  // RPC autenticados recibidos por el escrow (incluye get_info).
+  rpc: PingInfo | null;
+  // Apuestas creadas por el riel NGE.
+  bets: PingInfo | null;
+};
+
 export type IntegrationView = {
   provider: { id: string; name: string; webhookConfigured: boolean; apiKeys: number };
   providerLevel: Record<string, PingInfo | null>;
@@ -37,8 +47,10 @@ export type IntegrationView = {
     // migrada a NGP (pata Luna apagada). Ver capability-mode.ts.
     capsMode?: Record<string, string> | null;
     features: Record<string, PingInfo | null>;
-    // Señales de uso NGP: scores | zaps | comments.
+    // Señales de uso NGP: scores | zaps | comments | betsV2 | presence | oracle | login.
     nostr?: Record<string, PingInfo | null> | null;
+    // Evidencia NGE (credencial + RPC + apuestas).
+    nge?: NgeEvidenceJson | null;
   }>;
 };
 
@@ -652,6 +664,132 @@ function NostrCapabilityTile({
   );
 }
 
+// ── NGE (Nostr Game Escrow) ──
+// Veredicto de detección: hay RPC autenticado = detectado (get_info alcanza);
+// credencial emitida sin RPC = esperando el handshake; nada = no configurado.
+type NgeLevel = "active" | "stale" | "waiting" | "none";
+
+function ngeLevelFor(nge: NgeEvidenceJson | null | undefined): NgeLevel {
+  if (nge?.rpc) return isRecent(nge.rpc.lastSeenAt) ? "active" : "stale";
+  if (nge?.issuedAt) return "waiting";
+  return "none";
+}
+
+const NGE_STYLE: Record<NgeLevel, { dot: string; chip: string; label: string }> = {
+  active: { dot: "bg-ln-aurora", chip: "bg-ln-aurora/15 text-ln-aurora", label: "Detectado" },
+  stale: { dot: "bg-ln-corona", chip: "bg-ln-corona/15 text-ln-corona", label: "Sin RPC reciente" },
+  waiting: { dot: "bg-blue", chip: "bg-blue/15 text-blue", label: "Esperando señal" },
+  none: { dot: "bg-white/20", chip: "bg-white/10 text-ln-muted", label: "No configurado" },
+};
+
+const NGE_RING: Record<NgeLevel, string> = {
+  active: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
+  stale: "border-ln-corona/45 bg-ln-corona/[0.06]",
+  waiting: "border-blue/45 bg-blue/[0.07]",
+  none: "border-ln-border/60 bg-ln-card/15",
+};
+
+/**
+ * Panel de verificación NGE de un juego: credencial, RPC observados y apuestas
+ * creadas por el riel. La detección es del lado del escrow: con pegar
+ * NGE_CONNECTION y mandar `get_info`, Luna registra el RPC y esto pasa a
+ * "Detectado" — por eso el botón «Buscar señal» (recarga la evidencia).
+ */
+function NgeStatusPanel({
+  nge,
+  editable,
+  onRefresh,
+}: {
+  nge: NgeEvidenceJson | null | undefined;
+  editable?: boolean;
+  onRefresh?: () => Promise<void> | void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const level = ngeLevelFor(nge);
+  const s = NGE_STYLE[level];
+
+  async function check() {
+    if (!onRefresh) return;
+    setChecking(true);
+    try {
+      await onRefresh();
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className={cn("rounded-ln-md border p-2.5 transition-colors", NGE_RING[level])}>
+      <div className="flex items-start justify-between gap-1.5">
+        <p className="text-[12px] font-semibold leading-snug text-ln-text">
+          Conexión NGE (RPC)
+        </p>
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide",
+            s.chip,
+          )}
+        >
+          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
+          {s.label}
+        </span>
+      </div>
+
+      <div className="mt-2 flex flex-col gap-1 text-[10.5px] text-ln-muted">
+        {nge?.issuedAt ? (
+          <span>
+            Credencial emitida {timeAgo(nge.issuedAt)}
+            {nge.rotatedAt ? ` · rotada ${timeAgo(nge.rotatedAt)}` : ""}
+          </span>
+        ) : (
+          <span>Sin credencial emitida para este juego.</span>
+        )}
+        {nge?.rpc ? (
+          <span>
+            Último RPC recibido <strong className="text-ln-text">{timeAgo(nge.rpc.lastSeenAt)}</strong>
+          </span>
+        ) : nge?.issuedAt ? (
+          <span>Todavía no recibimos ningún RPC de tu game server.</span>
+        ) : null}
+        {nge?.bets ? (
+          <span>
+            {nge.bets.count} apuesta(s) creadas por NGE · última {timeAgo(nge.bets.lastSeenAt)}
+          </span>
+        ) : null}
+      </div>
+
+      {editable && level === "none" ? (
+        <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
+          Emití la credencial (<code>NGE_CONNECTION</code>) en el{" "}
+          <a href="/provider" className="text-blue hover:underline">
+            panel de proveedor → Integración
+          </a>{" "}
+          y pegala en tu game server.
+        </p>
+      ) : null}
+
+      {level === "waiting" || level === "stale" ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {onRefresh ? (
+            <button
+              type="button"
+              onClick={check}
+              disabled={checking}
+              className="rounded-full border border-ln-border/70 px-2.5 py-0.5 text-[10px] font-semibold text-blue hover:bg-white/5 disabled:opacity-60"
+            >
+              {checking ? "Buscando…" : "Buscar señal"}
+            </button>
+          ) : null}
+          <p className="text-[10.5px] leading-snug text-ln-faint">
+            Con la credencial pegada, mandá <code>get_info</code> desde tu server:
+            cualquier RPC autenticado cuenta como detección.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function GameIntegrationCard({
   game,
   providerLevel,
@@ -660,6 +798,7 @@ export function GameIntegrationCard({
   nostrProbe,
   editable,
   showLuna,
+  onRefresh,
 }: {
   game: IntegrationView["games"][number];
   providerLevel: Record<string, PingInfo | null>;
@@ -670,6 +809,8 @@ export function GameIntegrationCard({
   editable?: boolean;
   /** Muestra la interfaz Luna dependiente (1.0) completa en vez de la estándar Nostr. */
   showLuna?: boolean;
+  /** Recarga la vista (evidencia fresca); lo usa «Buscar señal» del panel NGE. */
+  onRefresh?: () => Promise<void> | void;
 }) {
   const [manualCaps, setManualCaps] = useState<Record<string, boolean>>(
     game.manualCaps ?? {},
@@ -785,16 +926,33 @@ export function GameIntegrationCard({
             <span className="text-[11px] text-ln-faint">· {live}/{rows.length} integradas</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5" title="Capacidades de Nostr Games Protocol (NGP) activas">
-            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-ln-aurora transition-all"
-                style={{ width: `${Math.round((nostrLive / nostrRows.length) * 100)}%` }}
-              />
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5" title="Capacidades de Nostr Games Protocol (NGP) activas">
+              <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-ln-aurora transition-all"
+                  style={{ width: `${Math.round((nostrLive / nostrRows.length) * 100)}%` }}
+                />
+              </div>
+              <span className="text-[11px] text-ln-muted">
+                <span className="font-semibold text-ln-text">NGP {nostrLive}</span> de {nostrRows.length}
+              </span>
             </div>
-            <span className="text-[11px] text-ln-muted">
-              <span className="font-semibold text-ln-text">{nostrLive}</span> de {nostrRows.length} en Nostr
-            </span>
+            {(() => {
+              const s = NGE_STYLE[ngeLevelFor(game.nge)];
+              return (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    s.chip,
+                  )}
+                  title="Estado de la conexión NGE (apuestas y escrow por RPC)"
+                >
+                  <span className={cn("inline-block h-1.5 w-1.5 rounded-full", s.dot)} />
+                  NGE · {s.label}
+                </span>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -875,15 +1033,19 @@ export function GameIntegrationCard({
             ))}
           </div>
 
-          {betsRow ? (
-            <div className="mt-3 rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="rounded-full bg-blue/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue">
-                  Opcional
-                </span>
-                <span className="text-[11px] font-semibold text-ln-text">Apuestas y escrow</span>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-3 rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="rounded-full bg-blue/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue">
+                Opcional
+              </span>
+              <span className="text-[11px] font-semibold text-ln-text">
+                NGE · Apuestas y escrow
+              </span>
+              <span className="font-mono text-[9.5px] text-ln-faint">NGE_CONNECTION</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <NgeStatusPanel nge={game.nge} editable={editable} onRefresh={onRefresh} />
+              {betsRow ? (
                 <NostrCapabilityTile
                   row={betsRow}
                   game={game}
@@ -893,9 +1055,9 @@ export function GameIntegrationCard({
                   saving={saving}
                   onToggleManual={toggleManual}
                 />
-              </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-ln-faint">
             <span className="inline-flex items-center gap-1.5">
@@ -912,10 +1074,11 @@ export function GameIntegrationCard({
             </span>
           </div>
           <p className="mt-2 text-[10.5px] leading-snug text-ln-faint">
-            Estándar actual: Nostr Games Protocol (NGP) (login NIP-07/46, marcador kind:31337, presencia
-            NIP-38, reseñas NIP-23…), con <em>Apuestas y escrow</em> por zaps NIP-57 como opcional. El
-            <em> «no probable»</em> son las patas cifradas o en diseño (login/presencia/salas/invitaciones):
-            no se pueden verificar desde el server, por eso las declarás manualmente.
+            Con evidencia se considera detectado: eventos NGP observados en relays o en la DB
+            (marcador, reseñas, zaps), presencia vista por el probador (queda persistida), login
+            NIP-07/46 <em>inferido</em> del marcador firmado por el jugador, y NGE detectado con
+            cualquier RPC autenticado (un <code>get_info</code> alcanza). Lo cifrado E2E o sin
+            rastro (salas NIP-29, invitaciones NIP-17, login sin marcador) se declara manualmente.
           </p>
         </>
       )}
@@ -931,11 +1094,14 @@ export function GameIntegrationCard({
 export function IntegrationMatrix({
   view,
   onProbe,
+  onRefresh,
   compact,
   editable,
 }: {
   view: IntegrationView;
   onProbe?: () => Promise<ProbeResponse>;
+  /** Recarga la vista con evidencia fresca (botón «Buscar señal» de NGE). */
+  onRefresh?: () => Promise<void> | void;
   compact?: boolean;
   /** Permite togglear capacidades por juego (solo el panel del proveedor dueño). */
   editable?: boolean;
@@ -972,12 +1138,12 @@ export function IntegrationMatrix({
         {onProbe ? (
           <div className="flex items-center gap-3">
             <button type="button" onClick={run} disabled={running} className="btn btn-outline">
-              {running ? "Probando…" : "Probar en vivo"}
+              {running ? "Verificando…" : "Verificar ahora"}
             </button>
             <p className="text-[11px] text-ln-faint">
               {showLuna
                 ? "Golpea los endpoints REST de la interfaz Luna y consulta los relays de NGP para ver qué responde/existe ahora mismo."
-                : "Consulta los relays de NGP para ver qué eventos existen ahora mismo."}
+                : "Consulta los relays de NGP y recarga la evidencia (lo encontrado queda persistido como detección)."}
             </p>
           </div>
         ) : (
@@ -996,7 +1162,7 @@ export function IntegrationMatrix({
               !showLuna ? "bg-blue/20 text-blue" : "text-ln-faint hover:bg-white/5",
             )}
           >
-            Estándar Nostr
+            NGP + NGE
           </button>
           <button
             type="button"
@@ -1006,7 +1172,7 @@ export function IntegrationMatrix({
               showLuna ? "bg-ln-aurora/20 text-ln-aurora" : "text-ln-faint hover:bg-white/5",
             )}
           >
-            Interfaz Luna (1.0)
+            Compat 1.0
           </button>
         </div>
       </div>
@@ -1026,6 +1192,7 @@ export function IntegrationMatrix({
             nostrProbe={nostrProbe?.[g.id]}
             editable={editable}
             showLuna={showLuna}
+            onRefresh={onRefresh}
           />
         ))
       )}

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import {
   readIntegrationEvidence,
   readNostrEvidence,
+  readNgeEvidence,
   buildIntegrationView,
 } from "@/lib/integration-telemetry";
 
@@ -34,10 +35,11 @@ export async function GET() {
     },
   });
   const gameIds = games.map((g) => g.id);
-  const [byGame, apiKeys, nostr] = await Promise.all([
+  const [byGame, apiKeys, nostr, nge] = await Promise.all([
     readIntegrationEvidence(provider.id, gameIds),
     prisma.apiKey.count({ where: { providerId: provider.id, revokedAt: null } }),
     readNostrEvidence(gameIds),
+    readNgeEvidence(gameIds),
   ]);
 
   const view = buildIntegrationView(
@@ -57,6 +59,7 @@ export async function GET() {
     })),
     byGame,
     nostr,
+    nge,
   );
   return NextResponse.json({ view });
 }

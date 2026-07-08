@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { runProbe } from "@/lib/integration-probe";
 import { probeGamesNostr } from "@/lib/integration-probe-ngp";
+import { persistNgpProbeFindings } from "@/lib/integration-telemetry";
 import { siteUrl } from "@/lib/site-url";
 
 // Probador en vivo de admin: corre la suite de health-check contra los endpoints
@@ -26,5 +27,7 @@ export async function POST(req: Request) {
     runProbe({ providerId, origin: siteUrl(req) }),
     probeGamesNostr(games),
   ]);
+  // Lo encontrado en relays queda persistido como evidencia ("detectado" fijo).
+  persistNgpProbeFindings(providerId, nostr);
   return NextResponse.json({ results, nostr });
 }

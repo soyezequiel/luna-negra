@@ -5,6 +5,7 @@ import { isAdmin } from "@/lib/admin";
 import {
   readIntegrationEvidence,
   readNostrEvidence,
+  readNgeEvidence,
   buildIntegrationView,
   type IntegrationView,
 } from "@/lib/integration-telemetry";
@@ -42,9 +43,10 @@ export async function GET() {
   const views: IntegrationView[] = await Promise.all(
     providers.map(async (p) => {
       const gameIds = p.games.map((g) => g.id);
-      const [byGame, nostr] = await Promise.all([
+      const [byGame, nostr, nge] = await Promise.all([
         readIntegrationEvidence(p.id, gameIds),
         readNostrEvidence(gameIds),
+        readNgeEvidence(gameIds),
       ]);
       return buildIntegrationView(
         {
@@ -60,6 +62,7 @@ export async function GET() {
         })),
         byGame,
         nostr,
+        nge,
       );
     }),
   );

@@ -15,10 +15,17 @@ import { capMode, purchaseVerificationDisabled } from "@/lib/capability-mode";
 // el juego, si el jugador lo posee (o es gratis). Los juegos GRATIS también se
 // pueden jugar sin iniciar sesión: se usa una identidad de invitado efímera.
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+
+  // Ramal "Luna Room Link": lo señala el caller con `{ roomLink: true }`. Room Link
+  // NO es retro-compatible — su identidad es SIEMPRE por Nostr (el juego loguea por
+  // NIP-07/46), nunca por `lnToken`. Ver docs/luna-room-link.md. El resto de flujos
+  // (launch standalone, apuestas) NO manda el flag y sigue respetando `capsMode`.
+  const body = (await req.json().catch(() => null)) as { roomLink?: boolean } | null;
+  const roomLink = body?.roomLink === true;
 
   const game = await prisma.game.findUnique({ where: { id } });
   if (!game || game.status !== "published") {
@@ -33,10 +40,11 @@ export async function POST(
   const openAccess =
     game.priceSats === 0 || purchaseVerificationDisabled(game.capsMode);
 
-  // Login migrado a Nostr: Luna NO mintea lnToken. El juego identifica al jugador por
+  // Login por Nostr: Luna NO mintea lnToken. El juego identifica al jugador por
   // NIP-07/46 y el link va limpio (solo lnOrigin). Se mantiene el gate de acceso
-  // (openAccess/compra); solo se omite el token de identidad. Ver capability-mode.ts.
-  const nostrLogin = capMode(game.capsMode, "identidad") === "nostr";
+  // (openAccess/compra); solo se omite el token de identidad. Es SIEMPRE así en el
+  // ramal Room Link (no retro-compatible); para el resto, se decide por capsMode.
+  const nostrLogin = roomLink || capMode(game.capsMode, "identidad") === "nostr";
 
   // --- Invitado (sin cuenta Nostr): solo juegos de acceso abierto ---
   if (!session) {

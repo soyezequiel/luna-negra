@@ -402,19 +402,26 @@ function S2() {
 }
 
 // ══════════════ ESCENA 3 · Cold open (27–41) ══════════════
+// Room Link NO es retro-compatible: la identidad la resuelve el propio juego por
+// NIP-07/46 (window.nostr / firmador NIP-46). Luna nunca mintea `lnToken`; a lo
+// sumo, para un juego pago, verifica la compra por REST. Ver docs/luna-room-link.md.
 function S3() {
   const { localTime: t } = useSprite();
   const zoom = 1 + Math.min(t, 12) * 0.005;
-  const gameAccent = t > 11.2 ? "rgba(79,230,168,0.45)" : t > 2 ? "rgba(232,144,122,0.4)" : C.border;
+  const signed = t > 7;
+  const gameAccent = t > 8 ? "rgba(79,230,168,0.45)" : t > 2 ? "rgba(232,144,122,0.4)" : C.border;
+  // cursor: entra con el firmador, viaja al botón «Firmar» (≈1480,421) y clickea en t=5.5
+  const cx = interpolate([3.8, 5.3], [1580, 1480], Easing.easeInOutCubic)(t);
+  const cy = interpolate([3.8, 5.3], [800, 421], Easing.easeInOutCubic)(t);
+  const click = clamp((t - 5.5) / 0.5, 0, 1.001);
   return (
     <div style={{ position: "absolute", inset: 0, transform: `scale(${zoom})`, transformOrigin: "50% 40%" }}>
-      {/* juego */}
+      {/* juego — resuelve identidad por su cuenta, sin salir a Luna */}
       <div style={{ ...pop(t, 0.2, 0.7), position: "absolute", inset: 0 }}>
-        <Browser x={80} y={150} w={660} h={560} accent={gameAccent}
+        <Browser x={80} y={150} w={720} h={600} accent={gameAccent}
           url={<span style={{ fontFamily: F.mono, fontSize: 16 }}>
             <span style={{ color: C.soft }}>tetra.juego.ar</span>
             <span style={{ color: C.luna }}>/?lnRoom=</span><span style={{ color: C.lunaB }}>x7Kp_92q</span>
-            {t > 11.2 ? <span style={{ color: C.corona }}>&amp;lnToken=eyJ…</span> : null}
           </span>}>
           <div style={{ padding: "34px 34px", display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ fontFamily: F.display, fontSize: 30, fontWeight: 700, color: C.text }}>TETRA</div>
@@ -425,67 +432,95 @@ function S3() {
             </div>
             <div style={{ ...rise(t, 2.2) }}>
               <Chip size={19} color={C.danger} bg="rgba(232,144,122,0.07)" border="rgba(232,144,122,0.35)">
-                ✕ no hay <span style={{ color: C.corona }}>lnToken</span> — no sé quién sos
+                ✕ sin identidad — ¿quién sos?
               </Chip>
             </div>
-            {t > 11.2 ? (
-              <div style={{ ...rise(t, 11.4) }}>
+            {signed ? (
+              <div style={{ ...rise(t, 7.2) }}>
                 <Chip size={19} color={C.auroraB} bg="rgba(79,230,168,0.07)" border="rgba(79,230,168,0.35)">
-                  ✓ identidad verificada offline (JWKS) → a la sala
+                  ✓ identidad Nostr <span style={{ color: C.aurora }}>npub1zx…q7</span> → a la sala
                 </Chip>
               </div>
             ) : (
               <div style={{ ...rise(t, 3.2), fontFamily: F.sans, fontSize: 18, color: C.faint }}>
-                → rebotar a Luna preservando la sala
+                → pido la firma al jugador por <span style={{ color: C.soft }}>NIP-07/46</span>
               </div>
             )}
           </div>
         </Browser>
       </div>
 
-      {/* Luna */}
-      <div style={{ ...pop(t, 0.4, 0.7), position: "absolute", inset: 0 }}>
-        <Browser x={1180} y={150} w={660} h={560}
-          accent={t > 6 && t < 11.5 ? "rgba(157,140,255,0.5)" : C.border}
-          url={<span style={{ fontFamily: F.mono, fontSize: 16 }}>
-            <span style={{ color: C.soft }}>lunanegra.app</span>
-            <span style={{ color: t > 4 ? C.lunaB : C.faint }}>{t > 4 ? "/launch/tetra?returnTo=…" : ""}</span>
-          </span>}>
-          <div style={{ padding: "34px 34px", display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <Moon size={38} />
-              <span style={{ fontFamily: F.display, fontSize: 26, fontWeight: 700, color: C.text }}>Luna Negra</span>
-            </div>
-            <div style={{ ...rise(t, 6.2) }}>
-              <Chip size={19} color={C.auroraB} bg="rgba(79,230,168,0.07)" border="rgba(79,230,168,0.35)">
-                ✓ sesión encontrada (o login)
-              </Chip>
-            </div>
-            <div style={{ ...rise(t, 7.2) }}>
-              <Chip size={19} color={C.coronaB} bg="rgba(255,182,72,0.07)" border="rgba(255,182,72,0.35)">
-                ✓ minteo un <span style={{ color: C.corona }}>lnToken</span> fresco (ES256)
-              </Chip>
-            </div>
-            <div style={{ ...rise(t, 8.2) }}>
-              <Chip size={16} color={C.faint}>
-                🛡 returnTo validado contra Game.gameUrl
-              </Chip>
-            </div>
+      {/* firmador Nostr — lo invoca el JUEGO, en el cliente (no es Luna) */}
+      <div style={{ ...pop(t, 3.4, 0.6), position: "absolute", inset: 0 }}>
+        <Abs x={1120} y={196} w={720} h={508} style={{
+          background: C.panel, border: `1.5px solid ${signed ? "rgba(79,230,168,0.5)" : "rgba(157,140,255,0.5)"}`,
+          borderRadius: 26, boxShadow: "0 40px 90px -30px rgba(0,0,0,0.9)", overflow: "hidden",
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 14, height: 64, padding: "0 26px",
+            background: C.deep, borderBottom: `1px solid ${C.border}`,
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center",
+              justifyContent: "center", fontSize: 20,
+              background: "rgba(157,140,255,0.12)", border: "1px solid rgba(157,140,255,0.35)",
+            }}>🔑</div>
+            <span style={{ fontFamily: F.display, fontSize: 24, fontWeight: 700, color: C.text }}>Firmar con Nostr</span>
+            <span style={{ marginLeft: "auto", fontFamily: F.mono, fontSize: 14, letterSpacing: "0.1em", color: C.faint }}>
+              NIP-07 · NIP-46
+            </span>
           </div>
-        </Browser>
+          <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ fontFamily: F.sans, fontSize: 20, color: C.soft, lineHeight: 1.4 }}>
+              <b style={{ color: C.text }}>tetra.juego.ar</b> quiere tu identidad Nostr
+            </div>
+            <div style={{
+              fontFamily: F.mono, fontSize: 16, color: C.muted, padding: "12px 16px",
+              background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12,
+            }}>
+              window.nostr.<span style={{ color: C.lunaB }}>getPublicKey()</span> · <span style={{ color: C.lunaB }}>signEvent()</span>
+            </div>
+            {signed ? (
+              <div style={{ ...pop(t, 7, 0.5), display: "flex", alignItems: "center", gap: 12,
+                height: 62, borderRadius: 14, justifyContent: "center",
+                fontFamily: F.sans, fontSize: 21, fontWeight: 700, color: C.onAurora,
+                background: `linear-gradient(120deg, ${C.auroraB}, ${C.aurora})`,
+              }}>✓ Firmado — npub1zx…q7</div>
+            ) : (
+              <div style={{
+                height: 62, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: F.sans, fontSize: 21, fontWeight: 700, color: C.onLuna,
+                background: `linear-gradient(120deg, ${C.lunaB}, ${C.luna})`,
+                boxShadow: click > 0 ? "0 14px 36px -12px rgba(157,140,255,0.7)" : "none",
+                transform: click > 0 && click < 0.4 ? "scale(0.97)" : "scale(1)",
+              }}>Firmar con Amber / Alby</div>
+            )}
+          </div>
+        </Abs>
       </div>
 
-      <Arrow t={t} at={4} x={780} y={330} w={360} color={C.luna}
-        label={<span>GET /launch/tetra<span style={{ color: C.faint }}>?returnTo=…</span></span>} />
-      <Arrow t={t} at={9.6} x={780} y={520} w={360} reverse color={C.corona}
-        label={<span>302 · lnRoom + <span style={{ color: C.coronaB }}>lnToken</span></span>} />
+      <Arrow t={t} at={4} x={810} y={330} w={300} color={C.luna}
+        label={<span>el <b style={{ color: C.lunaB }}>juego</b> pide la firma</span>} />
+      {signed ? (
+        <Arrow t={t} at={7.1} x={810} y={520} w={300} reverse color={C.aurora}
+          label={<span>npub + evento firmado</span>} />
+      ) : null}
+
+      <Cursor x={cx} y={cy} click={click} opacity={io(t, 3.8, 4.2, 7, 7.5)} />
+
+      {/* Luna solo aparece —chiquita— como gate de compra para juegos pagos */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 792, display: "flex", justifyContent: "center", ...rise(t, 10) }}>
+        <Chip size={18} color={C.faint}>
+          <Moon size={20} /> Luna no da identidad — pago: verifica la compra por REST · gratis: ni eso
+        </Chip>
+      </div>
 
       <Caption t={t} at={0.6} num="PASO 3 · COLD OPEN" out={5.4}
         text="Alguien abre el link crudo: cae en el dominio del juego sin identidad." />
       <Caption t={t} at={5.9} num="PASO 3 · COLD OPEN" out={10.8}
-        text="El juego rebota a Luna con returnTo. Luna autentica y firma un lnToken de vuelta." />
+        text="El propio juego pide la firma por Nostr (NIP-07/46). El jugador firma — Luna no interviene." />
       <Caption t={t} at={11.3} num="PASO 3 · COLD OPEN"
-        text="De vuelta en el juego, con el lnRoom intacto: identidad resuelta, sin backend compartido." />
+        text="Identidad resuelta por el juego, con el lnRoom intacto. Sin lnToken, sin backend compartido." />
     </div>
   );
 }
@@ -557,8 +592,8 @@ function S5() {
   const { localTime: t } = useSprite();
   const steps = [
     ["1", <span>leer <b style={{ color: C.lunaB }}>lnRoom</b> de la URL</span>],
-    ["2", <span>sin <b style={{ color: C.coronaB }}>lnToken</b> → rebotar a /launch/&lt;slug&gt;</span>],
-    ["3", <span>verificar identidad offline vía <b style={{ color: C.soft }}>JWKS</b></span>],
+    ["2", <span>sin identidad → <b style={{ color: C.soft }}>login Nostr</b> (NIP-07/46) en el juego</span>],
+    ["3", <span>identidad = el <b style={{ color: C.auroraB }}>npub</b> que firmó — sin lnToken</span>],
     ["4", <span>sala inexistente → <b style={{ color: C.coronaB }}>crearla</b> (host = primero)</span>],
     ["5", <span>limpiar los params de la URL</span>],
   ];

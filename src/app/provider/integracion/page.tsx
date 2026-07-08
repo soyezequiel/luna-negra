@@ -10,12 +10,21 @@ import {
   type ProbeResponse,
 } from "@/components/provider/integration-matrix";
 
+// ── Verificación de integración: NGP + NGE ──
+// La página responde UNA pregunta por juego: ¿está integrado o no? La regla es
+// "con evidencia se considera detectado":
+//   · NGP → eventos observados (relays + DB) + evidencia persistida del probador
+//     + inferencias (login desde el marcador firmado). Lo cifrado se declara.
+//   · NGE → cualquier RPC autenticado recibido por el escrow (get_info alcanza).
+// La interfaz Luna 1.0 (REST) vive en /provider/integracion/compat; acá solo
+// queda el toggle "Compat 1.0" con la matriz de migración.
+
 function Legend() {
   const items = [
-    { dot: "bg-ln-aurora", label: "En uso (evento observado en relays)" },
-    { dot: "bg-blue", label: "Declarado (integrado, no observable)" },
+    { dot: "bg-ln-aurora", label: "Detectado (evidencia observada)" },
+    { dot: "bg-blue", label: "Declarado / esperando señal" },
     { dot: "bg-blue/40", label: "Disponible / en diseño" },
-    { dot: "bg-white/15", label: "No integrado" },
+    { dot: "bg-white/15", label: "No detectado" },
   ];
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-1.5">
@@ -52,16 +61,21 @@ export default function ProviderIntegrationPage() {
     const d = await fetch("/api/provider/integracion/probe", { method: "POST" })
       .then((r) => r.json())
       .catch(() => ({ results: [], nostr: {} }));
+    // El probador PERSISTE lo que encuentra como evidencia: recargamos la vista
+    // para que los badges pasen a "Detectado" sin refrescar la página.
+    void load();
     return { results: d?.results ?? [], nostr: d?.nostr ?? {} };
-  }, []);
+  }, [load]);
 
   if (loading) return null;
 
   if (!user) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold text-white">Integración</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para ver el estado de integración de tus juegos.</p>
+        <h1 className="text-2xl font-bold text-white">Verificación de integración</h1>
+        <p className="mt-2 text-muted">
+          Conectá tu Nostr para verificar la integración NGP y NGE de tus juegos.
+        </p>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>Conectar con Nostr</Button>
         </div>
@@ -73,15 +87,21 @@ export default function ProviderIntegrationPage() {
     <div className="mx-auto max-w-[920px] px-[22px] py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
+          <p className="ln-label mb-2">Verificación</p>
           <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
-            Integración
+            Integración NGP · NGE
           </h1>
           <p className="mt-1 text-sm text-ln-muted">
-            El estándar es <strong>Nostr Games Protocol (NGP)</strong> (NGP nativo: login NIP-07/46, marcador
-            kind:31337, presencia NIP-38, reseñas NIP-23…), con <strong>Apuestas y escrow</strong> por zaps NIP-57 como
-            opcional. El estado sale de los eventos Nostr observados en los relays. La <strong>interfaz Luna
-            dependiente (1.0)</strong> se mantiene por compatibilidad: activá el toggle <em>«Interfaz Luna (1.0)»</em>{" "}
-            para ver esa integración (REST, custodia, migración por capacidad).
+            Acá verificás si tu juego <strong>está integrado o no</strong>. La regla:{" "}
+            <strong>con evidencia se considera detectado</strong>. Para{" "}
+            <strong>NGP</strong> la evidencia son los eventos Nostr del juego
+            (marcador kind:31337, reseñas, zaps, presencia NIP-38) observados en
+            relays o en la DB; el login NIP-07/46 se <em>infiere</em> del marcador
+            firmado. Para <strong>NGE</strong> (apuestas y escrow) alcanza con que
+            tu game server mande <strong>un RPC autenticado</strong> — pegá{" "}
+            <code>NGE_CONNECTION</code>, mandá <code>get_info</code> y listo. Lo que
+            va cifrado E2E (salas NIP-29, invitaciones NIP-17) no se puede observar:
+            eso lo declarás manualmente.
           </p>
         </div>
         <Link href="/provider" className="btn btn-ghost shrink-0 self-start">
@@ -103,7 +123,7 @@ export default function ProviderIntegrationPage() {
             para empezar.
           </p>
         ) : (
-          <IntegrationMatrix view={view} onProbe={onProbe} editable />
+          <IntegrationMatrix view={view} onProbe={onProbe} onRefresh={load} editable />
         )}
       </div>
 
@@ -111,6 +131,11 @@ export default function ProviderIntegrationPage() {
         ¿Cómo integrar cada bloque? Mirá la{" "}
         <Link href="/dev" className="text-blue hover:underline">guía /dev</Link> y la{" "}
         <a href="/developers" className="text-blue hover:underline">referencia interactiva</a>.
+        La interfaz Luna 1.0 (REST: claves de API, webhooks) se mantiene por compatibilidad en{" "}
+        <Link href="/provider/integracion/compat" className="text-blue hover:underline">
+          /provider/integracion/compat
+        </Link>
+        .
       </p>
     </div>
   );
