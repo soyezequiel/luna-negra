@@ -72,6 +72,18 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
     >
       <body className="relative flex min-h-full flex-col font-sans text-ln-text">
+        {/* Detección de aceleración por hardware ANTES del primer pintado.
+            Si el navegador solo puede rasterizar por software (aceleración
+            desactivada o GPU en lista negra), marcamos <html class="no-gpu">
+            para que globals.css degrade backdrop-filter, background-attachment
+            fixed y las animaciones infinitas — que en CPU dan jank severo.
+            Va inline al tope del body (patrón anti-FOUC) para correr sincrónico
+            antes de que se pinte el fondo. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){function s(){try{var c=document.createElement("canvas"),o={failIfMajorPerformanceCaveat:true},g=c.getContext("webgl",o)||c.getContext("experimental-webgl",o);if(!g)return true;var d=g.getExtension("WEBGL_debug_renderer_info"),r=d?String(g.getParameter(d.UNMASKED_RENDERER_WEBGL)||""):"";return /swiftshader|software|llvmpipe|basic render/i.test(r)}catch(e){return true}}try{if(s())document.documentElement.classList.add("no-gpu")}catch(e){}})();`,
+          }}
+        />
         {/* El fondo de la página es la textura + velo (ver globals.css). La escena
             animada (selva + animales) vive solo en la banda hero del Home. */}
         <FreshGuard version={BUILD_ID} />

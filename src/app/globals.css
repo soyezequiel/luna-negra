@@ -118,6 +118,11 @@
 
   --background: var(--ln-bg);
   --foreground: var(--ln-text);
+
+  /* Filtro del velo (body::before). Va por variable para poder apagarlo
+     en html.no-gpu sin que el optimizador CSS lo elimine: al tener dos
+     valores según contexto, Lightning no puede resolverlo en build. */
+  --ln-veil: saturate(0.42) contrast(0.86) brightness(0.9);
 }
 
 @theme inline {
@@ -229,7 +234,7 @@ body::before {
   background:
     radial-gradient(700px 420px at 18% 8%, rgba(42, 82, 112, 0.16), transparent 62%),
     rgba(5, 17, 31, 0.24);
-  backdrop-filter: saturate(0.42) contrast(0.86) brightness(0.9);
+  backdrop-filter: var(--ln-veil);
 }
 
 /* "Corona" decorativa: aro luminoso arriba-derecha con pulso suave. */
@@ -679,3 +684,54 @@ h1, h2, h3 {
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   DEGRADACIÓN SIN ACELERACIÓN POR HARDWARE (html.no-gpu)
+   Cuando el navegador solo rasteriza por software, los efectos
+   que la GPU hace "gratis" (backdrop-filter, background fijo,
+   animaciones infinitas, blend modes) repintan pantalla completa
+   en cada frame/scroll y producen jank severo. Los reemplazamos
+   por equivalentes opacos y estáticos. La clase la pone un probe
+   WebGL inline en el layout, antes del primer pintado.
+   ============================================================ */
+
+/* Fondo: la textura fija fuerza repintar todo en cada scroll. La
+   pasamos a scroll y quitamos el blend mode (costoso en CPU). */
+html.no-gpu body {
+  background-attachment: scroll;
+  background-blend-mode: normal;
+}
+
+/* Velo detrás del contenido: apagamos el backdrop-filter (el efecto más
+   caro, a pantalla completa) sobreescribiendo la variable --ln-veil a
+   `none`. Compensamos el dimming que hacía el filtro con un velo plano
+   más oscuro para que la textura no quede demasiado viva. */
+html.no-gpu {
+  --ln-veil: none;
+}
+html.no-gpu body::before {
+  background:
+    radial-gradient(700px 420px at 18% 8%, rgba(42, 82, 112, 0.16), transparent 62%),
+    rgba(5, 17, 31, 0.5);
+}
+
+/* Corona decorativa: animación infinita → repintado continuo. */
+html.no-gpu body::after {
+  animation: none;
+}
+
+/* Cualquier backdrop-blur (navbar, modales, drawer, badges, tooltips):
+   quitamos el desenfoque neutralizando la propia variable de Tailwind
+   (--tw-backdrop-blur). Escribir `backdrop-filter: none` no sirve: el
+   optimizador lo descarta por ser el valor inicial. Al vaciar la única
+   parte usada del filtro, el backdrop-filter compuesto queda en `none`.
+   Los paneles ya son translúcidos opacos (70–95%), siguen legibles. */
+html.no-gpu [class*="backdrop-blur"] {
+  --tw-backdrop-blur: initial;
+}
+
+/* Skeletons: el shimmer infinito repinta sin parar mientras hay
+   contenido cargando. Dejamos la superficie hundida estática. */
+html.no-gpu .ln-shimmer {
+  animation: none;
+}
