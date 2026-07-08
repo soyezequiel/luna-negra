@@ -103,9 +103,11 @@ export async function queueGameLaunchRequest(input: {
 }
 
 /**
- * Encola el popup para un "Luna Room Link" ya firmado. A diferencia de
- * `queueGameLaunchRequest`, no mintea una sala de Luna: conserva el `lnInvite` y
- * la URL del juego para que el cliente entre a su propia sala `lnRoom`.
+ * Encola el popup para un "Luna Room Link". A diferencia de
+ * `queueGameLaunchRequest`, no mintea una sala de Luna: conserva el `inviteUrl`
+ * del juego para que el cliente entre a su propia sala `lnRoom`. El `lnInvite`
+ * viaja como `inviteToken`; con enlaces abiertos es "" (el juego entra directo,
+ * sin verificar token).
  *
  * La entrega por DM sigue siendo el canal principal; por eso un fallo al encolar
  * nunca debe romper la creación del enlace.
@@ -114,6 +116,7 @@ export async function queueRoomLinkLaunchRequest(input: {
   providerId: string;
   npub: string;
   roomId: string;
+  /** Token dirigido; "" cuando el enlace es abierto (entrada directa). */
   lnInvite: string;
   slug: string;
   title: string;

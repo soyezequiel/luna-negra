@@ -259,6 +259,11 @@ export function FriendsSidebar() {
         body: JSON.stringify({
           gameId: game.gameId,
           roomId: linkRoomId ?? undefined,
+          // El enlace es ABIERTO igual; `toNpub` solo le dice a Luna a qué amigo
+          // encolarle la orden de entrada (`queueRoomLinkLaunchRequest`) para que
+          // su Tetra YA ABIERTO muestre el popup. Sin `toNpub` no se encola nada,
+          // así que el juego abierto nunca recibe el aviso (solo llega el DM).
+          toNpub: npubOf(recipientPubkey),
         }),
       });
       const d = await r.json().catch(() => ({}));

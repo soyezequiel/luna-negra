@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, signRoomInvite } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { npubOf, pubkeyFromNpub } from "@/lib/nostr-social";
 import { queueRoomLinkLaunchRequest } from "@/lib/game-launch-requests";
@@ -14,11 +14,13 @@ import { queueRoomLinkLaunchRequest } from "@/lib/game-launch-requests";
 // Auth: cookie de sesión first-party (NO API key). El invitador es el jugador
 // logueado; la identidad sale de la cookie, no del body.
 //
-//   POST { gameId, roomId?, toNpub? } → { roomId, inviteUrl, lnInvite? }
+//   POST { gameId, roomId?, toNpub? } → { roomId, inviteUrl }
 //     - roomId ausente → se genera uno opaco (la sala no pre-existe).
-//     - toNpub presente → variante DIRIGIDA: se firma un `lnInvite` (scope
-//       "room-invite") que autoriza solo a ese npub. Sin `toNpub` → variante
-//       PÚBLICA: cualquiera con el enlace entra.
+//     - El enlace es SIEMPRE ABIERTO (`?lnRoom=`): quien lo tenga entra con su
+//       identidad actual. No se firma ningún token dirigido.
+//     - toNpub presente → es un amigo puntual: además de devolver el enlace, le
+//       encolamos la orden de entrada para que su juego YA ABIERTO muestre el
+//       popup (abre ese mismo enlace abierto). No cambia el enlace ni la sala.
 
 const ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -102,9 +104,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No tenés acceso a este juego" }, { status: 403 });
   }
 
-  // Variante dirigida: si viene `toNpub`, firmamos un `lnInvite` para ese npub.
-  let lnInvite: string | undefined;
-  let directedToNpub: string | undefined;
+  // Destinatario opcional: si viene `toNpub`, es un amigo puntual al que además
+  // le encolamos el popup. NO firmamos token dirigido: el enlace es siempre
+  // abierto, así que sólo validamos el npub para saber a quién avisar.
+  let targetNpub: string | undefined;
   if (body.toNpub !== undefined && body.toNpub !== null && body.toNpub !== "") {
     const toPubkey = pubkeyFromNpub(String(body.toNpub));
     if (!toPubkey) {
@@ -117,21 +120,15 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    lnInvite = await signRoomInvite({
-      gameId: game.id,
-      slug: game.slug,
-      roomId,
-      toNpub,
-    });
-    directedToNpub = toNpub;
+    targetNpub = toNpub;
   }
 
-  // Enlace canónico: <Game.gameUrl>/?lnRoom=<roomId>[&lnInvite=<jwt>].
+  // Enlace canónico ABIERTO: <Game.gameUrl>/?lnRoom=<roomId>. Sin token: cualquiera
+  // con el enlace entra con su identidad actual.
   let inviteUrl: string;
   try {
     const url = new URL(game.gameUrl);
     url.searchParams.set("lnRoom", roomId);
-    if (lnInvite) url.searchParams.set("lnInvite", lnInvite);
     inviteUrl = url.toString();
   } catch {
     return NextResponse.json(
@@ -140,25 +137,20 @@ export async function POST(req: Request) {
     );
   }
 
-  // Si la invitación es dirigida, avisamos también al juego ya abierto. TETRA
-  // consume esta orden por GET /api/v1/invites y muestra su popup; el DM sigue
-  // cubriendo a quien tenga el juego cerrado.
-  const launchQueued = lnInvite && directedToNpub
+  // Con destinatario, avisamos al juego ya abierto: TETRA consume esta orden por
+  // GET /api/v1/invites y muestra el popup, que abre el MISMO enlace abierto (sin
+  // token). El DM sigue cubriendo a quien tenga el juego cerrado.
+  const launchQueued = targetNpub
     ? await queueRoomLinkLaunchRequest({
         providerId: game.providerId,
-        npub: directedToNpub,
+        npub: targetNpub,
         roomId,
-        lnInvite,
+        lnInvite: "",
         slug: game.slug,
         title: game.title,
         inviteUrl,
       })
     : false;
 
-  return NextResponse.json({
-    roomId,
-    inviteUrl,
-    ...(lnInvite ? { lnInvite } : {}),
-    launchQueued,
-  });
+  return NextResponse.json({ roomId, inviteUrl, launchQueued });
 }

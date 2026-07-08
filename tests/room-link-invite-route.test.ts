@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   gameFindUnique: vi.fn(),
   purchaseFindUnique: vi.fn(),
-  signRoomInvite: vi.fn(),
   queueRoomLinkLaunchRequest: vi.fn(),
 }));
 
@@ -13,7 +12,6 @@ vi.mock("@/lib/auth", () => ({
     npub: "npub-host",
     pubkey: "host",
   })),
-  signRoomInvite: mocks.signRoomInvite,
 }));
 
 vi.mock("@/lib/nostr-social", () => ({
@@ -55,12 +53,11 @@ beforeEach(() => {
     priceSats: 0,
   });
   mocks.purchaseFindUnique.mockReset();
-  mocks.signRoomInvite.mockReset().mockResolvedValue("signed-room-link");
   mocks.queueRoomLinkLaunchRequest.mockReset().mockResolvedValue(true);
 });
 
 describe("POST /api/v1/rooms/invite", () => {
-  it("queues a directed Luna Room Link for a game that is already open", async () => {
+  it("queues the popup for a friend with an OPEN link (no directed token)", async () => {
     const { status, json } = await postRoomLink({
       gameId: "game1",
       roomId: "ROOM1",
@@ -70,15 +67,18 @@ describe("POST /api/v1/rooms/invite", () => {
     expect(status).toBe(200);
     expect(json).toMatchObject({
       roomId: "ROOM1",
-      lnInvite: "signed-room-link",
       launchQueued: true,
     });
+    // El enlace es abierto: lleva lnRoom pero NUNCA un token dirigido.
     expect(json.inviteUrl).toContain("lnRoom=ROOM1");
+    expect(json.inviteUrl).not.toContain("lnInvite=");
+    expect(json.lnInvite).toBeUndefined();
+    // Se encola la orden de entrada con token vacío (entrada directa por lnRoom).
     expect(mocks.queueRoomLinkLaunchRequest).toHaveBeenCalledWith({
       providerId: "prov1",
       npub: "npub-guest",
       roomId: "ROOM1",
-      lnInvite: "signed-room-link",
+      lnInvite: "",
       slug: "tetris",
       title: "TETRA",
       inviteUrl: json.inviteUrl,
@@ -96,7 +96,6 @@ describe("POST /api/v1/rooms/invite", () => {
     expect(json.lnInvite).toBeUndefined();
     expect(json.inviteUrl).toContain("lnRoom=ROOM1");
     expect(json.inviteUrl).not.toContain("lnInvite=");
-    expect(mocks.signRoomInvite).not.toHaveBeenCalled();
     expect(mocks.queueRoomLinkLaunchRequest).not.toHaveBeenCalled();
   });
 });
