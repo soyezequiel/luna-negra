@@ -9,6 +9,19 @@
 > es **un sync in-process más** con la misma forma que `zap-sync` / `game-sync` /
 > `comment-sync`, escribiendo en las **mismas tablas** que ya alimentan la UI.
 
+## 0. Capas del código NGP (protocolo separado del programa)
+
+El código NGP de apuestas está estratificado con frontera dura:
+
+| Capa | Módulos | Regla |
+|---|---|---|
+| **Protocolo (puro)** | `src/lib/ngp-kinds.ts` (kinds congelados), `src/lib/ngp-events.ts` (templates 31340/terms), `buildResultEventTemplateV2` en `src/lib/escrow-v2.ts` (template 1341) | Sin prisma, sin I/O, sin env. Cambiar esto = cambiar el protocolo. |
+| **Servicios** | `ngp-bet-state.ts` (publica la sombra), `ngp-bet-ingest.ts` (ingiere 1339), `ngp-bet-result-sync.ts` (ingiere 1341) | Leen DB/relays, mapean a datos planos y llaman a los builders puros. |
+| **Producto** | notas `kind:1` humanas (`publishSettleNoteFor`, texto del ancla), umbrales editoriales | Puede cambiar sin tocar la spec. |
+
+Del lado juego, Tetris espeja lo mismo: `sdk/ngp.ts` (protocolo puro: reto NIP-17,
+presencia NIP-38, marcador 31337) y los puertos `src/online/nostr*.ts`.
+
 ---
 
 ## 1. El principio: dos escritores, un mismo read-model

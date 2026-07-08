@@ -24,14 +24,20 @@ import {
  */
 
 // Kinds congelados de la spec (viven en ngp-kinds.ts, módulo puro; acá se
-// re-exportan para no tocar a los importadores existentes).
+// re-exportan para no tocar a los importadores existentes). Los TEMPLATES de los
+// eventos (el formato del protocolo) viven en ngp-events.ts, también puro: este
+// módulo es solo el SERVICIO — leer la DB, mapear y publicar.
 export {
   NGP_BET_CONTRACT_KIND,
   NGP_BET_RESULT_KIND,
   NGP_BET_STATE_KIND,
   NGP_BET_TAG,
 } from "./ngp-kinds";
-import { NGP_BET_STATE_KIND, NGP_BET_TAG } from "./ngp-kinds";
+import {
+  buildNgpBetStateTemplate,
+  buildNgpTermsTemplate,
+  type NgpPayoutEntry,
+} from "./ngp-events";
 
 // Flag maestro de la capa NGP de apuestas (independiente de BETS_V2_ENABLED,
 // que apaga el motor v2 entero). "false" explícito lo desactiva.
@@ -132,7 +138,7 @@ export async function publishNgpBetState(betId: string): Promise<void> {
         p: p.pubkey,
         ...(p.depositReceiptId ? { receipt: p.depositReceiptId } : {}),
       }));
-    const payouts = bet.participants
+    const payouts: NgpPayoutEntry[] = bet.participants
       .filter((p) => p.payoutMsat != null && p.payoutStatus !== "none")
       .map((p) => ({
         p: p.pubkey,
@@ -143,42 +149,30 @@ export async function publishNgpBetState(betId: string): Promise<void> {
         ...(p.payoutReceiptId ? { receipt: p.payoutReceiptId } : {}),
       }));
 
-    const content = JSON.stringify({
-      betId: bet.id,
-      status: mapped.status,
-      ...(mapped.reason ? { reason: mapped.reason } : {}),
-      stakeSats: sats(bet.stakeMsat),
-      seats: bet.participants.length,
-      // Asientos declarados (pubkeys, en orden). El registro máquina completo
-      // vive acá: el ancla kind:1 ya no lleva p-tags de jugadores (editorial).
-      participants: bet.participants.map((p) => p.pubkey),
-      feePct: bet.feePct,
-      devFeePct: bet.devFeePct,
-      ...(bet.depositDeadline
-        ? { depositDeadline: Math.floor(bet.depositDeadline.getTime() / 1000) }
-        : {}),
-      ...(bet.resolveDeadline
-        ? { resolveDeadline: Math.floor(bet.resolveDeadline.getTime() / 1000) }
-        : {}),
-      deposits,
-      ...(payouts.length ? { payouts } : {}),
-      ...(bet.resultEventId ? { resultEvent: bet.resultEventId } : {}),
-      ...(bet.settleNoteId ? { settleNote: bet.settleNoteId } : {}),
-    });
-
-    const id = await publishStoreEvent({
-      kind: NGP_BET_STATE_KIND,
-      created_at: nextStateTimestamp(bet.anchorEventId),
-      tags: [
-        ["d", bet.anchorEventId],
-        ["e", bet.anchorEventId],
-        ...(bet.game.nostrCoord ? [["a", bet.game.nostrCoord]] : []),
-        ["status", mapped.status],
-        ["bet", bet.id],
-        ["t", NGP_BET_TAG],
-      ],
-      content,
-    });
+    const id = await publishStoreEvent(
+      buildNgpBetStateTemplate({
+        anchorEventId: bet.anchorEventId,
+        gameCoord: bet.game.nostrCoord,
+        status: mapped.status,
+        reason: mapped.reason,
+        betId: bet.id,
+        stakeSats: sats(bet.stakeMsat),
+        participants: bet.participants.map((p) => p.pubkey),
+        feePct: bet.feePct,
+        devFeePct: bet.devFeePct,
+        depositDeadline: bet.depositDeadline
+          ? Math.floor(bet.depositDeadline.getTime() / 1000)
+          : null,
+        resolveDeadline: bet.resolveDeadline
+          ? Math.floor(bet.resolveDeadline.getTime() / 1000)
+          : null,
+        deposits,
+        payouts,
+        resultEventId: bet.resultEventId,
+        settleNoteId: bet.settleNoteId,
+        createdAt: nextStateTimestamp(bet.anchorEventId),
+      }),
+    );
     if (!id) {
       console.warn(
         `[ngp-bet-state] ningún relay aceptó el estado ${mapped.status} de ${betId}`,
@@ -198,7 +192,7 @@ export async function ensureNgpEscrowTerms(): Promise<void> {
   if (!NGP_BETS_ENABLED) return;
   try {
     const economy = await getEconomySettings();
-    const content = JSON.stringify({
+    const template = buildNgpTermsTemplate({
       minStakeSats: BET_MIN_SATS,
       maxStakeSats: BET_MAX_SATS,
       feePct: economy.betFeePct,
@@ -209,17 +203,10 @@ export async function ensureNgpEscrowTerms(): Promise<void> {
       resolveWindowSec: Math.floor(RESOLVE_WINDOW_MS / 1000),
       withdrawWindowSec: Math.floor(WITHDRAW_WINDOW_MS / 1000),
     });
-    if (globalThis.lunaNgpTermsContent === content) return;
+    if (globalThis.lunaNgpTermsContent === template.content) return;
 
-    const id = await publishStoreEvent({
-      kind: NGP_BET_STATE_KIND,
-      tags: [
-        ["d", "terms"],
-        ["t", NGP_BET_TAG],
-      ],
-      content,
-    });
-    if (id) globalThis.lunaNgpTermsContent = content;
+    const id = await publishStoreEvent(template);
+    if (id) globalThis.lunaNgpTermsContent = template.content;
   } catch (err) {
     console.warn("[ngp-bet-state] no se pudieron publicar las terms del escrow:", err);
   }
