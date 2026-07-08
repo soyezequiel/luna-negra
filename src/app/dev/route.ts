@@ -254,6 +254,7 @@ const BODY = `
       <a href="#niveles">Niveles</a>
       <a href="#guia">Guía manual</a>
       <a href="#kinds">Kinds</a>
+      <a href="/dev/animaciones">Animaciones</a>
       <a href="/dev/luna">Versión REST 1.0</a>
     </nav>
     <div class="status"><span class="dot"></span>Corre en producción · Tetris</div>
