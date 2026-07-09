@@ -8,7 +8,7 @@
 // Este módulo es PURO y server-safe: solo arma/parsea el evento, sin tocar
 // relays ni el firmador (eso vive en nostr-server.ts y game-sync.ts).
 
-import type { Event } from "nostr-tools";
+import { nip19, type Event } from "nostr-tools";
 import { gameTag } from "./constants";
 import { normalizeCategories } from "./categories";
 
@@ -17,6 +17,44 @@ export const GAME_ARTICLE_KIND = 30023;
 /** Coordenada direccionable (tag `a`) del artículo de un juego. */
 export function gameArticleCoord(pubkey: string, slug: string): string {
   return `${GAME_ARTICLE_KIND}:${pubkey}:${slug}`;
+}
+
+/**
+ * Dirección NIP-19 (`naddr1…`) del artículo del juego: la forma portable con la
+ * que cualquier cliente Nostr (o un gateway como njump.me) abre el evento
+ * addressable, incluyendo pistas de relay para encontrarlo. Es la coordenada
+ * `30023:<pubkey>:<slug>` empaquetada. Módulo isomórfico: sirve en server y
+ * cliente. Devuelve null si la pubkey no es un hex válido de 32 bytes.
+ */
+export function gameArticleNaddr(
+  pubkey: string,
+  slug: string,
+  relays: string[] = [],
+): string | null {
+  if (!/^[0-9a-f]{64}$/.test(pubkey)) return null;
+  try {
+    return nip19.naddrEncode({
+      identifier: slug,
+      pubkey,
+      kind: GAME_ARTICLE_KIND,
+      relays,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Deriva el `naddr1…` desde una coordenada `30023:<pubkey>:<slug>` cacheada. */
+export function gameArticleNaddrFromCoord(
+  coord: string | null | undefined,
+  relays: string[] = [],
+): string | null {
+  if (!coord) return null;
+  const parts = coord.split(":");
+  if (parts.length < 3 || parts[0] !== String(GAME_ARTICLE_KIND)) return null;
+  const pubkey = parts[1];
+  const slug = parts.slice(2).join(":");
+  return gameArticleNaddr(pubkey, slug, relays);
 }
 
 /** Datos del juego necesarios para construir su artículo. */

@@ -27,6 +27,18 @@ import {
   signAndSubmit,
   signGameDeletion,
 } from "@/lib/game-article-client";
+import { gameArticleNaddrFromCoord } from "@/lib/game-article";
+import { RELAYS } from "@/lib/constants";
+
+// URL de njump.me (gateway web de Nostr) para abrir el artículo del juego en
+// cualquier cliente. njump resuelve el `naddr1…` y ofrece abrirlo en el cliente
+// preferido del usuario. null si el juego todavía no tiene artículo en Nostr.
+function gameNjumpUrl(coord: string | null): string | null {
+  // Pistas de relay (los primeros de la lista) para que njump/el cliente
+  // encuentren el evento aunque no lo tengan cacheado.
+  const naddr = gameArticleNaddrFromCoord(coord, RELAYS.slice(0, 3));
+  return naddr ? `https://njump.me/${naddr}` : null;
+}
 
 import { hueFromSlug, satsLabel } from "@/lib/format";
 
@@ -810,6 +822,19 @@ export default function ProviderPage() {
                         >
                           Migrar a mi Nostr
                         </Button>
+                      ) : null}
+                      {/* Abrir la publicación en un cliente Nostr cualquiera
+                          (njump.me). Solo si ya tiene artículo en Nostr. */}
+                      {gameNjumpUrl(g.nostrCoord) ? (
+                        <a
+                          href={gameNjumpUrl(g.nostrCoord)!}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost px-3.5 py-1.5 text-[13px]"
+                          title="Abrir el artículo del juego en un cliente Nostr (njump.me)"
+                        >
+                          Ver en Nostr ↗
+                        </a>
                       ) : null}
                       <Button variant="ghost" size="sm" onClick={() => duplicate(g.id)}>
                         Duplicar
