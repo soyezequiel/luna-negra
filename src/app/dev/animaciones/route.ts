@@ -585,6 +585,23 @@ const SCRIPT = `
   // true solo si la pantalla completa la abrió el giro a horizontal (no el botón),
   // para saber si al volver a vertical debemos cerrarla nosotros.
   var fsAutoOpened = false;
+  // Autoocultado de los controles en modo inmersivo (celu apaisado): tras unos
+  // segundos de inactividad el título y la barra se esconden para dejar leer los
+  // subtítulos; cualquier interacción los vuelve a mostrar. Fuera del apaisado la
+  // clase no tiene efecto (la regla CSS vive en el media query), así que el
+  // temporizador solo se arma cuando estamos en modo inmersivo.
+  var fsHideTimer = null;
+  function fsScheduleHide() {
+    if (fsHideTimer) { clearTimeout(fsHideTimer); fsHideTimer = null; }
+    if (!mqPhoneLandscape.matches) return;
+    fsHideTimer = setTimeout(function () { fs.classList.add("controls-hidden"); }, 2800);
+  }
+  function fsShowControls() { fs.classList.remove("controls-hidden"); fsScheduleHide(); }
+  function fsClearHide() {
+    if (fsHideTimer) { clearTimeout(fsHideTimer); fsHideTimer = null; }
+    fs.classList.remove("controls-hidden");
+  }
+
   function openFs(src, title) {
     document.getElementById("fs-title").textContent = title;
     fsCtrl.reset();
@@ -593,17 +610,29 @@ const SCRIPT = `
     fs.classList.add("open");
     fs.setAttribute("aria-hidden", "false");
     fsIv = setInterval(fsCtrl.tick, 120);
+    fsShowControls();
   }
   function closeFs() {
     fs.classList.remove("open");
     fs.setAttribute("aria-hidden", "true");
     fsAutoOpened = false;
+    fsClearHide();
     if (fsIv) { clearInterval(fsIv); fsIv = null; }
     fsFrame.removeAttribute("src");
   }
   document.getElementById("fs-close").addEventListener("click", closeFs);
   fs.addEventListener("click", function (e) { if (e.target === fs) closeFs(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && fs.classList.contains("open")) closeFs(); });
+
+  // Tocar el video alterna los controles (mostrar/ocultar al instante). Tocar la
+  // barra los mantiene visibles y reinicia el temporizador de ocultado.
+  document.getElementById("fs-tap").addEventListener("click", function () {
+    if (fs.classList.contains("controls-hidden")) fsShowControls();
+    else { if (fsHideTimer) { clearTimeout(fsHideTimer); fsHideTimer = null; } fs.classList.add("controls-hidden"); }
+  });
+  var fsTp = document.getElementById("fs-transport");
+  fsTp.addEventListener("pointerdown", fsShowControls);
+  fsTp.addEventListener("pointermove", fsShowControls);
 
   // ── Ver en horizontal al girar el celu ────────────────────────────────────
   // En un celular apaisado (alto chico) el frame 16:9 embebido no entra a lo
@@ -626,9 +655,12 @@ const SCRIPT = `
       if (!fs.classList.contains("open")) {
         var a = pickAnim();
         if (a) { openFs(a.src, a.title); fsAutoOpened = true; }
+      } else {
+        fsShowControls(); // ya estaba en fullscreen: arrancá el auto-ocultar
       }
-    } else if (fsAutoOpened && fs.classList.contains("open")) {
-      closeFs();
+    } else {
+      fsClearHide(); // volvió a vertical: controles siempre visibles
+      if (fsAutoOpened && fs.classList.contains("open")) closeFs();
     }
   }
   if (mqPhoneLandscape.addEventListener) mqPhoneLandscape.addEventListener("change", onPhoneLandscape);
