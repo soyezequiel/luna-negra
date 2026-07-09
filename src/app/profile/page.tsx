@@ -93,7 +93,12 @@ export default function ProfilePage() {
     );
   }
 
-  const name = profileName(profile) ?? "Anónimo";
+  // Mostramos de inmediato el nombre/foto cacheados en la sesión (vienen de la
+  // DB con /api/auth/me, instantáneo) y los refinamos cuando `fetchProfile`
+  // termina de consultar los relays (lento). Antes solo se pintaba al resolver
+  // el relay, así que el header quedaba en "Anónimo" sin foto varios segundos.
+  const name = profileName(profile) ?? user.displayName ?? "Anónimo";
+  const avatarUrl = profile?.picture ?? user.avatarUrl ?? null;
   const settledBets = bets.filter((b) => b.status === "settled");
   const recentSettled = settledBets.slice(0, 3);
   const wonCount = settledBets.filter((b) => b.result === "won").length;
@@ -120,10 +125,10 @@ export default function ProfilePage() {
         }}
       >
         <div className="flex flex-col items-start gap-5 ln:flex-row ln:items-center">
-          {profile?.picture ? (
+          {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={profile.picture}
+              src={avatarUrl}
               alt=""
               className="h-24 w-24 shrink-0 rounded-full border-2 border-ln-luna object-cover shadow-ln-luna"
             />
