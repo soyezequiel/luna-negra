@@ -1,6 +1,6 @@
 import { SimplePool, type Event } from "nostr-tools";
 import { RELAYS } from "./constants";
-import { NGP_KIND } from "../../sdk/ngp-core";
+import { NGP_KIND } from "nostr-game-protocol/ngp-core";
 
 // Probador en vivo de Nostr Games Protocol (NGP) (Nostr), análogo al health-check REST 1.0
 // (integration-probe.ts) pero por juego: consulta los relays por la coordenada

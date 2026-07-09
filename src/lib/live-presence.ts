@@ -1,7 +1,7 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
-import { NGP_KIND, parsePresenceEvent } from "../../sdk/ngp-core";
+import { NGP_KIND, parsePresenceEvent } from "nostr-game-protocol/ngp-core";
 import { recordIntegration } from "./integration-telemetry";
 
 /**

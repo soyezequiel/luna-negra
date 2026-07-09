@@ -15,13 +15,13 @@ El código NGP de apuestas está estratificado con frontera dura:
 
 | Capa | Módulos | Regla |
 |---|---|---|
-| **Protocolo (puro)** | `sdk/ngp-core.ts` — el núcleo NGP compartido tienda ⇄ juegos: kinds congelados, templates (31340/terms, 1341, 31337, 30315) y parsers estructurales (31337, 30315, 1339) | Sin prisma, sin I/O, sin env, sin firma. Cambiar esto = cambiar el protocolo. Se sincroniza byte-idéntico a Tetris con `scripts/sync-nge-core.mjs` (`--check` detecta drift); conformance en `tests/ngp-core.test.ts`. |
+| **Protocolo (puro)** | `nostr-game-protocol/ngp-core` (paquete [Nostr-Game-Protocol](https://github.com/soyezequiel/Nostr-Game-Protocol), dependencia git) — el núcleo NGP compartido tienda ⇄ juegos: kinds congelados, templates (31340/terms, 1341, 31337, 30315) y parsers estructurales (31337, 30315, 1339) | Sin prisma, sin I/O, sin env, sin firma. Cambiar esto = cambiar el protocolo. Tienda y juegos consumen el MISMO paquete (ya no hay copias sincronizadas); conformance en los tests del SDK. |
 | **Servicios** | `ngp-bet-state.ts` (publica la sombra), `ngp-bet-ingest.ts` (ingiere 1339), `ngp-bet-result-sync.ts` (ingiere 1341), `score-sync.ts` (proyecta 31337), `live-presence.ts` (cuenta 30315) | Leen DB/relays, verifican firmas, mapean a datos planos y llaman a los builders/parsers puros del core. La política del escrow (rangos, ventanas, códigos de error) vive acá. |
 | **Producto** | notas `kind:1` humanas (`publishSettleNoteFor`, texto del ancla), umbrales editoriales | Puede cambiar sin tocar la spec. |
 
-Del lado juego, Tetris espeja lo mismo: `sdk/ngp-core.ts` (copia sincronizada del
-núcleo), `sdk/ngp.ts` (la capa de firma del juego: `NgpSigner`, reto NIP-17,
-presencia NIP-38, marcador 31337) y los puertos `src/online/nostr*.ts`.
+Del lado juego, Tetris consume el mismo paquete: `nostr-game-protocol/ngp`
+(el core + la capa de firma del juego: `NgpSigner`, reto NIP-17, presencia
+NIP-38, marcador 31337) desde los puertos `src/online/nostr*.ts`.
 
 ## 0.bis Quién firma el artículo del juego (kind:30023)
 

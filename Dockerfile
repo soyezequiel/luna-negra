@@ -8,8 +8,10 @@
 # ── deps: instala dependencias (con cache de capa) ──────────────────────────
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
+# git: npm lo necesita para instalar la dependencia git nostr-game-protocol
+# (github:soyezequiel/Nostr-Game-Protocol); sin él, npm ci falla con ENOENT.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY prisma ./prisma

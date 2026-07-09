@@ -1,15 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { buildNgeUri } from "@/lib/nge-uri";
-import { parseNgeUri } from "../sdk/nge-core";
+import { parseNgeUri } from "nostr-game-protocol/nge-core";
+import vectors from "nostr-game-protocol/vectors/nge-test-vectors.json";
 
 // NGE v2: el emisor (Luna, src/lib/nge-uri.ts) arma la URI y el consumidor
-// (sdk/nge-core.ts, el juego) la parsea. Deben encajar byte a byte. Ya no hay `bind`
-// event ni oráculo declarado: la URI es TODA la credencial (§4 de la spec).
-const V = JSON.parse(
-  readFileSync(new URL("../docs/nge/test-vectors.json", import.meta.url), "utf8"),
-) as {
+// (el SDK nostr-game-protocol, en el juego) la parsea. Deben encajar byte a
+// byte. Ya no hay `bind` event ni oráculo declarado: la URI es TODA la
+// credencial (§4 de la spec). Vectores: los publica el SDK.
+const V = vectors as unknown as {
   uri: string;
   parsed: { escrowPubkey: string; relays: string[]; clientPubkey: string };
   keys: { escrow: { pubkey: string }; client: { sk: string; nsec: string } };

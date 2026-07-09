@@ -8,8 +8,10 @@
 > canal privado): la fuente de verdad vive en el escrow y se consulta por RPC. La
 > liquidación (contrato/resultado/payout) es pública en Nostr y no se testea acá (§2).
 
-Los datos vivos están en [`test-vectors.json`](test-vectors.json) (generado por
-[`gen-vectors.js`](gen-vectors.js), claves y nonce fijos). Este doc los explica.
+Los datos vivos se mudaron al SDK canónico
+([Nostr-Game-Protocol](https://github.com/soyezequiel/Nostr-Game-Protocol)):
+`vectors/nge-test-vectors.json`, generado por `scripts/gen-vectors.cjs` (claves
+y nonce fijos). Este doc los explica.
 
 ## Cómo se verifican
 
@@ -135,6 +137,8 @@ ejercitar auth y frescura; el resto define `method`/`params` de la mutación.
 
 ## Regenerar
 
+En el repo del SDK ([Nostr-Game-Protocol](https://github.com/soyezequiel/Nostr-Game-Protocol)):
+
 ```bash
-node docs/nge/gen-vectors.js
+npm run gen:vectors
 ```

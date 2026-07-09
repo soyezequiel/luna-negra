@@ -118,4 +118,4 @@ de apuestas v2 y responde con `24941` firmados. Se arranca desde
 en `POST /api/provider/nge/credential`.
 
 El SDK produce eventos válidos verificados contra los
-[test vectors](test-vectors.json) (mismo `content`/`id`, firmas que verifican).
+[test vectors](https://github.com/soyezequiel/Nostr-Game-Protocol/blob/main/vectors/nge-test-vectors.json) (mismo `content`/`id`, firmas que verifican).

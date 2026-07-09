@@ -7,7 +7,7 @@ import { computeContractHash } from "./escrow";
 import { getEconomySettings, resolveBetFees } from "./economy-settings";
 import { satsToMsat } from "./money";
 import { NGP_BETS_ENABLED, publishNgpBetState } from "./ngp-bet-state";
-import { NGP_BET_CONTRACT_KIND, parseBetContractEvent } from "../../sdk/ngp-core";
+import { NGP_BET_CONTRACT_KIND, parseBetContractEvent } from "nostr-game-protocol/ngp-core";
 import {
   BET_MIN_SATS,
   BET_MAX_SATS,

@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { submitScore } from "./leaderboard";
 import { recordIntegration } from "./integration-telemetry";
-import { NGP_KIND, parseScoreEvent } from "../../sdk/ngp-core";
+import { NGP_KIND, parseScoreEvent } from "nostr-game-protocol/ngp-core";
 
 /**
  * Reconciliación de PUNTAJES desde Nostr (Nostr Games Protocol (NGP)). El jugador firma su
@@ -21,7 +21,7 @@ import { NGP_KIND, parseScoreEvent } from "../../sdk/ngp-core";
  */
 
 // kind addressable del evento de puntaje (rango 30000-39999). Congelado en el
-// núcleo de protocolo compartido con los juegos (sdk/ngp-core.ts).
+// núcleo de protocolo compartido con los juegos (nostr-game-protocol/ngp-core).
 export const SCORE_KIND = NGP_KIND.score;
 
 // Cadencia del sync corriendo IN-PROCESS (self-host). 0 = desactivado.

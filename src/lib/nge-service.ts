@@ -7,7 +7,7 @@ import {
   decryptPayload,
   type NgeRequestPayload,
   type NgeResponsePayload,
-} from "../../sdk/nge-core";
+} from "nostr-game-protocol/nge-core";
 import { prisma } from "@/lib/prisma";
 import { RELAYS } from "@/lib/constants";
 import {
