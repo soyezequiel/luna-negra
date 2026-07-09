@@ -21,6 +21,7 @@ import {
 import { normalizeCategories } from "@/lib/categories";
 import { ZapLeaderboard } from "@/components/zap-leaderboard";
 import { NgeCredentialCard } from "@/components/provider/nge-credential-card";
+import { AttestationOracleCard } from "@/components/provider/attestation-oracle-card";
 import {
   signAndMigrateArticle,
   signAndPushArticle,
@@ -1106,8 +1107,9 @@ export default function ProviderPage() {
           ) : null}
 
           {selectedGameId ? (
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 space-y-4">
               <NgeCredentialCard gameId={selectedGameId} />
+              <AttestationOracleCard gameId={selectedGameId} />
             </div>
           ) : (
             <p className="text-sm text-ln-faint lg:col-span-2">
