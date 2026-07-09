@@ -22,6 +22,11 @@ export type ReviewGame = Row & {
   screenshots: string; // JSON array de URLs
   createdAt: string;
   isBeta: boolean;
+  // Régimen del artículo NIP-23: "provider" = lo firma el proveedor (el approve
+  // necesita su firma guardada); "store" = legacy (firma la tienda al aprobar).
+  articleSigner: string;
+  // Evento 30023 firmado por el proveedor, pendiente de difundir al aprobar.
+  signedArticle: unknown;
 };
 
 export type DraftGame = Omit<Row, "provider"> & {

@@ -387,6 +387,45 @@ export async function publishGameActivity(
   return { id: ev.id, pubkey: ev.pubkey };
 }
 
+/**
+ * Difunde a los relays un evento YA FIRMADO por un tercero (el artículo 30023 o
+ * el kind:5 que firma el PROVEEDOR en su navegador). Publicar no requiere clave:
+ * el pool acepta cualquier evento válido. Devuelve cuántos relays lo aceptaron
+ * (0 = ninguno; el caller decide si cachear o reintentar). Nunca lanza.
+ */
+export async function broadcastSignedEvent(ev: Event): Promise<number> {
+  return publishToRelays(ev).catch(() => 0);
+}
+
+/**
+ * Retracta el artículo LEGACY de la tienda con un kind:5 (NIP-09) firmado por la
+ * PROPIA tienda (eso sí puede: el artículo viejo lo firmó ella). Se usa al migrar
+ * la publicación de un juego a la cuenta del proveedor, para que los clientes que
+ * respetan NIP-09 dejen de mostrar el 30023 viejo (que quedaría duplicado bajo la
+ * coord de la tienda). Best-effort: devuelve cuántos relays aceptaron (0 si no
+ * hay clave o ninguno aceptó); nunca lanza.
+ */
+export async function publishStoreArticleDeletion(
+  oldEventId: string,
+  oldCoord: string | null,
+): Promise<number> {
+  const sk = getSecretKey();
+  if (!sk) return 0;
+  const tags: string[][] = [["e", oldEventId]];
+  if (oldCoord) tags.push(["a", oldCoord]);
+  tags.push(["k", "30023"]);
+  const ev = finalizeEvent(
+    {
+      kind: 5,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: "La publicación de este juego migró a la cuenta de su proveedor",
+    },
+    sk,
+  );
+  return publishToRelays(ev).catch(() => 0);
+}
+
 export type PublishedGameArticle = {
   id: string; // id del evento 30023 (cambia en cada edición)
   pubkey: string; // pubkey de la tienda

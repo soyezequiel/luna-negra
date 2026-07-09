@@ -23,6 +23,34 @@ Del lado juego, Tetris espeja lo mismo: `sdk/ngp-core.ts` (copia sincronizada de
 núcleo), `sdk/ngp.ts` (la capa de firma del juego: `NgpSigner`, reto NIP-17,
 presencia NIP-38, marcador 31337) y los puertos `src/online/nostr*.ts`.
 
+## 0.bis Quién firma el artículo del juego (kind:30023)
+
+Desde jul 2026 el artículo NIP-23 que define la coordenada tiene **dos regímenes**
+(`Game.articleSigner`):
+
+- **`"provider"` (default de todo juego nuevo)** — el PROVEEDOR firma el 30023 en
+  su navegador (NIP-07/46/clave local) y la coordenada es
+  `30023:<pubkey-del-dev>:<slug>`, como manda la spec. La tienda solo valida
+  (`game-article-validate.ts` compara contra el template canónico), guarda la
+  firma (`Game.signedArticle`) y la difunde al aprobar
+  (`provider-article.ts`). El flujo: firma al "Enviar a revisión" → el admin
+  difunde al aprobar; ediciones de un publicado marcan `articleDirty` y piden
+  re-firma; el borrado difunde un kind:5 del proveedor (best-effort). También se
+  puede **adoptar** un 30023 ya publicado (`POST /api/provider/games/adopt` con
+  naddr/coord, autor == cuenta del proveedor) o **migrar** un legacy
+  (`POST .../migrate-article`, cambia la coord: la actividad histórica no migra).
+- **`"store"` (legacy)** — la tienda firma server-side con `LUNA_NEGRA_NSEC`
+  (camino `syncGameToNostr`), coordenada `30023:<pubkey-tienda>:<slug>`. Se
+  mantiene para los juegos ya publicados hasta que su proveedor los migre.
+
+`game-sync` reconcilia artículos de TODOS los firmantes conocidos (tienda +
+proveedores), exigiendo que el autor del evento coincida con el firmante cacheado
+del juego (`Game.nostrPubkey`). Los consumidores por coordenada (score-sync,
+live-presence, review-sync, probe) no cambian: resuelven `coord → juego` desde
+`Game.nostrCoord`, sea de quien sea la pubkey. El riel de amigos matchea la
+presencia contra la lista real de coords (`GET /api/store/coords`), ya no contra
+el prefijo de la tienda.
+
 ---
 
 ## 1. El principio: dos escritores, un mismo read-model

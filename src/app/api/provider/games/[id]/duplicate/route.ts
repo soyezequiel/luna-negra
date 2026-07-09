@@ -42,8 +42,11 @@ export async function POST(
       betFeePct: src.betFeePct,
       betDevFeePct: src.betDevFeePct,
       // Arranca como borrador, sin identidad Nostr ni firmante de zaps: la copia
-      // publica su propio artículo recién cuando se aprueba/publica.
+      // publica su propio artículo recién cuando se aprueba/publica. Como todo
+      // juego nuevo, nace en el régimen "provider" (el proveedor firma el
+      // artículo), aunque el original fuera legacy firmado por la tienda.
       status: "draft",
+      articleSigner: "provider",
     },
   });
 

@@ -81,7 +81,19 @@ beforeEach(() => {
   mocks.providerFindFirst.mockReset().mockResolvedValue({ id: "provider-1" });
   mocks.gameCreate.mockReset().mockResolvedValue({ id: "game-1" });
   mocks.gameUpdate.mockReset().mockResolvedValue({ id: "game-1" });
-  mocks.ownedGame.mockReset().mockResolvedValue(true);
+  // Forma realista de ownedGame: el PATCH lee owned.game (status, articleSigner,
+  // signedArticle) para decidir la invalidación de la firma del artículo.
+  mocks.ownedGame.mockReset().mockResolvedValue({
+    provider: { id: "provider-1", ownerId: "provider-owner" },
+    game: {
+      id: "game-1",
+      status: "draft",
+      articleSigner: "store",
+      signedArticle: null,
+      manualCaps: null,
+      capsMode: null,
+    },
+  });
   mocks.uniqueGameSlug.mockReset().mockResolvedValue("test-game");
 });
 

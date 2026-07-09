@@ -81,6 +81,10 @@ export async function POST(req: Request) {
           )
         : "[]",
       status: "draft",
+      // Los juegos NUEVOS nacen en el régimen "provider": el artículo NIP-23 lo
+      // firma el PROVEEDOR en su navegador (spec NGP: la coordenada es
+      // `30023:<pubkey-del-dev>:<slug>`). "store" queda solo para legacy.
+      articleSigner: "provider",
       revenueShare: economy.providerRevenueShare,
       betDevFeePct,
     },

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ownedGame } from "@/lib/provider";
@@ -7,6 +8,8 @@ import { sanitizeDescriptionHtml } from "@/lib/sanitize-description";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { revalidateCatalog } from "@/lib/store-catalog";
 import { syncGameToNostr } from "@/lib/announce-game";
+import { validateProviderDeletion } from "@/lib/game-article-validate";
+import { broadcastSignedEvent } from "@/lib/nostr-server";
 import { getEconomySettings, normalizePercent } from "@/lib/economy-settings";
 import { MANUAL_CAP_KEYS } from "@/lib/integration-ngp";
 import {
@@ -126,24 +129,62 @@ export async function PATCH(
     }
   }
 
+  // ¿La edición toca campos que van al artículo NIP-23? (manualCaps/capsMode/
+  // betDevFeePct no forman parte del artículo). Determina la invalidación de la
+  // firma pendiente y la re-publicación del artículo.
+  const ARTICLE_FIELDS = [
+    "title",
+    "description",
+    "categories",
+    "priceSats",
+    "gameUrl",
+    "coverUrl",
+    "horizontalCoverUrl",
+    "screenshots",
+    "videos",
+  ] as const;
+  const touchesArticle = ARTICLE_FIELDS.some((k) => k in data);
+
+  // Régimen "provider": el server NO puede re-firmar el artículo por el proveedor.
+  // - draft/in_review: la firma guardada (si había) dejó de corresponder a la
+  //   ficha → se borra; el proveedor re-firma antes de que el admin apruebe.
+  // - published: la DB queda transitoriamente adelante de Nostr → articleDirty
+  //   lo hace visible, y la respuesta pide la firma (needsSignature) para que el
+  //   cliente encadene la firma y difusión.
+  if (touchesArticle && owned.game.articleSigner === "provider") {
+    if (owned.game.status === "published") {
+      data.articleDirty = true;
+    }
+    if (owned.game.signedArticle !== null) {
+      data.signedArticle = Prisma.DbNull;
+    }
+  }
+
   let game = await prisma.game.update({ where: { id }, data });
-  // Si está publicado, el artículo NIP-23 es la fuente de verdad: re-firmamos con
-  // los datos nuevos (misma coordenada → comentarios intactos) y re-cacheamos.
-  // Best-effort: si no hay clave/relays, la edición igual queda en la DB.
+  // Si está publicado, el artículo NIP-23 es la fuente de verdad: hay que
+  // re-publicarlo con los datos nuevos (misma coordenada → comentarios intactos).
+  // - "store" (legacy): re-firmamos server-side con la clave de la tienda.
+  // - "provider": lo firma el proveedor; el cliente encadena la firma al ver
+  //   needsSignature (o queda el botón "Firmar y difundir" si cancela).
+  let needsSignature = false;
   if (game.status === "published") {
-    try {
-      game = await syncGameToNostr(game, req);
-    } catch (err) {
-      console.error("[provider edit] no se pudo re-publicar el artículo:", err);
+    if (game.articleSigner === "provider") {
+      needsSignature = touchesArticle;
+    } else {
+      try {
+        game = await syncGameToNostr(game, req);
+      } catch (err) {
+        console.error("[provider edit] no se pudo re-publicar el artículo:", err);
+      }
     }
   }
   // El proveedor editó su ficha publicada → refrescar caché del catálogo.
   revalidateCatalog();
-  return NextResponse.json({ game });
+  return NextResponse.json({ game, needsSignature });
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
@@ -163,6 +204,36 @@ export async function DELETE(
       { status: 400 },
     );
   }
+
+  // Retractación NIP-09 (kind:5) del artículo, firmada por el PROVEEDOR en su
+  // navegador (régimen "provider"). Best-effort explícito: si no vino, no valida
+  // o ningún relay la acepta, el borrado en DB procede igual (el artículo queda
+  // huérfano en relays, como pasaba siempre con el borrado legacy).
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  if (
+    body.deleteEvent &&
+    owned.game.articleSigner === "provider" &&
+    owned.game.nostrEventId
+  ) {
+    try {
+      const owner = await prisma.user.findUnique({
+        where: { id: owned.provider.ownerId },
+        select: { pubkey: true },
+      });
+      if (owner?.pubkey && owner.pubkey === session.pubkey) {
+        const check = validateProviderDeletion({
+          signedEvent: body.deleteEvent,
+          expectedPubkey: owner.pubkey,
+          nostrEventId: owned.game.nostrEventId,
+          nostrCoord: owned.game.nostrCoord,
+        });
+        if (check.ok) void broadcastSignedEvent(check.event);
+      }
+    } catch (err) {
+      console.error("[provider delete] no se pudo difundir el kind:5:", err);
+    }
+  }
+
   await prisma.review.deleteMany({ where: { gameId: id } });
   await prisma.game.delete({ where: { id } });
   revalidateCatalog();

@@ -21,6 +21,12 @@ import {
 import { normalizeCategories } from "@/lib/categories";
 import { ZapLeaderboard } from "@/components/zap-leaderboard";
 import { NgeCredentialCard } from "@/components/provider/nge-credential-card";
+import {
+  signAndMigrateArticle,
+  signAndPushArticle,
+  signAndSubmit,
+  signGameDeletion,
+} from "@/lib/game-article-client";
 
 import { hueFromSlug, satsLabel } from "@/lib/format";
 
@@ -48,6 +54,15 @@ type Game = {
   status: string;
   betDevFeePct: number | null;
   isBeta: boolean;
+  // Régimen del artículo NIP-23: "provider" = lo firma el proveedor en el
+  // navegador; "store" = legacy (lo firma la tienda server-side).
+  articleSigner: string;
+  // Evento 30023 firmado pendiente de difusión (submit → el admin lo publica).
+  signedArticle: unknown;
+  // La ficha publicada tiene cambios sin firmar/difundir en Nostr.
+  articleDirty: boolean;
+  nostrEventId: string | null;
+  nostrCoord: string | null;
 };
 type Sale = {
   id: string;
@@ -175,6 +190,9 @@ export default function ProviderPage() {
 
   const [tab, setTab] = useState<Tab>("games");
   const [showNewGame, setShowNewGame] = useState(false);
+  // Adoptar un artículo NIP-23 ya publicado (naddr1… o coordenada cruda).
+  const [showAdopt, setShowAdopt] = useState(false);
+  const [adoptAddress, setAdoptAddress] = useState("");
 
   const [name, setName] = useState("");
   const [ln, setLn] = useState("");
@@ -297,8 +315,9 @@ export default function ProviderPage() {
     e.preventDefault();
     if (!editingId) return;
     setMsg(null);
+    const gameId = editingId;
     const payload = { ...editForm, priceSats: Number(editForm.priceSats) };
-    const r = await fetch(`/api/provider/games/${editingId}`, {
+    const r = await fetch(`/api/provider/games/${gameId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -307,6 +326,70 @@ export default function ProviderPage() {
     if (!r.ok) return setMsg(d.error ?? "Error");
     setMsg("Cambios guardados.");
     cancelEdit();
+    // Juego publicado provider-firmado: el server no puede re-firmar el artículo;
+    // encadenamos la firma acá (si el usuario cancela, queda el botón "Firmar y
+    // difundir" en la tarjeta — articleDirty lo hace visible).
+    if (d.needsSignature) {
+      try {
+        setMsg("Cambios guardados. Firmá el artículo para publicarlos en Nostr…");
+        await signAndPushArticle(gameId);
+        setMsg("Cambios guardados y publicados en Nostr.");
+      } catch (err) {
+        setMsg(
+          `Cambios guardados, pero falta firmar el artículo: ${
+            err instanceof Error ? err.message : "firma cancelada"
+          }. Usá "Firmar y difundir" en la tarjeta del juego.`,
+        );
+      }
+    }
+    load();
+  }
+
+  // "Enviar a revisión" del régimen provider: firma el artículo con el Nostr del
+  // proveedor y lo adjunta al submit (el admin lo difunde al aprobar).
+  async function submitWithSignature(id: string) {
+    setMsg("Firmá el artículo del juego con tu Nostr…");
+    try {
+      await signAndSubmit(id);
+      setMsg("Artículo firmado y enviado a revisión. Te avisamos cuando se apruebe.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "No se pudo firmar el artículo");
+    }
+    load();
+  }
+
+  // Re-firma el artículo: repone una firma invalidada (in_review) o difunde los
+  // cambios pendientes de un juego publicado (articleDirty).
+  async function resignArticle(id: string) {
+    setMsg("Firmá el artículo del juego con tu Nostr…");
+    try {
+      await signAndPushArticle(id);
+      setMsg("Artículo firmado.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "No se pudo firmar el artículo");
+    }
+    load();
+  }
+
+  // Migra un juego legacy (artículo firmado por la tienda) a la cuenta del
+  // proveedor. La coordenada cambia: la actividad histórica no migra.
+  async function migrateArticle(id: string) {
+    if (
+      !confirm(
+        "Migrar la publicación a tu cuenta re-publica el artículo del juego firmado por tu Nostr.\n\n" +
+          "⚠️ La coordenada del juego CAMBIA: los puntajes, reseñas y presencia anclados a la coordenada vieja no migran, " +
+          "y los juegos integrados deben re-leer gameCoord en su próxima sesión.\n\n¿Continuar?",
+      )
+    ) {
+      return;
+    }
+    setMsg("Firmá el artículo del juego con tu Nostr…");
+    try {
+      await signAndMigrateArticle(id);
+      setMsg("Publicación migrada a tu cuenta: el artículo ahora lo firma tu Nostr.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "No se pudo migrar la publicación");
+    }
     load();
   }
 
@@ -322,10 +405,55 @@ export default function ProviderPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("¿Borrar este juego? No se puede deshacer.")) return;
-    const r = await fetch(`/api/provider/games/${id}`, { method: "DELETE" });
+    const game = games.find((g) => g.id === id);
+    const hasArticle =
+      game?.articleSigner === "provider" && game?.nostrEventId != null;
+    if (
+      !confirm(
+        hasArticle
+          ? "¿Borrar este juego? No se puede deshacer.\nSe intentará retirar también el artículo de Nostr (kind:5 firmado por vos)."
+          : "¿Borrar este juego? No se puede deshacer.",
+      )
+    ) {
+      return;
+    }
+    // Retractación NIP-09 best-effort: si el usuario cancela la firma o no hay
+    // signer, se borra igual solo de la DB (el server lo trata como opcional).
+    let deleteEvent: unknown = null;
+    if (hasArticle && game) {
+      deleteEvent = await signGameDeletion({
+        nostrEventId: game.nostrEventId,
+        nostrCoord: game.nostrCoord,
+      });
+    }
+    const r = await fetch(`/api/provider/games/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(deleteEvent ? { deleteEvent } : {}),
+    });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return setMsg(d.error ?? "No se pudo borrar");
+    load();
+  }
+
+  // Adopta un artículo NIP-23 ya publicado en Nostr (firmado por la cuenta del
+  // proveedor): pega el naddr1…/coordenada y Luna lo importa como juego en
+  // revisión, con la identidad Nostr del artículo original.
+  async function adoptArticle(e: FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    const r = await fetch("/api/provider/games/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: adoptAddress }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg(d.error ?? "No se pudo adoptar el artículo");
+    setMsg(
+      "Artículo adoptado: quedó en revisión con su coordenada Nostr original. Te avisamos cuando se apruebe.",
+    );
+    setAdoptAddress("");
+    setShowAdopt(false);
     load();
   }
 
@@ -592,7 +720,30 @@ export default function ProviderPage() {
                     </p>
                     {g.status === "draft" ? (
                       <p className="mt-1 text-[11px] text-ln-corona">
-                        Todavía no es visible — envialo a revisión.
+                        Todavía no es visible — envialo a revisión
+                        {g.articleSigner === "provider"
+                          ? " (vas a firmar el artículo con tu Nostr)"
+                          : ""}
+                        .
+                      </p>
+                    ) : null}
+                    {/* Estado de la firma del artículo (régimen provider). */}
+                    {g.articleSigner === "provider" && g.status === "in_review" ? (
+                      g.signedArticle != null ? (
+                        <p className="mt-1 text-[11px] text-ln-aurora">
+                          Artículo firmado — esperando revisión.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-ln-corona">
+                          Falta tu firma: sin ella el admin no puede aprobarlo.
+                        </p>
+                      )
+                    ) : null}
+                    {g.articleSigner === "provider" &&
+                    g.status === "published" &&
+                    g.articleDirty ? (
+                      <p className="mt-1 text-[11px] text-ln-corona">
+                        Hay cambios sin firmar en Nostr.
                       </p>
                     ) : null}
                     <div className="mt-auto flex flex-wrap gap-2 pt-3">
@@ -604,11 +755,13 @@ export default function ProviderPage() {
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                            action(
-                              g.id,
-                              "/submit",
-                              "Enviado a revisión. Te avisamos cuando se apruebe.",
-                            )
+                            g.articleSigner === "provider"
+                              ? submitWithSignature(g.id)
+                              : action(
+                                  g.id,
+                                  "/submit",
+                                  "Enviado a revisión. Te avisamos cuando se apruebe.",
+                                )
                           }
                         >
                           Enviar a revisión
@@ -624,6 +777,40 @@ export default function ProviderPage() {
                           Despublicar
                         </Button>
                       )}
+                      {/* Reponer una firma invalidada (in_review sin firma). */}
+                      {g.articleSigner === "provider" &&
+                      g.status === "in_review" &&
+                      g.signedArticle == null ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => resignArticle(g.id)}
+                        >
+                          Firmar artículo
+                        </Button>
+                      ) : null}
+                      {/* Difundir cambios pendientes de un publicado (dirty). */}
+                      {g.articleSigner === "provider" &&
+                      g.status === "published" &&
+                      g.articleDirty ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => resignArticle(g.id)}
+                        >
+                          Firmar y difundir
+                        </Button>
+                      ) : null}
+                      {/* Migración legacy → cuenta del proveedor. */}
+                      {g.articleSigner === "store" && g.status === "published" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => migrateArticle(g.id)}
+                        >
+                          Migrar a mi Nostr
+                        </Button>
+                      ) : null}
                       <Button variant="ghost" size="sm" onClick={() => duplicate(g.id)}>
                         Duplicar
                       </Button>
@@ -642,6 +829,51 @@ export default function ProviderPage() {
                 <span className="text-[22px] leading-none">+</span>
                 Crear un nuevo juego
               </button>
+              {/* Adoptar un artículo NIP-23 ya publicado en Nostr (firmado por
+                  la cuenta del proveedor): Luna lo agrega a la tienda con su
+                  coordenada original, previa revisión del admin. */}
+              {showAdopt ? (
+                <form
+                  onSubmit={adoptArticle}
+                  className="flex min-h-[118px] flex-col justify-center gap-2 rounded-ln-lg border border-dashed border-blue/35 bg-blue/[.04] p-3.5"
+                >
+                  <p className="text-[12px] font-semibold text-blue">
+                    Adoptar artículo Nostr existente
+                  </p>
+                  <input
+                    className={inputCls}
+                    placeholder="naddr1… o 30023:<pubkey>:<slug>"
+                    value={adoptAddress}
+                    onChange={(e) => setAdoptAddress(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" disabled={!adoptAddress.trim()}>
+                      Adoptar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAdopt(false)}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                  <p className="text-[10.5px] leading-snug text-ln-faint">
+                    El artículo debe estar firmado por tu cuenta Nostr. Se importa
+                    con su coordenada original y pasa por revisión.
+                  </p>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAdopt(true)}
+                  className="flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-ln-lg border border-dashed border-blue/35 bg-blue/[.04] text-[14px] font-semibold text-blue transition-colors hover:bg-blue/10"
+                >
+                  <span className="text-[22px] leading-none">⚡</span>
+                  Adoptar artículo Nostr existente
+                </button>
+              )}
             </div>
           )}
         </section>

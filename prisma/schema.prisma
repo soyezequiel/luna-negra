@@ -406,16 +406,32 @@ model Game {
   // Override por juego del corte del dev en apuestas (proveedor). null = hereda el
   // default del proveedor `Provider.betDevFeePct`. Se acota al tope global.
   betDevFeePct       Int? // override del corte del dev en apuestas (proveedor)
-  // Artículo NIP-23 (kind:30023) que Luna Negra publica al aprobar/editar el
-  // juego: la representación CANÓNICA del juego publicado en Nostr (fuente de
-  // verdad). La DB es un caché write-through, reconciliable por game-sync.ts.
-  // Comentarios y reseñas se cuelgan de la coordenada (`nostrCoord`, tag `a`),
-  // estable entre ediciones.
+  // Artículo NIP-23 (kind:30023): la representación CANÓNICA del juego publicado
+  // en Nostr (fuente de verdad). La DB es un caché write-through, reconciliable
+  // por game-sync.ts. Comentarios y reseñas se cuelgan de la coordenada
+  // (`nostrCoord`, tag `a`), estable entre ediciones.
   nostrEventId       String? // id del ÚLTIMO evento 30023 (cambia en cada edición)
-  nostrPubkey        String? // pubkey de Luna Negra que firmó el artículo
+  nostrPubkey        String? // pubkey que FIRMÓ el artículo (tienda o proveedor, según articleSigner)
   nostrCoord         String? // coordenada direccionable `30023:<pubkey>:<slug>` (root tag `a`)
   nostrPublishedAt   DateTime? // `published_at` original (se preserva entre ediciones)
   nostrUpdatedAt     DateTime? // created_at del último artículo cacheado (freshness del sync)
+  // Quién firma el artículo NIP-23 de este juego. "store" = régimen legacy (la
+  // tienda firma server-side con LUNA_NEGRA_NSEC, camino syncGameToNostr).
+  // "provider" = el PROVEEDOR firma en su navegador (NIP-07/46/local) y la tienda
+  // solo difunde el evento ya firmado — alinea con la spec NGP (la coordenada es
+  // `30023:<pubkey-del-dev>:<slug>`). Flag EXPLÍCITO (no derivado de nostrPubkey
+  // === storePubkey) porque antes de publicar nostrPubkey es null y porque la
+  // clave de la tienda podría rotar sin reinterpretar juegos.
+  articleSigner      String   @default("store") // "store" | "provider"
+  // Evento kind:30023 YA FIRMADO por el proveedor, pendiente de difusión (lo firma
+  // al enviar a revisión; el admin lo difunde a relays al aprobar). null = sin
+  // firma pendiente. Se borra si el proveedor edita la ficha (la firma dejó de
+  // corresponder a lo que el admin revisa).
+  signedArticle      Json?
+  // La ficha publicada en la DB tiene cambios que TODAVÍA no se firmaron ni
+  // difundieron en Nostr (solo juegos provider-firmados ya publicados: el server
+  // no puede re-firmar por el proveedor). El proveedor debe "Firmar y difundir".
+  articleDirty       Boolean  @default(false)
   // Pubkey (hex) que firma los recibos de zap (kind 9735) del wallet LNURL del
   // dev de este juego. Se cachea en `zap/prepare` y se usa en la reconciliación
   // (zap-sync.ts) para validar que un recibo viene del wallet correcto. Si es

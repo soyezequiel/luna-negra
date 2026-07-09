@@ -168,7 +168,9 @@ export function GamesTab({
 }: {
   drafts: DraftGame[] | null;
   games: ReviewGame[] | null;
-  unannounced: Row[];
+  // La API manda el Game entero: el estado de firma decide el texto del botón
+  // (provider sin firma retenida → el anuncio necesita al proveedor).
+  unannounced: (Row & { articleSigner?: string; signedArticle?: unknown })[];
   catalog: CatalogRow[];
   betFeeFallback: number;
   busy: string | null;
@@ -284,10 +286,35 @@ export function GamesTab({
                       <p className="text-xs text-faint">
                         {g.provider.name} ·{" "}
                         {g.priceSats === 0 ? "Gratis" : `${g.priceSats} sats`}
+                        {/* Estado de la firma del artículo (régimen provider):
+                            sin ella el approve no puede difundir a Nostr. */}
+                        {g.articleSigner === "provider" ? (
+                          g.signedArticle != null ? (
+                            <span className="ml-2 rounded-full bg-ln-aurora/15 px-1.5 py-0.5 text-[10px] font-semibold text-ln-aurora">
+                              Firma del proveedor ✓
+                            </span>
+                          ) : (
+                            <span className="ml-2 rounded-full bg-ln-corona/15 px-1.5 py-0.5 text-[10px] font-semibold text-ln-corona">
+                              Falta la firma del proveedor
+                            </span>
+                          )
+                        ) : null}
                       </p>
                     </button>
                     <div className="flex shrink-0 gap-2">
-                      <Button onClick={() => onApprove(g.id)}>Aprobar</Button>
+                      <Button
+                        onClick={() => onApprove(g.id)}
+                        disabled={
+                          g.articleSigner === "provider" && g.signedArticle == null
+                        }
+                        title={
+                          g.articleSigner === "provider" && g.signedArticle == null
+                            ? "El proveedor debe firmar el artículo desde su panel antes de aprobar"
+                            : undefined
+                        }
+                      >
+                        Aprobar
+                      </Button>
                       <Button variant="ghost" onClick={() => onReject(g.id)}>
                         Rechazar
                       </Button>
@@ -323,10 +350,27 @@ export function GamesTab({
               >
                 <div>
                   <p className="text-sm font-medium">{g.title}</p>
-                  <p className="text-xs text-faint">{g.provider.name}</p>
+                  <p className="text-xs text-faint">
+                    {g.provider.name}
+                    {g.articleSigner === "provider" && g.signedArticle == null ? (
+                      <span className="ml-2 text-ln-corona">
+                        · necesita la firma del proveedor (desde su panel)
+                      </span>
+                    ) : null}
+                  </p>
                 </div>
-                <Button onClick={() => onAnnounce(g.id)} disabled={busy === g.id}>
-                  {busy === g.id ? "Anunciando…" : "Anunciar en Nostr"}
+                <Button
+                  onClick={() => onAnnounce(g.id)}
+                  disabled={
+                    busy === g.id ||
+                    (g.articleSigner === "provider" && g.signedArticle == null)
+                  }
+                >
+                  {busy === g.id
+                    ? "Anunciando…"
+                    : g.articleSigner === "provider"
+                      ? "Re-difundir firma"
+                      : "Anunciar en Nostr"}
                 </Button>
               </li>
             ))}
