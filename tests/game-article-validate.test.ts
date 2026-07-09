@@ -177,6 +177,72 @@ describe("validateProviderArticle", () => {
   });
 });
 
+// Delegación del oráculo de atestaciones (NGP kind:31338): el artículo publica
+// la pubkey declarada como tag ["oracle", pk] y la validación estricta la cubre
+// igual que a cualquier otro tag.
+describe("tag oracle (delegación de atestaciones) en el artículo", () => {
+  const ORACLE_PK = "d".repeat(64);
+  const GAME_WITH_ORACLE: GameArticleInput = { ...GAME, attestationOraclePubkey: ORACLE_PK };
+
+  it("el builder emite [\"oracle\", pk] cuando el juego la declaró; sin declarar, no", () => {
+    const withOracle = buildGameArticleTemplate(GAME_WITH_ORACLE, {
+      gamePageUrl: PAGE_URL,
+      publishedAt: 1_700_000_000,
+    });
+    expect(withOracle.tags).toContainEqual(["oracle", ORACLE_PK]);
+
+    const without = buildGameArticleTemplate(GAME, {
+      gamePageUrl: PAGE_URL,
+      publishedAt: 1_700_000_000,
+    });
+    expect(without.tags.some((t) => t[0] === "oracle")).toBe(false);
+  });
+
+  it("acepta el artículo firmado con la delegación de la ficha", () => {
+    const tpl = buildGameArticleTemplate(GAME_WITH_ORACLE, {
+      gamePageUrl: PAGE_URL,
+      publishedAt: Math.floor(Date.now() / 1000) - 3600,
+    });
+    const ev = finalizeEvent(tpl, sk);
+    const r = validateProviderArticle({
+      signedEvent: ev,
+      game: GAME_WITH_ORACLE,
+      expectedPubkey: pubkey,
+      gamePageUrl: PAGE_URL,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("rechaza una delegación adulterada (oracle distinto del declarado en la DB)", () => {
+    const tpl = buildGameArticleTemplate(GAME_WITH_ORACLE, {
+      gamePageUrl: PAGE_URL,
+      publishedAt: Math.floor(Date.now() / 1000) - 3600,
+    });
+    tpl.tags = tpl.tags.map((t) => (t[0] === "oracle" ? ["oracle", "e".repeat(64)] : t));
+    const ev = finalizeEvent(tpl, sk);
+    const r = validateProviderArticle({
+      signedEvent: ev,
+      game: GAME_WITH_ORACLE,
+      expectedPubkey: pubkey,
+      gamePageUrl: PAGE_URL,
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("rechaza una firma SIN la delegación cuando la ficha la declara (firma vieja)", () => {
+    // El proveedor firmó ANTES de declarar el oráculo → esa firma quedó stale.
+    const ev = signCanonical();
+    const r = validateProviderArticle({
+      signedEvent: ev,
+      game: GAME_WITH_ORACLE,
+      expectedPubkey: pubkey,
+      gamePageUrl: PAGE_URL,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/volvé a firmar/);
+  });
+});
+
 describe("validateProviderDeletion", () => {
   const articleId = signCanonical().id;
   const coord = gameArticleCoord(pubkey, GAME.slug);

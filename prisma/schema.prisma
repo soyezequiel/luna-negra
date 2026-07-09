@@ -406,6 +406,14 @@ model Game {
   // Override por juego del corte del dev en apuestas (proveedor). null = hereda el
   // default del proveedor `Provider.betDevFeePct`. Se acota al tope global.
   betDevFeePct       Int? // override del corte del dev en apuestas (proveedor)
+  // Oráculo de ATESTACIONES (NGP kind:31338, spec §3.4): pubkey (hex) con la que
+  // el game server del proveedor firma "en la sala X ganó Y". Declarada por el
+  // proveedor con prueba de posesión (POST attestation-oracle). El artículo 30023
+  // la publica como tag ["oracle", pk] — la DELEGACIÓN que un verificador cruza
+  // contra el firmante del 31338. Es POR JUEGO y distinta de Provider.oraclePubkey
+  // (el oráculo de APUESTAS, que NGE v2 fuerza a gestionado y puede rotar Luna):
+  // esta clave la custodia el PROVEEDOR y Luna nunca firma con ella.
+  attestationOraclePubkey String?
   // Artículo NIP-23 (kind:30023): la representación CANÓNICA del juego publicado
   // en Nostr (fuente de verdad). La DB es un caché write-through, reconciliable
   // por game-sync.ts. Comentarios y reseñas se cuelgan de la coordenada

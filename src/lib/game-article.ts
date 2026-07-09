@@ -69,6 +69,10 @@ export type GameArticleInput = {
   screenshots?: string | null; // JSON array de URLs (como se guarda en la DB)
   videos?: string | null; // JSON array de URLs de video (trailers)
   gameUrl?: string | null;
+  // Oráculo de atestaciones (NGP kind:31338): el artículo lo publica como tag
+  // ["oracle", pk] — la DELEGACIÓN contra la que un verificador cruza el firmante
+  // de las atestaciones del juego. Declarado con prueba de posesión.
+  attestationOraclePubkey?: string | null;
 };
 
 /** Proyección del artículo de vuelta a campos del caché `Game`. */
@@ -133,6 +137,10 @@ export function buildGameArticleTemplate(
   if (game.horizontalCoverUrl)
     tags.push(["horizontal_cover", game.horizontalCoverUrl]);
   if (game.gameUrl) tags.push(["game_url", game.gameUrl]);
+  // Delegación del oráculo de atestaciones (NGP §3.4): el verificador de un
+  // kind:31338 confía solo si su firmante == esta pubkey declarada.
+  if (game.attestationOraclePubkey)
+    tags.push(["oracle", game.attestationOraclePubkey]);
   for (const c of normalizeCategories(game.categories)) tags.push(["t", c]);
   for (const url of parseUrlList(game.screenshots))
     tags.push(["screenshot", url]);
