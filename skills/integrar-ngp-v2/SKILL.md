@@ -60,6 +60,32 @@ juego se abrió con 1.0, o consultando el `kind:30023` real en relays:
 
 No inventes `gameCoord`. El `slug` no siempre coincide con el nombre visible.
 
+## SDK: paquete `nostr-game-protocol`
+
+El wire de NGP y NGE (el formato exacto de cada evento) vive en un paquete
+canónico: **[`nostr-game-protocol`](https://github.com/soyezequiel/Nostr-Game-Protocol)**.
+Es la misma pieza que usa la tienda; instalándolo evitás reimplementar los
+templates y parsers a mano (y evitás que tu copia se desincronice del formato
+que la tienda espera).
+
+```sh
+npm i github:soyezequiel/Nostr-Game-Protocol
+npm i nostr-tools   # peer dependency
+```
+
+Qué te da, por subpath:
+
+| Import | Trae |
+|---|---|
+| `nostr-game-protocol/ngp` | `buildScoreTemplate` (marcador 31337), `buildPresenceTemplate` / `buildPresenceClearTemplate` (NIP-38), los helpers de reto NIP-17 (`buildChallengeGiftWraps`, `parseChallengeGiftWrap`), la interfaz `NgpSigner` y los parsers (`parseScoreEvent`, `parsePresenceEvent`). |
+| `nostr-game-protocol/nge` | La clase `NGE` (cliente del escrow de apuestas), transporte inyectable y `auditSettlement`. Ver la sección de apuestas. |
+| `nostr-game-protocol/ngp-core` / `/nge-core` | Solo el wire puro (kinds, templates sin firmar, parsers), sin ergonomía. |
+
+Los templates salen **sin firmar**: vos les pasás el contexto (coordenada,
+puntaje, TTL) y los firmás con tu signer. El paquete no toca relays ni env: la
+publicación es tuya. Los bloques de código de abajo muestran el evento crudo
+para que entiendas el formato; en producción preferí los helpers del paquete.
+
 ## Capacidades
 
 | Capacidad | 1.0 REST | NGP | Estado |
@@ -179,6 +205,9 @@ Reglas:
 - El puntaje firmado por cliente es falsificable; no lo uses para repartir dinero.
 - Construye una función `buildScoreEvent()` que solo firma y otra `publishScore()`
   best-effort. Testea `kind`, `pubkey`, `a`, `d`, `board`, `score` y `verifyEvent`.
+- Atajo: `buildScoreTemplate({ gameCoord, board, score })` de
+  `nostr-game-protocol/ngp` arma este template (con las validaciones de `board` y
+  el clamp ya hechas). Solo lo firmás y publicás.
 
 Para leer sin Luna Negra:
 
@@ -307,6 +336,13 @@ No mezcles zaps libres con apuestas custodiadas: si hay depósito, pozo y payout
 usa el flujo de apuestas v2 por zaps de esta skill.
 
 ## Apuestas v2 por zaps
+
+> **El camino recomendado hoy es NGE** (Nostr Game Escrow): un RPC cifrado estilo
+> NWC sobre el que el juego pega un solo `NGE_CONNECTION` y usa la clase `NGE` de
+> `nostr-game-protocol/nge` (`createBet` devuelve un `bolt11` por asiento;
+> `reportResult` por `seatId`). No hace falta firmar zaps de depósito en el
+> browser. Está documentado en la guía `/dev` de este deploy. La sección de abajo
+> describe el flujo previo por zaps NIP-57 (sigue vigente, mismo escrow custodial).
 
 Aunque use zaps NIP-57 públicos, este flujo sigue siendo escrow custodial de
 Luna Negra y server-to-server. Lo que cambia respecto a la apuesta REST v1 es el
@@ -449,6 +485,8 @@ Mantén dos tiers: abierto (`kind:31337`, social, falsificable) y verificado
 
 ## Referencias del repo
 
+- SDK del protocolo (wire NGP + NGE, cliente y helpers de firma):
+  [`nostr-game-protocol`](https://github.com/soyezequiel/Nostr-Game-Protocol)
 - Spec de Nostr Games Protocol (NGP): `docs/nostr-games-protocol.md`
 - Salas e invitaciones NGP: `docs/nostr-games-protocol-salas-invitaciones.md`
 - Implementación de NGP: `docs/nostr-games-protocol-implementacion.md`

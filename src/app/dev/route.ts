@@ -567,7 +567,8 @@ await Promise.any(new SimplePool().publish(PUBLIC_WRITE_RELAYS, evt));
           </div>
           <div class="term"><div class="term-head"><span class="term-title">.env</span><button class="copy">Copiar</button></div><pre class="sm"><code>NGE_CONNECTION="nostr+nge://&lt;escrow-pubkey&gt;?relay=wss://relay.luna.fit&amp;secret=&lt;client-nsec&gt;"
 # host = pubkey estable del escrow · secret = la clave del cliente (te la da el escrow)</code></pre></div>
-          <div class="term"><div class="term-head"><span class="term-title">nge.ts · el flujo entero</span><button class="copy">Copiar</button></div><pre class="sm"><code>import { NGE } from "./sdk/nge";
+          <div class="term"><div class="term-head"><span class="term-title">el flujo entero · paquete nostr-game-protocol</span><button class="copy">Copiar</button></div><pre class="sm"><code>// npm i github:soyezequiel/Nostr-Game-Protocol   (peer dep: nostr-tools)
+import { NGE } from "nostr-game-protocol/nge";
 const nge = NGE.fromEnv();               // lee NGE_CONNECTION
 
 // 0) Config del escrow: límites, fees, métodos, transparencia.
@@ -590,7 +591,7 @@ const stop = nge.watchBet(bet.betId, (b) => render(b.status, b.seats));
 
 // 3) Reportar el ganador por seatId (vacío = empate/anulación → reembolso).
 await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
-          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado lo firma el juego (oráculo), no el marcador cliente.</strong> El <code>kind:31337</code> es falsificable y nunca reparte dinero. El escrow custodia el pozo y solo paga a los destinos declarados en <code>createBet</code>: un <code>secret</code> filtrado puede elegir ganador, <strong>no redirigir fondos</strong>. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>. SDK: <code>sdk/nge.ts</code> (solo depende de <code>nostr-tools</code>).</p></div>
+          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado lo firma el juego (oráculo), no el marcador cliente.</strong> El <code>kind:31337</code> es falsificable y nunca reparte dinero. El escrow custodia el pozo y solo paga a los destinos declarados en <code>createBet</code>: un <code>secret</code> filtrado puede elegir ganador, <strong>no redirigir fondos</strong>. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>. SDK: paquete <code>nostr-game-protocol</code> (subpath <code>/nge</code>; peer dep <code>nostr-tools</code>).</p></div>
           <div class="hint"><span style="font-size:15px">💡</span><p><strong>Serverless:</strong> usá <code>nge.pollBet</code> en vez de <code>watchBet</code> (solo polling, sin listener persistente). La entrega es at-least-once: el SDK reenvía el mismo request firmado hasta la response y el escrow deduplica por id — reintentar nunca duplica apuestas.</p></div>
         </div>
       </details>
@@ -653,7 +654,7 @@ await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
       <div class="check"><span class="cb aurora">N2</span><span class="t">Presencia NIP-38 (kind 30315) con expiration. Opcional.</span></div>
       <div class="check"><span class="cb aurora">N2</span><span class="t">Reseñas y logros: kind 1 con tag a = GAME. Opcional.</span></div>
       <div class="check"><span class="cb corona">N3</span><span class="t">Zaps NIP-57 para propinas y premios sin custodia. Opcional.</span></div>
-      <div class="check"><span class="cb corona">NGE</span><span class="t">Apuestas con custodia → canal NGE (URI + SDK sdk/nge.ts). Opcional.</span></div>
+      <div class="check"><span class="cb corona">NGE</span><span class="t">Apuestas con custodia → canal NGE (URI + paquete nostr-game-protocol). Opcional.</span></div>
       <div class="check"><span class="cb corona">1.0</span><span class="t">Compra de juego de pago y webhooks → API REST 1.0.</span></div>
     </div>
   </section>
