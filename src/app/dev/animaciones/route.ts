@@ -262,6 +262,9 @@ const STYLE = `
   .fs-body { flex: 1; min-height: 0; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: #050409; display: flex; flex-direction: column; --acc: #9d8cff; --acc-rgb: 157,140,255; }
   .fs-body iframe { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: #050409; }
   .fs-body .transport { border-top: 1px solid rgba(255,255,255,0.1); background: rgba(12,9,20,0.85); padding: 12px 18px; }
+  /* Capa que capta el toque sobre el video (los eventos no salen del iframe).
+     Solo activa en modo inmersivo apaisado; en vertical/desktop no estorba. */
+  .fs-tap { display: none; }
 
   @keyframes an-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
   @keyframes an-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -269,9 +272,78 @@ const STYLE = `
   .an-float { animation: an-float 6s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) { .an-orbit, .an-float, .an-play { animation: none !important; } }
 
+  /* ── Responsive ──────────────────────────────────────────────────────────
+     La barra de transporte es lo que más se aprieta (4 botones + track + tiempo):
+     se compacta por pasos. Tipografías, paddings y layout del topbar/cabeceras
+     escalan con el ancho. */
+  @media (max-width: 880px) {
+    .wrap { padding: 28px 20px 80px; }
+    .topbar { margin-bottom: 40px; }
+    .anims { gap: 46px; }
+    .anim-frame { border-radius: 18px; }
+    .anim-title { font-size: 28px; }
+  }
+
   @media (max-width: 640px) {
+    .wrap { padding: 22px 15px 64px; }
+    .topbar { gap: 12px; margin-bottom: 32px; }
+    .top-links { order: 3; width: 100%; gap: 16px; font-size: 13px; }
+    .hero { margin-bottom: 16px; }
+    .lead { font-size: 16px; }
+    .chips { margin-bottom: 28px; }
+    .anims { gap: 40px; }
+    .anim-head { margin-bottom: 14px; }
+    .anim-tags { gap: 8px; }
+    .anim-title { font-size: 24px; }
+    .anim-desc { font-size: 14.5px; }
     .anim-when { max-width: none; }
+    .an-play { width: 60px; height: 60px; }
+    .an-play .tri { border-left-width: 18px; border-top-width: 11px; border-bottom-width: 11px; }
+    .transport { gap: 8px; padding: 10px 12px; }
+    .tbtn { width: 32px; height: 32px; }
+    .tbtn.pp { width: 38px; height: 38px; }
     .time .sep { display: none; }
+    .note.kbd { margin-top: 40px; }
+    .note { padding: 14px 16px; }
+    .fs { padding: 12px; }
+    .fs-body .transport { padding: 10px 12px; }
+  }
+
+  @media (max-width: 400px) {
+    .wrap { padding: 20px 12px 56px; }
+    .transport { gap: 6px; padding: 9px 10px; }
+    .tbtn { width: 30px; height: 30px; }
+    .tbtn.pp { width: 34px; height: 34px; }
+    .time { font-size: 10.5px; }
+    .fs-btn { font-size: 10px; padding: 6px 10px; }
+    .anim-title { font-size: 22px; }
+  }
+
+  /* Celular en horizontal (apaisado, alto chico): pantalla completa INMERSIVA.
+     El video ocupa toda la pantalla (sin padding, borde ni header en el layout);
+     título y barra pasan a ser overlays translúcidos que se autoocultan para no
+     tapar los subtítulos. Tocar el video los muestra/oculta (ver JS: fs-tap +
+     controls-hidden). El salto a pantalla completa al girar lo dispara el JS. */
+  @media (orientation: landscape) and (max-height: 540px) {
+    .fs { padding: 0; }
+    .fs-body { border-radius: 0; border: 0; }
+    .fs-tap { display: block; position: absolute; inset: 0; z-index: 2; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
+    .fs-top {
+      position: absolute; z-index: 6; top: 0; left: 0; right: 0;
+      margin: 0; padding: 10px 16px;
+      background: linear-gradient(to bottom, rgba(5,4,9,0.85), rgba(5,4,9,0.35) 60%, transparent);
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .fs-title { font-size: 10px; }
+    .fs-close { padding: 6px 12px; }
+    .fs-body .transport {
+      position: absolute; z-index: 6; left: 0; right: 0; bottom: 0;
+      border-top: 0; padding: 16px 18px 12px;
+      background: linear-gradient(to top, rgba(5,4,9,0.92), rgba(5,4,9,0.4) 60%, transparent);
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .fs.controls-hidden .fs-top { opacity: 0; transform: translateY(-100%); pointer-events: none; }
+    .fs.controls-hidden .fs-body .transport { opacity: 0; transform: translateY(100%); pointer-events: none; }
   }
 `;
 
@@ -335,6 +407,7 @@ const BODY = `
   </div>
   <div class="fs-body">
     <iframe id="fs-iframe" title="Animación en pantalla completa"></iframe>
+    <button class="fs-tap" id="fs-tap" type="button" aria-label="Mostrar u ocultar controles"></button>
     <div class="transport" id="fs-transport">${transportBar()}</div>
   </div>
 </div>
@@ -507,6 +580,11 @@ const SCRIPT = `
   var fsFrame = document.getElementById("fs-iframe");
   var fsCtrl = makeController(function () { return fsFrame; }, document.getElementById("fs-transport"));
   var fsIv = null;
+  // La última animación con la que interactuó el usuario (para el auto-apaisado).
+  var activeAnim = null;
+  // true solo si la pantalla completa la abrió el giro a horizontal (no el botón),
+  // para saber si al volver a vertical debemos cerrarla nosotros.
+  var fsAutoOpened = false;
   function openFs(src, title) {
     document.getElementById("fs-title").textContent = title;
     fsCtrl.reset();
@@ -519,12 +597,42 @@ const SCRIPT = `
   function closeFs() {
     fs.classList.remove("open");
     fs.setAttribute("aria-hidden", "true");
+    fsAutoOpened = false;
     if (fsIv) { clearInterval(fsIv); fsIv = null; }
     fsFrame.removeAttribute("src");
   }
   document.getElementById("fs-close").addEventListener("click", closeFs);
   fs.addEventListener("click", function (e) { if (e.target === fs) closeFs(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && fs.classList.contains("open")) closeFs(); });
+
+  // ── Ver en horizontal al girar el celu ────────────────────────────────────
+  // En un celular apaisado (alto chico) el frame 16:9 embebido no entra a lo
+  // alto; en vez de scrollear, la animación que estás mirando salta a pantalla
+  // completa —que ya llena el ancho— y al volver a vertical se cierra sola.
+  // Solo celulares: max-height 540px excluye desktop y tablets en horizontal.
+  var mqPhoneLandscape = window.matchMedia("(orientation: landscape) and (max-height: 540px)");
+  function pickAnim() {
+    if (activeAnim) return activeAnim; // la que se está reproduciendo manda
+    var best = null, bestVis = -1, vh = window.innerHeight; // si no, la más visible
+    document.querySelectorAll(".anim").forEach(function (sec) {
+      var r = sec.getBoundingClientRect();
+      var vis = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+      if (vis > bestVis) { bestVis = vis; best = sec; }
+    });
+    return best ? { src: best.getAttribute("data-src"), title: best.getAttribute("data-title") } : null;
+  }
+  function onPhoneLandscape() {
+    if (mqPhoneLandscape.matches) {
+      if (!fs.classList.contains("open")) {
+        var a = pickAnim();
+        if (a) { openFs(a.src, a.title); fsAutoOpened = true; }
+      }
+    } else if (fsAutoOpened && fs.classList.contains("open")) {
+      closeFs();
+    }
+  }
+  if (mqPhoneLandscape.addEventListener) mqPhoneLandscape.addEventListener("change", onPhoneLandscape);
+  else if (mqPhoneLandscape.addListener) mqPhoneLandscape.addListener(onPhoneLandscape);
 
   // ── Cada sección de animación ─────────────────────────────────────────────
   document.querySelectorAll(".anim").forEach(function (sec) {
@@ -560,6 +668,7 @@ const SCRIPT = `
       var fail = media.querySelector(".anim-fail");
       if (fail) fail.remove();
       if (frame) { frame.remove(); frame = null; }
+      if (activeAnim && activeAnim.src === src) activeAnim = null;
       poster.style.display = "";
       transport.hidden = true;
       fsBtn.hidden = true;
@@ -573,6 +682,7 @@ const SCRIPT = `
       frame.setAttribute("loading", "lazy");
       frame.addEventListener("load", function () { hideChrome(frame); });
       frame.src = src;
+      activeAnim = { src: src, title: title };
       media.insertBefore(frame, poster);
       poster.style.display = "none";
       fsBtn.hidden = false;
@@ -590,7 +700,7 @@ const SCRIPT = `
       }, 250);
     });
 
-    fsBtn.addEventListener("click", function () { openFs(src, title); });
+    fsBtn.addEventListener("click", function () { fsAutoOpened = false; openFs(src, title); });
   });
 })();
 `;
