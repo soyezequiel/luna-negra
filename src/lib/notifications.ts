@@ -31,6 +31,8 @@ export type NotifItem = {
   rating?: number | null;
   /** Texto libre (comentario de zap, cuerpo de reseña/comentario). */
   text?: string | null;
+  /** Apuesta: cómo terminó para el usuario (define ícono/color de la fila). */
+  betResult?: "won" | "lost" | "tie" | "claimable" | null;
   /** Apuesta: wallet a la que llegó el premio (lud16/LN address). */
   payoutDestination?: string | null;
   /** Apuesta: cómo salió la plata (zap | lnurl | withdraw). */

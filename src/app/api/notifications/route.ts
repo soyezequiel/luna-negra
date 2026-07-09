@@ -163,6 +163,8 @@ export async function GET(): Promise<NextResponse> {
       take: PER_SOURCE,
     }),
   ]);
+  const betResultOf = (result: string, claimable: boolean): "won" | "lost" | "tie" | "claimable" =>
+    claimable ? "claimable" : result === "won" ? "won" : result === "tie" ? "tie" : "lost";
   const betText = (result: string, claimable: boolean): string =>
     claimable
       ? "Tu premio está listo para cobrar"
@@ -181,6 +183,7 @@ export async function GET(): Promise<NextResponse> {
       gameTitle: part.bet.game.title,
       amountSats: part.payoutMsat ? Math.floor(Number(part.payoutMsat) / 1000) : null,
       text: betText(part.result, claimable),
+      betResult: betResultOf(part.result, claimable),
       payoutDestination: part.payoutStatus === "paid" ? part.payoutDestination : null,
       href: `/bets/${part.bet.id}`,
     });
@@ -195,6 +198,7 @@ export async function GET(): Promise<NextResponse> {
       gameTitle: part.bet.game.title,
       amountSats: part.payoutMsat ? Math.floor(Number(part.payoutMsat) / 1000) : null,
       text: betText(part.result, claimable),
+      betResult: betResultOf(part.result, claimable),
       payoutDestination: part.payoutStatus === "paid" ? part.payoutDestination : null,
       payoutKind: part.payoutStatus === "paid" ? part.payoutKind : null,
       href: `/apuestas/${part.bet.id}`,

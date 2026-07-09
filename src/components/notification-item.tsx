@@ -21,6 +21,26 @@ export const NOTIF_DOT: Record<NotifType, string> = {
   bet: "var(--ln-aurora)",
 };
 
+type BetResult = NonNullable<NotifItem["betResult"]>;
+
+/** Ícono, color y título propios de cada desenlace de apuesta. */
+const BET_META: Record<BetResult, { icon: string; dot: string; title: string }> = {
+  won: { icon: "🏆", dot: "var(--win)", title: "Ganaste tu apuesta" },
+  lost: { icon: "✕", dot: "var(--lose)", title: "Perdiste tu apuesta" },
+  tie: { icon: "🤝", dot: "var(--ln-luna)", title: "Empate en tu apuesta" },
+  claimable: { icon: "💰", dot: "var(--ln-corona)", title: "Premio listo para cobrar" },
+};
+
+function betResultOf(it: NotifItem): BetResult {
+  if (it.betResult) return it.betResult;
+  // Ítems sin el campo estructurado (respuestas viejas): se infiere del texto.
+  const t = it.text ?? "";
+  if (t.includes("premio")) return "claimable";
+  if (t.startsWith("Ganaste")) return "won";
+  if (t.includes("empate")) return "tie";
+  return "lost";
+}
+
 function actorOf(it: NotifItem): string {
   return it.actorName || (it.actorNpub ? shortId(it.actorNpub) : "Alguien");
 }
@@ -39,7 +59,7 @@ export function notifTitle(it: NotifItem): string {
     case "comment":
       return `${who} comentó en ${game}`;
     case "bet":
-      return it.text ?? "Novedad en tu apuesta";
+      return BET_META[betResultOf(it)].title;
   }
 }
 
@@ -94,6 +114,14 @@ export function NotificationItemRow({
   onUndo?: (id: string) => void;
 }) {
   const sub = notifSubtitle(it);
+  // Las apuestas pintan cada desenlace distinto (ganada/perdida/empate/premio).
+  const betMeta = it.type === "bet" ? BET_META[betResultOf(it)] : null;
+  const icon = betMeta?.icon ?? NOTIF_ICON[it.type];
+  const dot = betMeta?.dot ?? NOTIF_DOT[it.type];
+  const betAmount =
+    betMeta && (betMeta === BET_META.won || betMeta === BET_META.claimable) && it.amountSats
+      ? it.amountSats
+      : null;
 
   if (pending) {
     return (
@@ -116,7 +144,7 @@ export function NotificationItemRow({
       {unread ? (
         <span
           className="absolute inset-y-0 left-0 w-0.5"
-          style={{ background: NOTIF_DOT[it.type] }}
+          style={{ background: dot }}
         />
       ) : null}
       <Link
@@ -126,13 +154,34 @@ export function NotificationItemRow({
       >
         <span
           className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px]"
-          style={{ background: `color-mix(in srgb, ${NOTIF_DOT[it.type]} 18%, transparent)` }}
+          style={{
+            background: `color-mix(in srgb, ${dot} 18%, transparent)`,
+            ...(betMeta === BET_META.lost ? { color: dot, fontWeight: 700 } : null),
+          }}
         >
-          {NOTIF_ICON[it.type]}
+          {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium leading-snug text-ln-text">
-            {notifTitle(it)}
+          <span className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "min-w-0 flex-1 text-[13px] font-medium leading-snug text-ln-text",
+                truncate && "truncate",
+              )}
+            >
+              {notifTitle(it)}
+            </span>
+            {betAmount ? (
+              <span
+                className="shrink-0 rounded-full px-1.5 py-px text-[11px] font-bold"
+                style={{
+                  color: dot,
+                  background: `color-mix(in srgb, ${dot} 14%, transparent)`,
+                }}
+              >
+                +{satsLabel(betAmount)} sats
+              </span>
+            ) : null}
           </span>
           {sub ? (
             <span
