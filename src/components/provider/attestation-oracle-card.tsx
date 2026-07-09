@@ -142,7 +142,7 @@ export function AttestationOracleCard({ gameId }: { gameId: string }) {
           <div className="rounded-ln-md border border-ln-border bg-ln-bg-deep/60 p-3">
             <p className="text-xs text-muted">
               1) En el repo de tu juego, firmá este reto con la clave del oráculo
-              (la misma de <code>LUNA_NEGRA_NGP_NSEC</code>):
+              (la misma de <code>NGP_ATTESTATION_ORACLE_NSEC</code>):
             </p>
             <code className="mt-1 block break-all rounded-ln-sm bg-black/20 px-2 py-1 font-mono text-xs text-ink">
               node scripts/attestation-oracle-proof.mjs &quot;{state.challenge}&quot;
