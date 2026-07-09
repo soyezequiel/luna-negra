@@ -484,8 +484,11 @@ function GameCoordRow({ coord, pending }: { coord: string; pending?: boolean }) 
   return (
     <div className="mt-2.5 rounded-ln-md border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-ln-faint">
+        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-ln-faint">
           Coordenada del juego
+          <code className="rounded bg-blue/10 px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-blue">
+            gameCoord
+          </code>
         </span>
         {pending ? (
           <span
