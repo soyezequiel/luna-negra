@@ -90,106 +90,113 @@ export default async function ApuestaV2Page({
     : null;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
+    <main className="mx-auto max-w-6xl px-4 py-8">
       <BetLiveRefresh active={live} />
-      <div className="rounded-ln-xl border border-ln-border bg-ln-card p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-ln-faint">Apuesta ⚡ v2</p>
-            <h1 className="mt-1 font-display text-xl font-bold text-white">
-              {bet.game.title}
-            </h1>
-          </div>
-          <span className="rounded-ln-lg border border-ln-corona/40 bg-ln-corona/10 px-3 py-1 text-xs font-semibold text-ln-corona-bright">
-            {STATUS_LABEL[status] ?? status}
-          </span>
-        </div>
 
-        <p className="mt-3 text-sm text-ln-muted">
-          {bet.victoryCondition || "Gana según el juego."} El ganador se lleva el pozo
-          menos {bet.feePct}% de la casa
-          {bet.devFeePct > 0 ? ` + ${bet.devFeePct}% del desarrollador` : ""}. Todo se
-          mueve por zaps públicos.
-        </p>
+      {/* En desktop: resumen + acción a la izquierda (angosto), detalle ancho a
+          la derecha. En móvil/tablet colapsa a una sola columna apilada. */}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        {/* ── Columna izquierda: resumen del contrato + acción del jugador ── */}
+        <div className="space-y-4 lg:sticky lg:top-4">
+          <div className="rounded-ln-xl border border-ln-border bg-ln-card p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-ln-faint">Apuesta ⚡ v2</p>
+                <h1 className="mt-1 font-display text-xl font-bold text-white">
+                  {bet.game.title}
+                </h1>
+              </div>
+              <span className="shrink-0 rounded-ln-lg border border-ln-corona/40 bg-ln-corona/10 px-3 py-1 text-xs font-semibold text-ln-corona-bright">
+                {STATUS_LABEL[status] ?? status}
+              </span>
+            </div>
 
-        {/* Economía */}
-        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-ln-faint">Stake</dt>
-            <dd className="font-semibold text-ln-text">{sats(bet.stakeMsat)} sats</dd>
-          </div>
-          <div>
-            <dt className="text-ln-faint">Pozo</dt>
-            <dd className="font-semibold text-ln-text">{sats(econ.potMsat)} sats</dd>
-          </div>
-          <div>
-            <dt className="text-ln-faint">Premio neto</dt>
-            <dd className="font-semibold text-ln-text">{sats(econ.netMsat)} sats</dd>
-          </div>
-          <div>
-            <dt className="text-ln-faint">Depósitos</dt>
-            <dd className="font-semibold text-ln-text">
-              {paidCount}/{bet.participants.length}
-            </dd>
-          </div>
-        </dl>
+            <p className="mt-3 text-sm text-ln-muted">
+              {bet.victoryCondition || "Gana según el juego."} El ganador se lleva el pozo
+              menos {bet.feePct}% de la casa
+              {bet.devFeePct > 0 ? ` + ${bet.devFeePct}% del desarrollador` : ""}. Todo se
+              mueve por zaps públicos.
+            </p>
 
-        {anchorReal ? (
-          <a
-            href={njump(bet.anchorEventId!)}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 inline-block text-xs text-ln-corona-bright hover:underline"
-          >
-            📜 Ver contrato en Nostr ({short(bet.anchorEventId!)})
-          </a>
-        ) : null}
-      </div>
+            {/* Economía: tarjetas de 2×2 para que respiren en la columna angosta */}
+            <dl className="mt-4 grid grid-cols-2 gap-2.5 text-sm">
+              {[
+                { k: "Stake", v: `${sats(bet.stakeMsat)} sats` },
+                { k: "Pozo", v: `${sats(econ.potMsat)} sats` },
+                { k: "Premio neto", v: `${sats(econ.netMsat)} sats`, hi: true },
+                { k: "Depósitos", v: `${paidCount}/${bet.participants.length}` },
+              ].map((s) => (
+                <div
+                  key={s.k}
+                  className="rounded-ln-lg border border-ln-border bg-ln-bg-deep/50 px-3 py-2"
+                >
+                  <dt className="text-[11px] text-ln-faint">{s.k}</dt>
+                  <dd
+                    className={`mt-0.5 font-semibold ${s.hi ? "text-ln-corona-bright" : "text-ln-text"}`}
+                  >
+                    {s.v}
+                  </dd>
+                </div>
+              ))}
+            </dl>
 
-      {/* Tarjeta de depósito del propio jugador */}
-      {me && depositOpen && me.depositStatus !== "paid" ? (
-        <div className="mt-4">
-          <ZapDepositCard betId={bet.id} stakeSats={sats(bet.stakeMsat)} />
-        </div>
-      ) : null}
-      {me && me.depositStatus === "paid" && bet.status === "pending_deposits" ? (
-        <p className="mt-4 rounded-ln-lg border border-ln-corona/40 bg-ln-corona/10 p-3 text-center text-sm text-ln-corona-bright">
-          ✅ Ya depositaste. Esperando al resto de los jugadores.
-        </p>
-      ) : null}
-
-      {/* Detalle completo: flujo de la plata (apostadores → pozo → comisiones +
-          ganador), tabla de participantes con depósitos/cobros y ledger. Mismo
-          componente que el panel admin, alimentado con datos públicos. */}
-      <div className="mt-4 rounded-ln-xl border border-ln-border bg-ln-card p-6">
-        <h2 className="font-display text-sm font-bold text-white">Detalle</h2>
-        <BetDetailView d={detail} meNpub={me?.npub} />
-
-        {(status === "settled" || status === "refunded") &&
-        (bet.settleNoteId || resultNevent) ? (
-          <div className="mt-3 flex flex-wrap gap-3 border-t border-ln-border pt-3 text-xs">
-            {bet.settleNoteId ? (
+            {anchorReal ? (
               <a
-                href={njump(bet.settleNoteId)}
+                href={njump(bet.anchorEventId!)}
                 target="_blank"
                 rel="noreferrer"
-                className="text-ln-corona-bright hover:underline"
+                className="mt-4 inline-block text-xs text-ln-corona-bright hover:underline"
               >
-                🧾 Nota de liquidación
-              </a>
-            ) : null}
-            {resultNevent ? (
-              <a
-                href={njump(resultNevent)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-ln-corona-bright hover:underline"
-              >
-                📣 Evento de resultado
+                📜 Ver contrato en Nostr ({short(bet.anchorEventId!)})
               </a>
             ) : null}
           </div>
-        ) : null}
+
+          {/* Tarjeta de depósito del propio jugador */}
+          {me && depositOpen && me.depositStatus !== "paid" ? (
+            <ZapDepositCard betId={bet.id} stakeSats={sats(bet.stakeMsat)} />
+          ) : null}
+          {me && me.depositStatus === "paid" && bet.status === "pending_deposits" ? (
+            <p className="rounded-ln-lg border border-ln-corona/40 bg-ln-corona/10 p-3 text-center text-sm text-ln-corona-bright">
+              ✅ Ya depositaste. Esperando al resto de los jugadores.
+            </p>
+          ) : null}
+        </div>
+
+        {/* ── Columna derecha: detalle completo (flujo de la plata, tabla de
+            participantes con depósitos/cobros, ledger). Mismo componente que el
+            panel admin, alimentado con datos públicos. Acá tiene el ancho que
+            necesita el árbol/tabla en vez de scrollear apretado. ── */}
+        <div className="min-w-0 rounded-ln-xl border border-ln-border bg-ln-card p-5 sm:p-6">
+          <h2 className="font-display text-sm font-bold text-white">Detalle</h2>
+          <BetDetailView d={detail} meNpub={me?.npub} />
+
+          {(status === "settled" || status === "refunded") &&
+          (bet.settleNoteId || resultNevent) ? (
+            <div className="mt-3 flex flex-wrap gap-3 border-t border-ln-border pt-3 text-xs">
+              {bet.settleNoteId ? (
+                <a
+                  href={njump(bet.settleNoteId)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-ln-corona-bright hover:underline"
+                >
+                  🧾 Nota de liquidación
+                </a>
+              ) : null}
+              {resultNevent ? (
+                <a
+                  href={njump(resultNevent)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-ln-corona-bright hover:underline"
+                >
+                  📣 Evento de resultado
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-6 text-center">
