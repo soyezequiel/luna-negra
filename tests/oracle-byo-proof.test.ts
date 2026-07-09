@@ -1,12 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
-import {
-  validateOracleProof,
-  oracleProofContent,
-  validateAttestationOracleProof,
-  attestationOracleProofContent,
-  ORACLE_PROOF_MAX_AGE_S,
-} from "@/lib/oracle-keys";
+import { validateOracleProof, oracleProofContent, ORACLE_PROOF_MAX_AGE_S } from "@/lib/oracle-keys";
 
 // Prueba de posesión de una clave de oráculo BYO (Slice 2, keyless). El proveedor
 // firma un evento con SU clave; Luna verifica firma + reto ligado al proveedor +
@@ -71,55 +65,5 @@ describe("validateOracleProof", () => {
     const res = validateOracleProof(PROVIDER, { foo: 1 }, NOW);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe("BAD_PROOF");
-  });
-});
-
-// Prueba de posesión del oráculo de ATESTACIONES (NGP kind:31338): mismo núcleo
-// que la BYO pero ligada al JUEGO (no al proveedor) — los retos no son
-// intercambiables entre sí ni entre juegos.
-describe("validateAttestationOracleProof", () => {
-  const GAME = "game_xyz789";
-
-  function signGameProof(sk: Uint8Array, opts: { content?: string; created_at?: number } = {}) {
-    return finalizeEvent(
-      {
-        kind: 27235,
-        created_at: opts.created_at ?? NOW,
-        tags: [],
-        content: opts.content ?? attestationOracleProofContent(GAME),
-      },
-      sk,
-    );
-  }
-
-  it("reto del juego correcto y fresco → declara la pubkey firmante", () => {
-    const sk = generateSecretKey();
-    const res = validateAttestationOracleProof(GAME, signGameProof(sk), NOW);
-    expect(res.ok).toBe(true);
-    if (res.ok) expect(res.oraclePubkey).toBe(getPublicKey(sk));
-  });
-
-  it("reto de OTRO juego → WRONG_CHALLENGE (anti-replay entre juegos)", () => {
-    const sk = generateSecretKey();
-    const proof = signGameProof(sk, { content: attestationOracleProofContent("otro_juego") });
-    const res = validateAttestationOracleProof(GAME, proof, NOW);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.code).toBe("WRONG_CHALLENGE");
-  });
-
-  it("el reto BYO del proveedor NO sirve para atestaciones (propósitos separados)", () => {
-    const sk = generateSecretKey();
-    const proof = signGameProof(sk, { content: oracleProofContent(PROVIDER) });
-    const res = validateAttestationOracleProof(GAME, proof, NOW);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.code).toBe("WRONG_CHALLENGE");
-  });
-
-  it("prueba vieja → STALE", () => {
-    const sk = generateSecretKey();
-    const proof = signGameProof(sk, { created_at: NOW - ORACLE_PROOF_MAX_AGE_S - 1 });
-    const res = validateAttestationOracleProof(GAME, proof, NOW);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.code).toBe("STALE");
   });
 });

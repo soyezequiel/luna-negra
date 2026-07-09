@@ -106,36 +106,6 @@ export type SelfSignedResult =
   | { ok: false; code: string; message: string };
 
 /**
- * Núcleo de la prueba de posesión: firma válida, `content` == el reto esperado
- * (anti-replay entre sujetos) y `created_at` dentro de la ventana (anti-replay
- * temporal). PURO. Lo comparten la declaración BYO (por proveedor) y la del
- * oráculo de atestaciones (por juego).
- */
-function validateProofOfPossession(
-  expectedContent: string,
-  proof: Event,
-  nowS: number,
-): SelfSignedResult {
-  if (!proof || typeof proof !== "object" || typeof proof.pubkey !== "string") {
-    return { ok: false, code: "BAD_PROOF", message: "Falta el evento de prueba firmado" };
-  }
-  if (!verifyEvent(proof)) {
-    return { ok: false, code: "BAD_SIGNATURE", message: "La firma de la prueba es inválida" };
-  }
-  if (proof.content !== expectedContent) {
-    return {
-      ok: false,
-      code: "WRONG_CHALLENGE",
-      message: "El content de la prueba no coincide con el reto esperado",
-    };
-  }
-  if (Math.abs(nowS - (proof.created_at ?? 0)) > ORACLE_PROOF_MAX_AGE_S) {
-    return { ok: false, code: "STALE", message: "La prueba expiró; firmá una nueva" };
-  }
-  return { ok: true, oraclePubkey: proof.pubkey };
-}
-
-/**
  * Valida el evento de prueba de posesión de una clave de oráculo BYO. PURO (no toca
  * DB) para poder testear la seguridad sin relays ni prisma. Reglas: firma válida,
  * `content` == el reto ligado a ESTE proveedor (anti-replay entre proveedores),
@@ -147,34 +117,23 @@ export function validateOracleProof(
   proof: Event,
   nowS: number = Math.floor(Date.now() / 1000),
 ): SelfSignedResult {
-  return validateProofOfPossession(oracleProofContent(providerId), proof, nowS);
-}
-
-// ── Oráculo de ATESTACIONES (NGP kind:31338, por juego) ──────────────────────
-//
-// Distinto del oráculo de APUESTAS de arriba: esta clave la custodia SIEMPRE el
-// proveedor (su game server firma los 31338 con ella; Luna nunca firma) y se
-// declara POR JUEGO. El artículo 30023 del juego la publica como tag
-// ["oracle", pk] — la delegación que el verificador cruza contra el firmante.
-// No participa de NGE: `ensureManagedOracle` no la toca.
-
-/** Reto que el proveedor firma con la clave de atestaciones para declararla.
- *  Ligado al JUEGO (anti-replay entre juegos) y al propósito. */
-export function attestationOracleProofContent(gameId: string): string {
-  return `luna-negra:attestation-oracle:claim:${gameId}`;
-}
-
-/**
- * Valida la prueba de posesión de la clave de atestaciones de UN juego. PURO.
- * En éxito devuelve la pubkey firmante = la clave a declarar en
- * `Game.attestationOraclePubkey`.
- */
-export function validateAttestationOracleProof(
-  gameId: string,
-  proof: Event,
-  nowS: number = Math.floor(Date.now() / 1000),
-): SelfSignedResult {
-  return validateProofOfPossession(attestationOracleProofContent(gameId), proof, nowS);
+  if (!proof || typeof proof !== "object" || typeof proof.pubkey !== "string") {
+    return { ok: false, code: "BAD_PROOF", message: "Falta el evento de prueba firmado" };
+  }
+  if (!verifyEvent(proof)) {
+    return { ok: false, code: "BAD_SIGNATURE", message: "La firma de la prueba es inválida" };
+  }
+  if (proof.content !== oracleProofContent(providerId)) {
+    return {
+      ok: false,
+      code: "WRONG_CHALLENGE",
+      message: "El content de la prueba no coincide con el reto de este proveedor",
+    };
+  }
+  if (Math.abs(nowS - (proof.created_at ?? 0)) > ORACLE_PROOF_MAX_AGE_S) {
+    return { ok: false, code: "STALE", message: "La prueba expiró; firmá una nueva" };
+  }
+  return { ok: true, oraclePubkey: proof.pubkey };
 }
 
 /**

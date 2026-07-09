@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { Prisma, type Game } from "@prisma/client";
-import type { Event } from "nostr-tools";
+import { nip19 } from "nostr-tools";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ownedGame } from "@/lib/provider";
 import { syncGameToNostr } from "@/lib/announce-game";
-import {
-  attestationOracleProofContent,
-  validateAttestationOracleProof,
-} from "@/lib/oracle-keys";
 
 /**
  * Oráculo de ATESTACIONES del juego (NGP kind:31338, spec §3.4): la pubkey con la
@@ -16,9 +12,11 @@ import {
  * la publica como tag ["oracle", pk] — la DELEGACIÓN que un verificador cruza
  * contra el firmante de cada 31338.
  *
- * - GET: estado actual + el reto a firmar para declararla.
- * - POST { proof }: declara la clave con PRUEBA DE POSESIÓN (el proveedor firma el
- *   reto con la clave del oráculo; nadie declara una pubkey que no controla).
+ * - GET: estado actual.
+ * - POST { pubkey }: declara la clave (hex de 64 o npub). Sin prueba de posesión:
+ *   el único que puede declarar es el dueño autenticado del juego, y una clave
+ *   equivocada solo rompe SU tier verificado (las atestaciones firman el gameCoord
+ *   adentro, así que declarar una clave ajena no "roba" eventos de otro juego).
  * - DELETE: la quita (el juego deja de tener tier verificado).
  *
  * Es POR JUEGO y distinta de Provider.oraclePubkey (el oráculo de APUESTAS, que
@@ -29,6 +27,25 @@ import {
  */
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** Normaliza hex de 64 o npub a hex minúsculas, o null si no es una pubkey. */
+function normalizePubkey(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  let s = raw.trim();
+  if (s.startsWith("npub")) {
+    try {
+      const d = nip19.decode(s);
+      if (d.type !== "npub") return null;
+      s = d.data as string;
+    } catch {
+      return null;
+    }
+  }
+  s = s.toLowerCase();
+  return HEX64.test(s) ? s : null;
+}
 
 /** Actualiza la pubkey y propaga al artículo según régimen. Devuelve {game, needsSignature}. */
 async function applyOracleChange(
@@ -70,12 +87,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
   if (!owned) {
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
   }
-  return NextResponse.json({
-    oraclePubkey: owned.game.attestationOraclePubkey,
-    // El reto que el game server firma (kind:1, content exacto, created_at fresco)
-    // para probar posesión de la clave.
-    challenge: attestationOracleProofContent(owned.game.id),
-  });
+  return NextResponse.json({ oraclePubkey: owned.game.attestationOraclePubkey });
 }
 
 export async function POST(req: Request, { params }: RouteParams) {
@@ -89,23 +101,26 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Juego no encontrado" }, { status: 404 });
   }
 
-  let proof: Event;
+  let body: { pubkey?: unknown };
   try {
-    const body = await req.json();
-    proof = body?.proof;
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
-
-  const check = validateAttestationOracleProof(owned.game.id, proof);
-  if (!check.ok) {
+  const pubkey = normalizePubkey(body?.pubkey);
+  if (!pubkey) {
     return NextResponse.json(
-      { error: check.message, code: check.code },
+      { error: "La pubkey del oráculo debe ser hex de 64 o un npub válido", code: "BAD_PUBKEY" },
       { status: 400 },
     );
   }
 
-  const { game, needsSignature } = await applyOracleChange(owned, check.oraclePubkey, req);
+  // Idempotente: re-declarar la misma clave no ensucia el artículo al pedo.
+  if (owned.game.attestationOraclePubkey === pubkey) {
+    return NextResponse.json({ ok: true, oraclePubkey: pubkey, needsSignature: false });
+  }
+
+  const { game, needsSignature } = await applyOracleChange(owned, pubkey, req);
   return NextResponse.json({
     ok: true,
     oraclePubkey: game.attestationOraclePubkey,
