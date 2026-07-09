@@ -27,7 +27,7 @@ import {
   signAndSubmit,
   signGameDeletion,
 } from "@/lib/game-article-client";
-import { gameArticleNaddrFromCoord } from "@/lib/game-article";
+import { gameArticleCoord, gameArticleNaddrFromCoord } from "@/lib/game-article";
 import { RELAYS } from "@/lib/constants";
 
 // URL de njump.me (gateway web de Nostr) para abrir el artículo del juego en
@@ -38,6 +38,58 @@ function gameNjumpUrl(coord: string | null): string | null {
   // encuentren el evento aunque no lo tengan cacheado.
   const naddr = gameArticleNaddrFromCoord(coord, RELAYS.slice(0, 3));
   return naddr ? `https://njump.me/${naddr}` : null;
+}
+
+// Fila copiable con el `gameCoord` de un juego (la coord NGP `30023:<pubkey>:<slug>`
+// que el juego usa en el tag `a`). `pending` = todavía no publicado, la coord es la
+// prevista. Reutilizada en la tarjeta NGP de la pestaña Integración.
+function CoordLine({
+  title,
+  coord,
+  pending,
+}: {
+  title: string;
+  coord: string;
+  pending: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(coord);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard bloqueado: el texto queda visible para copiar a mano */
+    }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-24 shrink-0 truncate text-[11px] text-muted" title={title}>
+        {title}
+      </span>
+      <code
+        className="min-w-0 flex-1 truncate rounded bg-black/30 px-2 py-1 font-mono text-[11px] text-ink"
+        title={coord}
+      >
+        {coord}
+      </code>
+      {pending ? (
+        <span
+          className="shrink-0 rounded-full bg-ln-luna/10 px-1.5 py-0.5 text-[9px] font-semibold text-ln-luna"
+          title="El juego todavía no se publicó: esta es la coord que tendrá al publicarse."
+        >
+          al publicar
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={copy}
+        className="shrink-0 rounded-full border border-ln-border/70 px-2.5 py-1 text-[10px] font-semibold text-ln-luna hover:bg-white/5"
+      >
+        {copied ? "Copiado ✓" : "Copiar"}
+      </button>
+    </div>
+  );
 }
 
 import { hueFromSlug, satsLabel } from "@/lib/format";
@@ -511,6 +563,18 @@ export default function ProviderPage() {
 
   const selectedGameId = envGameId || games[0]?.id || "";
 
+  // gameCoord de un juego para mostrarlo en la tarjeta NGP: la REAL si ya se publicó
+  // (Game.nostrCoord), o la PREVISTA (de la pubkey del proveedor logueado + slug) si
+  // todavía no. Los legacy sin publicar (articleSigner "store") no la exponen acá: su
+  // coord la arma la tienda al aprobar.
+  const coordFor = (g: Game): { coord: string | null; pending: boolean } => {
+    if (g.nostrCoord) return { coord: g.nostrCoord, pending: false };
+    if (g.articleSigner === "provider" && user?.pubkey) {
+      return { coord: gameArticleCoord(user.pubkey, g.slug), pending: true };
+    }
+    return { coord: null, pending: true };
+  };
+
   // Sin perfil aún: pantalla enfocada en crearlo (sin pestañas ni KPIs).
   if (!provider) {
     return (
@@ -980,6 +1044,36 @@ export default function ProviderPage() {
               <strong>NGE</strong>: una sola credencial (<code>NGE_CONNECTION</code>)
               por juego, más abajo — sin exponer nada en relays públicos.
             </p>
+
+            {/* La coord concreta de cada juego, copiable: es de acá de donde el dev
+                saca el gameCoord (mejor que hardcodear leyendo el slug de los relays). */}
+            {games.some((g) => coordFor(g).coord) ? (
+              <div className="mt-3 rounded-ln-md border border-ln-border/60 bg-ln-bg-deep/40 p-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-faint">
+                    Coordenada de tus juegos
+                  </span>
+                  <code className="rounded bg-ln-luna/10 px-1.5 py-0.5 font-mono text-[10px] text-ln-luna">
+                    gameCoord
+                  </code>
+                </div>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {games.map((g) => {
+                    const { coord, pending } = coordFor(g);
+                    return coord ? (
+                      <CoordLine key={g.id} title={g.title} coord={coord} pending={pending} />
+                    ) : null;
+                  })}
+                </div>
+                <p className="mt-2 text-[10.5px] leading-snug text-faint">
+                  Es el <code>gameCoord</code> que tu juego pone en el tag <code>a</code> de
+                  sus eventos NGP (marcador <code>kind:31337</code>, presencia). En runtime,
+                  fuente canónica: <code>GET /api/v1/session</code> → <code>gameCoord</code>.
+                  No la hardcodees: si cambia el slug, queda vieja y Luna deja de detectar.
+                </p>
+              </div>
+            ) : null}
+
             <div className="mt-3 flex flex-wrap gap-2">
               <Link href="/provider/integracion" className="btn btn-outline">
                 Ver estado de integración

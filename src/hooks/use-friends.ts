@@ -52,11 +52,14 @@ type Known = {
 // volver, mientras se refresca en segundo plano desde los relays. ---
 const cacheKey = (pubkey: string) => `friends:${pubkey}`;
 
-// Cadencia del poll de estados NIP-38. El juego re-publica su presencia cada
-// ~120s (TTL 240s), así que 30s da una detección de ~medio minuto en el peor
-// caso sin castigar los relays (una query por tick, sólo si la pestaña está
-// visible y hay contactos cargados).
-const STATUS_POLL_MS = 30_000;
+// Cadencia del poll de estados NIP-38. Como kind:30315 es reemplazable, el relay
+// siempre devuelve el estado vigente: sondear más rápido que la re-publicación del
+// juego (~120s) NO trae nada viejo, sólo detecta antes al amigo que empieza a
+// jugar. Bajado a 10s (era 30s → detección de ~1min en el peor caso) para que
+// "Jugando X" aparezca casi en vivo; sigue siendo una sola query por tick, y sólo
+// mientras la pestaña está visible. Además refrescamos al toque al volver el foco
+// (ver el listener de visibilidad más abajo).
+const STATUS_POLL_MS = 10_000;
 
 // Cadencia del poll de "conectado" (StorePresence/GamePresence). Va contra
 // nuestra propia DB (una query indexada, barata), no contra relays, así que lo
@@ -302,7 +305,20 @@ export function useFriendsData(): FriendsValue {
       }
     };
     const id = window.setInterval(() => void tick(), STATUS_POLL_MS);
-    return () => window.clearInterval(id);
+    // Al volver el foco a la pestaña, refrescamos los estados de una (sin esperar
+    // al próximo tick): así un amigo que empezó a jugar mientras estabas en otra
+    // pestaña aparece "Jugando X" apenas volvés. Es una sola query de estados
+    // (no el load() completo, que está aparte con su throttle de 60s).
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [user]);
 
   // Poll de "conectado" (StorePresence/GamePresence), separado del de NIP-38: va
