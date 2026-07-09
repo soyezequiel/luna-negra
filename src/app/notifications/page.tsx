@@ -8,8 +8,18 @@ import { Button } from "@/components/ui/button";
 
 export default function NotificationsPage() {
   const { user, login, loading } = useSession();
-  const { items, refreshing, refresh, seenAt, markAllSeen, dismiss, undoDismiss, pendingDismissals } =
-    useNotificationsCenter();
+  const {
+    items,
+    refreshing,
+    refresh,
+    seenAt,
+    markAllSeen,
+    markSeenItem,
+    readIds,
+    dismiss,
+    undoDismiss,
+    pendingDismissals,
+  } = useNotificationsCenter();
   // Foto de la marca al entrar, para resaltar lo que era nuevo antes de marcar leído.
   const [seenSnapshot, setSeenSnapshot] = useState<number | null>(null);
   const marked = useRef(false);
@@ -20,6 +30,16 @@ export default function NotificationsPage() {
     setSeenSnapshot(seenAt ?? 0);
     markAllSeen();
   }, [user, seenAt, markAllSeen]);
+
+  // "Marcar todo como leído": sube el snapshot a ahora (quita los resaltes) y
+  // persiste la marca en el server.
+  const markAllReadNow = () => {
+    setSeenSnapshot(Date.now());
+    markAllSeen();
+  };
+  const hasUnread =
+    items?.some((it) => it.at > (seenSnapshot ?? 0) && !readIds.has(it.id)) ??
+    false;
 
   if (loading) return null;
 
@@ -45,17 +65,27 @@ export default function NotificationsPage() {
         <h1 className="font-display text-[28px] font-extrabold tracking-tight text-white">
           Notificaciones
         </h1>
-        <button
-          onClick={() => void refresh()}
-          disabled={refreshing}
-          title="Actualizar"
-          className="text-sm text-ln-muted hover:text-white disabled:opacity-50"
-        >
-          <span className={refreshing ? "inline-block animate-spin" : undefined}>
-            ↻
-          </span>{" "}
-          Actualizar
-        </button>
+        <div className="flex items-center gap-4">
+          {hasUnread ? (
+            <button
+              onClick={markAllReadNow}
+              className="text-sm text-ln-muted hover:text-white"
+            >
+              Marcar todo como leído
+            </button>
+          ) : null}
+          <button
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            title="Actualizar"
+            className="text-sm text-ln-muted hover:text-white disabled:opacity-50"
+          >
+            <span className={refreshing ? "inline-block animate-spin" : undefined}>
+              ↻
+            </span>{" "}
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {items === null ? (
@@ -76,8 +106,9 @@ export default function NotificationsPage() {
             <li key={it.id}>
               <NotificationItemRow
                 it={it}
-                unread={it.at > (seenSnapshot ?? 0)}
+                unread={it.at > (seenSnapshot ?? 0) && !readIds.has(it.id)}
                 onDismiss={dismiss}
+                onMarkRead={markSeenItem}
                 pending={pendingDismissals.has(it.id)}
                 onUndo={undoDismiss}
               />

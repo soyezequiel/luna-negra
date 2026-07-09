@@ -8,8 +8,17 @@ import { NotificationItemRow } from "@/components/notification-item";
 
 export function NotificationsBell() {
   const { user } = useSession();
-  const { items, unreadCount, seenAt, markAllSeen, dismiss, undoDismiss, pendingDismissals } =
-    useNotificationsCenter();
+  const {
+    items,
+    unreadCount,
+    seenAt,
+    markAllSeen,
+    markSeenItem,
+    readIds,
+    dismiss,
+    undoDismiss,
+    pendingDismissals,
+  } = useNotificationsCenter();
   const [open, setOpen] = useState(false);
   // Foto de la marca "visto hasta" al abrir: markAllSeen la avanza enseguida, así
   // que la guardamos para seguir resaltando lo que ERA nuevo mientras está abierto.
@@ -44,6 +53,17 @@ export function NotificationsBell() {
     }
   };
 
+  // "Marcar todo como leído": sube el snapshot a ahora (quita todos los resaltes)
+  // y persiste la marca en el server.
+  const markAllReadNow = () => {
+    setSeenSnapshot(Date.now());
+    markAllSeen();
+  };
+  // Hay algo resaltado en el panel (respeta el snapshot y los ✓ por ítem).
+  const hasUnread =
+    items?.some((it) => it.at > (seenSnapshot ?? 0) && !readIds.has(it.id)) ??
+    false;
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -72,15 +92,26 @@ export function NotificationsBell() {
             onClick={() => setOpen(false)}
           />
           <div className="fixed inset-x-2 top-[70px] z-[70] overflow-hidden rounded-ln-lg border border-ln-border-strong bg-ln-card shadow-ln-modal ln:absolute ln:inset-x-auto ln:right-0 ln:top-[calc(100%+8px)] ln:w-[360px]">
-            <div className="flex items-center justify-between border-b border-ln-border px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-2 border-b border-ln-border px-3.5 py-2.5">
               <span className="text-sm font-semibold text-ln-text">Notificaciones</span>
-              <Link
-                href="/notifications"
-                onClick={() => setOpen(false)}
-                className="text-xs text-ln-muted hover:text-white"
-              >
-                Ver todas
-              </Link>
+              <div className="flex shrink-0 items-center gap-3">
+                {hasUnread ? (
+                  <button
+                    type="button"
+                    onClick={markAllReadNow}
+                    className="text-xs text-ln-muted hover:text-white"
+                  >
+                    Marcar todo como leído
+                  </button>
+                ) : null}
+                <Link
+                  href="/notifications"
+                  onClick={() => setOpen(false)}
+                  className="text-xs text-ln-muted hover:text-white"
+                >
+                  Ver todas
+                </Link>
+              </div>
             </div>
             <div className="max-h-[min(60vh,calc(100vh-120px))] overflow-y-auto">
             {items === null ? (
@@ -102,10 +133,11 @@ export function NotificationsBell() {
                   <li key={it.id}>
                     <NotificationItemRow
                       it={it}
-                      unread={it.at > (seenSnapshot ?? 0)}
+                      unread={it.at > (seenSnapshot ?? 0) && !readIds.has(it.id)}
                       truncate
                       onNavigate={() => setOpen(false)}
                       onDismiss={dismiss}
+                      onMarkRead={markSeenItem}
                       pending={pendingDismissals.has(it.id)}
                       onUndo={undoDismiss}
                     />

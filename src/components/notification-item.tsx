@@ -94,6 +94,8 @@ export function notifSubtitle(it: NotifItem): string | null {
  * Una fila de notificación. `truncate` recorta la línea secundaria a una línea
  * (dropdown de la campanita); en la página /notifications se muestra completa.
  * Si se pasa `onDismiss`, aparece una ✕ para "marcar leído y que se vaya".
+ * Si se pasa `onMarkRead` y la fila está no-leída, aparece un ✓ para marcarla
+ * como leída (quita el resalte) sin quitarla de la lista.
  */
 export function NotificationItemRow({
   it,
@@ -101,6 +103,7 @@ export function NotificationItemRow({
   truncate = false,
   onNavigate,
   onDismiss,
+  onMarkRead,
   pending = false,
   onUndo,
 }: {
@@ -109,11 +112,15 @@ export function NotificationItemRow({
   truncate?: boolean;
   onNavigate?: () => void;
   onDismiss?: (id: string) => void;
+  /** Marca esta sola como leída sin quitarla (solo se muestra si está no-leída). */
+  onMarkRead?: (id: string) => void;
   /** En ventana de "Deshacer": se muestra la tira en vez del contenido. */
   pending?: boolean;
   onUndo?: (id: string) => void;
 }) {
   const sub = notifSubtitle(it);
+  // El ✓ solo tiene sentido cuando la fila está no-leída.
+  const showMarkRead = unread && !!onMarkRead;
   // Las apuestas pintan cada desenlace distinto (ganada/perdida/empate/premio).
   const betMeta = it.type === "bet" ? BET_META[betResultOf(it)] : null;
   const icon = betMeta?.icon ?? NOTIF_ICON[it.type];
@@ -150,7 +157,10 @@ export function NotificationItemRow({
       <Link
         href={it.href}
         onClick={onNavigate}
-        className="flex gap-2.5 py-3 pl-3.5 pr-9 transition-colors hover:bg-white/5"
+        className={cn(
+          "flex gap-2.5 py-3 pl-3.5 transition-colors hover:bg-white/5",
+          showMarkRead ? "pr-[3.75rem]" : "pr-9",
+        )}
       >
         <span
           className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px]"
@@ -198,6 +208,21 @@ export function NotificationItemRow({
           </span>
         </span>
       </Link>
+      {showMarkRead ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onMarkRead(it.id);
+          }}
+          aria-label="Marcar como leída"
+          title="Marcar como leída"
+          className="absolute right-8 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-ln-faint transition-colors hover:bg-white/10 hover:text-ln-luna"
+        >
+          ✓
+        </button>
+      ) : null}
       {onDismiss ? (
         <button
           type="button"

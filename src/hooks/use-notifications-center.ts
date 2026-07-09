@@ -31,6 +31,10 @@ export type NotificationsCenterValue = {
   refresh: () => Promise<void>;
   /** Marca todo como leído (avanza la marca "visto hasta" a ahora). */
   markAllSeen: () => void;
+  /** Marca una sola notificación como leída (quita el resalte) sin quitarla. */
+  markSeenItem: (id: string) => void;
+  /** Ids marcados como leídos a mano en esta sesión (para quitar el resalte). */
+  readIds: Set<string>;
   /** Descarta una notificación: abre una ventana de "Deshacer" y luego persiste. */
   dismiss: (id: string) => void;
   /** Cancela un descarte mientras está en la ventana de "Deshacer". */
@@ -73,6 +77,10 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
   const [items, setItems] = useState<NotifItem[] | null>(null);
   const [seenAt, setSeenAt] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Ítems marcados como leídos a mano (botón ✓). Efímero: el resalte "no leído"
+  // ya es de sesión (contra `seenSnapshot`), y al abrir se persiste la marca
+  // "visto hasta" en el server, así que en la próxima carga todo está leído igual.
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const loadingRef = useRef(false);
   const lastLoadRef = useRef(0);
   // Claves descartadas conocidas (server + descartes optimistas locales). Se usa
@@ -161,6 +169,10 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
     });
   }, [items, seenAt]);
 
+  const markSeenItem = useCallback((id: string) => {
+    setReadIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+
   // Persiste el descarte de verdad: lo saca del feed y lo manda al server.
   const finalizeDismiss = useCallback((id: string) => {
     undoTimers.current.delete(id);
@@ -231,6 +243,8 @@ export function useNotificationsCenterData(): NotificationsCenterValue {
     refreshing,
     refresh: load,
     markAllSeen,
+    markSeenItem,
+    readIds,
     dismiss,
     undoDismiss,
     pendingDismissals,
@@ -244,6 +258,8 @@ const FALLBACK: NotificationsCenterValue = {
   refreshing: false,
   refresh: async () => {},
   markAllSeen: () => {},
+  markSeenItem: () => {},
+  readIds: new Set(),
   dismiss: () => {},
   undoDismiss: () => {},
   pendingDismissals: new Set(),
