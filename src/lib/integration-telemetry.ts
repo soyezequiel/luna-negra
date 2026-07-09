@@ -481,6 +481,12 @@ export type GameRef = {
   // Modo por capacidad intermedia (Game.capsMode): { [capKey]: "luna" | "nostr" }.
   // "nostr" = migrada a NGP (pata Luna apagada). Ver capability-mode.ts.
   capsMode?: Record<string, string> | null;
+  // Coordenada NGP del juego (`30023:<pubkey>:<slug>`), el ancla de todos sus
+  // eventos. Si el juego ya se publicó es la real (Game.nostrCoord); si todavía no,
+  // es la PREVISTA (calculada de la pubkey del firmante + slug) y `coordPending`
+  // es true. Es el dato que el juego necesita para tagear `a` en sus kind:31337.
+  gameCoord?: string | null;
+  coordPending?: boolean;
 };
 
 // Señales de uso de Nostr Games Protocol (NGP) (Nostr) derivables de la DB, por juego:

@@ -41,6 +41,10 @@ export type IntegrationView = {
     title: string;
     slug: string;
     status: string;
+    // Coordenada NGP del juego (`30023:<pubkey>:<slug>`). Real si ya se publicó;
+    // prevista (coordPending) si todavía no. La necesita el juego para el tag `a`.
+    gameCoord?: string | null;
+    coordPending?: boolean;
     // Declaración manual de capacidades NGP no observables (login, presencia).
     manualCaps?: Record<string, boolean> | null;
     // Modo por capacidad intermedia: { [capKey]: "luna" | "nostr" }. "nostr" =
@@ -462,6 +466,60 @@ const PURCHASE_OPTS: SegOpt[] = [
     title: "Desactiva la verificación: el juego no requiere compra (verify responde valid:true para cualquiera)",
   },
 ];
+
+// Muestra la coordenada NGP del juego (`30023:<pubkey>:<slug>`) con botón de copiar.
+// Es el dato que el juego necesita para el tag `a` de sus eventos (marcador,
+// presencia). Si el juego aún no se publicó, la coord es la PREVISTA y lo aclaramos.
+function GameCoordRow({ coord, pending }: { coord: string; pending?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(coord);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard bloqueado: no hacemos nada, el texto sigue visible para copiar a mano */
+    }
+  }
+  return (
+    <div className="mt-2.5 rounded-ln-md border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-ln-faint">
+          Coordenada del juego
+        </span>
+        {pending ? (
+          <span
+            className="rounded-full bg-blue/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue"
+            title="El juego todavía no se publicó en Nostr: esta es la coord que tendrá al publicarse."
+          >
+            prevista · al publicar
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-1.5 flex items-center gap-2">
+        <code
+          className="min-w-0 flex-1 truncate rounded bg-black/30 px-2 py-1 font-mono text-[11px] text-ln-text"
+          title={coord}
+        >
+          {coord}
+        </code>
+        <button
+          type="button"
+          onClick={copy}
+          className="shrink-0 rounded-full border border-ln-border/70 px-2.5 py-1 text-[10px] font-semibold text-blue hover:bg-white/5"
+        >
+          {copied ? "Copiado ✓" : "Copiar"}
+        </button>
+      </div>
+      <p className="mt-1.5 text-[10.5px] leading-snug text-ln-faint">
+        Usala en el tag <code className="font-mono">a</code> de tus eventos NGP (marcador
+        kind:31337, presencia). Fuente canónica en runtime:{" "}
+        <code className="font-mono">GET /api/v1/session</code> → <code className="font-mono">gameCoord</code>.
+        No la hardcodees: si cambia el slug, queda vieja y Luna deja de detectar.
+      </p>
+    </div>
+  );
+}
 
 function CapabilityTile({
   row,
@@ -956,6 +1014,10 @@ export function GameIntegrationCard({
           </div>
         )}
       </div>
+
+      {game.gameCoord ? (
+        <GameCoordRow coord={game.gameCoord} pending={game.coordPending} />
+      ) : null}
 
       {showLuna ? (
         // ── Interfaz Luna dependiente (1.0): matriz completa de 3 columnas ──
