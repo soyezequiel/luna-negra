@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
-import { satsLabel, hueFromSlug } from "@/lib/format";
+import { satsLabel, hueFromSlug, timeAgo } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 import {
   ACTIVE_BET_STATUSES,
@@ -24,9 +24,28 @@ function betHref(b: Row): string {
   return b.version === 2 ? `/apuestas/${b.id}` : `/bets/${b.id}`;
 }
 
+/** createdAt viene en ISO; timeAgo espera unix seconds. */
+function ago(iso: string): string {
+  return timeAgo(Math.floor(new Date(iso).getTime() / 1000));
+}
+
+/**
+ * Premio estimado para un duelo 1v1 con escrow: el ganador se lleva el pozo
+ * (2× stake) menos la comisión del 4%. Es una estimación (no conocemos la
+ * cantidad exacta de participantes desde esta fila) → se rotula con "≈".
+ */
+function estPayout(stakeSats: number): number {
+  return Math.round(stakeSats * 2 * 0.96);
+}
+
 /** Portada del juego con fallback al gradiente por slug si no hay imagen. */
-function GameCover({ b, size }: { b: Row; size: "sm" | "md" }) {
-  const dim = size === "md" ? "h-12 w-12 rounded-ln-md" : "h-9 w-9 rounded-ln-sm";
+function GameCover({ b, size }: { b: Row; size: "sm" | "md" | "lg" }) {
+  const dim =
+    size === "lg"
+      ? "h-14 w-14 rounded-ln-md"
+      : size === "md"
+        ? "h-12 w-12 rounded-ln-md"
+        : "h-10 w-10 rounded-ln-sm";
   if (b.gameCoverUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -43,6 +62,71 @@ function GameCover({ b, size }: { b: Row; size: "sm" | "md" }) {
       className={`cover ${dim} shrink-0`}
       style={{ "--h": hueFromSlug(b.gameSlug) } as CSSProperties}
     />
+  );
+}
+
+/** Chip que distingue el motor de la apuesta: escrow (v1) o zaps (v2). */
+function VersionBadge({ b }: { b: Row }) {
+  const zaps = b.version === 2;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-ln-border px-2 py-0.5 text-[10px] font-semibold text-ln-muted"
+      title={zaps ? "Apuesta por zaps (NIP-57)" : "Apuesta con escrow Lightning"}
+    >
+      {zaps ? "⚡ Zaps" : "🔒 Escrow"}
+    </span>
+  );
+}
+
+/** Estado del depósito del jugador, como chip de color. */
+function DepositChip({ b }: { b: Row }) {
+  const paid = b.depositStatus === "paid";
+  const color = paid ? "var(--ln-aurora)" : "var(--ln-corona)";
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] font-medium"
+      style={{ color }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {paid ? "Depósito confirmado" : "Depósito pendiente"}
+    </span>
+  );
+}
+
+function StatusPill({ b }: { b: Row }) {
+  const tone = betTone(b.status, b.result);
+  return (
+    <span
+      className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
+      style={{
+        color: toneAccent(tone),
+        background: `color-mix(in srgb, ${toneAccent(tone)} 15%, transparent)`,
+      }}
+    >
+      {betStatusLabel(b.status)}
+    </span>
+  );
+}
+
+/** Celda de métrica compacta (rótulo arriba, valor abajo) para las tiras. */
+function Stat({
+  label,
+  value,
+  valueClass,
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="ln-label">{label}</p>
+      <p
+        className={`mt-0.5 truncate font-mono text-sm font-semibold ${valueClass ?? "text-ln-text"}`}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -107,6 +191,20 @@ function outcomeMeta(b: Row): {
   };
 }
 
+/** Cómo salió el premio (v2 lo distingue: zap/lnurl/withdraw). */
+function payoutKindLabel(kind: string | null): string | null {
+  switch (kind) {
+    case "zap":
+      return "por zap";
+    case "lnurl":
+      return "a Lightning Address";
+    case "withdraw":
+      return "por retiro";
+    default:
+      return null;
+  }
+}
+
 /** CTA contextual según el estado real de la apuesta y mi depósito. */
 function ctaFor(b: Row): { label: string; play?: boolean } {
   if (b.status === "pending_deposits" && b.depositStatus !== "paid") {
@@ -118,42 +216,57 @@ function ctaFor(b: Row): { label: string; play?: boolean } {
   return { label: "Ver detalle" };
 }
 
+/**
+ * Tarjeta de duelo activo. Ocupa todo el ancho de su columna con una tira de
+ * métricas (stake · premio estimado · depósito) para exprimir el espacio en vez
+ * de dejar la mitad de la tarjeta vacía.
+ */
 function DuelCard({ b }: { b: Row }) {
-  const tone = betTone(b.status, b.result);
   const cta = ctaFor(b);
   return (
     <Link
       href={betHref(b)}
-      className="group flex flex-col gap-3 rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 transition-[transform,border-color] duration-150 hover:-translate-y-[3px] hover:border-ln-luna/40"
+      className="group flex flex-col gap-3.5 rounded-ln-lg border border-ln-border bg-ln-card/60 p-4 transition-[transform,border-color] duration-150 hover:-translate-y-[3px] hover:border-ln-luna/40"
     >
-      <div className="flex items-center gap-3">
-        <GameCover b={b} size="md" />
+      <div className="flex items-start gap-3">
+        <GameCover b={b} size="lg" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-ln-text">
+          <p className="truncate text-[15px] font-semibold text-ln-text">
             {b.gameTitle}
           </p>
-          <span
-            className="mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-            style={{
-              color: toneAccent(tone),
-              background: `color-mix(in srgb, ${toneAccent(tone)} 15%, transparent)`,
-            }}
-          >
-            {betStatusLabel(b.status)}
-          </span>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <StatusPill b={b} />
+            <VersionBadge b={b} />
+          </div>
         </div>
+        <span className="shrink-0 whitespace-nowrap text-[11px] text-ln-faint">
+          {ago(b.createdAt)}
+        </span>
       </div>
 
-      <div className="flex items-center justify-between rounded-ln-md border border-ln-border bg-ln-bg-deep/60 px-3 py-2">
-        <span className="ln-label">Tu stake</span>
-        <span className="font-mono text-sm font-semibold text-ln-corona-bright">
-          {satsLabel(b.stakeSats)} sats
-        </span>
+      {/* Tira de métricas: aprovecha el ancho con 3 columnas de datos. */}
+      <div className="grid grid-cols-3 gap-3 rounded-ln-md border border-ln-border bg-ln-bg-deep/60 px-3.5 py-2.5">
+        <Stat
+          label="Tu stake"
+          value={`${satsLabel(b.stakeSats)}`}
+          valueClass="text-ln-corona-bright"
+        />
+        <Stat
+          label="Ganás ≈ 1v1"
+          value={`${satsLabel(estPayout(b.stakeSats))}`}
+          valueClass="text-ln-aurora-bright"
+        />
+        <div className="flex flex-col justify-center">
+          <p className="ln-label">Depósito</p>
+          <div className="mt-1">
+            <DepositChip b={b} />
+          </div>
+        </div>
       </div>
 
       {b.payoutStatus === "paid" && b.payoutDestination ? (
         <p className="truncate text-[11px] text-ln-faint">
-          💸 Premio a{" "}
+          💸 Premio {payoutKindLabel(b.payoutKind) ?? "enviado"} a{" "}
           <span className="font-mono text-ln-muted">{b.payoutDestination}</span>
         </p>
       ) : (
@@ -162,12 +275,69 @@ function DuelCard({ b }: { b: Row }) {
         </p>
       )}
 
-      <span
-        className={`btn w-full ${cta.play ? "btn-aurora" : "btn-corona"}`}
-      >
+      <span className={`btn w-full ${cta.play ? "btn-aurora" : "btn-corona"}`}>
         {cta.label}
       </span>
     </Link>
+  );
+}
+
+/**
+ * Fila del historial en ancho completo con columnas: portada + juego, resultado,
+ * fecha, destino del premio y monto. Reemplaza la fila antigua que dejaba casi
+ * todo el ancho vacío entre el título y el monto.
+ */
+function HistoryRow({ b }: { b: Row }) {
+  const tone = betTone(b.status, b.result);
+  const o = outcomeMeta(b);
+  const decided = tone === "won" || tone === "lost";
+  const kind = payoutKindLabel(b.payoutKind);
+  return (
+    <li>
+      <Link
+        href={betHref(b)}
+        className={`flex items-center gap-3 rounded-ln-md border border-ln-border border-l-[3px] bg-ln-card/60 px-4 py-3 transition-colors hover:bg-white/[.02] ${
+          decided ? "" : "opacity-75"
+        }`}
+        style={{ borderLeftColor: toneAccent(tone) }}
+      >
+        <GameCover b={b} size="sm" />
+
+        {/* Juego + resultado/destino (crece para llenar el ancho). */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-medium text-ln-text">
+              {b.gameTitle}
+            </p>
+            <VersionBadge b={b} />
+          </div>
+          <p className="mt-0.5 truncate text-xs text-ln-faint">
+            {o.label}
+            {b.payoutStatus === "paid" && b.payoutDestination ? (
+              <>
+                {" · "}
+                <span className="text-ln-muted">
+                  {kind ? `${kind} ` : ""}
+                  {b.payoutDestination}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
+
+        {/* Fecha: columna propia, oculta en pantallas chicas. */}
+        <span className="hidden shrink-0 whitespace-nowrap text-xs text-ln-faint sm:block">
+          {ago(b.createdAt)}
+        </span>
+
+        {/* Monto con signo/color. */}
+        <span
+          className={`w-28 shrink-0 text-right font-mono text-sm font-semibold ${o.amountClass}`}
+        >
+          {o.amount} sats
+        </span>
+      </Link>
+    </li>
   );
 }
 
@@ -190,6 +360,12 @@ export default function BetsPage() {
     const settled = list.filter((b) => b.status === "settled");
     const won = settled.filter((b) => b.result === "won").length;
     const escrowSats = active.reduce((s, b) => s + b.stakeSats, 0);
+    // Neto de sats resueltos: premios cobrados − stakes perdidos.
+    const netSats = settled.reduce((s, b) => {
+      if (b.result === "won") return s + (b.payoutSats ?? b.stakeSats);
+      if (b.result === "lost") return s - b.stakeSats;
+      return s;
+    }, 0);
     const winRate = settled.length
       ? Math.round((won / settled.length) * 100)
       : 0;
@@ -199,6 +375,7 @@ export default function BetsPage() {
       won,
       settledTotal: settled.length,
       winRate,
+      netSats,
     };
   }, [bets]);
 
@@ -222,10 +399,15 @@ export default function BetsPage() {
   }
 
   const list = bets ?? [];
-  const shown =
-    tab === "active"
-      ? list.filter((b) => ACTIVE_BET_STATUSES.has(b.status))
-      : list.filter((b) => !ACTIVE_BET_STATUSES.has(b.status));
+  const activeList = list.filter((b) => ACTIVE_BET_STATUSES.has(b.status));
+  const historyList = list.filter((b) => !ACTIVE_BET_STATUSES.has(b.status));
+  const shown = tab === "active" ? activeList : historyList;
+  const netLabel =
+    kpis.netSats > 0
+      ? `+${satsLabel(kpis.netSats)}`
+      : kpis.netSats < 0
+        ? `−${satsLabel(Math.abs(kpis.netSats))}`
+        : "0";
 
   return (
     <div className="mx-auto max-w-[1240px] px-[22px] py-8">
@@ -239,18 +421,26 @@ export default function BetsPage() {
         </span>
       </p>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
           label="En juego ahora"
           value={satsLabel(kpis.escrowSats)}
-          sub="sats en escrow"
+          sub={`${kpis.activeCount} duelo${kpis.activeCount === 1 ? "" : "s"} en escrow`}
           accent="var(--ln-corona)"
         />
         <Kpi
-          label="Ganadas"
-          value={`${kpis.won} / ${kpis.settledTotal}`}
-          sub={`${kpis.winRate}% efectividad`}
+          label="Efectividad"
+          value={`${kpis.winRate}%`}
+          sub={`${kpis.won} de ${kpis.settledTotal} ganadas`}
           accent="var(--ln-aurora)"
+        />
+        <Kpi
+          label="Balance neto"
+          value={netLabel}
+          sub="sats resueltos"
+          accent={
+            kpis.netSats >= 0 ? "var(--ln-aurora)" : "var(--ln-danger)"
+          }
         />
         <Kpi
           label="Duelos activos"
@@ -263,10 +453,10 @@ export default function BetsPage() {
       <div className="mt-7 inline-flex rounded-full border border-ln-border bg-ln-card/60 p-0.5 text-sm">
         {(
           [
-            ["active", "Duelos activos"],
-            ["history", "Historial"],
+            ["active", "Duelos activos", activeList.length],
+            ["history", "Historial", historyList.length],
           ] as const
-        ).map(([key, label]) => (
+        ).map(([key, label, count]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -277,6 +467,7 @@ export default function BetsPage() {
             }`}
           >
             {label}
+            <span className="ml-1.5 text-[11px] text-ln-faint">{count}</span>
           </button>
         ))}
       </div>
@@ -307,37 +498,9 @@ export default function BetsPage() {
           </p>
         ) : (
           <ul className="space-y-2">
-            {shown.map((b) => {
-              const tone = betTone(b.status, b.result);
-              const o = outcomeMeta(b);
-              const decided = tone === "won" || tone === "lost";
-              return (
-                <li key={b.id}>
-                  <Link
-                    href={betHref(b)}
-                    className={`flex items-center justify-between gap-3 rounded-ln-md border border-ln-border border-l-[3px] bg-ln-card/60 px-4 py-3 transition-colors hover:bg-white/[.02] ${
-                      decided ? "" : "opacity-70"
-                    }`}
-                    style={{ borderLeftColor: toneAccent(tone) }}
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <GameCover b={b} size="sm" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ln-text">
-                          {b.gameTitle}
-                        </p>
-                        <p className="mt-0.5 text-xs text-ln-faint">{o.label}</p>
-                      </div>
-                    </div>
-                    <span
-                      className={`shrink-0 font-mono text-sm font-semibold ${o.amountClass}`}
-                    >
-                      {o.amount} sats
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
+            {shown.map((b) => (
+              <HistoryRow key={b.id} b={b} />
+            ))}
           </ul>
         )}
       </div>
