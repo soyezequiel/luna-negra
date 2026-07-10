@@ -1,5 +1,3 @@
-import type { IntegrationFeature } from "@/lib/integration-features";
-
 // Migración por capacidad de la interfaz Luna dependiente (REST) a la interfaz
 // NGP. Un proveedor puede pasar CADA capacidad "intermedia" de su
 // juego a Nostr; al hacerlo, la pata Luna (REST) de esa capacidad se APAGA para
@@ -40,15 +38,6 @@ export function purchaseVerificationDisabled(capsMode: unknown): boolean {
   return purchaseMode(capsMode) === "off";
 }
 
-// Mapa feature §1–§8 (interfaz Luna) → capacidad migrable. Un endpoint REST conoce
-// su feature; con esto sabe qué capacidad chequear antes de responder.
-export const FEATURE_TO_CAP: Partial<Record<IntegrationFeature, MigratableCap>> = {
-  sso: "identidad",
-  leaderboards: "marcador",
-  presence: "presencia",
-  bets: "bets",
-};
-
 // Lee el modo de una capacidad desde un valor Game.capsMode ya cargado. Ausente o
 // cualquier cosa que no sea "nostr" = "luna" (default retrocompatible). Acepta
 // cualquier string por comodidad del cliente (una clave no migrable → "luna").
@@ -57,12 +46,4 @@ export function capMode(capsMode: unknown, key: string): CapMode {
     if ((capsMode as Record<string, unknown>)[key] === "nostr") return "nostr";
   }
   return "luna";
-}
-
-// Normaliza el mapa completo a { [cap]: "luna" | "nostr" } para exponerlo al cliente
-// (la matriz de integración) con solo las claves migrables.
-export function readCapsMode(capsMode: unknown): Record<MigratableCap, CapMode> {
-  const out = {} as Record<MigratableCap, CapMode>;
-  for (const cap of MIGRATABLE_CAPS) out[cap] = capMode(capsMode, cap);
-  return out;
 }

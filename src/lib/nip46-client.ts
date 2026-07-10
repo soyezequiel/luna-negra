@@ -11,7 +11,6 @@
 
 import {
   finalizeEvent,
-  generateSecretKey,
   getPublicKey,
   nip04,
   nip44,
@@ -358,9 +357,4 @@ export class Nip46Client {
     }
     this.pool.destroy();
   }
-}
-
-/** Genera una clave de cliente efímera (helper para el flujo de QR). */
-export function generateClientSecret(): Uint8Array {
-  return generateSecretKey();
 }

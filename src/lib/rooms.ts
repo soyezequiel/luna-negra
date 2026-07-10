@@ -91,13 +91,6 @@ export type PresenceMember = {
   avatar: string | null;
 };
 
-export type PresenceInput = {
-  inviteToken: string;
-  clientId: string;
-  score: number;
-  leave: boolean;
-};
-
 export type PresenceResult =
   | {
       ok: true;

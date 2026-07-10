@@ -17,11 +17,6 @@ export function getWebLNProvider(): WebLNProvider | null {
   return provider && typeof provider.sendPayment === "function" ? provider : null;
 }
 
-/** ¿Hay una extensión WebLN disponible en este navegador? */
-export function isWebLNAvailable(): boolean {
-  return getWebLNProvider() !== null;
-}
-
 export class WebLNError extends Error {}
 
 /**
@@ -43,12 +38,6 @@ export async function payWithExtension(bolt11: string): Promise<void> {
     const message = error instanceof Error && error.message ? error.message : "El pago con la extensión falló.";
     throw new WebLNError(message);
   }
-}
-
-/** ¿La extensión soporta el flujo LNURL (necesario para cobrar el retiro)? */
-export function isWebLNWithdrawAvailable(): boolean {
-  const provider = getWebLNProvider();
-  return provider !== null && typeof provider.lnurl === "function";
 }
 
 /**

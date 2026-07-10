@@ -17,8 +17,8 @@
   "dependencies": {
     "@getalby/lightning-tools": "^8.1.1",
     "@getalby/sdk": "^8.0.3",
-    "@nostr-dev-kit/ndk": "^3.0.3",
     "@prisma/client": "^6.19.3",
+    "@scure/base": "^1.2.6",
     "@sentry/nextjs": "^10.56.0",
     "@upstash/qstash": "^2.11.0",
     "@upstash/ratelimit": "^2.0.8",

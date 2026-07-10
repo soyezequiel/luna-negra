@@ -34,10 +34,6 @@ export function clearStoredNwcUrl(): void {
   cached = null;
 }
 
-export function isNwcConfigured(): boolean {
-  return Boolean(getStoredNwcUrl());
-}
-
 // Cliente cacheado por URL: abrir la conexión al relay (WebSocket + handshake
 // NWC) tarda, así que la reusamos entre llamadas (igual que `getClient()` en
 // `src/lib/lightning.ts`).

@@ -213,14 +213,3 @@ export async function startNwcPaymentWatcher(): Promise<void> {
   setTimeout(() => void pollPendingDepositsOnce(), 1000).unref?.();
   console.log(`[nwc-payment-watcher] fallback polling cada ${POLL_INTERVAL_MS}ms`);
 }
-
-export function stopNwcPaymentWatcherForTests(): void {
-  const s = state();
-  for (const stop of s.stops.splice(0)) stop();
-  if (s.pollTimer) clearInterval(s.pollTimer);
-  s.pollTimer = null;
-  s.started = false;
-  s.notificationIds.clear();
-  s.settlingHashes.clear();
-  s.polling = false;
-}
