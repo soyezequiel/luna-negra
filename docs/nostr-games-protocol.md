@@ -1,5 +1,11 @@
 # Nostr Games Protocol (NGP) (draft)
 
+> 📌 **La especificación canónica se mudó al repo del protocolo:**
+> [Nostr-Game-Protocol/docs/spec/ngp.md](https://github.com/soyezequiel/Nostr-Game-Protocol/blob/main/docs/spec/ngp.md).
+> Este documento queda como **nota de implementación de Luna Negra** (el "por
+> qué" y el mapeo a este codebase). Si difieren, gana la spec del repo del
+> protocolo.
+
 > ⚠️ **EN CONSTRUCCIÓN — no usar en producción todavía.** **Nostr Games Protocol (NGP)**
 > es una **mejora experimental y NO prometida**: no formaba parte del alcance del
 > hackathon. Es trabajo **post-hackathon**, porque el proyecto se va a **seguir

@@ -1,5 +1,10 @@
 # NGP — Apuestas y escrow por eventos
 
+> 📌 **La especificación canónica se mudó al repo del protocolo:**
+> [Nostr-Game-Protocol/docs/spec/ngp-bets.md](https://github.com/soyezequiel/Nostr-Game-Protocol/blob/main/docs/spec/ngp-bets.md).
+> Este documento queda como **nota de implementación de Luna Negra** (fases,
+> flags, rutas de código). Si difieren, gana la spec del repo del protocolo.
+
 > ✅ **IMPLEMENTADO Y VALIDADO EN PRODUCCIÓN.** Extiende
 > [nostr-games-protocol.md](nostr-games-protocol.md) (NGP) con la capa de
 > apuestas. Fases 0–3 completas (§8); los `kind` 1339 / 1341 / 31340 están

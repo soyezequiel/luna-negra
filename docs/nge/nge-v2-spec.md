@@ -1,5 +1,10 @@
 # NGE v2 — Nostr Game Escrow (reimaginado, estilo NWC)
 
+> 📌 **La especificación canónica se mudó al repo del protocolo:**
+> [Nostr-Game-Protocol/docs/spec/nge.md](https://github.com/soyezequiel/Nostr-Game-Protocol/blob/main/docs/spec/nge.md).
+> Este documento queda como **nota de implementación de Luna Negra**. Si
+> difieren, gana la spec del repo del protocolo.
+
 > **Estado:** **implementado y en producción** — Luna Negra (escrow) + Tetris/Tetra
 > (juego). Reemplaza a NGE v1. No busca compatibilidad con v1.
 >
