@@ -160,7 +160,7 @@ export function FriendsSidebar() {
     let cancelled = false;
     const tick = async () => {
       try {
-        const r = await fetch(`/api/v1/rooms/${peekRoomId}/presence`, {
+        const r = await fetch(`/api/rooms/${peekRoomId}/presence`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -253,7 +253,7 @@ export function FriendsSidebar() {
     let opened = false;
     setInvitingPk(recipientPubkey);
     try {
-      const r = await fetch("/api/v1/rooms/invite", {
+      const r = await fetch("/api/rooms/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -347,7 +347,7 @@ export function FriendsSidebar() {
     try {
       let roomId = linkRoomId;
       if (!roomId) {
-        const r = await fetch("/api/v1/rooms/invite", {
+        const r = await fetch("/api/rooms/invite", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ gameId: game.gameId }),

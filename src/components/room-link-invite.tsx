@@ -36,7 +36,7 @@ export function RoomLinkInvite({
     setState("loading");
     setError(null);
     try {
-      const r = await fetch("/api/v1/rooms/invite", {
+      const r = await fetch("/api/rooms/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId }),

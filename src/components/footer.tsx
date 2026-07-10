@@ -29,7 +29,7 @@ export function Footer() {
             Privacidad
           </Link>
           <Link
-            href="/developers"
+            href="/dev"
             className="transition-colors hover:text-ln-text"
           >
             Desarrolladores

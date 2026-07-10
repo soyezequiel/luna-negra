@@ -2,10 +2,10 @@
  * Presencia "Jugando X" (NIP-38) derivada de la API de Luna Negra.
  *
  * El estado NIP-38 lo firma la pestaña de la tienda con la llave Nostr del
- * usuario (`window.nostr`): el JUEGO nunca toca Nostr. El juego solo reporta su
- * presencia a Luna Negra POR LA API (`POST /api/v1/presence` con su API key). La
- * tienda sondea su propia presencia (`GET /api/me/playing`): mientras el juego
- * siga reportando, renueva el estado; cuando deja de reportar (TTL vencido al
+ * usuario (`window.nostr`): el JUEGO nunca toca Nostr. (El reporte de presencia
+ * por la API REST 1.0 fue retirado; hoy la señal viva es la NIP-38.) La tienda
+ * sondea su propia presencia (`GET /api/me/playing`): mientras haya estado, lo
+ * renueva; cuando expira (TTL vencido al
  * cerrar el juego), lo limpia. Así no hay acoplamiento de ventana (`opener`,
  * `postMessage`) ni el juego necesita saber nada de Nostr.
  * Ver `docs/multijugador-contrato.md`.

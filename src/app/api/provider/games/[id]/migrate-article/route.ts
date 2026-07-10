@@ -17,8 +17,8 @@ import { checkProviderArticle } from "@/lib/provider-article";
  *
  * ⚠️ La coordenada del juego CAMBIA (cambia el pubkey del firmante): la actividad
  * histórica anclada a la coord vieja (scores 31339, reseñas, presencia) NO migra,
- * y los juegos integrados que cachearon `gameCoord` (GET /api/v1/session) deben
- * re-leerla. El botón del panel lo advierte antes de firmar.
+ * y los juegos integrados que cachearon `gameCoord` deben re-leerla. El botón del
+ * panel lo advierte antes de firmar.
  *
  * Best-effort adicional: retracta el artículo viejo con un kind:5 firmado por la
  * TIENDA (ese sí lo puede firmar el server), para que no queden dos 30023 del

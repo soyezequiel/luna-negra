@@ -9,20 +9,21 @@
 > ⚠️ **EN CONSTRUCCIÓN — no usar en producción todavía.** **Nostr Games Protocol (NGP)**
 > es una **mejora experimental y NO prometida**: no formaba parte del alcance del
 > hackathon. Es trabajo **post-hackathon**, porque el proyecto se va a **seguir
-> desarrollando** después. Lo único **garantizado y funcionando hoy** es la
-> [**interfaz 1.0 (REST, §1–§8)**](api-publica.md). Salvo el marcador (kind:31339) y
-> el reto 1v1 (NIP-17), que están implementados como adelanto, **el resto de NGP
-> es diseño, no código**. Los `kind` propuestos pueden cambiar.
+> desarrollando** después. La vieja [interfaz 1.0 (REST, §1–§8)](api-publica.md)
+> **fue retirada**; hoy lo **implementado y funcionando** es el marcador
+> (kind:31339), el reto 1v1 (NIP-17), presencia (NIP-38), zaps y las apuestas v2
+> (NGE). El resto de NGP marcado como diseño puede cambiar.
 
 > **Qué es.** Una forma de hacer un juego compatible con Luna Negra usando
 > **exclusivamente eventos Nostr**, sin depender de la API REST de Luna Negra ni
 > de ningún servidor central. Lo que un juego publica con esta spec lo puede leer
 > **cualquier cliente Nostr**, y sigue funcionando aunque Luna Negra desaparezca.
 >
-> **Relación con la 1.0.** La [API REST `/api/v1`](api-publica.md) sigue vigente y
-> es la única opción para lo que **necesita un tercero confiable**: custodia de
-> apuestas/escrow y verificación de compra de juego de pago. NGP corre **en
-> paralelo** y cubre la capa social/identidad/reputación. No es todo-o-nada: se
+> **Relación con la 1.0.** La [API REST `/api/v1`](api-publica.md) **fue retirada**.
+> Lo que **necesita un tercero confiable** —custodia de apuestas/escrow— hoy va por
+> **NGE** (canal de escrow) + la API v2 por zaps (`/api/v2/bets`); la verificación
+> de compra para juegos externos ya no se ofrece por REST. NGP cubre la capa
+> social/identidad/reputación. No es todo-o-nada: se
 > adopta por niveles. Para apuestas existe además un diseño de **escrow
 > transparente** coordinado 100% por eventos (el custodio sigue siendo Luna
 > Negra, pero todas sus acciones son eventos firmados verificables):

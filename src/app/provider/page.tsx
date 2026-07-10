@@ -1068,9 +1068,9 @@ export default function ProviderPage() {
                 </div>
                 <p className="mt-2 text-[10.5px] leading-snug text-faint">
                   Es el <code>gameCoord</code> que tu juego pone en el tag <code>a</code> de
-                  sus eventos NGP (marcador <code>kind:31339</code>, presencia). En runtime,
-                  fuente canónica: <code>GET /api/v1/session</code> → <code>gameCoord</code>.
-                  No la hardcodees: si cambia el slug, queda vieja y Luna deja de detectar.
+                  sus eventos NGP (marcador <code>kind:31339</code>, presencia). Fuente
+                  canónica: este panel / la credencial NGE del juego. No la hardcodees: si
+                  cambia el slug, queda vieja y Luna deja de detectar.
                 </p>
               </div>
             ) : null}
@@ -1082,9 +1082,6 @@ export default function ProviderPage() {
               <Link href="/dev" className="btn btn-ghost">
                 Guía /dev
               </Link>
-              <a href="/developers" className="btn btn-ghost">
-                Referencia interactiva
-              </a>
             </div>
           </div>
 
@@ -1117,30 +1114,29 @@ export default function ProviderPage() {
             </p>
           )}
 
-          {/* Retrocompatibilidad: interfaz 1.0 (REST) detrás de un botón */}
+          {/* Credenciales server-to-server: claves de API + webhooks (para v2) */}
           <div className="rounded-ln-lg border border-dashed border-ln-corona/35 bg-ln-corona/[.04] p-5 lg:col-span-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold text-ink">
-                    Interfaz 1.0 (REST) · compatibilidad
+                    Claves de API y webhooks
                   </h3>
                   <span className="rounded-full bg-ln-corona/15 px-2 py-0.5 text-[10px] font-semibold text-ln-corona">
-                    Se dejará de usar
+                    Server-to-server
                   </span>
                 </div>
                 <p className="mt-1 max-w-2xl text-xs leading-relaxed text-faint">
-                  Variables de entorno, claves de API y webhooks server-to-server.
-                  Se mantiene para las integraciones que ya la usan, pero{" "}
-                  <strong>no es recomendable para juegos nuevos</strong>: migrá a
-                  NGP/NGE cuando puedas.
+                  Claves de API (Bearer) para crear apuestas v2 por zaps en{" "}
+                  <code>/api/v2/bets</code> y webhooks firmados para las
+                  notificaciones. La vieja interfaz REST 1.0 fue retirada.
                 </p>
               </div>
               <Link
                 href="/provider/integracion/compat"
                 className="btn btn-outline shrink-0 self-start sm:self-center"
               >
-                Ver interfaz 1.0
+                Claves y webhooks
               </Link>
             </div>
           </div>

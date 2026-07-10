@@ -2,7 +2,7 @@ import { prisma } from "./prisma";
 
 /**
  * Tiempo jugado ("12 h en tu registro", "sesión media 8 min"), derivado del
- * heartbeat de presencia REST (§3, `POST /api/v1/presence`, cada ~10s). Cada
+ * heartbeat de presencia 1.0 (retirado con la interfaz REST; datos legados). Cada
  * latido extiende la racha abierta o abre una nueva; cuando pasan más de
  * `SESSION_GAP_MS` sin latidos, la racha se considera cerrada y se cierra con
  * su ÚLTIMO latido real (no con el momento en que se detecta el cierre), para
@@ -23,8 +23,8 @@ const SESSION_GAP_MS = 45_000;
 const MAX_SESSIONS_FOR_AVG = 2000;
 
 /**
- * Registra un latido como parte de una sesión de juego. Llamar desde el mismo
- * heartbeat que alimenta `recordPresence` (POST /api/v1/presence).
+ * Registra un latido como parte de una sesión de juego. Alimentaba el heartbeat
+ * de presencia 1.0 (`recordPresence`), retirado con la interfaz REST.
  */
 export async function touchPlaySession(
   providerId: string,

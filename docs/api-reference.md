@@ -1,13 +1,18 @@
 # Referencia de API — Luna Negra
 
-> Documento unificado de **todas las interfaces de programación** de Luna Negra:
-> el contrato público para desarrolladores de juegos (`/api/v1`), los endpoints
-> internos de la web (cookie de sesión), el panel de proveedor, la consola de
-> administración, el subsistema de escrow/apuestas, los webhooks y el SDK.
+> ⚠️ **El contrato público REST 1.0 (`/api/v1/*`) fue retirado**, junto con su
+> OpenAPI (`public/openapi.json`) y la página `/developers`. Lo que sigue vigente:
+> los endpoints internos de la web (cookie de sesión), el panel de proveedor, la
+> consola de admin, el subsistema de escrow/apuestas (incluida la API v2 por zaps
+> en `/api/v2/bets`) y los webhooks. La integración de juegos nuevos va por NGP/NGE
+> (ver [`nostr-games-protocol.md`](nostr-games-protocol.md)).
 >
-> Generado a partir del código en `src/app/api/**`. El contrato público (lo que
-> consume un dev externo) está en [`api-publica.md`](api-publica.md); para el
-> contrato OpenAPI navegable ver [`public/openapi.json`](../public/openapi.json) (`/developers`).
+> Documento unificado de **todas las interfaces de programación** de Luna Negra:
+> el contrato público para desarrolladores de juegos (`/api/v1`, retirado), los
+> endpoints internos de la web (cookie de sesión), el panel de proveedor, la
+> consola de administración, el subsistema de escrow/apuestas, los webhooks y el SDK.
+>
+> Generado a partir del código en `src/app/api/**`.
 
 ---
 

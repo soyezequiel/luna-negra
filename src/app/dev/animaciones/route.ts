@@ -362,7 +362,6 @@ const BODY = `
       <a href="/dev">Guía NGP</a>
       <a href="/dev#niveles">Niveles</a>
       <a href="/dev#kinds">Kinds</a>
-      <a href="/dev/luna">Versión REST 1.0</a>
     </nav>
     <div class="pillbadge"><span class="dot"></span>3 animaciones</div>
   </header>

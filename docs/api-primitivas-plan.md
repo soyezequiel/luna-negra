@@ -1,5 +1,9 @@
 # Plan — API pública de "herramientas básicas" + actualización de Tetris
 
+> ⚠️ **HISTÓRICO.** Este plan describe la interfaz REST 1.0 (`/api/v1`), que fue
+> **retirada**. Se conserva como registro de diseño. La integración vigente es
+> NGP/NGE — ver [`nostr-games-protocol.md`](nostr-games-protocol.md).
+>
 > Objetivo: dejar la interfaz pública de Luna Negra como un **set chico de
 > herramientas consistentes y combinables** (lo charlado: identidad, perfil,
 > presencia, invitación, apuesta, avisos) y **actualizar el único juego** (Tetris)

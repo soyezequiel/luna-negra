@@ -130,8 +130,8 @@ export async function GET(
       let bolt11 = canDeposit ? p.depositInvoice : null;
       // Cobro del ganador SIN wallet asociada (invitado de un duelo local): si su
       // payout quedó en `withdraw_pending`, exponemos un LNURL-withdraw firmado para
-      // que el juego lo muestre como QR de retiro escaneable con la billetera —
-      // idéntico a v1 (api/v1/bets/[id]). El callback lnurlw ya sabe cobrar v2.
+      // que el juego lo muestre como QR de retiro escaneable con la billetera.
+      // El callback lnurlw ya sabe cobrar v2.
       let withdrawLnurl: string | null = null;
       let withdrawUrl: string | null = null;
       if (

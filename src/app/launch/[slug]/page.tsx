@@ -11,8 +11,7 @@ import { LaunchGate } from "./launch-gate";
 export const dynamic = "force-dynamic";
 
 // Anti-open-redirect: `returnTo` SOLO puede apuntar al dominio registrado del
-// juego (`Game.gameUrl`). Nunca a un host arbitrario. (Misma idea que
-// `isAllowedInviteUrl` en api/v1/invites/route.ts.)
+// juego (`Game.gameUrl`). Nunca a un host arbitrario.
 function returnsToGame(returnTo: string, gameUrl: string): boolean {
   try {
     const dest = new URL(returnTo);

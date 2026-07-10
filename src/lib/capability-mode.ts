@@ -20,9 +20,9 @@ export function isMigratableCap(key: string): key is MigratableCap {
 
 // "Verificar compra" (§2) NO tiene equivalente Nostr: Luna es la custodia/vendedora,
 // así que no se migra, se DESACTIVA. Desactivada = acceso abierto: el juego deja de
-// requerir compra y GET /api/v1/entitlements/verify responde valid:true (bypassed)
-// para cualquiera. Se guarda en el mismo Game.capsMode bajo la clave "purchase" con
-// valores "on" (default, verificación activa) | "off" (acceso abierto).
+// requerir compra (la sesión de la tienda no exige compra pagada) para cualquiera.
+// Se guarda en el mismo Game.capsMode bajo la clave "purchase" con valores "on"
+// (default, verificación activa) | "off" (acceso abierto).
 export const PURCHASE_CAP = "purchase";
 export type PurchaseMode = "on" | "off";
 

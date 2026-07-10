@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { inputCls } from "@/components/provider/game-form-fields";
 
-// ── Interfaz Luna dependiente (1.0 · REST) ──
-// Página de COMPATIBILIDAD: variables de entorno, claves de API y webhooks
-// server-to-server. Se mantiene por retrocompatibilidad pero está en camino de
-// deprecación; las integraciones nuevas van por NGP/NGE (ver /provider →
-// Integración y /provider/integracion). Self-contenida: hace sus propios fetch.
+// ── Credenciales server-to-server: claves de API y webhooks ──
+// Claves de API (Bearer para crear apuestas v2 por zaps en /api/v2/bets) y
+// webhooks firmados (notificaciones de compra/apuesta/payout). La vieja interfaz
+// REST 1.0 dependiente de Luna Negra fue retirada; lo social va por NGP/NGE (ver
+// /provider → Integración y /provider/integracion). Self-contenida: hace sus
+// propios fetch.
 
 type Game = { id: string; title: string };
 type ApiKeyRow = {
@@ -121,7 +122,7 @@ export default function ProviderCompatPage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold text-white">Interfaz 1.0 (REST)</h1>
+        <h1 className="text-2xl font-bold text-white">Claves de API y webhooks</h1>
         <p className="mt-2 text-muted">Conectá tu Nostr para ver las claves y webhooks.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
@@ -145,13 +146,14 @@ export default function ProviderCompatPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="ln-label mb-2">Compatibilidad</p>
+          <p className="ln-label mb-2">Server-to-server</p>
           <h1 className="font-display text-[32px] font-extrabold tracking-tight text-white ln:text-[40px]">
-            Interfaz 1.0 (REST)
+            Claves de API y webhooks
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-ln-muted">
-            La integración server-to-server clásica: variables de entorno, claves
-            de API y webhooks. Se mantiene funcionando por compatibilidad.
+            Credenciales para tu game server: claves de API (Bearer) que crean
+            apuestas v2 por zaps en <code>/api/v2/bets</code> y webhooks firmados
+            para las notificaciones.
           </p>
         </div>
         <Link href="/provider" className="btn btn-ghost shrink-0 self-start">
@@ -165,15 +167,15 @@ export default function ProviderCompatPage() {
           <span className="mt-0.5 text-lg leading-none">⚠️</span>
           <div>
             <p className="text-sm font-semibold text-ln-corona">
-              Esta interfaz se va a dejar de usar
+              La vieja interfaz REST 1.0 fue retirada
             </p>
             <p className="mt-1 text-xs leading-relaxed text-ln-muted">
               El estándar hoy es <strong>Nostr Games Protocol (NGP)</strong> y, para
               apuestas/escrow, <strong>NGE</strong> (credencial <code>NGE_CONNECTION</code>).
-              La interfaz 1.0 (REST) sigue disponible para las integraciones que ya la
-              usan, pero <strong>no es recomendable para juegos nuevos</strong>: en el
-              futuro dejará de recibir mejoras y eventualmente se retirará. Migrá
-              cuando puedas desde{" "}
+              La vieja interfaz REST 1.0 dependiente de Luna Negra (login, verificación
+              de compra, presencia y salas por REST) <strong>ya no existe</strong>. Estas
+              credenciales siguen sirviendo a la <strong>API de apuestas v2 por zaps</strong>{" "}
+              y a los webhooks. Para lo social, integrá desde{" "}
               <Link href="/provider/integracion" className="text-blue hover:underline">
                 Integración
               </Link>
@@ -208,12 +210,10 @@ export default function ProviderCompatPage() {
               </button>
             </div>
             <p className="mt-1 text-xs text-faint">
-              Todo lo que tu <strong>game server</strong> necesita para la{" "}
-              <strong>interfaz 1.0 (REST)</strong>: login, verificar compras,
-              presencia, salas y <strong>apuestas</strong> (tanto las clásicas
-              como las <strong>v2 por zaps</strong> de <code>/api/v2/bets</code>,
-              que reusan la misma API key). Pegalo en el archivo <code>.env</code>{" "}
-              de tu servidor. La API key solo se ve al crearla (en{" "}
+              Todo lo que tu <strong>game server</strong> necesita para crear{" "}
+              <strong>apuestas v2 por zaps</strong> en <code>/api/v2/bets</code> y
+              recibir <strong>webhooks</strong> firmados. Pegalo en el archivo{" "}
+              <code>.env</code> de tu servidor. La API key solo se ve al crearla (en{" "}
               <strong>Claves de API</strong>, abajo); el resto lo podés copiar
               cuando quieras.
             </p>
@@ -243,7 +243,7 @@ export default function ProviderCompatPage() {
                   <code className="text-ink">LUNA_NEGRA_BASE</code>
                 </dt>
                 <dd className="text-faint">
-                  URL de este deploy: base de todas las llamadas REST 1.0,{" "}
+                  URL de este deploy: base de las llamadas a <code>/api/v2/bets</code>,{" "}
                   <strong>siempre requerida</strong>.
                 </dd>
               </div>
@@ -253,8 +253,7 @@ export default function ProviderCompatPage() {
                 </dt>
                 <dd className="text-faint">
                   Llave secreta server-to-server (<code>ln_sk_…</code>) para crear
-                  apuestas (v1 y v2 por zaps), presencia global, invitaciones y
-                  amigos. <strong>Nunca va al navegador.</strong>
+                  apuestas v2 por zaps. <strong>Nunca va al navegador.</strong>
                 </dd>
               </div>
               <div className="flex flex-col gap-0.5">
@@ -293,14 +292,10 @@ export default function ProviderCompatPage() {
           <div id="api-keys" className="scroll-mt-20 rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
             <h2 className="font-semibold">Claves de API</h2>
             <p className="mb-3 mt-1 text-xs text-faint">
-              Para que tu game server cree apuestas (Bearer) — tanto las clásicas
-              como las v2 por zaps. Solo en tu backend, nunca en el navegador.{" "}
+              Para que tu game server cree apuestas v2 por zaps (Bearer). Solo en
+              tu backend, nunca en el navegador.{" "}
               <strong>Acotala a un juego</strong> y tu server no necesita mandar{" "}
-              <code>gameId</code> (una env var menos). Ver{" "}
-              <a href="/developers" className="text-blue hover:underline">
-                /developers
-              </a>
-              .
+              <code>gameId</code> (una env var menos).
             </p>
 
             {createdKey ? (

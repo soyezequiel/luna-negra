@@ -7,8 +7,8 @@
 //   · NGE — el CANAL de escrow: RPC cifrado estilo NWC (una URI de conexión) para
 //     apuestas con custodia. La coordinación es privada; la liquidación se publica
 //     como eventos NGP auditables.
-// La vieja interfaz REST 1.0 (dependiente de Luna Negra) sigue en /dev/luna; hoy
-// solo cubre compra de pago y webhooks firmados.
+// La vieja interfaz REST 1.0 (dependiente de Luna Negra) fue retirada; solo
+// quedan los webhooks firmados (notificaciones server-to-server).
 //
 // Diseño "Eclipse": fondo negro, marca Luna (violeta) / Corona (dorado) /
 // Aurora (verde), tipografías Bricolage Grotesque + Geist. El hero trae un
@@ -263,7 +263,6 @@ const BODY = `
       <a href="#apuestas">Escrow NGE</a>
       <a href="#kinds">Kinds</a>
       <a href="/dev/animaciones">Animaciones</a>
-      <a href="/dev/luna">Versión REST 1.0</a>
     </nav>
     <div class="status"><span class="dot"></span>Corre en producción · Tetris</div>
   </header>
@@ -290,7 +289,7 @@ const BODY = `
         <span>RPC cifrado estilo NWC (una URI de conexión) para apuestas con custodia: crear el pozo, cobrar depósitos y pagar premios. La coordinación es <em style="font-style:normal;color:#cfc8de">privada</em>; la liquidación se publica como eventos NGP <em style="font-style:normal;color:#cfc8de">auditables</em>.</span>
       </div>
     </div>
-    <div class="hint" style="margin-top:14px"><span style="font-size:15px">💡</span><p><strong>Se apilan, no compiten.</strong> Un mismo juego usa NGP para lo social y, si quiere apuestas custodiadas, NGE como canal — y la apuesta termina siendo auditable en Nostr con el formato NGP. Lo único que queda fuera de ambos es la compra de juegos de pago y los webhooks firmados: eso vive en la <a href="/dev/luna" style="color:#c2b5ff">REST 1.0</a>.</p></div>
+    <div class="hint" style="margin-top:14px"><span style="font-size:15px">💡</span><p><strong>Se apilan, no compiten.</strong> Un mismo juego usa NGP para lo social y, si quiere apuestas custodiadas, NGE como canal — y la apuesta termina siendo auditable en Nostr con el formato NGP. Lo único que queda fuera de ambos son los webhooks firmados (notificaciones server-to-server); la vieja interfaz REST 1.0 fue retirada.</p></div>
   </section>
 
   <section class="card" id="niveles">
@@ -371,7 +370,7 @@ const BODY = `
 
     <div class="honesty">
       <span style="font-size:17px;line-height:1.3">⚡</span>
-      <p><strong>NGP y NGE ya corren en producción en Tetris.</strong> Identidad, marcador, presencia, retos, reseñas y zaps van por NGP; las apuestas con custodia van por el canal NGE (murió la API key REST). Solo la compra de juegos de pago y los webhooks firmados siguen en la <a href="/dev/luna">versión REST 1.0</a>.</p>
+      <p><strong>NGP y NGE ya corren en producción en Tetris.</strong> Identidad, marcador, presencia, retos, reseñas y zaps van por NGP; las apuestas con custodia van por el canal NGE (murió la API key REST). Los webhooks firmados (notificaciones server-to-server) siguen disponibles; la vieja interfaz REST 1.0 fue retirada.</p>
     </div>
   </section>
 
@@ -439,7 +438,7 @@ const PUBLIC_WRITE_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://rel
 { kinds: [30023], "#d": ["&lt;slug&gt;"] }</code></pre></div>
           <div class="cards2">
             <div class="mini"><strong>Es el <code>a</code>-tag de todo</strong><span>Scores, presencia y actividad se anclan acá. Existe mientras exista el <code>kind:30023</code> del juego en algún relay.</span></div>
-            <div class="mini violet"><strong>No la inventes</strong><span>Obtenela de <code>GET /api/v1/session</code> o del <code>kind:30023</code> real. El slug no siempre coincide con el nombre visible.</span></div>
+            <div class="mini violet"><strong>No la inventes</strong><span>Obtenela del <code>kind:30023</code> real (la credencial NGE del juego la trae). El slug no siempre coincide con el nombre visible.</span></div>
           </div>
         </div>
       </details>
@@ -661,7 +660,7 @@ await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
 
   <footer class="foot">
     <span style="font-size:15px">⚠️</span>
-    <p>NGP (formato público) y NGE (canal de escrow) ya corren en producción en Tetris. Los kinds de apuestas (1339 / 1341 / 31340) y el wire NGE (24940–24942) están congelados en v1. La interfaz REST 1.0 dependiente de Luna Negra vive en <a href="/dev/luna">/dev/luna</a> y hoy solo cubre compra de pago y webhooks. Los <code>kind</code> marcados como <em style="font-style:normal;color:#9a93ad">diseño</em> (31338) pueden cambiar.</p>
+    <p>NGP (formato público) y NGE (canal de escrow) ya corren en producción en Tetris. Los kinds de apuestas (1339 / 1341 / 31340) y el wire NGE (24940–24942) están congelados en v1. La interfaz REST 1.0 dependiente de Luna Negra fue retirada; solo quedan los webhooks firmados. Los <code>kind</code> marcados como <em style="font-style:normal;color:#9a93ad">diseño</em> (31338) pueden cambiar.</p>
   </footer>
 
 </div>

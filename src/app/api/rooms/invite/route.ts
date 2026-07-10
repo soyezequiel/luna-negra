@@ -137,9 +137,9 @@ export async function POST(req: Request) {
     );
   }
 
-  // Con destinatario, avisamos al juego ya abierto: TETRA consume esta orden por
-  // GET /api/v1/invites y muestra el popup, que abre el MISMO enlace abierto (sin
-  // token). El DM sigue cubriendo a quien tenga el juego cerrado.
+  // Con destinatario, encolamos la orden de entrada para que el juego ya abierto
+  // muestre el popup, que abre el MISMO enlace abierto (sin token). El DM sigue
+  // cubriendo a quien tenga el juego cerrado.
   const launchQueued = targetNpub
     ? await queueRoomLinkLaunchRequest({
         providerId: game.providerId,

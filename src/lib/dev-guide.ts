@@ -1,9 +1,7 @@
-// Estilo y andamiaje compartido por las guías de developers autocontenidas
-// (`/dev` = NGP y `/dev/luna` = REST v1). Sirven HTML estático con CSS inline
-// para funcionar como documento público aun sin cargar el bundle principal.
-//
-// El CSS vivía duplicado dentro de `/dev`. Al separar la guía NGP de la vieja
-// interfaz REST dependiente de Luna, se movió acá para no mantener dos copias.
+// Estilo y andamiaje de la guía de developers autocontenida (`/dev` = NGP + NGE).
+// Sirve HTML estático con CSS inline para funcionar como documento público aun
+// sin cargar el bundle principal. El CSS se extrajo acá cuando la guía convivía
+// con la vieja guía REST 1.0 (ya retirada), para no mantener dos copias.
 
 export const DEV_GUIDE_STYLE = `
       :root {

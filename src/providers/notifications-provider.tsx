@@ -422,8 +422,8 @@ export function NotificationsProvider({
   }, [user, notify, fireDesktop, profileOf]);
 
   // Muestra como toast una invitación a sala recibida del buzón first-party
-  // (POST /api/invites / /api/v1/invites → persistidas). La `inviteUrl` puede
-  // ser del deploy externo del juego, así que se abre en pestaña nueva.
+  // (POST /api/invites → persistidas). La `inviteUrl` puede ser del deploy
+  // externo del juego, así que se abre en pestaña nueva.
   const handleGameInvite = useCallback(
     async (inv: GameInvite) => {
       if (!inv.id || seen.current.has(inv.id)) return; // dedup (cuid ≠ id de DM)

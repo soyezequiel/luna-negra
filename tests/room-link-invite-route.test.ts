@@ -33,8 +33,8 @@ vi.mock("@/lib/game-launch-requests", () => ({
 }));
 
 async function postRoomLink(body: unknown) {
-  const { POST } = await import("@/app/api/v1/rooms/invite/route");
-  const response = await POST(new Request("http://local/api/v1/rooms/invite", {
+  const { POST } = await import("@/app/api/rooms/invite/route");
+  const response = await POST(new Request("http://local/api/rooms/invite", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

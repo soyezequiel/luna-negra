@@ -173,8 +173,9 @@ export async function getOwnPresence(
 
 /**
  * De un set de pubkeys, cuáles el servidor detecta jugando AHORA en cualquier
- * juego del catálogo (presencia `GamePresence` vigente, reportada por el juego vía
- * `POST /api/v1/presence`). A diferencia del estado NIP-38 —que sólo publica la
+ * juego del catálogo (presencia `GamePresence` vigente; su reporte REST 1.0 fue
+ * retirado, así que hoy sólo refleja datos legados). A diferencia del estado
+ * NIP-38 —que sólo publica la
  * pestaña de la tienda mientras está abierta y expira al cerrarla—, esta señal
  * sobrevive con la tienda cerrada, así que sirve para marcar "conectado" a quien
  * está jugando aunque no tenga la web abierta. `GamePresence` se llavea por npub;

@@ -16,8 +16,9 @@ import {
 //   · NGP → eventos observados (relays + DB) + evidencia persistida del probador
 //     + inferencias (login desde el marcador firmado). Lo cifrado se declara.
 //   · NGE → cualquier RPC autenticado recibido por el escrow (get_info alcanza).
-// La interfaz Luna 1.0 (REST) vive en /provider/integracion/compat; acá solo
-// queda el toggle "Compat 1.0" con la matriz de migración.
+// Las credenciales server-to-server (claves de API + webhooks, para apuestas v2)
+// viven en /provider/integracion/compat; acá queda el toggle "Compat 1.0" con la
+// matriz de migración. La vieja interfaz REST 1.0 dependiente de Luna fue retirada.
 
 function Legend() {
   const items = [
@@ -129,9 +130,8 @@ export default function ProviderIntegrationPage() {
 
       <p className="mt-8 text-xs text-ln-faint">
         ¿Cómo integrar cada bloque? Mirá la{" "}
-        <Link href="/dev" className="text-blue hover:underline">guía /dev</Link> y la{" "}
-        <a href="/developers" className="text-blue hover:underline">referencia interactiva</a>.
-        La interfaz Luna 1.0 (REST: claves de API, webhooks) se mantiene por compatibilidad en{" "}
+        <Link href="/dev" className="text-blue hover:underline">guía /dev</Link>.
+        Las claves de API y webhooks server-to-server (para apuestas v2 por zaps) viven en{" "}
         <Link href="/provider/integracion/compat" className="text-blue hover:underline">
           /provider/integracion/compat
         </Link>

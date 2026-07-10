@@ -118,8 +118,9 @@ export async function syncLivePresence(): Promise<void> {
 
 /**
  * Jugadores AHORA de un juego, unificando las dos fuentes: presencia 1.0
- * (`GamePresence`, la reporta el game server por `POST /api/v1/presence`) y la
- * NGP en memoria (NIP-38, ver arriba). Un mismo npub no debería aparecer en
+ * (`GamePresence`; su reporte REST fue retirado con la interfaz 1.0, así que hoy
+ * sólo quedan filas legadas) y la NGP en memoria (NIP-38, ver arriba). Un mismo
+ * npub no debería aparecer en
  * ambas para el mismo juego (son integraciones distintas), pero por las dudas
  * se deduplica.
  */

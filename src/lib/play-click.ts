@@ -1,6 +1,6 @@
 /**
  * Registro de clicks en "Jugar" para los juegos que NO integraron la presencia
- * real (§3, POST /api/v1/presence).
+ * real (§3, presencia 1.0; su reporte REST fue retirado).
  *
  * Sin heartbeat del game server NO sabemos cuánto dura una sesión, así que NO
  * inventamos esa duración: cada apertura se guarda como un PUNTO discreto en el

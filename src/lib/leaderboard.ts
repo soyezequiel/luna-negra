@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 //
 // ⚠️ ANTI-TRAMPA: el puntaje lo manda el CLIENTE y es FALSIFICABLE. Sirve para
 // MOSTRAR rankings (como Steam), NO para resolver apuestas — el resultado de una
-// apuesta sigue viniendo del game server por POST /api/v1/bets/{id}/result.
+// apuesta viene del oráculo por el canal de apuestas v2 / NGE, no de acá.
 
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 const TOP_LIMIT = 100; // entradas devueltas en view=top

@@ -1,8 +1,16 @@
 # Contrato público de API — Luna Negra
 
-> **Solo el contrato público** que Luna Negra ofrece a los desarrolladores de
+> ⚠️ **RETIRADO.** La interfaz REST 1.0 dependiente de Luna Negra (`/api/v1/*`)
+> fue eliminada. Las integraciones nuevas van por **NGP** (eventos Nostr) y, para
+> escrow, **NGE** — ver [`nostr-games-protocol.md`](nostr-games-protocol.md) y la
+> guía `/dev`. Sobreviven, en endpoints top-level (no `/api/v1`), las **claves de
+> API + webhooks** que usan las apuestas v2 por zaps (`/api/v2/bets`) y el
+> **Room Link** (`POST /api/rooms/invite`). Este documento queda como referencia
+> histórica del contrato removido.
+>
+> **Solo el contrato público** que Luna Negra ofrecía a los desarrolladores de
 > juegos: tokens y verificación, multijugador/presencia, apuestas/escrow y
-> webhooks. Estable y versionado bajo `/api/v1`.
+> webhooks. Versionado bajo `/api/v1`.
 >
 > Endpoints internos (cookie de sesión, panel, admin, escrow interno) **no** forman
 > parte de este contrato y pueden cambiar sin aviso — ver
