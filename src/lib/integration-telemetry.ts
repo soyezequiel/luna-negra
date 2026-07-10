@@ -484,20 +484,20 @@ export type GameRef = {
   // Coordenada NGP del juego (`30023:<pubkey>:<slug>`), el ancla de todos sus
   // eventos. Si el juego ya se publicó es la real (Game.nostrCoord); si todavía no,
   // es la PREVISTA (calculada de la pubkey del firmante + slug) y `coordPending`
-  // es true. Es el dato que el juego necesita para tagear `a` en sus kind:31337.
+  // es true. Es el dato que el juego necesita para tagear `a` en sus kind:31339.
   gameCoord?: string | null;
   coordPending?: boolean;
 };
 
 // Señales de uso de Nostr Games Protocol (NGP) (Nostr) derivables de la DB, por juego:
-//   scores   → puntajes kind:31337 ya proyectados a Score (sourceEventId != null)
+//   scores   → puntajes kind:31339 ya proyectados a Score (sourceEventId != null)
 //   zaps     → propinas/premios NIP-57 (tabla Zap)
 //   comments → reseñas/logros kind:1 colgando de la coordenada (GameComment)
 //   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2)
 //   presence → presencia NIP-38 (kind:30315 con la coordenada) VISTA por el
 //              probador de relays (ping "ngp:presencia"); la DB no la cachea.
 //   oracle   → atestaciones kind:31338 vistas por el probador ("ngp:oraculo").
-//   login    → INFERIDO: un puntaje kind:31337 firmado por el jugador prueba que
+//   login    → INFERIDO: un puntaje kind:31339 firmado por el jugador prueba que
 //              el juego obtuvo su signer → integró el login NIP-07/46.
 // Los retos NIP-17 NO entran acá: van cifrados E2E (capacidad declarada, no
 // observable). Ver src/lib/integration-ngp.ts.

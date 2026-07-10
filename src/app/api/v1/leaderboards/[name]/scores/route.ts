@@ -78,7 +78,7 @@ export async function POST(
   }
 
   // Marcador migrado a Nostr: la pata Luna (subir puntaje por REST) queda apagada.
-  // El puntaje debe venir como kind:31337 firmado por el jugador (score-sync lo
+  // El puntaje debe venir como kind:31339 firmado por el jugador (score-sync lo
   // proyecta a la tabla Score). Leer el ranking (GET) sigue funcionando.
   const scoreGame = await prisma.game.findUnique({
     where: { id: gameId },
@@ -87,7 +87,7 @@ export async function POST(
   if (capMode(scoreGame?.capsMode, "marcador") === "nostr") {
     return apiError(
       "CAPABILITY_MIGRATED",
-      "El marcador está migrado a Nostr (kind:31337) para este juego: subí el puntaje como evento firmado por el jugador",
+      "El marcador está migrado a Nostr (kind:31339) para este juego: subí el puntaje como evento firmado por el jugador",
       409,
     );
   }

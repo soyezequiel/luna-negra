@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   }
 
   // Coordenada NIP-23 del juego (`30023:<tienda>:<slug>`): el ancla del marcador
-  // NGP. Con ella el juego firma su propio kind:31337. null si el
+  // NGP. Con ella el juego firma su propio kind:31339. null si el
   // juego aún no se publicó (sin artículo → sin coordenada). Ver
   // docs/nostr-games-protocol.md.
   const game = await prisma.game.findUnique({

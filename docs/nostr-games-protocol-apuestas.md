@@ -289,7 +289,7 @@ El 1341 se valida contra `effectiveOracle(bet) = bet.oraclePubkey ?? Provider.or
 
 ### Relación con el marcador
 
-El kind:31337 (score firmado por el jugador) sigue siendo **social y
+El kind:31339 (score firmado por el jugador) sigue siendo **social y
 falsificable** — nunca dispara pagos. El 1341 es la pieza "con dinero", y es
 coherente con la atestación 31338: el oráculo puede publicar ambos (31338
 atestigua el score, 1341 declara el ganador del contrato).
@@ -334,7 +334,7 @@ custodio: mala conducta detectable e imputable, no imposible.
 | Amenaza | Mitigación |
 |---|---|
 | Alterar términos post-firma | imposible: el `id` del 1339 es el hash |
-| Resultado falso | solo vale la firma del oráculo declarado; el score 31337 del cliente nunca paga |
+| Resultado falso | solo vale la firma del oráculo declarado; el score 31339 del cliente nunca paga |
 | Clave del oráculo comprometida | mismo riesgo que la API key hoy; rotación en el panel del proveedor (el 30023 se re-publica con la nueva) |
 | Replay de un 1341 en otro contrato | el tag `e` lo ata a un contrato único |
 | Reuso de un 9734 viejo | el invoice compromete el 9734 vía description hash (NIP-57); un 9734 no pagado no es nada |
@@ -485,7 +485,7 @@ Sin API key, sin polling, sin backend salvo la clave del oráculo.
       del callback LNURL del escrow.
 - [ ] Me suscribo al 31340 del contrato en vez de pollear.
 - [ ] El game server firma el 1341 con la clave del oráculo — nunca decido el
-      ganador con el score 31337 del cliente.
+      ganador con el score 31339 del cliente.
 - [ ] Guardo los ids: contrato, recibos, resultado. Son mi comprobante ante
       cualquiera, incluso sin Luna Negra.
 

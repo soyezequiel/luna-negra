@@ -31,7 +31,7 @@ export type SubmitScoreResult =
   | { ok: false; code: string; message: string; status: number };
 
 /**
- * Origen Nostr de un puntaje (camino NGP): el evento kind:31337 firmado por el
+ * Origen Nostr de un puntaje (camino NGP): el evento kind:31339 firmado por el
  * jugador que fijó este récord. Lo pasa `score-sync`; el camino REST 1.0 lo omite.
  */
 export type ScoreSource = { eventId: string; pubkey: string };
@@ -107,7 +107,7 @@ export async function submitScore(
  * Entrada del marcador para la vista PÚBLICA de la tienda (página del juego).
  * Igual que `LeaderboardEntry` pero sin resolver `displayName` (lo hace el cliente
  * vía Nostr, como el top de zappers) y con `viaNostr` para distinguir la
- * procedencia NGP (kind:31337) de la REST 1.0.
+ * procedencia NGP (kind:31339) de la REST 1.0.
  */
 export type PublicScoreEntry = {
   npub: string;

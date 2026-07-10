@@ -95,7 +95,7 @@ export default function ProviderIntegrationPage() {
             Acá verificás si tu juego <strong>está integrado o no</strong>. La regla:{" "}
             <strong>con evidencia se considera detectado</strong>. Para{" "}
             <strong>NGP</strong> la evidencia son los eventos Nostr del juego
-            (marcador kind:31337, reseñas, zaps, presencia NIP-38) observados en
+            (marcador kind:31339, reseñas, zaps, presencia NIP-38) observados en
             relays o en la DB; el login NIP-07/46 se <em>infiere</em> del marcador
             firmado. Para <strong>NGE</strong> (apuestas y escrow) alcanza con que
             tu game server mande <strong>un RPC autenticado</strong> — pegá{" "}

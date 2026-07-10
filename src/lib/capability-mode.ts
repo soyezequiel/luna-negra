@@ -7,7 +7,7 @@ import type { IntegrationFeature } from "@/lib/integration-features";
 // todo de golpe. Persistido en Game.capsMode (JSON { [capKey]: "luna" | "nostr" }).
 
 // Solo estas 4 capacidades son migrables: son las de la columna intermedia cuyo
-// reemplazo Nostr YA funciona (login NIP-07/46, marcador kind:31337, presencia
+// reemplazo Nostr YA funciona (login NIP-07/46, marcador kind:31339, presencia
 // NIP-38, apuestas por zaps NIP-57). Salas e invitaciones quedan afuera porque su
 // lado Nostr todavía es diseño: migrarlas apagaría la pata Luna sin reemplazo.
 // Las claves son las de CapabilityRow.key en src/lib/integration-ngp.ts.

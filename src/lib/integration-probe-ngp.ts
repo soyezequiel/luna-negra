@@ -30,8 +30,12 @@ export type GameNostrRef = {
 
 // Filas NGP verificables consultando relays por la coordenada (#a), con el kind
 // que las prueba. (zaps va aparte: se ancla al anuncio con #e.)
+// Kind legacy del marcador (renumeración 31337 → 31339): los récords viejos
+// siguen contando como evidencia de integración hasta cerrar la doble lectura.
+const SCORE_LEGACY_KIND = 31337;
+
 const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
-  { key: "marcador", kind: NGP_KIND.score, label: "puntajes kind:31337" },
+  { key: "marcador", kind: NGP_KIND.score, label: "puntajes kind:31339" },
   { key: "presencia", kind: NGP_KIND.presence, label: "presencia NIP-38 (kind:30315)" },
   { key: "resenas", kind: 1, label: "reseñas/comentarios kind:1" },
   { key: "oraculo", kind: NGP_KIND.scoreAttestation, label: "atestaciones de oráculo kind:31338" },
@@ -41,7 +45,7 @@ const COORD_PROBES: Array<{ key: string; kind: number; label: string }> = [
 // como `skipped` para que la UI lo explique en vez de mostrar un falso fallo).
 const UNPROBEABLE: Array<{ key: string; reason: string }> = [
   { key: "invitaciones", reason: "Las invitaciones NGP son DMs NIP-17 cifrados E2E: no observables desde el server." },
-  { key: "identidad", reason: "El login NIP-07/46 no deja un evento por juego que consultar; se infiere del marcador firmado (kind:31337) o se declara manualmente." },
+  { key: "identidad", reason: "El login NIP-07/46 no deja un evento por juego que consultar; se infiere del marcador firmado (kind:31339) o se declara manualmente." },
   { key: "salas", reason: "Las salas con estado (NIP-29) no se anclan a la coordenada del juego." },
 ];
 
@@ -89,6 +93,7 @@ export async function probeGamesNostr(
     m.set(key, (m.get(key) ?? 0) + 1);
   };
   const kindToKey = new Map(COORD_PROBES.map((p) => [p.kind, p.key]));
+  kindToKey.set(SCORE_LEGACY_KIND, "marcador"); // doble lectura 31339+31337
 
   const started = Date.now();
   let coordEvents: Event[] = [];
@@ -98,7 +103,10 @@ export async function probeGamesNostr(
       ? pool()
           .querySync(
             RELAYS,
-            { kinds: COORD_PROBES.map((p) => p.kind), "#a": [...coordToGame.keys()] },
+            {
+              kinds: [...new Set([...COORD_PROBES.map((p) => p.kind), SCORE_LEGACY_KIND])],
+              "#a": [...coordToGame.keys()],
+            },
             { maxWait: 6000 },
           )
           .then((ev) => {

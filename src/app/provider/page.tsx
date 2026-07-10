@@ -1036,7 +1036,7 @@ export default function ProviderPage() {
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-faint">
               El estándar para integrar tu juego. <strong>NGP</strong> (presencia
-              NIP-38, marcador <code>kind:31337</code>, retos NIP-17, reseñas
+              NIP-38, marcador <code>kind:31339</code>, retos NIP-17, reseñas
               NIP-23, zaps) <strong>no necesita variables de entorno ni API key</strong>:
               el login es NIP-07/46 (el jugador firma con su propio signer) y los
               eventos se anclan al <code>gameCoord</code> del juego, que obtenés de
@@ -1068,7 +1068,7 @@ export default function ProviderPage() {
                 </div>
                 <p className="mt-2 text-[10.5px] leading-snug text-faint">
                   Es el <code>gameCoord</code> que tu juego pone en el tag <code>a</code> de
-                  sus eventos NGP (marcador <code>kind:31337</code>, presencia). En runtime,
+                  sus eventos NGP (marcador <code>kind:31339</code>, presencia). En runtime,
                   fuente canónica: <code>GET /api/v1/session</code> → <code>gameCoord</code>.
                   No la hardcodees: si cambia el slug, queda vieja y Luna deja de detectar.
                 </p>

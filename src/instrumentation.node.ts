@@ -334,7 +334,7 @@ async function startGameSync() {
 }
 
 /**
- * Sync IN-PROCESS de PUNTAJES (kind:31337, Nostr Games Protocol (NGP)): levanta de relays los
+ * Sync IN-PROCESS de PUNTAJES (kind:31339, Nostr Games Protocol (NGP)): levanta de relays los
  * marcadores firmados por los jugadores y los proyecta a la tabla `Score` (mismo
  * read-model que la API REST 1.0). Mismo patrón que zap/comment/game-sync. Ver
  * src/lib/score-sync.ts (syncScores) y SCORE_SYNC_INTERVAL_MS.

@@ -31,7 +31,7 @@ function boardLabel(name: string): string {
 // Tablas cuyo puntaje es una DURACIÓN en milisegundos (se muestra como tiempo, no
 // como número pelado — si no, "5 min 53 s" aparece como "353.367" y parece un conteo
 // gigante). El juego elige el nombre; estos son los de convención tiempo/supervivencia.
-// Provisorio hasta que el evento kind:31337 declare su formato con un tag `format`.
+// Provisorio hasta que el evento kind:31339 declare su formato con un tag `format`.
 const DURATION_BOARDS = new Set([
   "supervivencia",
   "survival",
@@ -60,7 +60,7 @@ function formatScore(boardName: string, score: number): string {
 /**
  * Marcador del juego en la página de la tienda. Lee de /api/scores/top (que sale
  * del read-model `Score`, alimentado por la API REST 1.0 y por el sync NGP
- * kind:31337) y resuelve nombre/avatar desde Nostr, igual que <ZapLeaderboard>.
+ * kind:31339) y resuelve nombre/avatar desde Nostr, igual que <ZapLeaderboard>.
  * Un juego puede tener varias tablas (p. ej. "victorias" y "supervivencia"): se
  * muestran como pestañas. Si no hay ninguna, el componente no renderiza nada.
  *
@@ -184,7 +184,7 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
                     {name}
                     {e.viaNostr ? (
                       <span
-                        title="Puntaje firmado en Nostr (kind:31337)"
+                        title="Puntaje firmado en Nostr (kind:31339)"
                         className="ml-1.5 align-middle text-[11px] text-ln-muted"
                       >
                         ⚡
@@ -217,7 +217,7 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
             Vos
             {myStanding.viaNostr ? (
               <span
-                title="Puntaje firmado en Nostr (kind:31337)"
+                title="Puntaje firmado en Nostr (kind:31339)"
                 className="ml-1.5 align-middle text-[11px] text-ln-muted"
               >
                 ⚡

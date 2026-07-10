@@ -18,7 +18,7 @@ import type { IntegrationFeature } from "./integration-features";
 export type Column = "solo-1.0" | "intermedio" | "solo-ngp";
 
 // Estado de la pata NGP:
-//   "implementado" → ya corre en Luna Negra (marcador 31337, zaps, reseñas).
+//   "implementado" → ya corre en Luna Negra (marcador 31339, zaps, reseñas).
 //   "declarado"    → implementado pero NO observable desde el server (reto NIP-17
 //                    va cifrado E2E): solo sabemos la capacidad que declaró el dev.
 //   "diseño"       → especificado en la spec, todavía sin código.
@@ -27,7 +27,7 @@ export type TwoZeroImpl = "implementado" | "declarado" | "diseño";
 // Señal de uso NGP derivable de la DB. "none" = sin señal por juego
 // (invitaciones/salas: van cifradas o no dejan rastro).
 //   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2).
-//   login    → INFERIDA de los puntajes 31337 firmados por el jugador (para
+//   login    → INFERIDA de los puntajes 31339 firmados por el jugador (para
 //              firmarlos el juego tuvo que obtener su signer NIP-07/46).
 //   presence → presencia NIP-38 vista por el probador de relays (se persiste).
 //   oracle   → atestaciones kind:31338 vistas por el probador (se persisten).
@@ -42,7 +42,7 @@ export type TwoZeroSignal =
   | "none";
 
 export type TwoZeroSide = {
-  label: string; // estándar visible: "kind:31337", "NIP-38", …
+  label: string; // estándar visible: "kind:31339", "NIP-38", …
   impl: TwoZeroImpl;
   signal: TwoZeroSignal;
   desc: string;
@@ -103,7 +103,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           impl: "implementado",
           signal: "login",
           manual: true,
-          desc: "El jugador se identifica con su pubkey (NIP-07/46) sin canjear lnToken. No deja un evento propio, pero SE INFIERE: un puntaje kind:31337 firmado por el jugador prueba que el juego obtuvo su signer. Sin marcador, declarala manualmente.",
+          desc: "El jugador se identifica con su pubkey (NIP-07/46) sin canjear lnToken. No deja un evento propio, pero SE INFIERE: un puntaje kind:31339 firmado por el jugador prueba que el juego obtuvo su signer. Sin marcador, declarala manualmente.",
         },
       },
       {
@@ -111,7 +111,7 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         title: "Marcador",
         oneZero: ["leaderboards"],
         twoZero: {
-          label: "kind:31337",
+          label: "kind:31339",
           impl: "implementado",
           signal: "scores",
           desc: "Puntaje addressable firmado por el jugador; score-sync lo proyecta a la tabla Score (sourceEventId). El ranking se reconstruye desde Nostr.",

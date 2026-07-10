@@ -396,7 +396,7 @@ const PROFILE_RELAYS = ["wss://relay.damus.io", "wss://relay.nostr.band", "wss:/
 // DMs / retos NIP-17 (escritura + lectura)
 const DM_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social"];
 
-// Publicar metadata firmada (presencia 30315, marcador 31337)
+// Publicar metadata firmada (presencia 30315, marcador 31339)
 const PUBLIC_WRITE_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];</code></pre></div>
           <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>No publiques a <code>relay.nostr.band</code>:</strong> es un indexador de solo lectura que rechaza escrituras. Va en <code>PROFILE_RELAYS</code> (igual reindexa), pero no en los sets de escritura.</p></div>
         </div>
@@ -448,7 +448,7 @@ const PUBLIC_WRITE_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://rel
         <summary>
           <span class="item-num">03</span>
           <span class="item-txt">
-            <span class="item-titlerow"><span class="item-title">Marcador</span><span class="kbadge">kind:31337</span><span class="tag aurora">Implementado</span></span>
+            <span class="item-titlerow"><span class="item-title">Marcador</span><span class="kbadge">kind:31339</span><span class="tag aurora">Implementado</span></span>
             <span class="item-sub">El jugador firma su puntaje; cualquiera lee el ranking.</span>
           </span>
           <span class="chev">▾</span>
@@ -459,7 +459,7 @@ const PUBLIC_WRITE_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://rel
 const board = "clasico";
 
 const evt = await window.nostr.signEvent({
-  kind: 31337,
+  kind: 31339,
   created_at: Math.floor(Date.now() / 1000),
   tags: [
     ["a", gameCoord],                 // GAME — ancla
@@ -473,7 +473,7 @@ const evt = await window.nostr.signEvent({
 await Promise.any(new SimplePool().publish(PUBLIC_WRITE_RELAYS, evt));
 
 // Leer el ranking sin Luna Negra:
-{ kinds: [31337], "#a": [gameCoord], "#board": [board] }</code></pre></div>
+{ kinds: [31339], "#a": [gameCoord], "#board": [board] }</code></pre></div>
           <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>Anti-trampa:</strong> el puntaje lo firma el cliente y es falsificable. Sirve para rankings sociales, no para repartir dinero. Para stakes existe el tier verificado <code>kind:31338</code> (oráculo, diseño). Nombres de <code>board</code> deben coincidir con los del camino REST.</p></div>
         </div>
       </details>
@@ -591,7 +591,7 @@ const stop = nge.watchBet(bet.betId, (b) => render(b.status, b.seats));
 
 // 3) Reportar el ganador por seatId (vacío = empate/anulación → reembolso).
 await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
-          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado lo firma el juego (oráculo), no el marcador cliente.</strong> El <code>kind:31337</code> es falsificable y nunca reparte dinero. El escrow custodia el pozo y solo paga a los destinos declarados en <code>createBet</code>: un <code>secret</code> filtrado puede elegir ganador, <strong>no redirigir fondos</strong>. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>. SDK: paquete <code>nostr-game-protocol</code> (subpath <code>/nge</code>; peer dep <code>nostr-tools</code>).</p></div>
+          <div class="warn"><span style="font-size:15px">⚠️</span><p><strong>El resultado lo firma el juego (oráculo), no el marcador cliente.</strong> El <code>kind:31339</code> es falsificable y nunca reparte dinero. El escrow custodia el pozo y solo paga a los destinos declarados en <code>createBet</code>: un <code>secret</code> filtrado puede elegir ganador, <strong>no redirigir fondos</strong>. Para no construir UI, mandá al jugador a <code>/apuestas/{betId}</code>. SDK: paquete <code>nostr-game-protocol</code> (subpath <code>/nge</code>; peer dep <code>nostr-tools</code>).</p></div>
           <div class="hint"><span style="font-size:15px">💡</span><p><strong>Serverless:</strong> usá <code>nge.pollBet</code> en vez de <code>watchBet</code> (solo polling, sin listener persistente). La entrega es at-least-once: el SDK reenvía el mismo request firmado hasta la response y el escrow deduplica por id — reintentar nunca duplica apuestas.</p></div>
         </div>
       </details>
@@ -629,7 +629,7 @@ await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
       <div class="krow"><span class="kkind">30315</span><span class="kwhat">Presencia "jugando X" (NIP-38)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">1059</span><span class="kwhat">Reto / invitación gift-wrap (NIP-17)</span><span class="kstate">estándar</span></div>
       <div class="krow"><span class="kkind">9735</span><span class="kwhat">Recibo de zap / payout (NIP-57)</span><span class="kstate">estándar</span></div>
-      <div class="krow"><span class="kkind">31337</span><span class="kwhat">Mejor puntaje del jugador</span><span class="kstate aurora">implementado</span></div>
+      <div class="krow"><span class="kkind">31339</span><span class="kwhat">Mejor puntaje del jugador</span><span class="kstate aurora">implementado</span></div>
       <div class="krow"><span class="kkind">31338</span><span class="kwhat">Atestación de puntaje (oráculo)</span><span class="kstate corona">diseño</span></div>
     </div>
     <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#ffb648;margin:0 0 10px 2px">Apuestas · liquidación pública (NGP) + canal (NGE)</div>
@@ -649,8 +649,8 @@ await nge.reportResult(bet.betId, ["alice"]);</code></pre></div>
     <div class="checklist">
       <div class="check"><span class="cb luna">N0</span><span class="t">Login NIP-07/46 → obtengo la pubkey del jugador.</span></div>
       <div class="check"><span class="cb luna">N0</span><span class="t">Tengo la coordenada GAME (30023:dev:slug) del juego.</span></div>
-      <div class="check"><span class="cb luna">N1</span><span class="t">Publico el score (kind 31337) firmado por el jugador, con tags a y board.</span></div>
-      <div class="check"><span class="cb luna">N1</span><span class="t">Leo el ranking con el filtro { kinds:[31337], "#a":[GAME] }.</span></div>
+      <div class="check"><span class="cb luna">N1</span><span class="t">Publico el score (kind 31339) firmado por el jugador, con tags a y board.</span></div>
+      <div class="check"><span class="cb luna">N1</span><span class="t">Leo el ranking con el filtro { kinds:[31339], "#a":[GAME] }.</span></div>
       <div class="check"><span class="cb aurora">N2</span><span class="t">Presencia NIP-38 (kind 30315) con expiration. Opcional.</span></div>
       <div class="check"><span class="cb aurora">N2</span><span class="t">Reseñas y logros: kind 1 con tag a = GAME. Opcional.</span></div>
       <div class="check"><span class="cb corona">N3</span><span class="t">Zaps NIP-57 para propinas y premios sin custodia. Opcional.</span></div>
@@ -684,13 +684,13 @@ const SCRIPT = `
         code: "// N0 — identidad del jugador\\nconst pubkey = await window.nostr.getPublicKey();\\n\\n// pubkey  =>  playerId estable (npub / hex)\\n// NIP-46 (celular): mismo window.nostr,\\n// firmado por un signer remoto vía QR."
       },
       N1: {
-        color: "luna", active: ["jugador","relays","clientes"], packet: "kind 31337 · score",
-        name: "Marcador", nip: "kind 31337 · esta spec (implementado)",
+        color: "luna", active: ["jugador","relays","clientes"], packet: "kind 31339 · score",
+        name: "Marcador", nip: "kind 31339 · esta spec (implementado)",
         desc: "La única pieza nueva que define NGP; todo lo demás reusa NIPs que ya existen. Un puntaje es un evento addressable firmado POR EL JUGADOR (no por Luna Negra) que tagea la coordenada del juego (a) y una tabla (board). El relay guarda un único registro por jugador y tabla: se queda el mejor, igual que hoy.",
         tip: "El score lo firma el jugador: sirve para rankings sociales, es falsificable. Para premios con dinero, sumá una atestación de oráculo (kind 31338).",
         codeTitle: "evento de puntaje",
-        code: "{\\n  \\"kind\\": 31337,\\n  \\"pubkey\\": \\"<pubkey del jugador>\\",   // firma el JUGADOR\\n  \\"created_at\\": 1719360000,\\n  \\"tags\\": [\\n    [\\"a\\", \\"30023:npub1dev…:pacman-pwa\\"],       // GAME — ancla\\n    [\\"d\\", \\"30023:npub1dev…:pacman-pwa:clasico\\"],\\n    [\\"board\\", \\"clasico\\"],\\n    [\\"score\\", \\"128400\\"],\\n    [\\"unit\\", \\"points\\"]\\n  ],\\n  \\"content\\": \\"{\\\\\\"level\\\\\\":7}\\"\\n}",
-        filter: "{\\n  \\"kinds\\": [31337],\\n  \\"#a\\": [\\"30023:npub1dev…:pacman-pwa\\"],\\n  \\"#board\\": [\\"clasico\\"]\\n}\\n\\n// agrupá por pubkey, ordená por score.\\n// No hace falta Luna Negra."
+        code: "{\\n  \\"kind\\": 31339,\\n  \\"pubkey\\": \\"<pubkey del jugador>\\",   // firma el JUGADOR\\n  \\"created_at\\": 1719360000,\\n  \\"tags\\": [\\n    [\\"a\\", \\"30023:npub1dev…:pacman-pwa\\"],       // GAME — ancla\\n    [\\"d\\", \\"30023:npub1dev…:pacman-pwa:clasico\\"],\\n    [\\"board\\", \\"clasico\\"],\\n    [\\"score\\", \\"128400\\"],\\n    [\\"unit\\", \\"points\\"]\\n  ],\\n  \\"content\\": \\"{\\\\\\"level\\\\\\":7}\\"\\n}",
+        filter: "{\\n  \\"kinds\\": [31339],\\n  \\"#a\\": [\\"30023:npub1dev…:pacman-pwa\\"],\\n  \\"#board\\": [\\"clasico\\"]\\n}\\n\\n// agrupá por pubkey, ordená por score.\\n// No hace falta Luna Negra."
       },
       N2: {
         color: "aurora", active: ["jugador","relays","clientes"], packet: "kind 30315 · presencia",
@@ -816,7 +816,7 @@ function doc(): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Integra tu juego con Luna Negra: NGP (formato público de eventos Nostr — login NIP-07/46, marcador kind:31337, presencia NIP-38, retos NIP-17, reseñas, zaps) + NGE (canal de escrow cifrado estilo NWC para apuestas con custodia)." />
+<meta name="description" content="Integra tu juego con Luna Negra: NGP (formato público de eventos Nostr — login NIP-07/46, marcador kind:31339, presencia NIP-38, retos NIP-17, reseñas, zaps) + NGE (canal de escrow cifrado estilo NWC para apuestas con custodia)." />
 <title>Luna Negra · NGP + NGE para developers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

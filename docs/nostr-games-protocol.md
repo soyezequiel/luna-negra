@@ -10,7 +10,7 @@
 > es una **mejora experimental y NO prometida**: no formaba parte del alcance del
 > hackathon. Es trabajo **post-hackathon**, porque el proyecto se va a **seguir
 > desarrollando** después. Lo único **garantizado y funcionando hoy** es la
-> [**interfaz 1.0 (REST, §1–§8)**](api-publica.md). Salvo el marcador (kind:31337) y
+> [**interfaz 1.0 (REST, §1–§8)**](api-publica.md). Salvo el marcador (kind:31339) y
 > el reto 1v1 (NIP-17), que están implementados como adelanto, **el resto de NGP
 > es diseño, no código**. Los `kind` propuestos pueden cambiar.
 
@@ -102,7 +102,7 @@ jugador**, que tagea la coordenada del juego.
 
 ```jsonc
 {
-  "kind": 31337,                      // (propuesto) rango addressable 30000-39999
+  "kind": 31339,                      // (propuesto) rango addressable 30000-39999
   "pubkey": "<pubkey del jugador>",   // firma el JUGADOR, no Luna Negra
   "created_at": 1719360000,
   "tags": [
@@ -134,7 +134,7 @@ jugador**, que tagea la coordenada del juego.
 ```jsonc
 // Filtro Nostr — funciona en Luna Negra o en cualquier cliente
 {
-  "kinds": [31337],
+  "kinds": [31339],
   "#a": ["30023:npub1dev…:pacman-pwa"],
   "#board": ["clasico"]
 }
@@ -275,9 +275,9 @@ protocolos custom — ahí Nostr deja de ser la herramienta correcta y está bie
 
 - [ ] **N0** Login NIP-07/46 → obtengo la pubkey del jugador.
 - [ ] Tengo la **coordenada** `GAME` (`30023:dev:slug`) del juego.
-- [ ] **N1** Publico el evento de score (kind 31337) firmado por el jugador,
+- [ ] **N1** Publico el evento de score (kind 31339) firmado por el jugador,
       tageando `GAME` y `board`.
-- [ ] Leo el ranking con el filtro `{ kinds:[31337], "#a":[GAME] }`.
+- [ ] Leo el ranking con el filtro `{ kinds:[31339], "#a":[GAME] }`.
 - [ ] **N2** (opc.) Presencia NIP-38 (kind 30315) con `expiration`.
 - [ ] **N2** (opc.) Reseñas/logros kind:1 con tag `a` = `GAME`.
 - [ ] **N3** (opc.) Zaps NIP-57 para propinas/premios.
@@ -296,7 +296,7 @@ protocolos custom — ahí Nostr deja de ser la herramienta correcta y está bie
 | 30023 | Artículo del juego (define la coordenada) | NIP-23 | estándar |
 | 30315 | Presencia "jugando X" | NIP-38 | estándar |
 | 9735 | Recibo de zap (propinas/premios) | NIP-57 | estándar |
-| 31337 | **Mejor puntaje del jugador** | esta spec | *propuesto* |
+| 31339 | **Mejor puntaje del jugador** | esta spec | *propuesto* |
 | 31338 | **Atestación de puntaje (oráculo)** | esta spec | *propuesto* |
 | 1339 | **Contrato de apuesta** (firma el retador) | [apuestas](nostr-games-protocol-apuestas.md) | **estable (v1)** |
 | 1341 | **Resultado de apuesta** (firma el oráculo; desde jul 2026 también lo firma el oráculo gestionado de Luna) | [apuestas](nostr-games-protocol-apuestas.md) | **estable (v1)** |

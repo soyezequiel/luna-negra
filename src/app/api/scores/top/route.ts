@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 /**
  * Marcadores de un juego para su página en la tienda. Alimenta el componente
  * <ScoreLeaderboard>. Sale del read-model `Score`, que reciben tanto la API REST
- * 1.0 como el sync NGP (kind:31337) — mismo ranking, sin importar el camino.
+ * 1.0 como el sync NGP (kind:31339) — mismo ranking, sin importar el camino.
  *
  * Público: los puntajes ya son públicos (firmados en Nostr o subidos por el juego).
  * ⚠️ Son FALSIFICABLES (los manda el cliente): sirven para mostrar, no para dinero.

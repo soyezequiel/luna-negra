@@ -2,14 +2,14 @@
 
 Cinco features para enriquecer la ficha del juego con datos que ya entran (o
 casi) por la integración. **Prioridad por Nostr Games Protocol (NGP)**: primero lo que se
-apoya en eventos Nostr firmados (NIP-38, kind:31337, kind:1/NIP-23), después lo
+apoya en eventos Nostr firmados (NIP-38, kind:31339, kind:1/NIP-23), después lo
 que es puramente REST 1.0.
 
 Orden de ataque sugerido:
 
 | # | Feature | Pata NGP | Esfuerzo | Prioridad |
 |---|---------|----------|----------|-----------|
-| 5 | Puntaje personal / ranking propio | kind:31337 (fuerte) | S | **P1** |
+| 5 | Puntaje personal / ranking propio | kind:31339 (fuerte) | S | **P1** |
 | 4 | Agregado de reseñas | kind:1 / NIP-23 (fuerte) | S | **P1** |
 | 1 | "Jugando ahora" (jugadores en vivo) | NIP-38 kind:30315 (fuerte) | M | **P1** |
 | 2 | Estado in-game (`stateJson`) | débil (NIP-38 es solo texto) | M | P2 |
@@ -23,7 +23,7 @@ Orden de ataque sugerido:
 4.200 · puesto #7 de 312"* por cada tabla. Es la extensión más barata de la
 infra NGP que ya existe.
 
-**Por qué es NGP.** El récord se firma como `kind:31337` y `score-sync.ts` lo
+**Por qué es NGP.** El récord se firma como `kind:31339` y `score-sync.ts` lo
 proyecta a la tabla `Score` con `sourceEventId`/`sourcePubkey`. El read-model ya
 distingue procedencia (`viaNostr`). No hay que tocar el camino de escritura:
 solo leer el puesto del jugador logueado.

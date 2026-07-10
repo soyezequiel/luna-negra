@@ -15,13 +15,13 @@ El código NGP de apuestas está estratificado con frontera dura:
 
 | Capa | Módulos | Regla |
 |---|---|---|
-| **Protocolo (puro)** | `nostr-game-protocol/ngp-core` (paquete [Nostr-Game-Protocol](https://github.com/soyezequiel/Nostr-Game-Protocol), dependencia git) — el núcleo NGP compartido tienda ⇄ juegos: kinds congelados, templates (31340/terms, 1341, 31337, 30315) y parsers estructurales (31337, 30315, 1339) | Sin prisma, sin I/O, sin env, sin firma. Cambiar esto = cambiar el protocolo. Tienda y juegos consumen el MISMO paquete (ya no hay copias sincronizadas); conformance en los tests del SDK. |
-| **Servicios** | `ngp-bet-state.ts` (publica la sombra), `ngp-bet-ingest.ts` (ingiere 1339), `ngp-bet-result-sync.ts` (ingiere 1341), `score-sync.ts` (proyecta 31337), `live-presence.ts` (cuenta 30315) | Leen DB/relays, verifican firmas, mapean a datos planos y llaman a los builders/parsers puros del core. La política del escrow (rangos, ventanas, códigos de error) vive acá. |
+| **Protocolo (puro)** | `nostr-game-protocol/ngp-core` (paquete [Nostr-Game-Protocol](https://github.com/soyezequiel/Nostr-Game-Protocol), dependencia git) — el núcleo NGP compartido tienda ⇄ juegos: kinds congelados, templates (31340/terms, 1341, 31339, 30315) y parsers estructurales (31339, 30315, 1339) | Sin prisma, sin I/O, sin env, sin firma. Cambiar esto = cambiar el protocolo. Tienda y juegos consumen el MISMO paquete (ya no hay copias sincronizadas); conformance en los tests del SDK. |
+| **Servicios** | `ngp-bet-state.ts` (publica la sombra), `ngp-bet-ingest.ts` (ingiere 1339), `ngp-bet-result-sync.ts` (ingiere 1341), `score-sync.ts` (proyecta 31339), `live-presence.ts` (cuenta 30315) | Leen DB/relays, verifican firmas, mapean a datos planos y llaman a los builders/parsers puros del core. La política del escrow (rangos, ventanas, códigos de error) vive acá. |
 | **Producto** | notas `kind:1` humanas (`publishSettleNoteFor`, texto del ancla), umbrales editoriales | Puede cambiar sin tocar la spec. |
 
 Del lado juego, Tetris consume el mismo paquete: `nostr-game-protocol/ngp`
 (el core + la capa de firma del juego: `NgpSigner`, reto NIP-17, presencia
-NIP-38, marcador 31337) desde los puertos `src/online/nostr*.ts`.
+NIP-38, marcador 31339) desde los puertos `src/online/nostr*.ts`.
 
 ## 0.bis Quién firma el artículo del juego (kind:30023)
 
@@ -67,7 +67,7 @@ tabla. La UI no se entera: sigue leyendo `Score`.
   juego ──POST /api/v1/leaderboards/{name}/scores──▶ submitScore() ──▶ [Score] ──┐
                                                                                   ├─▶ readLeaderboard() ─▶ UI
 NGP:
-  cliente del jugador ──firma kind:31337──▶ relays ──▶ score-sync (tick) ─────────┘
+  cliente del jugador ──firma kind:31339──▶ relays ──▶ score-sync (tick) ─────────┘
                                                          └─ verifica firma, mapea a→gameId,
                                                             reusa submitScore() + sourceEventId
 ```
@@ -84,7 +84,7 @@ Calcado de [`zap-sync.ts`](../src/lib/zap-sync.ts). Pseudocódigo del tick:
 
 ```ts
 export const SCORE_SYNC_INTERVAL_MS = Number(process.env.SCORE_SYNC_INTERVAL_MS ?? 60_000);
-const SCORE_KIND = 31337;
+const SCORE_KIND = 31339;
 
 export async function syncScores(): Promise<void> {
   const storePubkey = getStorePubkey();
@@ -144,7 +144,7 @@ Solo se agrega **procedencia** a `Score`. Nada se renombra ni se rompe.
 ```prisma
 model Score {
   // …campos actuales…
-  sourceEventId String?  // id del kind:31337 origen. null = vino por REST 1.0
+  sourceEventId String?  // id del kind:31339 origen. null = vino por REST 1.0
   sourcePubkey  String?  // hex que firmó (para mapear / atestación verificada)
 
   @@unique([leaderboardId, npub])
@@ -179,7 +179,7 @@ por Nostr; `null`, por REST.
 | **A — juego NGP nativo** | el propio juego con su NIP-07/46 | ❌ No | pacman, sammer, bitbybit (ya firman) |
 
 **Decisión:** se va por el **camino A** y los juegos se migran de a poco a firmar
-su propio `kind:31337`. El "espejo desde la pestaña" (que la tienda firmara el
+su propio `kind:31339`. El "espejo desde la pestaña" (que la tienda firmara el
 score por el jugador cuando llega por REST, al estilo
 [`playing-presence.ts`](../src/lib/playing-presence.ts)) **queda descartado**: dependía
 de tener la pestaña de la tienda abierta y daba menos resiliencia que A. Mientras
@@ -203,14 +203,14 @@ un juego no migre, su marcador sigue viviendo en la tabla `Score` vía REST 1.0
 
 ## 7. Tier verificado (puente con el escrow)
 
-El score firmado por el jugador (kind 31337) es **falsificable** — igual que el
+El score firmado por el jugador (kind 31339) es **falsificable** — igual que el
 §6 de la 1.0. Para marcadores con dinero, el sync puede exigir una **atestación**
 (kind 31338) firmada por el **oráculo del juego**, reusando la misma infra de
 oráculo que ya valida los resultados de apuestas:
 
 ```
 score-sync (modo verificado):
-  cuenta el kind:31337 SOLO si existe un kind:31338 del oraclePubkey del juego
+  cuenta el kind:31339 SOLO si existe un kind:31338 del oraclePubkey del juego
   que referencie ese evento (tag `e`) con status=verified
 ```
 
@@ -224,8 +224,8 @@ de (o además de) resultados de apuestas.
 
 Si Luna Negra desaparece:
 
-- Los `kind:31337` siguen en los relays. Cualquier cliente reconstruye el ranking
-  con `{ kinds:[31337], "#a":[coordenada] }`.
+- Los `kind:31339` siguen en los relays. Cualquier cliente reconstruye el ranking
+  con `{ kinds:[31339], "#a":[coordenada] }`.
 - La coordenada sigue existiendo porque el artículo `kind:30023` sigue en los
   relays.
 - La DB de Luna Negra era **solo un caché** (igual que hoy `game-sync` la trata
@@ -249,8 +249,8 @@ Slice de marcador construido y probado e2e contra relays reales (jun 2026):
 
 Pendiente:
 
-- [ ] Congelar los `kind` (31337/31338) tras chequear que no colisionen.
+- [ ] Congelar los `kind` (31339/31338) tras chequear que no colisionen.
 - [ ] (Tier verificado) score-sync condicionado a atestación del `oraclePubkey`.
 - [ ] Doc dev: actualizar la guía de integración Nostr (skill `integrar-ngp-v2`)
-      con el camino A — que el juego firme su propio `kind:31337`.
+      con el camino A — que el juego firme su propio `kind:31339`.
 </content>

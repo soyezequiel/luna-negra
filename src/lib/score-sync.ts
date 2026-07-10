@@ -7,7 +7,7 @@ import { NGP_KIND, parseScoreEvent } from "nostr-game-protocol/ngp-core";
 
 /**
  * Reconciliación de PUNTAJES desde Nostr (Nostr Games Protocol (NGP)). El jugador firma su
- * marcador como evento addressable kind:31337 tageando la coordenada del juego
+ * marcador como evento addressable kind:31339 tageando la coordenada del juego
  * (`a` = 30023:<pubkey>:<slug>); acá los levantamos de relays, verificamos la
  * firma y los proyectamos a la tabla `Score` — el MISMO read-model que alimenta
  * la API REST 1.0 (`submitScore`). Así la UI del marcador no se entera de cuál de
@@ -23,6 +23,12 @@ import { NGP_KIND, parseScoreEvent } from "nostr-game-protocol/ngp-core";
 // kind addressable del evento de puntaje (rango 30000-39999). Congelado en el
 // núcleo de protocolo compartido con los juegos (nostr-game-protocol/ngp-core).
 export const SCORE_KIND = NGP_KIND.score;
+
+// DOBLE LECTURA de la renumeración del marcador (31337 → 31339, colisión con
+// "Audio Track" de facto): los récords viejos en 31337 siguen contando hasta
+// cerrar la transición. El Set absorbe el caso paquete-sin-actualizar (ambos
+// iguales). parseScoreEvent ya acepta ambos kinds.
+const SCORE_READ_KINDS = [...new Set([NGP_KIND.score, 31337])];
 
 // Cadencia del sync corriendo IN-PROCESS (self-host). 0 = desactivado.
 export const SCORE_SYNC_INTERVAL_MS = Number(
@@ -63,7 +69,7 @@ export async function syncScores(): Promise<void> {
   try {
     events = await pool().querySync(
       RELAYS,
-      { kinds: [SCORE_KIND], "#a": [...byCoord.keys()], ...(since ? { since } : {}) },
+      { kinds: SCORE_READ_KINDS, "#a": [...byCoord.keys()], ...(since ? { since } : {}) },
       { maxWait: 5000 },
     );
   } catch {
@@ -98,7 +104,7 @@ export async function recordScoreEvent(
   const gameId = byCoord.get(parsed.gameCoord);
   if (!gameId) return; // no es un juego nuestro (o no publicado)
 
-  // Detección automática de la capacidad "marcador" (NGP): ver un kind:31337 válido
+  // Detección automática de la capacidad "marcador" (NGP): ver un kind:31339 válido
   // firmado por el jugador y anclado a la coordenada del juego ES la evidencia de que
   // integró el marcador Nostr. La persistimos como ping "ngp:marcador" (throttle 1/min
   // por juego) para que el panel marque "Detectado" SIEMPRE, sin depender de que este

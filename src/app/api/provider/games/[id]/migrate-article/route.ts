@@ -16,7 +16,7 @@ import { checkProviderArticle } from "@/lib/provider-article";
  * régimen a "provider" y actualiza la identidad Nostr del caché.
  *
  * ⚠️ La coordenada del juego CAMBIA (cambia el pubkey del firmante): la actividad
- * histórica anclada a la coord vieja (scores 31337, reseñas, presencia) NO migra,
+ * histórica anclada a la coord vieja (scores 31339, reseñas, presencia) NO migra,
  * y los juegos integrados que cachearon `gameCoord` (GET /api/v1/session) deben
  * re-leerla. El botón del panel lo advierte antes de firmar.
  *
