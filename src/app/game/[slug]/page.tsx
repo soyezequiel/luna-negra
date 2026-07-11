@@ -28,7 +28,6 @@ import {
   EditablePrice,
   EditableCategories,
   EditableGameUrl,
-  EditableRoomLink,
   EditableMedia,
 } from "@/components/game-store-edit";
 import { hueFromSlug, formatDurationMs } from "@/lib/format";
@@ -547,14 +546,7 @@ export default async function GamePage({
               <dd className="text-ln-text">Web · Lightning</dd>
             </div>
             {isOwner ? (
-              <>
-                <EditableGameUrl gameId={game.id} value={game.gameUrl} />
-                <EditableRoomLink
-                  gameId={game.id}
-                  enabled={roomLinkEnabled}
-                  hasGameUrl={Boolean(game.gameUrl)}
-                />
-              </>
+              <EditableGameUrl gameId={game.id} value={game.gameUrl} />
             ) : null}
           </dl>
         </aside>

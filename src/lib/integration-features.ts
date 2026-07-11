@@ -8,7 +8,6 @@ export type IntegrationFeature =
   | "purchase"
   | "presence"
   | "rooms"
-  | "social"
   | "leaderboards"
   | "bets"
   | "webhooks";
@@ -60,14 +59,6 @@ export const INTEGRATION_FEATURES: FeatureMeta[] = [
     scope: "game",
     required: false,
     desc: "Multijugador con ?inviteToken=: roster y estado compartido de sala.",
-  },
-  {
-    key: "social",
-    section: "§5",
-    title: "Invitaciones y amigos",
-    scope: "provider",
-    required: false,
-    desc: "Invitar a salas y leer amigos con presencia (POST /api/v1/invites, GET /api/v1/friends).",
   },
   {
     key: "leaderboards",

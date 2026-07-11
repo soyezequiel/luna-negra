@@ -51,7 +51,7 @@ const lastWriteAt = new Map<string, number>();
 /**
  * Registra (fire-and-forget) que `feature` fue usada. Pasá `gameId` cuando la
  * llamada lo trae (SSO, compra, salas, marcadores, apuestas) o `providerId`
- * cuando es a nivel proveedor (presencia, social, webhooks). Si solo hay
+ * cuando es a nivel proveedor (presencia, webhooks). Si solo hay
  * `gameId`, el `providerId` se resuelve desde el juego.
  *
  * Devuelve la promesa para poder envolverla en `after()` en route handlers; en
@@ -203,7 +203,7 @@ async function deriveDomainEvidence(
   const byGame = new Map<string, Map<string, PingInfo>>();
   const inGames = { gameId: { in: gameIds } };
 
-  const [purchases, rooms, bets, leaderboards, presence, invites] =
+  const [purchases, rooms, bets, leaderboards, presence] =
     await Promise.all([
       gameIds.length
         ? prisma.purchase.groupBy({
@@ -242,17 +242,12 @@ async function deriveDomainEvidence(
             },
           })
         : [],
-      // Presencia e invitaciones son a nivel proveedor (gameId="") y efímeras:
-      // su ausencia NO prueba "no integrado", pero su presencia sí prueba uso.
+      // Presencia a nivel proveedor (gameId="") y efímera: su ausencia NO prueba
+      // "no integrado", pero su presencia sí prueba uso.
       prisma.gamePresence.aggregate({
         where: { providerId },
         _count: { _all: true },
         _max: { updatedAt: true },
-      }),
-      prisma.gameInvite.aggregate({
-        where: { providerId },
-        _count: { _all: true },
-        _max: { createdAt: true },
       }),
     ]);
 
@@ -301,13 +296,6 @@ async function deriveDomainEvidence(
       count: presence._count._all,
       firstSeenAt: iso(presence._max.updatedAt),
       lastSeenAt: iso(presence._max.updatedAt),
-    });
-  }
-  if (invites._count._all > 0 && invites._max.createdAt) {
-    addEvidence(byGame, "", "social", {
-      count: invites._count._all,
-      firstSeenAt: iso(invites._max.createdAt),
-      lastSeenAt: iso(invites._max.createdAt),
     });
   }
 
@@ -370,7 +358,7 @@ export type StoreGameRef = { id: string; providerId: string };
  * integración, más arriba"). Es el número de interfaces distintas (§1–§8) que el
  * juego tiene cableadas, combinando telemetría observada (IntegrationPing) con la
  * evidencia derivada del dominio (compras, salas, apuestas, marcadores), igual que
- * el panel de integración. Las features a nivel proveedor (presencia, social,
+ * el panel de integración. Las features a nivel proveedor (presencia,
  * webhooks) cuentan para TODOS los juegos de ese proveedor.
  *
  * A diferencia de readIntegrationEvidence (por proveedor), esto hace un número
@@ -413,7 +401,6 @@ export async function scoreGamesByIntegration(
     bets,
     leaderboards,
     presence,
-    invites,
   ] = await Promise.all([
     // Telemetría atribuida a un juego (gameId != "") y a un proveedor (gameId = "").
     prisma.integrationPing.groupBy({ by: ["gameId", "feature"], where: inGames }),
@@ -435,11 +422,6 @@ export async function scoreGamesByIntegration(
       where: inProviders,
       _count: { _all: true },
     }),
-    prisma.gameInvite.groupBy({
-      by: ["providerId"],
-      where: inProviders,
-      _count: { _all: true },
-    }),
   ]);
 
   // Solo cuentan interfaces del catálogo §1–§8 más NGE (interfaz propia). Los
@@ -454,7 +436,6 @@ export async function scoreGamesByIntegration(
   for (const b of bets) addGame(b.gameId, "bets");
   for (const lb of leaderboards) addGame(lb.gameId, "leaderboards");
   for (const pr of presence) addProvider(pr.providerId, "presence");
-  for (const inv of invites) addProvider(inv.providerId, "social");
 
   // §1 SSO inferido: actividad con identidad de jugador (marcadores/salas/
   // apuestas) solo se consigue tras canjear la sesión/entitlement (§1).
@@ -540,7 +521,7 @@ export type IntegrationView = {
     webhookConfigured: boolean;
     apiKeys: number;
   };
-  // Features a nivel proveedor (presencia, social, webhooks): aplican a todos los
+  // Features a nivel proveedor (presencia, webhooks): aplican a todos los
   // juegos. La UI las muestra una vez y/o repetidas en cada juego.
   providerLevel: Record<string, PingInfo | null>;
   games: Array<

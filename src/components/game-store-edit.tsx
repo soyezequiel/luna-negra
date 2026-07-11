@@ -430,64 +430,6 @@ export function EditableGameUrl({
   );
 }
 
-// Declaración del proveedor de que el juego implementa "Luna Room Link" (enlace de
-// invitación a sala hosteada por el juego, ver docs/luna-room-link.md). El server
-// no puede verificar el contrato de 6 pasos, así que lo declara el dueño. Solo con
-// esto activado (y con enlace del juego cargado) Luna muestra el botón "Invitar".
-// Persiste en Game.manualCaps["roomLink"] vía el PATCH de manualCap.
-export function EditableRoomLink({
-  gameId,
-  enabled,
-  hasGameUrl,
-}: {
-  gameId: string;
-  enabled: boolean;
-  hasGameUrl: boolean;
-}) {
-  const { save, saving } = usePatchGame(gameId);
-  const [on, setOn] = useState(enabled);
-
-  async function toggle() {
-    const next = !on;
-    setOn(next); // optimista
-    const ok = await save({ manualCap: { key: "roomLink", value: next } });
-    if (!ok) setOn(!next); // revertir si falló
-  }
-
-  return (
-    <div className="border-t border-ln-border py-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <dt className="text-ln-faint">Invitar a sala (Luna Room Link)</dt>
-        <dd>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={on}
-            disabled={saving || !hasGameUrl}
-            onClick={toggle}
-            title={
-              hasGameUrl
-                ? "Declaro que el juego implementa el contrato de Luna Room Link"
-                : "Cargá primero el enlace del juego"
-            }
-            className={cn(
-              "inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40",
-              on ? "bg-ln-aurora" : "bg-ln-border",
-            )}
-          >
-            <span
-              className={cn(
-                "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                on ? "translate-x-4" : "translate-x-0.5",
-              )}
-            />
-          </button>
-        </dd>
-      </div>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Imágenes (portada vertical/horizontal + capturas)                  */
 /* ------------------------------------------------------------------ */
