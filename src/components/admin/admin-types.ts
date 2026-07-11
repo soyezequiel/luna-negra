@@ -93,6 +93,11 @@ export type TreasurySettings = {
   configured: boolean;
 };
 
+export type PresenceSettings = {
+  clickPresenceEnabled: boolean;
+  updatedAt: string | null;
+};
+
 export type TreasuryInfo = {
   settings: TreasurySettings;
   balanceSats: number | null;

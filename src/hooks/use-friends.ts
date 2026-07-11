@@ -27,15 +27,21 @@ export type Friend = {
   profile?: Profile;
   isMember: boolean;
   games: { slug: string; title: string }[];
-  status?: Status;
   /**
    * El servidor lo ve activo ahora (respuesta de /api/users/online): tiene la web
    * abierta (`StorePresence`) o está jugando algún juego detectado por la API
-   * (`GamePresence`, sobrevive con la tienda cerrada). Efímero como `status`: no se
-   * persiste en el caché de localStorage. "Conectado" = status (jugando vía NIP-38)
-   * o esto.
+   * (`GamePresence`, sobrevive con la tienda cerrada). NO se persiste en el caché
+   * de localStorage (la DB lo re-deriva barato en cada poll). "Conectado" = status
+   * (jugando vía NIP-38) o esto.
    */
   onlineInStore?: boolean;
+  /**
+   * Presencia NIP-38 "Jugando X" (kind:30315). SÍ se persiste en el caché de
+   * localStorage —con su expiración (`Status.expiresAt`)— para pintarla al
+   * instante tras un refresco; al leer se descarta si ya venció
+   * (`dropExpiredStatuses`) y el poll de estados la reconcilia contra los relays.
+   */
+  status?: Status;
   /** Última vez que jugó en Luna Negra (epoch ms) o null si nunca. */
   lastPlayedAt: number | null;
 };
@@ -72,7 +78,10 @@ function readCache(pubkey: string): Friend[] | null {
     const raw = localStorage.getItem(cacheKey(pubkey));
     if (!raw) return null;
     const cached = JSON.parse(raw) as Friend[];
-    return Array.isArray(cached) ? stripVolatileStatuses(cached) : null;
+    // Al leer descartamos la presencia NIP-38 ya vencida: persistimos el status
+    // para pintar "Jugando X" al instante tras un refresco, pero si su expiración
+    // (NIP-40) ya pasó no la mostramos (el relay tampoco la daría por fresca).
+    return Array.isArray(cached) ? dropExpiredStatuses(stripStorePresence(cached)) : null;
   } catch {
     return null;
   }
@@ -82,20 +91,48 @@ function writeCache(pubkey: string, friends: Friend[]) {
   try {
     localStorage.setItem(
       cacheKey(pubkey),
-      JSON.stringify(stripVolatileStatuses(friends)),
+      JSON.stringify(stripStorePresence(friends)),
     );
   } catch {
     /* cuota llena o storage no disponible: ignorar */
   }
 }
 
-export function stripVolatileStatuses(friends: Friend[]): Friend[] {
+/**
+ * Quita del caché la presencia "conectado" (`onlineInStore`): la deriva la DB en
+ * cada poll (barato), así que no tiene sentido persistir un puntito verde que
+ * puede estar viejo. La presencia NIP-38 (`status`) SÍ se persiste: lleva su
+ * propia expiración y se descarta al leer con `dropExpiredStatuses`.
+ */
+export function stripStorePresence(friends: Friend[]): Friend[] {
   return friends.map((friend) => {
     const cached = { ...friend };
-    delete cached.status;
     delete cached.onlineInStore;
     return cached;
   });
+}
+
+/**
+ * Descarta el status NIP-38 cacheado cuya expiración ya pasó, dejando el resto
+ * del amigo intacto. Así una presencia "Jugando X" que ya venció (el juego se
+ * cerró, o el relay no vuelve a confirmarla) desaparece sola sin esperar al poll.
+ */
+export function dropExpiredStatuses(
+  friends: Friend[],
+  nowSec: number = Math.floor(Date.now() / 1000),
+): Friend[] {
+  let changed = false;
+  const next = friends.map((friend) => {
+    if (friend.status && friend.status.expiresAt <= nowSec) {
+      changed = true;
+      const copy = { ...friend };
+      delete copy.status;
+      return copy;
+    }
+    return friend;
+  });
+  // Misma referencia si no venció nada: evita re-renders inútiles en el barrido.
+  return changed ? next : friends;
 }
 
 export function applyFreshStatuses(
@@ -319,6 +356,20 @@ export function useFriendsData(): FriendsValue {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
+  }, [user]);
+
+  // Barrido local de presencias NIP-38 vencidas: si la expiración (NIP-40) de un
+  // "Jugando X" ya pasó, lo bajamos sin esperar al poll de relays. Cubre el caso
+  // en que los relays no responden (el poll de arriba conserva el estado previo en
+  // su `catch`): así una presencia igual se va cuando le toca vencer, cumpliendo
+  // "si no vuelve a aparecer la señal, que se vaya". Barato: sólo re-renderiza si
+  // algo venció (dropExpiredStatuses devuelve el mismo array si no cambió nada).
+  useEffect(() => {
+    if (!user) return;
+    const id = window.setInterval(() => {
+      setFriends((prev) => (prev ? dropExpiredStatuses(prev) : prev));
+    }, 5_000);
+    return () => window.clearInterval(id);
   }, [user]);
 
   // Poll de "conectado" (StorePresence/GamePresence), separado del de NIP-38: va

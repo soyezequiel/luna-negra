@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyFreshStatuses,
   applyOnlineInStore,
-  stripVolatileStatuses,
+  dropExpiredStatuses,
+  stripStorePresence,
   type Friend,
 } from "@/hooks/use-friends";
 import {
@@ -11,14 +12,14 @@ import {
   STATUS_FALLBACK_TTL_SECONDS,
 } from "@/lib/nostr-social";
 
-function friend(pubkey: string): Friend {
+function friend(pubkey: string, expiresAt = 9_999_999_999): Friend {
   return {
     pubkey,
     npub: `npub-${pubkey}`,
     isMember: true,
     games: [],
     lastPlayedAt: null,
-    status: { content: "Jugando Tetris (Beta) en Luna Negra" },
+    status: { content: "Jugando Tetris (Beta) en Luna Negra", expiresAt },
   };
 }
 
@@ -43,18 +44,35 @@ function statusEvent(input: {
 }
 
 describe("friend presence cache", () => {
-  it("does not persist volatile status in the friends cache", () => {
-    const cached = stripVolatileStatuses([friend("a")]);
+  it("persists the NIP-38 status so it paints instantly after a refresh", () => {
+    const [cached] = stripStorePresence([friend("a")]);
 
-    expect(cached[0].status).toBeUndefined();
+    expect(cached.status?.content).toContain("Tetris");
   });
 
   it("does not persist volatile store presence in the friends cache", () => {
-    const [cached] = stripVolatileStatuses([
+    const [cached] = stripStorePresence([
       { ...friend("a"), onlineInStore: true },
     ]);
 
     expect(cached.onlineInStore).toBeUndefined();
+  });
+
+  it("drops a persisted status once its expiration has passed", () => {
+    const nowSec = 1_000;
+    const [dropped] = dropExpiredStatuses([friend("a", nowSec - 1)], nowSec);
+
+    expect(dropped.status).toBeUndefined();
+  });
+
+  it("keeps a persisted status that has not expired yet", () => {
+    const nowSec = 1_000;
+    const list = [friend("a", nowSec + 60)];
+    const kept = dropExpiredStatuses(list, nowSec);
+
+    expect(kept[0].status?.content).toContain("Tetris");
+    // Misma referencia: no re-renderiza si no venció nada.
+    expect(kept).toBe(list);
   });
 
   it("clears old status when the fresh status result has no entry", () => {
@@ -218,6 +236,25 @@ describe("NIP-38 presence freshness", () => {
 
 describe("isLingeringPlayingStatus (limpieza de presencia colgada)", () => {
   const now = 1_000;
+  const STORE_PK =
+    "ed13c471be6bff9195a6261d8cbd6c7ab6efe79a7947b208d2b6f066b99cc4d3";
+
+  it("flags a coord-anchored game presence WITHOUT expiration/r as lingering", () => {
+    // El juego (p. ej. Tetra) auto-firma su presencia anclada a la coord, con
+    // texto libre y sin NIP-40 ni tag `r`. Antes la heurística de "forma de
+    // jugando" la daba por estado manual y no la limpiaba → quedaba colgada.
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "Jugando TETRA",
+      tags: [
+        ["d", "general"],
+        ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+      ],
+    });
+
+    expect(isLingeringPlayingStatus(ev, STORE_PK, now)).toBe(true);
+  });
 
   it("flags a still-valid Luna Negra playing status as lingering", () => {
     const ev = statusEvent({

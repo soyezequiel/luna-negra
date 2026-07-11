@@ -28,6 +28,7 @@ import type {
   BetRow,
   EconomySettings,
   TreasuryInfo,
+  PresenceSettings,
 } from "@/components/admin/admin-types";
 
 export default function AdminPage() {
@@ -78,6 +79,8 @@ function AdminPageInner() {
   const [treasury, setTreasury] = useState<TreasuryInfo | null>(null);
   const [treasuryDraft, setTreasuryDraft] = useState({ minSats: "", maxSats: "" });
   const [treasuryMsg, setTreasuryMsg] = useState<string | null>(null);
+  const [presence, setPresence] = useState<PresenceSettings | null>(null);
+  const [presenceMsg, setPresenceMsg] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [, startLoadTransition] = useTransition();
@@ -134,6 +137,10 @@ function AdminPageInner() {
       .then((res) => res.json())
       .catch(() => ({ earnings: null }));
     setHouseEarnings(earn?.earnings ?? null);
+    const pres = await fetch("/api/admin/presence")
+      .then((res) => res.json())
+      .catch(() => ({ settings: null }));
+    setPresence(pres?.settings ?? null);
   }, []);
 
   const probeProvider = useCallback(
@@ -292,6 +299,31 @@ function AdminPageInner() {
     }
   }
 
+  async function togglePresence(enabled: boolean) {
+    setBusy("presence");
+    setPresenceMsg(null);
+    try {
+      const r = await fetch("/api/admin/presence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clickPresenceEnabled: enabled }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setPresenceMsg(d.error ?? "No se pudo guardar el ajuste");
+        return;
+      }
+      setPresence(d.settings);
+      setPresenceMsg(
+        enabled
+          ? "Presencia optimista activada."
+          : "Presencia optimista desactivada: solo queda la NIP-38 del juego.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // ── Auth guards ──
   if (loading) return null;
 
@@ -423,6 +455,10 @@ function AdminPageInner() {
           <IntegrationTab
             integrations={integrations}
             probeProvider={probeProvider}
+            presence={presence}
+            presenceMsg={presenceMsg}
+            onTogglePresence={togglePresence}
+            busy={busy}
           />
         )}
       </div>

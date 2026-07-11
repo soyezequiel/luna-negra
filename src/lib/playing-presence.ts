@@ -15,6 +15,7 @@ import {
   publishPlayingStatus,
   clearPlayingStatus,
   hasStalePlayingStatus,
+  isClickPresenceEnabled,
 } from "@/lib/nostr-social";
 
 // Cada cuánto la tienda consulta su propia presencia y renueva el estado NIP-38.
@@ -90,6 +91,7 @@ export function startPlayingPresence({
   // deriveStateLabel en social.ts). Se actualiza en cada sondeo y viaja en el
   // próximo refresh, así la presencia NIP-38 lo muestra sin republicar aparte.
   let stateLabel: string | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
 
   const refresh = () =>
     publishPlayingStatus(title, link, STATUS_TTL_S, stateLabel, slug).catch(() => {});
@@ -117,12 +119,10 @@ export function startPlayingPresence({
     }
   };
 
-  const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
-
   function finish(clear: boolean) {
     if (stopped) return;
     stopped = true;
-    clearInterval(timer);
+    if (timer) clearInterval(timer);
     if (activeStop === stop) activeStop = null;
     if (clear) clearPlayingStatus().catch(() => {});
   }
@@ -130,8 +130,23 @@ export function startPlayingPresence({
   const stop = () => finish(false);
 
   activeStop = stop;
-  // Optimista: aparece al toque; el sondeo confirma o (tras la gracia) lo baja.
-  refresh();
+
+  // El admin puede apagar la presencia optimista al abrir un juego: en ese caso la
+  // tienda NO firma ningún estado NIP-38 al hacer click (ni arranca el sondeo), y
+  // la única señal de "jugando ahora" es la que firma el propio juego (NGP).
+  // Chequeamos el flag antes de publicar; con la config cacheada ~2min esto no
+  // agrega latencia perceptible. Si el flag está encendido, arranca como siempre:
+  // publica optimista al toque y el sondeo confirma o (tras la gracia) lo baja.
+  void isClickPresenceEnabled().then((enabled) => {
+    if (stopped) return; // se abrió otro juego mientras resolvíamos el flag
+    if (!enabled) {
+      // Nada publicado por la tienda → nada que limpiar. Cerramos la sesión.
+      finish(false);
+      return;
+    }
+    timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
+    refresh();
+  });
 
   return stop;
 }

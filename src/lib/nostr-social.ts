@@ -81,6 +81,10 @@ export type StoreCoords = {
   coords: Set<string>;
   /** slug → coord, para anclar la presencia que firma la propia tienda. */
   coordBySlug: Record<string, string>;
+  /** ¿El admin dejó activa la presencia optimista al abrir un juego? Default true
+   * (comportamiento actual). Lo lee `startPlayingPresence` para decidir si publica
+   * el estado NIP-38 al hacer click o si delega toda la presencia al juego. */
+  clickPresenceEnabled: boolean;
 };
 
 // Compat: las funciones puras (selectFreshStatuses / isLingeringPlayingStatus)
@@ -90,7 +94,7 @@ export type KnownCoords = StoreCoords | string | null | undefined;
 function normalizeKnown(known: KnownCoords): StoreCoords | null {
   if (!known) return null;
   if (typeof known === "string") {
-    return { pubkey: known, coords: new Set(), coordBySlug: {} };
+    return { pubkey: known, coords: new Set(), coordBySlug: {}, clickPresenceEnabled: true };
   }
   return known;
 }
@@ -136,12 +140,24 @@ async function resolveStoreCoords(): Promise<StoreCoords | null> {
       pubkey: typeof data?.pubkey === "string" ? data.pubkey : null,
       coords: new Set(Object.values(coordBySlug)),
       coordBySlug,
+      // Ausente (endpoint viejo cacheado) = encendido, el comportamiento actual.
+      clickPresenceEnabled: data?.clickPresenceEnabled !== false,
     };
     _storeCoordsAt = Date.now();
   } catch {
     // Sin red: conservamos lo último resuelto (mejor stale que nada).
   }
   return _storeCoords;
+}
+
+/**
+ * ¿El admin dejó activa la presencia optimista al abrir un juego? La lee la config
+ * pública de la tienda (`/api/store/coords`, cacheada ~2min). Default true: si el
+ * server no respondió o es una versión vieja, mantenemos el comportamiento actual.
+ */
+export async function isClickPresenceEnabled(): Promise<boolean> {
+  const sc = await resolveStoreCoords();
+  return sc?.clickPresenceEnabled ?? true;
 }
 
 export function npubOf(pubkey: string): string {
@@ -583,7 +599,17 @@ export async function searchProfiles(
 
 // --- Presencia (NIP-38, kind:30315 d="general") ---
 
-export type Status = { content: string; url?: string };
+export type Status = {
+  content: string;
+  url?: string;
+  /**
+   * Momento (epoch en segundos) en que la presencia deja de ser válida: la
+   * expiración NIP-40 explícita, o `created_at + STATUS_FALLBACK_TTL_SECONDS` si
+   * el estado no la trae. Lo usa el caché de amigos para pintar la presencia al
+   * instante tras un refresco y descartarla sola cuando venció (ver use-friends).
+   */
+  expiresAt: number;
+};
 type StatusEvent = Pick<Event, "pubkey" | "created_at" | "tags" | "content">;
 
 export function selectFreshStatuses(
@@ -608,15 +634,17 @@ export function selectFreshStatuses(
     if (!hasLunaNegraLabel(ev) && !hasKnownGameCoord(ev, known)) continue;
 
     const exp = ev.tags.find((t) => t[0] === "expiration")?.[1];
+    let expiresAt: number;
     if (exp) {
-      const expiresAt = Number(exp);
+      expiresAt = Number(exp);
       if (!Number.isFinite(expiresAt) || expiresAt <= nowSec) continue;
-    } else if (ev.created_at + STATUS_FALLBACK_TTL_SECONDS <= nowSec) {
-      continue;
+    } else {
+      expiresAt = ev.created_at + STATUS_FALLBACK_TTL_SECONDS;
+      if (expiresAt <= nowSec) continue;
     }
 
     const url = ev.tags.find((t) => t[0] === "r")?.[1];
-    map[pubkey] = { content: ev.content, url: url || undefined };
+    map[pubkey] = { content: ev.content, url: url || undefined, expiresAt };
   }
   return map;
 }
@@ -731,7 +759,9 @@ export function isLingeringPlayingStatus(
   nowSec: number = now(),
 ): boolean {
   if (!latest || !latest.content) return false;
-  if (!hasLunaNegraLabel(latest) && !hasKnownGameCoord(latest, known)) return false;
+  const byCoord = hasKnownGameCoord(latest, known);
+  const byLabel = hasLunaNegraLabel(latest);
+  if (!byLabel && !byCoord) return false;
 
   // Vigencia (misma regla que selectFreshStatuses): si ya venció no se muestra,
   // así que no hace falta limpiarlo.
@@ -743,7 +773,19 @@ export function isLingeringPlayingStatus(
     return false;
   }
 
-  // Forma de "jugando" (no un estado manual libre).
+  // Presencia anclada a la coordenada de un juego (NGP, auto-firmada por el propio
+  // juego): SIEMPRE es una presencia de juego, no un estado manual. El juego
+  // (p. ej. Tetra) la firma con contenido libre "Jugando TETRA" y a veces SIN
+  // expiración NIP-40 ni tag `r`, así que la heurística de "forma de jugando" de
+  // abajo la daba por manual y no la limpiaba nunca — quedabas "jugando" hasta que
+  // venciera el TTL de fallback (1 h). El ancla `a` a una coord del catálogo sólo
+  // la pone una presencia de juego, así que alcanza para tratarla como tal.
+  if (byCoord) return true;
+
+  // Path por etiqueta `l:luna-negra`: ahí sí puede haber un estado manual de texto
+  // libre (`publishStatus` lleva la misma etiqueta), así que exigimos la "forma de
+  // jugando" (expiración, link `r`, o el texto que firma la tienda) para no borrar
+  // un estado que el usuario puso a mano.
   return (
     latest.tags.some((t) => t[0] === "expiration") ||
     latest.tags.some((t) => t[0] === "r") ||
@@ -751,10 +793,21 @@ export function isLingeringPlayingStatus(
   );
 }
 
+// Expiración del "tombstone" de limpieza. Debe ser cómodamente futura: como el
+// estado es reemplazable (kind 30315 + d:general), este evento vacío PISA al
+// "Jugando X" anterior por ser el `created_at` más nuevo, y `selectFreshStatuses`
+// lo ignora por tener `content` vacío. Antes usábamos `now()+1`: tan al filo que
+// algunos relays lo rechazaban por "ya vencido" (o lo purgaban antes de
+// propagarlo), y la presencia vieja del juego —firmada por el propio juego sin
+// expiración, válida hasta 1 h por el TTL de fallback— resurgía. Con una ventana
+// holgada el clear se acepta y sobrescribe de forma fiable.
+const CLEAR_STATUS_TTL_SECONDS = 120;
+
 /**
- * Limpia la presencia "jugando" (NIP-38): publica un estado vacío con
- * expiración inmediata para que los amigos dejen de ver el juego como abierto
- * (`fetchStatuses` ignora los estados sin contenido). Best-effort.
+ * Limpia la presencia "jugando" (NIP-38): publica un estado reemplazable vacío que
+ * pisa al "Jugando X" anterior (mismo `d:general`, `created_at` más nuevo) para que
+ * los amigos dejen de ver el juego como abierto (`fetchStatuses` ignora los estados
+ * sin contenido). Best-effort.
  */
 export async function clearPlayingStatus(): Promise<void> {
   await publish(
@@ -763,7 +816,7 @@ export async function clearPlayingStatus(): Promise<void> {
       created_at: now(),
       tags: [
         ["d", "general"],
-        ["expiration", String(now() + 1)],
+        ["expiration", String(now() + CLEAR_STATUS_TTL_SECONDS)],
       ],
       content: "",
     }),
