@@ -133,13 +133,22 @@ npm i github:soyezequiel/Nostr-Game-Protocol
 npm i nostr-tools   # peer dependency
 ```
 
+> **Es una dependencia git — dos gotchas que costaron horas:**
+> - **Docker/CI necesita `git`.** `npm ci`/`npm install` clona el paquete con `git`;
+>   las imágenes `node:*-slim` NO lo traen → el build rompe. Agregá `git` a la etapa
+>   que corre `npm ci` (`apt-get install -y git`).
+> - **`npm update` MIENTE con deps git** (dice "up to date" sin traer el commit nuevo).
+>   Para actualizar al último SDK: `npm install github:soyezequiel/Nostr-Game-Protocol`
+>   otra vez y **verificá que el hash de commit del lockfile cambió**; si no, tu build
+>   shippea el SDK viejo desde caché.
+
 Qué te da, por subpath:
 
 | Import | Trae |
 |---|---|
 | `nostr-game-protocol/ngp` | `buildScoreTemplate` (marcador 31339), `buildPresenceTemplate` / `buildPresenceClearTemplate` (NIP-38), los helpers de reto NIP-17 (`buildChallengeGiftWraps`, `parseChallengeGiftWrap`), la interfaz `NgpSigner` y los parsers (`parseScoreEvent`, `parsePresenceEvent`, que aceptan también el legacy 31337). |
 | `nostr-game-protocol/nge` | La clase `NGE` (cliente del escrow de apuestas), transporte inyectable y `auditSettlement`. Ver la sección de apuestas. |
-| `nostr-game-protocol/ngp-core` / `/nge-core` | Solo el wire puro (kinds, templates sin firmar, parsers), sin ergonomía. |
+| `nostr-game-protocol/ngp-core` / `/nge-core` | Solo el wire puro (kinds, templates sin firmar, parsers), sin ergonomía. `ngp-core` además trae los helpers del link de sala `?join`: `buildRoomLink` / `parseRoomLink` / `ROOM_ID_RE` (v0.2.0+). |
 
 Los templates salen **sin firmar**: vos les pasás el contexto (coordenada,
 puntaje, TTL) y los firmás con tu signer. El paquete no toca relays ni env: la
