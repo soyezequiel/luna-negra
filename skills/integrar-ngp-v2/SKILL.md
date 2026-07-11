@@ -5,7 +5,8 @@ description: >-
   NIP-07/NIP-46, coordenada gameCoord, presencia NIP-38, marcador kind:31339,
   retos e invitaciones NIP-17, Room Link (?join) para invitar a jugar en salas
   hosteadas por el juego, salas NIP-29 de diseño, reseñas/logros kind:1,
-  zaps NIP-57, apuestas custodiadas por NGE o por zaps bajo /api/v2/bets y
+  zaps NIP-57, marcador verificado por oráculo (kind:31338),
+  apuestas custodiadas por NGE o por zaps bajo /api/v2/bets y
   patrones probados en Tetris para signers, relays, inbox NIP-17 y auto-firma de
   depósitos. Usar cuando el usuario pida integrar un juego con Luna Negra,
   Room Link / ?join (antes ?lnRoom) / invitar a jugar en una sala, eventos Nostr nativos,
@@ -168,7 +169,7 @@ para que entiendas el formato; en producción preferí los helpers del paquete.
 | Reseñas/logros | `kind:1` con `a=gameCoord` | en producción |
 | Propinas/premios | zaps NIP-57 | en producción |
 | Apuestas custodiadas | canal NGE (recomendado) o zaps NIP-57 bajo `/api/v2/bets` | en producción |
-| Marcador verificado | `kind:31338` (atestación de oráculo) | diseño |
+| Marcador verificado | `kind:31338` (atestación de oráculo, server-side) | disponible (requiere declarar el oráculo en el 30023) |
 | Compra de juego de pago | la valida Luna Negra (no hay evento Nostr) | fuera de NGP |
 | Webhooks firmados | HMAC server-to-server de Luna Negra | fuera de NGP |
 
@@ -496,6 +497,24 @@ juego. Los recibos `kind:9735` verificados alimentan rankings de zappers.
 No mezcles zaps libres con apuestas custodiadas: si hay depósito, pozo y payout
 usa el flujo de apuestas v2 por zaps de esta skill.
 
+Gotchas de zaps (costaron un rato):
+
+- **Timeout del perfil.** Para armar el zap necesitás el `lud16` del receptor de su
+  `kind:0`. Ese perfil puede vivir sobre todo en un relay lento (p. ej. primal) y
+  tardar ~3 s en llegar; con un timeout corto (2,5 s) parece "sin lud16" cuando sí lo
+  tiene, y reintentar no alcanza. Dale una ventana holgada (~6 s) y varios relays a esa
+  búsqueda de perfil. (Bug real: el fetch cortaba a 2524 ms; el kind:0 llegaba a 3008 ms.)
+- **El receptor necesita `lud16` Y aceptar zaps Nostr.** Su LNURL-pay tiene que
+  devolver `allowsNostr:true` + `nostrPubkey`; si no, no hay zap NIP-57 (solo un pago
+  LNURL normal, sin recibo `kind:9735`). Chequealo antes de prometer "propina".
+- **Anclá el zap a tu juego.** `makeZapRequest` no agrega `a=gameCoord` por defecto:
+  si querés que Luna atribuya la propina a TU juego (y no la vea como un zap genérico),
+  sumá `["a", gameCoord]` al `kind:9734`; se copia al recibo `kind:9735`.
+- El éxito del callback LNURL es que devuelva `pr` (invoice), no el HTTP 200.
+- El recibo `kind:9735` NO se puede falsear desde el cliente: lo emite el LNURL del
+  receptor recién cuando alguien PAGA el invoice. Para probar la integración, pagá un
+  monto mínimo real (p. ej. 4 sats) — a vos mismo si tu perfil tiene `lud16`.
+
 ## Apuestas custodiadas: canal NGE (recomendado)
 
 NGE (Nostr Game Escrow) es un RPC cifrado estilo NWC: el juego pega **una sola
@@ -649,24 +668,87 @@ Patrón Tetris para UI propia:
 - Si Luna devuelve `BETS_V2_DISABLED`, mostrar un error explícito; si devuelve
   `ANCHOR_PUBLISH_FAILED`, sugerir reintentar.
 
-## Marcador verificado `kind:31338`
+## Marcador verificado `kind:31338` (atestación de oráculo)
 
-Esto es diseño. Para rankings con dinero, un oráculo co-firma una atestación que
-referencia el score del jugador.
+Dos tiers de marcador: **abierto** (`kind:31339`, lo firma el jugador, social,
+falsificable) y **verificado** (`kind:31338`, lo firma un **ORÁCULO**, apto para
+stakes). El verificado lo firma tu **servidor** con una clave de oráculo dedicada,
+certificando un resultado que tu server presenció ("en la sala X ganó el jugador P").
 
-Tags propuestos:
+**Implementación real (probada en Ajedrez).** La clave del oráculo es un SECRETO de
+servidor (`NGP_ATTESTATION_ORACLE_NSEC`), nunca va al browser: el jugador no puede
+firmar su propio marcador verificado.
 
-```jsonc
-[
-  ["a", "30023:<firmante>:<slug>"],
-  ["e", "<scoreEventId>"],
-  ["p", "<jugador>"],
-  ["status", "verified"]
-]
+```ts
+// SERVER. NgpSigner del oráculo desde el nsec (nostr-tools ya es dep del server).
+import { buildAttestationEvent } from "nostr-game-protocol/ngp";
+import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
+import { decode } from "nostr-tools/nip19";
+
+const sk = decode(process.env.NGP_ATTESTATION_ORACLE_NSEC!).data as Uint8Array;
+const oracleSigner = {
+  getPublicKey: async () => getPublicKey(sk),
+  signEvent: async (t) => finalizeEvent(t, sk),
+};
+
+const attestation = await buildAttestationEvent(oracleSigner, {
+  gameCoord,
+  ref: partidaId,        // id único de lo atestado → registro PERMANENTE (d=<gameCoord>:<ref>)
+  playerPubkey: ganadorHex,
+  status: "verified",    // "rejected"/playerPubkey vacío = anulación
+  score: 1500,           // opcional; scoreEventId opcional (e-tag al 31339 atestado)
+});
 ```
 
-Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
-(`kind:31338`, oráculo, apto para stakes cuando se conecta con el escrow NGE).
+**Relay I/O:** el server firma; para no publicar desde el server, mandá el evento
+firmado por tu transporte (WS) al cliente y que **el cliente lo publique** con su pool
+(reusa el I/O de relays del browser). O publicá server-side con `SimplePool`.
+
+**Gotcha que te va a morder — la DELEGACIÓN de oráculo.** Luna (y cualquier
+verificador) solo cuenta el 31338 como *verificado autorizado* si la pubkey que lo
+firmó está **declarada en el listing `kind:30023` del juego** como
+`["oracle", <pubkey>]`. Sin esa delegación, el evento se ve en relays pero NO se
+confía — por eso "marcador verificado" figura como *diseño* en el panel de la tienda
+hasta que la declarás. La declara el **dueño del juego** en su 30023 (paso manual en
+la tienda), no el código.
+
+El SDK cierra el círculo:
+
+- `oraclePubkeyFromListing(listing)` → saca la pubkey de oráculo declarada en el 30023
+  (acepta `["oracle", pk]` o un `p` con token `oracle`); `null` = el juego no tiene tier
+  verificado.
+- `isAuthorizedAttestation(parsed, declaredOraclePubkey)` → valida que la firmó ESE
+  oráculo. Verificá la firma criptográfica aparte con `verifyEvent(ev)`.
+- `parseAttestationEvent(ev)` → desarma el 31338 (oraclePubkey, ref, player, status,
+  score, scoreEventId). No verifica firma ni autorización: eso es del caller.
+
+Reglas: el oráculo certifica SOLO lo que tu server realmente vio. La `ref` única por
+partida hace el registro permanente (re-firmar el mismo `ref` lo corrige). El tier
+verificado es el que conecta con stakes (NGE); el abierto 31339 nunca sirve para dinero.
+
+## Verificar que Luna detecta (modo de prueba)
+
+Luna marca cada integración "en uso" cuando **observa su evento en relays** (o en su
+DB, para NGE). Para no tener que jugar partidas reales cada vez, armá un **panel de
+diagnóstico detrás de un flag de URL** (`?ngptest=1`) que dispare cada integración con
+un botón y reporte el resultado inline (event id + relays que aceptaron). Aislalo en un
+módulo propio (un import + un `if (flag) montar()`) para poder **sacarlo después** sin
+tocar el flujo normal.
+
+Qué se puede disparar y desde dónde:
+
+- **Client-side, con el signer del jugador** (publican desde el browser; Luna los ve
+  por el tag `a=gameCoord`, sirve cualquier clave): presencia 30315, marcador 31339,
+  reseña `kind:1`. Estos son los que flipean rápido a "en uso".
+- **Server-side**: marcador verificado 31338 (lo firma el oráculo; el server te
+  devuelve el evento y el cliente lo publica) y apuestas NGE (necesita `NGE_CONNECTION`
+  + 2 jugadores Nostr + un asiento por color; no se fuerza en solitario).
+- **Pago real**: el zap NIP-57 no se puede falsear — el recibo `kind:9735` lo emite el
+  LNURL del receptor recién cuando alguien paga el invoice.
+
+Usá el signer **real de la sesión Nostr** (no una clave nueva) cuando exista; si tu app
+restaura el login async (token-first), esperá a que termine de restaurar antes de
+firmar, o el panel arranca "sin firmante".
 
 ## Gotchas
 
@@ -706,6 +788,28 @@ Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
     cada deploy y un `index.html` viejo cacheado apunta a un bundle borrado → 404 → app
     rota / "no veo los cambios". Poné el build-id en el `index.html` (inyectado) y
     servilo `Cache-Control: no-cache`; los assets hasheados con caché larga.
+16. **Secretos de escrow/oráculo: runtime, no imagen.** `NGE_CONNECTION` y
+    `NGP_ATTESTATION_ORACLE_NSEC` son secretos de SERVIDOR: inyectalos en runtime
+    (docker `env_file`/`-e`), nunca `COPY` al build ni en el repo. En docker-compose,
+    `environment:` **pisa** `env_file` (útil: PORT/paths van en `environment`, los
+    secretos en el `.env` de runtime). Al mergear el archivo de env del deploy,
+    **preservá los secretos que ya estaban allá** (p. ej. el HMAC del token de sesión):
+    no lo sobreescribas entero o invalidás las sesiones / apagás features.
+17. **Mensaje WS nuevo = redeploy del server.** Si agregás un mensaje cliente→server
+    (p. ej. pedir la atestación al oráculo) pero el server desplegado no tiene el
+    handler, lo **ignora en silencio** y el cliente queda en timeout (parece "el server
+    no respondió"). Deployá el código del server junto con el del cliente y verificá
+    ADENTRO del contenedor que el handler está (`grep` el símbolo, chequeá el env con
+    `printenv`) — un `COPY … CACHED` de Docker no siempre prueba lo que creés.
+18. **No pises el handler de "error" del cliente WS.** Si tu cliente guarda un handler
+    por tipo de mensaje, registrar un segundo `on("error")` desde un módulo aparte
+    (panel de prueba, feature nueva) **pisa** el de la app. Respondé por un **canal
+    dedicado** (p. ej. `test_attestation { event|null, error? }`) en vez del canal
+    genérico "error": así mostrás el motivo real del fallo y no rompés el manejo de
+    errores existente.
+19. **Zaps: ventana holgada para el `lud16`.** El perfil (`kind:0`) del receptor puede
+    tardar ~3 s (relay lento); un timeout de 2,5 s da "sin dirección Lightning" falso.
+    Dale ~6 s y varios relays, y exigí `allowsNostr` en su LNURL-pay (ver sección Zaps).
 
 ## Checklist
 
@@ -733,6 +837,15 @@ Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
 - [ ] Si soportás Room Link / invitaciones a sala: `?join=<id>` unir-o-CREAR (lazy),
       con `buildRoomLink`/`parseRoomLink` del SDK; probar que dos personas con el mismo
       link caen en la misma sala.
+- [ ] Marcador verificado: firmar el `kind:31338` con una clave de oráculo de SERVIDOR
+      (`buildAttestationEvent`) y **declarar su pubkey** como `["oracle", pk]` en el
+      `kind:30023` del juego; si no, Luna no lo confía (`isAuthorizedAttestation`).
+- [ ] Zaps: ventana holgada (~6 s) al fetch del `lud16`, exigir `allowsNostr`, y anclar
+      con `["a", gameCoord]` en el 9734 si querés atribuir la propina al juego.
+- [ ] Secretos (NGE/oráculo) en el runtime del server, no en la imagen; al deployar,
+      preservá los secretos que ya estaban en el env de runtime.
+- [ ] Verificar detección con un modo de prueba (`?ngptest=1`) aislado y removible;
+      recordar que 31338/NGE necesitan el server y el zap necesita un pago real.
 
 ## Referencias del repo
 
