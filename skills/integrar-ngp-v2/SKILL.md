@@ -588,6 +588,35 @@ Gotchas NGE:
 - `getInfo()` dice qué soporta el escrow (métodos, `visibilityOptions`,
   límites); ante `RATE_LIMITED`, espaciá los RPC.
 
+### Gating y UX del lado del cliente (dónde aparece "apostar")
+
+El escrow es server-side, pero la UI de proponer apuesta vive en el cliente y tiene
+condiciones que, si no las mostrás bien, te dejan con el clásico **"no aparece ningún
+flujo para apostar"** (horas perdidas mirando el server, que estaba bien).
+
+- **Anunciá `betsEnabled` al cliente.** El server sabe si hay escrow
+  (`Boolean(NGE_CONNECTION)`); mandáselo al cliente (p. ej. un mensaje `caps { bets }`
+  al autenticar) para que renderice o no la UI. Sin esto el cliente no puede saber si
+  las apuestas están prendidas.
+- **La UI de "proponer" solo tiene sentido con las TRES:** (a) escrow habilitado,
+  (b) **ambos jugadores con `pubkey` Nostr** (ninguno invitado), (c) sos el
+  **anfitrión** (el que propone). Si falta alguna, no hay input de apuesta.
+- **NO la ocultes en silencio: mostrá el MOTIVO.** Si devolvés `""` cuando no se
+  cumple una condición, el usuario ve "no aparece nada" y no sabe por qué. Renderizá un
+  cartelito por cada caso: *"esperando rival"*, *"ambos deben entrar con Nostr para
+  apostar"*, *"solo el anfitrión propone"*. (Gotcha real y caro: el rival entró como
+  **invitado** por el link de sala → sin `pubkey` → la apuesta se apagaba sin explicar
+  nada, y parecía un bug del server.)
+- **Propagá el `pubkey` hasta la vista de sala que ve el cliente.** El chequeo
+  "ambos son Nostr" corre sobre el roster que llega al browser: si tu `RoomView` no
+  incluye el `pubkey` de cada jugador, el chequeo da falso negativo aunque los dos
+  hayan entrado con Nostr. (En el server: pasá `pubkey` de la identidad al alta del
+  jugador Y al serializar la sala.)
+- **Flujo operativo:** solo el host propone `stakeSats` → el escrow emite **un invoice
+  por asiento/color** → cada jugador paga el suyo → al fondear los dos, arranca la
+  partida → ganador se lleva el pozo (menos fee), empate → reembolso. Un jugador
+  invitado NO puede apostar (no tiene pubkey para el payout).
+
 ## Apuestas v2 por zaps (alternativa browser-first)
 
 Elegí este flujo solo si querés que el jugador firme su depósito como zap
@@ -810,6 +839,12 @@ firmar, o el panel arranca "sin firmante".
 19. **Zaps: ventana holgada para el `lud16`.** El perfil (`kind:0`) del receptor puede
     tardar ~3 s (relay lento); un timeout de 2,5 s da "sin dirección Lightning" falso.
     Dale ~6 s y varios relays, y exigí `allowsNostr` en su LNURL-pay (ver sección Zaps).
+20. **La UI de apuesta no aparece: es gating del cliente, no el server.** "No aparece
+    ningún flujo para apostar" casi nunca es el escrow: es que falta una de las tres
+    condiciones (escrow habilitado, ambos jugadores con `pubkey` Nostr, sos el host).
+    La causa top: el **rival entró como invitado** por el link → sin pubkey. Mostrá el
+    MOTIVO en vez de ocultar la UI, y asegurate de que el `pubkey` llegue al roster que
+    ve el cliente (ver "Gating y UX del lado del cliente" en la sección NGE).
 
 ## Checklist
 
@@ -828,6 +863,9 @@ firmar, o el panel arranca "sin firmante".
       de servidor y crear siempre con `clientRef`.
 - [ ] Mantener el resultado en el game server (nunca derivarlo del marcador
       cliente); reportar ganadores por `seatId`.
+- [ ] Apuestas — gating del cliente: anunciar `betsEnabled` al cliente, mostrar la UI
+      de proponer solo con escrow+ambos-Nostr+host, y **decir el motivo** cuando no
+      (no ocultar); propagar el `pubkey` al roster que ve el browser.
 - [ ] Si se usa el flujo por zaps: verificar signer contra sesión, no re-firmar
       si ya hay `bolt11` y conservar handles visibles durante polling.
 - [ ] Recordar qué queda fuera de NGP: la compra de juegos de pago la valida
