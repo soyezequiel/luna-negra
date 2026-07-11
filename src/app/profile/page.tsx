@@ -61,6 +61,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<NostrProfile | null>(null);
   const [games, setGames] = useState<LibGame[]>([]);
   const [bets, setBets] = useState<MineBet[]>([]);
+  const [npubCopied, setNpubCopied] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -114,6 +115,17 @@ export default function ProfilePage() {
     }
   }
 
+  async function copyNpub() {
+    try {
+      await navigator.clipboard.writeText(user!.npub);
+      setNpubCopied(true);
+      notify({ title: "npub copiada" });
+      window.setTimeout(() => setNpubCopied(false), 1500);
+    } catch {
+      notify({ title: "No se pudo copiar la npub" });
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1240px] px-[22px] py-8 pb-12">
       {/* Cabecera */}
@@ -146,9 +158,16 @@ export default function ProfilePage() {
               {name}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-ln-border bg-ln-bg-deep/60 px-2.5 py-1 font-mono text-[11px] text-ln-muted">
+              <button
+                type="button"
+                onClick={copyNpub}
+                title="Copiar npub completa"
+                aria-label="Copiar npub completa"
+                className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border border-ln-border bg-ln-bg-deep/60 px-2.5 py-1 font-mono text-[11px] text-ln-muted transition-colors hover:border-ln-luna hover:text-ln-soft"
+              >
                 ⬡ {user.npub.slice(0, 18)}…
-              </span>
+                <span className="not-italic">{npubCopied ? "✓" : "⧉"}</span>
+              </button>
               {user.lud16 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 text-[11px] font-medium text-ln-corona">
                   ⚡ {user.lud16}
