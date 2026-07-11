@@ -74,7 +74,7 @@ function shScript(origin: string, skills: readonly Skill[]): string {
   }
 
   lines.push(
-    'echo "    Reinicia tu agente y pedile: \\"integrá mi juego con NGP\\" o \\"agregá apuestas por NGE\\"."',
+    'echo "    Reinicia tu agente y pedile que integre tu juego con NGP o que agregue apuestas por NGE."',
     "",
   );
 
@@ -106,7 +106,7 @@ function psScript(origin: string, skills: readonly Skill[]): string {
     "  Invoke-WebRequest -UseBasicParsing -Uri $skill.Url -OutFile (Join-Path $dest 'SKILL.md')",
     "  Write-Host \"OK  Skill instalada en: $dest\\SKILL.md\"",
     "}",
-    "Write-Host '    Reinicia tu agente y pedile: \"integrá mi juego con NGP\" o \"agregá apuestas por NGE\".'",
+    "Write-Host '    Reinicia tu agente y pedile que integre tu juego con NGP o que agregue apuestas por NGE.'",
     "",
   ].join("\n");
 }
