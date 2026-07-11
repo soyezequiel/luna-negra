@@ -58,6 +58,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/prisma ./prisma
+# El route /dev/skill lee skills/*/SKILL.md en runtime (no viaja dentro de .next).
+COPY --from=builder /app/skills ./skills
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 # Defensa contra CRLF si el archivo se editó en Windows.
 RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh

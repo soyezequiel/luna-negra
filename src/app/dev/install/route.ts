@@ -74,7 +74,7 @@ function shScript(origin: string, skills: readonly Skill[]): string {
   }
 
   lines.push(
-    'echo "    Reinicia tu agente y usa la skill Luna 1.0 o NGP según corresponda."',
+    'echo "    Reinicia tu agente y pedile: \\"integrá mi juego con NGP\\" o \\"agregá apuestas por NGE\\"."',
     "",
   );
 
@@ -106,7 +106,7 @@ function psScript(origin: string, skills: readonly Skill[]): string {
     "  Invoke-WebRequest -UseBasicParsing -Uri $skill.Url -OutFile (Join-Path $dest 'SKILL.md')",
     "  Write-Host \"OK  Skill instalada en: $dest\\SKILL.md\"",
     "}",
-    "Write-Host '    Reinicia tu agente y usa la skill Luna 1.0 o NGP según corresponda.'",
+    "Write-Host '    Reinicia tu agente y pedile: \"integrá mi juego con NGP\" o \"agregá apuestas por NGE\".'",
     "",
   ].join("\n");
 }

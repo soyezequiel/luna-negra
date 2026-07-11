@@ -2,26 +2,31 @@
 name: integrar-ngp-v2
 description: >-
   Integra juegos con Nostr Games Protocol (NGP) v2: login
-  NIP-07/NIP-46, coordenada gameCoord, presencia NIP-38, marcador kind:31337,
+  NIP-07/NIP-46, coordenada gameCoord, presencia NIP-38, marcador kind:31339,
   retos e invitaciones NIP-17, salas NIP-29 de diseño, reseñas/logros kind:1,
-  zaps NIP-57, apuestas v2 por zaps con escrow custodial bajo /api/v2/bets y
+  zaps NIP-57, apuestas custodiadas por NGE o por zaps bajo /api/v2/bets y
   patrones probados en Tetris para signers, relays, inbox NIP-17 y auto-firma de
-  depósitos. Usar cuando el usuario pida eventos Nostr nativos,
-  resiliencia/interoperabilidad Nostr, retos 1v1, presencia Nostr, leaderboard
-  Nostr, integración NGP, zaps o escrow por zap. Para acceso pago, webhooks y
-  REST productivo usar integrar-luna-negra-1-0.
+  depósitos. Usar cuando el usuario pida integrar un juego con Luna Negra,
+  eventos Nostr nativos, resiliencia/interoperabilidad Nostr, retos 1v1,
+  presencia Nostr, leaderboard Nostr, integración NGP/NGE, zaps o escrow por
+  zap. La interfaz REST 1.0 fue retirada; solo sobreviven los webhooks firmados
+  y la validación de compra de juegos de pago del lado de Luna Negra.
 ---
 
 # Integrar juegos con Nostr Games Protocol (NGP)
 
 Nostr Games Protocol (NGP) usa eventos Nostr firmados por el jugador o el juego para la
-capa social: presencia, marcadores, retos, reseñas, logros, zaps y apuestas v2
-por zaps. Es experimental y algunos `kind` propuestos pueden cambiar.
+capa social: presencia, marcadores, retos, reseñas, logros, zaps y apuestas.
+Los kinds de apuestas (1339/1341/31340) y el wire NGE (24940–24942) están
+congelados en v1; los `kind` marcados como diseño (31338, salas) pueden cambiar.
 
-NGP no reemplaza la 1.0 para acceso pago, webhooks o escrow REST v1. Para
-eso usa la skill `integrar-luna-negra-1-0`. La excepción en esta skill es
-**apuestas v2 por zaps**: usa zaps NIP-57 públicos, pero sigue siendo custodial
-y server-to-server con Luna Negra.
+**La interfaz REST 1.0 fue retirada.** NGP (formato público) + NGE (canal de
+escrow) son el camino para todo: identidad, social y apuestas custodiadas. Lo
+único que queda fuera son los webhooks firmados (notificaciones
+server-to-server con HMAC, sin evento Nostr equivalente) y la validación de la
+compra de juegos de pago, que sigue haciéndola Luna Negra. Las apuestas —por
+NGE o por zaps NIP-57— siguen siendo custodiales y server-to-server con Luna
+Negra aunque la liquidación quede auditable en relays.
 
 ## Cuándo usarla
 
@@ -29,16 +34,66 @@ Usa esta skill si el usuario pide explícitamente alguno de estos objetivos:
 
 - Login Nostr nativo con NIP-07 o NIP-46.
 - Presencia "jugando X" publicada como NIP-38.
-- Marcador firmado por el jugador con `kind:31337`.
+- Marcador firmado por el jugador con `kind:31339`.
 - Retos o invitaciones 1v1 con NIP-17.
 - Reseñas, comentarios o logros anclados al juego.
 - Zaps NIP-57 al dev, al ganador o al juego.
-- Apuestas v2 por zaps con `/api/v2/bets`.
+- Apuestas custodiadas: canal NGE (recomendado) o zaps v2 con `/api/v2/bets`.
 - Interoperabilidad NGP con clientes Nostr sin depender solo de Luna Negra.
 
-Si el usuario pide "integrar mi juego con Luna Negra" sin nombrar NGP, usa la
-1.0 estable. Si quiere apuestas por zaps, usa esta skill; si quiere escrow REST
-v1 o acceso pago, usa la 1.0.
+Si el usuario pide "integrar mi juego con Luna Negra" sin nombrar NGP, también
+es esta skill: es el único camino de integración vigente.
+
+Mapa de la skill según lo que pidan:
+
+| Pedido | Sección |
+|---|---|
+| "Integrá mi juego" / lo social mínimo | Camino rápido |
+| Login Nostr | Identidad Nostr |
+| Leaderboard | Marcador `kind:31339` |
+| "Jugando ahora" | Presencia NIP-38 |
+| Retos / invitar amigos | Retos e invitaciones NIP-17 |
+| Apuestas con pozo | Apuestas custodiadas: canal NGE |
+| Apuestas firmando en el browser | Apuestas v2 por zaps |
+| Propinas sin custodia | Zaps NIP-57 |
+
+## Camino rápido
+
+La integración social mínima (identidad + marcador) son ~20 líneas. Todo lo
+demás se apila sobre esto.
+
+```sh
+npm i github:soyezequiel/Nostr-Game-Protocol nostr-tools
+```
+
+```ts
+import { SimplePool } from "nostr-tools";
+import { buildScoreEvent } from "nostr-game-protocol/ngp";
+
+const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
+
+// 1. Coordenada real del juego (traela una vez y cacheala).
+const { coords } = await fetch("__LUNA_NEGRA_BASE__/api/store/coords").then((r) => r.json());
+const gameCoord = coords["<slug-del-juego>"];
+
+// 2. Identidad: window.nostr (NIP-07) satisface NgpSigner tal cual.
+if (!window.nostr) throw new Error("Instalá una extensión Nostr (Alby, nos2x…)");
+const signer = window.nostr;
+
+// 3. Publicar el mejor puntaje del jugador (kind:31339, firmado por él).
+const evt = await buildScoreEvent(signer, {
+  gameCoord,
+  board: "clasico",
+  score: 12500,
+  client: "mi-juego",
+});
+await Promise.any(new SimplePool().publish(RELAYS, evt));
+```
+
+Con eso el juego ya aparece con marcador Nostr en Luna Negra (score-sync lo
+proyecta al ranking) y en cualquier cliente compatible. Siguientes pasos
+típicos, cada uno con su sección abajo: presencia NIP-38 ("jugando ahora"),
+retos NIP-17, y apuestas custodiadas con NGE.
 
 ## Prerrequisitos
 
@@ -47,12 +102,15 @@ Necesitas:
 - Un signer Nostr del jugador: `window.nostr` (NIP-07), bunker NIP-46 o clave
   local si el juego la administra.
 - La pubkey hex del jugador.
-- `gameCoord`, la coordenada del juego: `30023:<pubkeyDeLaTienda>:<slug>`.
+- `gameCoord`, la coordenada del juego: `30023:<pubkeyDelFirmante>:<slug>`. El
+  firmante del artículo puede ser la tienda o el propio proveedor
+  (`articleSigner`), así que no asumas la pubkey de la tienda.
 - Relays de escritura y lectura medidos; separa relays read-only de relays que
   aceptan publicaciones.
 
-Puedes obtener `gameCoord` de `GET __LUNA_NEGRA_BASE__/api/v1/session` cuando el
-juego se abrió con 1.0, o consultando el `kind:30023` real en relays:
+Puedes obtener `gameCoord` de `GET __LUNA_NEGRA_BASE__/api/store/coords`
+(devuelve `{ pubkey, coords: { "<slug>": "<gameCoord>" } }` de los juegos
+publicados), o consultando el `kind:30023` real en relays:
 
 ```ts
 { kinds: [30023], "#d": ["<slug>"] }
@@ -77,7 +135,7 @@ Qué te da, por subpath:
 
 | Import | Trae |
 |---|---|
-| `nostr-game-protocol/ngp` | `buildScoreTemplate` (marcador 31337), `buildPresenceTemplate` / `buildPresenceClearTemplate` (NIP-38), los helpers de reto NIP-17 (`buildChallengeGiftWraps`, `parseChallengeGiftWrap`), la interfaz `NgpSigner` y los parsers (`parseScoreEvent`, `parsePresenceEvent`). |
+| `nostr-game-protocol/ngp` | `buildScoreTemplate` (marcador 31339), `buildPresenceTemplate` / `buildPresenceClearTemplate` (NIP-38), los helpers de reto NIP-17 (`buildChallengeGiftWraps`, `parseChallengeGiftWrap`), la interfaz `NgpSigner` y los parsers (`parseScoreEvent`, `parsePresenceEvent`, que aceptan también el legacy 31337). |
 | `nostr-game-protocol/nge` | La clase `NGE` (cliente del escrow de apuestas), transporte inyectable y `auditSettlement`. Ver la sección de apuestas. |
 | `nostr-game-protocol/ngp-core` / `/nge-core` | Solo el wire puro (kinds, templates sin firmar, parsers), sin ergonomía. |
 
@@ -88,17 +146,19 @@ para que entiendas el formato; en producción preferí los helpers del paquete.
 
 ## Capacidades
 
-| Capacidad | 1.0 REST | NGP | Estado |
-|---|---|---|---|
-| Identidad | `lnToken` SSO | NIP-07/NIP-46 | disponible |
-| Marcador | `/api/v1/leaderboards` | `kind:31337` | implementado |
-| Presencia | `/api/v1/presence` | NIP-38 `kind:30315` | implementado |
-| Salas/estado | `/api/v1/rooms` | NIP-29 + jugadas | diseño |
-| Invitación/reto | `/api/v1/invites` | NIP-17 gift-wrap | reto 1v1 implementado |
-| Reseñas/logros | lectura en tienda | `kind:1` con `a=gameCoord` | implementado |
-| Propinas/premios | pagos 1.0 | zaps NIP-57 | implementado |
-| Apuestas v2 por zaps | `/api/v2/bets` | zaps NIP-57 públicos + escrow Luna | experimental |
-| Marcador verificado | server/oráculo 1.0 | `kind:31338` | diseño |
+| Capacidad | Cómo se hace hoy | Estado |
+|---|---|---|
+| Identidad | NIP-07/NIP-46 (el jugador firma; no hay SSO de Luna) | disponible |
+| Marcador | `kind:31339` (legacy 31337 solo lectura) | en producción |
+| Presencia | NIP-38 `kind:30315` con `a=gameCoord` | en producción |
+| Salas/estado | NIP-29 + jugadas | diseño |
+| Invitación/reto | NIP-17 gift-wrap (Room Link de Luna usa `/api/rooms/*`) | reto 1v1 en producción |
+| Reseñas/logros | `kind:1` con `a=gameCoord` | en producción |
+| Propinas/premios | zaps NIP-57 | en producción |
+| Apuestas custodiadas | canal NGE (recomendado) o zaps NIP-57 bajo `/api/v2/bets` | en producción |
+| Marcador verificado | `kind:31338` (atestación de oráculo) | diseño |
+| Compra de juego de pago | la valida Luna Negra (no hay evento Nostr) | fuera de NGP |
+| Webhooks firmados | HMAC server-to-server de Luna Negra | fuera de NGP |
 
 ## Patrón probado en Tetris
 
@@ -108,9 +168,10 @@ Organiza la integración en módulos pequeños:
 - `nostrRelays`: `SimplePool` singleton y listas de relays por función.
 - `nostrLogin`: deriva `pubkey`/`npub`, perfil best-effort y recién entonces persiste signer.
 - `nostrPresence`: construir/publicar/limpiar NIP-38.
-- `nostrLeaderboard`: construir/publicar `kind:31337`.
+- `nostrLeaderboard`: construir/publicar `kind:31339`.
 - `nostrChallenge` + `nostrChallengeInbox`: armar, publicar, parsear y deduplicar NIP-17.
-- `lunaNegraBets`: server-side para `/api/v2/bets`, callbacks LNURL-pay y resultado.
+- `lunaNegraNge`: puerto server-side del canal NGE (clase `NGE` del SDK); la UI
+  solo ve `betId`, `bolt11` y estado — nunca la credencial.
 
 Orden de bootstrap recomendado:
 
@@ -166,11 +227,15 @@ Persiste el método de signer, no solo la identidad. Para clave local puedes gua
 un único punto para disparar un aviso antes de cada `signEvent`; así presencia,
 score, retos y depósito muestran qué se firma.
 
-## Marcador `kind:31337`
+## Marcador `kind:31339`
 
-El jugador firma su mejor puntaje y lo publica a relays. Luna Negra puede
-proyectarlo al mismo ranking que el camino REST, pero el evento también lo puede
-leer cualquier cliente Nostr.
+El jugador firma su mejor puntaje y lo publica a relays. Luna Negra lo proyecta
+a su ranking (score-sync), pero el evento también lo puede leer cualquier
+cliente Nostr.
+
+> El kind se renumeró de 31337 a **31339** en julio de 2026 (31337 es "Audio
+> Track" de facto en otros clientes). Publicá siempre 31339; el 31337 queda
+> solo como lectura legacy durante la transición.
 
 ```ts
 import { SimplePool } from "nostr-tools";
@@ -179,7 +244,7 @@ const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net
 const board = "clasico";
 
 const evt = await window.nostr.signEvent({
-  kind: 31337,
+  kind: 31339,
   created_at: Math.floor(Date.now() / 1000),
   tags: [
     ["a", gameCoord],
@@ -197,11 +262,12 @@ await Promise.any(new SimplePool().publish(RELAYS, evt));
 Reglas:
 
 - `a` debe ser el `gameCoord` real.
-- `kind:31337` es addressable.
+- `kind:31339` es addressable.
 - `d` debe ser `<gameCoord>:<board>`, para un récord por jugador y tablero.
 - `board` debe matchear `^[a-z0-9][a-z0-9_-]{0,63}$`.
 - `score` debe ser entero, no negativo y preferentemente clampeado a `1_000_000_000`.
-- Usa el mismo nombre y unidades que el tablero REST si quieres fusionarlos.
+- Usa el mismo nombre de `board` y las mismas unidades que el ranking histórico
+  del juego si existía, para que se fusionen.
 - El puntaje firmado por cliente es falsificable; no lo uses para repartir dinero.
 - Construye una función `buildScoreEvent()` que solo firma y otra `publishScore()`
   best-effort. Testea `kind`, `pubkey`, `a`, `d`, `board`, `score` y `verifyEvent`.
@@ -212,10 +278,11 @@ Reglas:
 Para leer sin Luna Negra:
 
 ```ts
-{ kinds: [31337], "#a": [gameCoord], "#board": [board] }
+// NGP_SCORE_READ_KINDS del SDK = [31339, 31337] (nuevo + legacy en transición)
+{ kinds: [31339, 31337], "#a": [gameCoord], "#board": [board] }
 ```
 
-Agrupa por `pubkey` y quédate con el mejor `score`.
+Agrupa por `pubkey` y quédate con el mejor `score` (ante empate, gana el 31339).
 
 ## Presencia NIP-38
 
@@ -226,7 +293,7 @@ El propio jugador firma el estado. No hace falta game server.
   "kind": 30315,
   "tags": [
     ["d", "general"],
-    ["a", "30023:<tienda>:<slug>"],
+    ["a", "30023:<firmante>:<slug>"],
     ["expiration", "<unix + 60-240s>"]
   ],
   "content": "Jugando Pac-Toshi"
@@ -257,7 +324,7 @@ interno es `kind:14` y viaja como gift-wrap `kind:1059`.
   "pubkey": "<retador>",
   "tags": [
     ["p", "<invitado>"],
-    ["game", "30023:<tienda>:<slug>"],
+    ["game", "30023:<firmante>:<slug>"],
     ["url", "https://tu-juego.com/?room=..."],
     ["expiration", "<unix>"]
   ],
@@ -310,7 +377,8 @@ Esto es diseño, no contrato estable. Para juegos por turnos determinísticos:
 - El estado se reconstruye plegando jugadas.
 
 No uses este diseño para tiempo real exigente, información oculta, azar no
-verificable o dinero. Usa 1.0 salas REST o un árbitro de backend.
+verificable o dinero. Usa un árbitro en tu propio backend (y NGE si hay dinero
+en juego).
 
 ## Reseñas, comentarios y logros
 
@@ -319,7 +387,7 @@ Publica un `kind:1` con tag `a=gameCoord`.
 ```jsonc
 {
   "kind": 1,
-  "tags": [["a", "30023:<tienda>:<slug>"]],
+  "tags": [["a", "30023:<firmante>:<slug>"]],
   "content": "Gran juego, nuevo logro desbloqueado"
 }
 ```
@@ -335,21 +403,88 @@ juego. Los recibos `kind:9735` verificados alimentan rankings de zappers.
 No mezcles zaps libres con apuestas custodiadas: si hay depósito, pozo y payout
 usa el flujo de apuestas v2 por zaps de esta skill.
 
-## Apuestas v2 por zaps
+## Apuestas custodiadas: canal NGE (recomendado)
 
-> **El camino recomendado hoy es NGE** (Nostr Game Escrow): un RPC cifrado estilo
-> NWC sobre el que el juego pega un solo `NGE_CONNECTION` y usa la clase `NGE` de
-> `nostr-game-protocol/nge` (`createBet` devuelve un `bolt11` por asiento;
-> `reportResult` por `seatId`). No hace falta firmar zaps de depósito en el
-> browser. Está documentado en la guía `/dev` de este deploy. La sección de abajo
-> describe el flujo previo por zaps NIP-57 (sigue vigente, mismo escrow custodial).
+NGE (Nostr Game Escrow) es un RPC cifrado estilo NWC: el juego pega **una sola
+URI de conexión** y opera el escrow desde su servidor con la clase `NGE` de
+`nostr-game-protocol/nge`. No hace falta firmar nada en el browser: los
+jugadores solo pagan un invoice Lightning.
 
-Aunque use zaps NIP-57 públicos, este flujo sigue siendo escrow custodial de
-Luna Negra y server-to-server. Lo que cambia respecto a la apuesta REST v1 es el
-riel: depósitos, premio, corte de la casa y corte del dev quedan auditables como
-zaps en relays. Puede estar apagado por deploy (`BETS_V2_ENABLED`).
+**1. Obtener la credencial** (una vez, el dueño del juego): desde el panel
+`/provider` → Integración, o por API:
 
-Mismo flujo de creación/resolución que la 1.0, pero bajo `/api/v2/bets`:
+```ts
+POST __LUNA_NEGRA_BASE__/api/provider/nge/credential
+Authorization: Bearer ln_sk_…        // API key del proveedor (o sesión del panel)
+{ "gameId": "<id>" }
+// → { uri: "nostr+nge://…", relays, escrowPubkey, servicePubkey, envVar: "NGE_CONNECTION" }
+```
+
+Guardá `uri` como secreto de **servidor** en `NGE_CONNECTION`. Nunca al browser:
+quien tiene la URI opera el escrow del juego. `{ "rotate": true }` revoca la
+anterior y emite una nueva.
+
+**2. Operar el escrow** (server-side):
+
+```ts
+import { NGE, auditSettlement } from "nostr-game-protocol/nge";
+
+const nge = NGE.fromEnv(); // lee NGE_CONNECTION
+
+const info = await nge.getInfo(); // capacidades, límites, comisión
+
+// Crear la apuesta: un bolt11 POR ASIENTO para mostrar como QR.
+const bet = await nge.createBet({
+  seats: [
+    { seatId: "p1", pubkey: "<hex-o-npub>" },   // pubkey opcional: habilita payout social
+    { seatId: "p2", payoutAddress: "ana@getalby.com" }, // o lud16 directo
+  ],
+  stakeSats: 210,               // por asiento; pozo = stake × asientos
+  condition: "Gana la partida", // texto humano
+  clientRef: partidaId,         // idempotencia: reintentar devuelve el MISMO betId
+});
+// bet.deposits → [{ seatId, bolt11, amountSats }] listos para QR
+
+// Seguir el estado: watchBet (push 24942 + respaldo) o pollBet en serverless.
+const stop = nge.watchBet(bet.betId, (b) => {
+  if (b.status === "funded") empezarPartida();
+});
+
+// Al terminar, el juego ES el oráculo: ganadores por seatId.
+// [] = empate/anulación → reembolso. Puede devolver settleAt (ventana de
+// disputa): el resultado queda fijo pero el payout se ejecuta a esa hora.
+await nge.reportResult(bet.betId, ["p1"]);
+
+// Pre-fondeo se puede abortar (reembolsa lo ya pagado):
+await nge.cancelBet(bet.betId);
+```
+
+La coordinación RPC es privada, pero la liquidación queda auditable en relays
+como eventos NGP (contrato 1339, resultado 1341, sombra de estado 31340) salvo
+`visibility: "unlisted"`. `auditSettlement(bet, info)` verifica del lado del
+juego que el reparto publicado cuadre con lo pactado.
+
+Gotchas NGE:
+
+- `NGE_CONNECTION` es un secreto de servidor; si se filtró, rotala.
+- Usá siempre `clientRef` al crear: un timeout de RPC reintentado sin él puede
+  duplicar la apuesta.
+- `reportResult` es por **seatId**, no por pubkey.
+- Estados: `pending_deposits → funded → resolving → settled` (o
+  `cancelled`/`expired`/`refunded`). `watchBet`/`pollBet` se cortan solos al
+  llegar a un estado terminal.
+- `getInfo()` dice qué soporta el escrow (métodos, `visibilityOptions`,
+  límites); ante `RATE_LIMITED`, espaciá los RPC.
+
+## Apuestas v2 por zaps (alternativa browser-first)
+
+Elegí este flujo solo si querés que el jugador firme su depósito como zap
+NIP-57 desde el browser; si tu juego tiene backend, NGE es más simple. Es el
+mismo escrow custodial de Luna Negra, con el riel público: depósitos, premio,
+corte de la casa y corte del dev quedan auditables como zaps en relays. Puede
+estar apagado por deploy (`BETS_V2_ENABLED`).
+
+Creación/resolución server-to-server bajo `/api/v2/bets`:
 
 ```ts
 POST /api/v2/bets
@@ -430,15 +565,15 @@ Tags propuestos:
 
 ```jsonc
 [
-  ["a", "30023:<tienda>:<slug>"],
+  ["a", "30023:<firmante>:<slug>"],
   ["e", "<scoreEventId>"],
   ["p", "<jugador>"],
   ["status", "verified"]
 ]
 ```
 
-Mantén dos tiers: abierto (`kind:31337`, social, falsificable) y verificado
-(`kind:31338`, oráculo, apto para stakes cuando se conecta con escrow 1.0).
+Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
+(`kind:31338`, oráculo, apto para stakes cuando se conecta con el escrow NGE).
 
 ## Gotchas
 
@@ -451,7 +586,8 @@ Mantén dos tiers: abierto (`kind:31337`, social, falsificable) y verificado
    `kind:10002` desde relays de escritura del usuario, y trae `kind:0` por lotes.
 6. La tienda debe aceptar eventos por `a=gameCoord`; no exigir tags privadas de
    Luna Negra.
-7. `board` y unidades del `kind:31337` deben coincidir con REST si se fusionan.
+7. `board` y unidades del `kind:31339` deben coincidir con el ranking histórico
+   del juego si se fusionan.
 8. NIP-17 requiere publicar y escuchar en el mismo set de relays, incluidos
    `kind:10050`. Algunos relays exigen NIP-42 AUTH.
 9. `window.nostr` puede aparecer de forma asincrónica. Sondea antes de rendirte.
@@ -472,21 +608,25 @@ Mantén dos tiers: abierto (`kind:31337`, social, falsificable) y verificado
 - [ ] Separar relays de escritura y lectura.
 - [ ] Publicar y leer un evento round-trip con el mismo filtro `#a`.
 - [ ] Throttlear presencia NIP-38.
-- [ ] Mantener `board` consistente con ranking REST si aplica.
-- [ ] Testear `kind:30315`, `kind:31337` y NIP-17 con `verifyEvent`/round-trip local.
+- [ ] Mantener `board` consistente con el ranking histórico si aplica.
+- [ ] Testear `kind:30315`, `kind:31339` y NIP-17 con `verifyEvent`/round-trip local.
 - [ ] Para NIP-17, usar la misma `resolveDmRelays(pubkey)` en envío y recepción.
 - [ ] Rechazar retos vencidos, de otro `gameCoord`, de otro origin o con
       `rumor.pubkey !== seal.pubkey`.
-- [ ] Para apuestas v2 por zaps, usar `/api/v2/bets` y mantener el resultado en
-      el game server.
-- [ ] En depósitos v2, verificar signer contra sesión, no re-firmar si ya hay
-      `bolt11` y conservar handles visibles durante polling.
-- [ ] No usar NGP para acceso pago, webhooks o escrow REST v1.
+- [ ] Para apuestas custodiadas, pedir la credencial NGE, guardarla como secreto
+      de servidor y crear siempre con `clientRef`.
+- [ ] Mantener el resultado en el game server (nunca derivarlo del marcador
+      cliente); reportar ganadores por `seatId`.
+- [ ] Si se usa el flujo por zaps: verificar signer contra sesión, no re-firmar
+      si ya hay `bolt11` y conservar handles visibles durante polling.
+- [ ] Recordar qué queda fuera de NGP: la compra de juegos de pago la valida
+      Luna Negra y los webhooks firmados siguen siendo HMAC server-to-server.
 
 ## Referencias del repo
 
 - SDK del protocolo (wire NGP + NGE, cliente y helpers de firma):
   [`nostr-game-protocol`](https://github.com/soyezequiel/Nostr-Game-Protocol)
 - Spec de Nostr Games Protocol (NGP): `docs/nostr-games-protocol.md`
+- Apuestas NGP (kinds 1339/1341/31340): `docs/nostr-games-protocol-apuestas.md`
 - Salas e invitaciones NGP: `docs/nostr-games-protocol-salas-invitaciones.md`
 - Implementación de NGP: `docs/nostr-games-protocol-implementacion.md`

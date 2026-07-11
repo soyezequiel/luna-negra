@@ -60,7 +60,8 @@ export async function GET(req: Request) {
   let md: string;
   try {
     md = await readFile(skill.file, "utf8");
-  } catch {
+  } catch (err) {
+    console.error(`[dev/skill] no se pudo leer ${skill.file}:`, err);
     return new Response("No se pudo leer la skill", { status: 500 });
   }
   md = md.replaceAll("__LUNA_NEGRA_BASE__", origin);
