@@ -230,6 +230,31 @@ Persiste el método de signer, no solo la identidad. Para clave local puedes gua
 un único punto para disparar un aviso antes de cada `signEvent`; así presencia,
 score, retos y depósito muestran qué se firma.
 
+### Sesión que persiste (lecciones que costaron bugs reales)
+
+Si tu juego tiene un **servidor autoritativo** que necesita confiar en el `pubkey`
+(salas, rankings con dinero, apuestas), el server pide **firmar un reto** (kind:22242)
+en cada conexión. Tres cosas que aprendimos a los golpes:
+
+- **Emití un token de sesión** tras el primer login firmado (HMAC/JWT del server) y
+  reconectá/recargá con el token en vez de re-firmar. Sin esto, la sesión "se cierra"
+  al recargar o te pide firmar en cada carga. Estabilizá el secreto (env) para que el
+  token sobreviva a los redeploys.
+- **No bloquees la sesión en el firmador.** Si hay token, autenticá DE INMEDIATO y
+  restaurá el signer en segundo plano. Si esperás `getPublicKey()` antes de autenticar
+  y la extensión está lenta o bloqueada, la app se cuelga para siempre en "Conectando…".
+  Poné además un timeout/escape en esa pantalla.
+- **Al restaurar, esperá `window.nostr`** (`waitForNostr` arriba): las extensiones lo
+  inyectan async; si te rendís al instante, la sesión "se cierra" en cada reload.
+
+**NIP-46 (Amber/Primal/nsec.app) cifran con NIP-04, no NIP-44.** El `BunkerSigner` de
+nostr-tools solo habla NIP-44 y se traba ("aprueba y no pasa nada"). Usá detección dual
+NIP-44/NIP-04.
+
+Todo el login (NIP-07 + NIP-46 por QR/bunker + clave local + token de sesión, con el
+arreglo de cada gotcha) está encapsulado en la skill **`nostr-tool`** (código
+reutilizable `nostr-login-tool` + los 10 gotchas). Si vas a poner login Nostr, usala.
+
 ## Marcador `kind:31339`
 
 El jugador firma su mejor puntaje y lo publica a relays. Luna Negra lo proyecta
@@ -395,12 +420,16 @@ https://<tu gameUrl>/?join=<roomId>      (opcional: &lnOrigin=<origen de Luna>, 
 
 - `join`: id de sala opaco, `^[A-Za-z0-9_-]{1,64}$`. **No pre-existe**: tu juego lo
   crea *lazy* al primer acceso.
+- **Armá y parseá el link con los helpers del SDK**, no a mano:
+  `buildRoomLink(gameUrl, roomId)` / `parseRoomLink(url|search)` / `ROOM_ID_RE`, en
+  `nostr-game-protocol/ngp-core` (v0.2.0+). Así usás EXACTAMENTE el mismo formato que
+  la tienda y que el `url` del reto NIP-17 — un solo camino de entrada a sala.
 - Es una **URL pelada**: NO lleva token de identidad. Luna **nunca** mintea `lnToken`
   para este flujo. La identidad la resuelve **tu juego** por Nostr (NIP-07/46). Es
   **público**: cualquiera con el link entra.
-- **No es un evento Nostr** ni está en el SDK — es un contrato de URL + el transporte
-  propio de tu juego (WebSocket, etc.). Distinto del tag `room` de los retos NIP-17
-  (grupo NIP-29) y del `room`+`inviteToken` de salas hosteadas por Luna.
+- El **contrato de URL** no es un evento Nostr (es URL + el transporte propio de tu
+  juego: WebSocket, etc.), aunque el SDK trae los helpers del link. Distinto del tag
+  `room` de los retos NIP-17 (grupo NIP-29) y del `room`+`inviteToken` de salas de Luna.
 
 ### Contrato del lado del juego (esto es lo que implementás)
 
@@ -654,6 +683,20 @@ Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
 12. En serverless, si el entrypoint de la función importa lógica transitiva, puede
     quedar cacheado. Expón una ruta de versión/rev del handler si estás desplegando
     en una plataforma con build cache agresivo.
+13. **Room Link / entrada a sala: unir-o-CREAR, no solo unir.** El link `?join=<id>`
+    apunta a una sala que NO pre-existe: el juego la crea lazy al primer acceso. Si tu
+    "join" tira error cuando la sala no existe, el Room Link nunca arranca. Usá el
+    mismo `?join` para tu invite propio y para el de la tienda (un solo camino). Armá/
+    parseá con `buildRoomLink`/`parseRoomLink` del SDK.
+14. **Sesión Nostr con servidor autoritativo: token, no re-firmar.** Emití un token de
+    sesión tras el primer login firmado y reconectá con él; NO bloquees el arranque
+    esperando al firmador (token-first) o te colgás en "Conectando…"; y esperá
+    `window.nostr` al restaurar. Todo esto (más NIP-46 dual NIP-44/NIP-04) en la skill
+    `nostr-tool`.
+15. **SPA: no metas el build-id dentro del bundle JS.** Cambia el hash del bundle en
+    cada deploy y un `index.html` viejo cacheado apunta a un bundle borrado → 404 → app
+    rota / "no veo los cambios". Poné el build-id en el `index.html` (inyectado) y
+    servilo `Cache-Control: no-cache`; los assets hasheados con caché larga.
 
 ## Checklist
 
@@ -676,6 +719,11 @@ Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
       si ya hay `bolt11` y conservar handles visibles durante polling.
 - [ ] Recordar qué queda fuera de NGP: la compra de juegos de pago la valida
       Luna Negra y los webhooks firmados siguen siendo HMAC server-to-server.
+- [ ] Sesión que persista: token de sesión (no re-firmar en cada reload), token-first
+      (no bloquear en el firmador) y esperar `window.nostr`. Ver skill `nostr-tool`.
+- [ ] Si soportás Room Link / invitaciones a sala: `?join=<id>` unir-o-CREAR (lazy),
+      con `buildRoomLink`/`parseRoomLink` del SDK; probar que dos personas con el mismo
+      link caen en la misma sala.
 
 ## Referencias del repo
 
