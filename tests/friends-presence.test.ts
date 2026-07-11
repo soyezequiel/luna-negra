@@ -7,6 +7,7 @@ import {
   type Friend,
 } from "@/hooks/use-friends";
 import {
+  isGameSignedPresence,
   isLingeringPlayingStatus,
   selectFreshStatuses,
   STATUS_FALLBACK_TTL_SECONDS,
@@ -239,13 +240,13 @@ describe("isLingeringPlayingStatus (limpieza de presencia colgada)", () => {
   const STORE_PK =
     "ed13c471be6bff9195a6261d8cbd6c7ab6efe79a7947b208d2b6f066b99cc4d3";
 
-  it("flags a coord-anchored game presence WITHOUT expiration/r as lingering", () => {
+  it("flags an OLD coord-anchored presence WITHOUT expiration as lingering", () => {
     // El juego (p. ej. Tetra) auto-firma su presencia anclada a la coord, con
-    // texto libre y sin NIP-40 ni tag `r`. Antes la heurística de "forma de
-    // jugando" la daba por estado manual y no la limpiaba → quedaba colgada.
+    // texto libre y sin NIP-40. Si su created_at es viejo (dejó de re-firmar hace
+    // rato), es una sesión cerrada que quedó colgada → hay que limpiarla.
     const ev = statusEvent({
       pubkey: "a",
-      createdAt: now - 1,
+      createdAt: now - 1200, // > umbral de colgada (600s), < TTL de fallback (3600s)
       content: "Jugando TETRA",
       tags: [
         ["d", "general"],
@@ -254,6 +255,39 @@ describe("isLingeringPlayingStatus (limpieza de presencia colgada)", () => {
     });
 
     expect(isLingeringPlayingStatus(ev, STORE_PK, now)).toBe(true);
+  });
+
+  it("does NOT clear an ACTIVE coord-anchored presence with a future expiration", () => {
+    // Regresión: una partida en curso (Ajedrez/Tetra) firma presencia con NIP-40
+    // futuro; limpiarla nukearía la presencia en vivo ("no se ve a nadie jugando").
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "Jugando Ajedrez",
+      tags: [
+        ["d", "general"],
+        ["a", `30023:${STORE_PK}:ajedrez`],
+        ["expiration", String(now + 200)],
+      ],
+    });
+
+    expect(isLingeringPlayingStatus(ev, STORE_PK, now)).toBe(false);
+  });
+
+  it("does NOT clear a RECENT coord-anchored presence without expiration", () => {
+    // Sin NIP-40 pero recién firmada: probablemente una partida activa que aún no
+    // volvió a re-firmar. No la tocamos hasta que su created_at sea claramente viejo.
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 30,
+      content: "Jugando TETRA",
+      tags: [
+        ["d", "general"],
+        ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+      ],
+    });
+
+    expect(isLingeringPlayingStatus(ev, STORE_PK, now)).toBe(false);
   });
 
   it("flags a still-valid Luna Negra playing status as lingering", () => {
@@ -344,5 +378,72 @@ describe("NIP-38 clear override (kept)", () => {
     );
 
     expect(result.a).toBeUndefined();
+  });
+});
+
+describe("isGameSignedPresence (¿el juego tomó el control del estado?)", () => {
+  const now = 1_000;
+  const STORE_PK =
+    "ed13c471be6bff9195a6261d8cbd6c7ab6efe79a7947b208d2b6f066b99cc4d3";
+
+  it("reconoce una presencia coord-anchored vigente firmada por el juego", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "Jugando TETRA",
+      tags: [
+        ["d", "general"],
+        ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+        ["expiration", String(now + 200)],
+      ],
+    });
+
+    expect(isGameSignedPresence(ev, STORE_PK, now)).toBe(true);
+  });
+
+  it("NO cuenta la presencia optimista de la tienda (lleva l:luna-negra)", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "Jugando Tetris en Luna Negra",
+      tags: [
+        ["d", "general"],
+        ["l", "luna-negra"],
+        ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+        ["expiration", String(now + 200)],
+      ],
+    });
+
+    expect(isGameSignedPresence(ev, STORE_PK, now)).toBe(false);
+  });
+
+  it("NO cuenta una presencia coord-anchored ya vencida", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 300,
+      content: "Jugando TETRA",
+      tags: [
+        ["d", "general"],
+        ["a", `30023:${STORE_PK}:tetra-tetris-copia`],
+        ["expiration", String(now - 1)],
+      ],
+    });
+
+    expect(isGameSignedPresence(ev, STORE_PK, now)).toBe(false);
+  });
+
+  it("NO cuenta un estado sin coord de un juego del catálogo", () => {
+    const ev = statusEvent({
+      pubkey: "a",
+      createdAt: now - 1,
+      content: "Algo",
+      tags: [["d", "general"]],
+    });
+
+    expect(isGameSignedPresence(ev, STORE_PK, now)).toBe(false);
+  });
+
+  it("returns false for no event", () => {
+    expect(isGameSignedPresence(undefined, STORE_PK, now)).toBe(false);
   });
 });

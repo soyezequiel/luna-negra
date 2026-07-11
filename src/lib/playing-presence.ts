@@ -15,6 +15,7 @@ import {
   publishPlayingStatus,
   clearPlayingStatus,
   hasStalePlayingStatus,
+  hasGameSignedPresence,
   isClickPresenceEnabled,
 } from "@/lib/nostr-social";
 
@@ -113,9 +114,23 @@ export function startPlayingPresence({
     if (playing) {
       everSeen = true;
       refresh();
-    } else if (everSeen || Date.now() - startedAt > STARTUP_GRACE_MS) {
-      // El juego dejó de reportar (cerró) o nunca reportó dentro de la gracia.
+      return;
+    }
+    if (everSeen) {
+      // El juego reportó a la API y dejó de hacerlo (cerró): limpiamos la presencia
+      // optimista que publicó la tienda.
       finish(true);
+      return;
+    }
+    if (Date.now() - startedAt > STARTUP_GRACE_MS) {
+      // Nunca reportó a la API dentro de la gracia. Puede ser un juego 2.0 que
+      // auto-firma su propia presencia NIP-38 (no toca la API): en ese caso NO la
+      // pisamos con nuestro clear, que usa el MISMO slot reemplazable `d:general` y
+      // la borraría (era lo que dejaba "sin nadie jugando" al abrir Tetra/Ajedrez).
+      // Sólo limpiamos la optimista si el juego NO tomó el control del estado.
+      const gameOwns = await hasGameSignedPresence().catch(() => false);
+      if (stopped) return;
+      finish(!gameOwns);
     }
   };
 
