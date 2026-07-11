@@ -697,10 +697,16 @@ const SCRIPT = `
     };
     var LEVELS = {
       N0: {
-        color: "luna", active: ["jugador"], packet: "pubkey",
+        color: "luna", active: ["jugador"], mode: "local", packet: "pubkey",
         name: "Identidad", nip: "NIP-07 / NIP-46 · estándar",
-        desc: "El mínimo absoluto, y lo que todos los juegos necesitan. El jugador entra firmando un desafío con su extensión de navegador (NIP-07) o con el celular vía QR (NIP-46). Su pubkey Nostr es un playerId estable — tu juego nunca crea cuentas propias ni guarda contraseñas.",
-        tip: "La pubkey es la identidad. No hay servidor de cuentas: si el jugador tiene su llave, ya puede jugar.",
+        desc: "El mínimo absoluto, y lo que todos los juegos necesitan. El jugador entra firmando un desafío con su extensión de navegador (NIP-07) o con el celular vía QR (NIP-46). Su pubkey Nostr es un playerId estable — tu juego nunca crea cuentas propias ni guarda contraseñas. Todo pasa en el cliente: la firma se verifica en el momento y no genera ningún evento que viaje a relays.",
+        tip: "La pubkey es la identidad y queda en el cliente. En este nivel el juego no publica nada a relays ni le manda la npub a Luna Negra — eso recién arranca en N1 con el marcador. Si el jugador tiene su llave, ya puede jugar.",
+        diagram: {
+          nodes: {
+            jugador: { cls: "nbox jugador glow-luna", html: '<div class="sign">🔑</div><div class="ntitle">Jugador</div><div class="nsub">firma un desafío · su pubkey es el playerId</div><div class="ntag">NIP-07 / NIP-46</div><div class="nsub" style="margin-top:10px;color:#6f6884">la llave nunca sale del signer</div>' }
+          },
+          anchor: '<span class="u">La identidad es local</span><span class="coord">pubkey → playerId</span><span class="u" style="text-transform:none;letter-spacing:0;font-size:11px;color:#5f5872">— nada se publica ni se envía a Luna Negra</span>'
+        },
         codeTitle: "obtener la identidad",
         code: "// N0 — identidad del jugador\\nconst pubkey = await window.nostr.getPublicKey();\\n\\n// pubkey  =>  playerId estable (npub / hex)\\n// NIP-46 (celular): mismo window.nostr,\\n// firmado por un signer remoto vía QR."
       },
