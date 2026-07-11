@@ -3,11 +3,13 @@ name: integrar-ngp-v2
 description: >-
   Integra juegos con Nostr Games Protocol (NGP) v2: login
   NIP-07/NIP-46, coordenada gameCoord, presencia NIP-38, marcador kind:31339,
-  retos e invitaciones NIP-17, salas NIP-29 de diseño, reseñas/logros kind:1,
+  retos e invitaciones NIP-17, Room Link (?lnRoom) para invitar a jugar en salas
+  hosteadas por el juego, salas NIP-29 de diseño, reseñas/logros kind:1,
   zaps NIP-57, apuestas custodiadas por NGE o por zaps bajo /api/v2/bets y
   patrones probados en Tetris para signers, relays, inbox NIP-17 y auto-firma de
   depósitos. Usar cuando el usuario pida integrar un juego con Luna Negra,
-  eventos Nostr nativos, resiliencia/interoperabilidad Nostr, retos 1v1,
+  Room Link / ?lnRoom / invitar a jugar en una sala, eventos Nostr nativos,
+  resiliencia/interoperabilidad Nostr, retos 1v1,
   presencia Nostr, leaderboard Nostr, integración NGP/NGE, zaps o escrow por
   zap. La interfaz REST 1.0 fue retirada; solo sobreviven los webhooks firmados
   y la validación de compra de juegos de pago del lado de Luna Negra.
@@ -152,7 +154,8 @@ para que entiendas el formato; en producción preferí los helpers del paquete.
 | Marcador | `kind:31339` (legacy 31337 solo lectura) | en producción |
 | Presencia | NIP-38 `kind:30315` con `a=gameCoord` | en producción |
 | Salas/estado | NIP-29 + jugadas | diseño |
-| Invitación/reto | NIP-17 gift-wrap (Room Link de Luna usa `/api/rooms/*`) | reto 1v1 en producción |
+| Invitación/reto | NIP-17 gift-wrap (DM cifrado con el link de la sala) | reto 1v1 en producción |
+| Invitar a jugar (Room Link) | URL `?lnRoom=<id>`; tu juego crea/une la sala (ver sección Room Link) | en producción |
 | Reseñas/logros | `kind:1` con `a=gameCoord` | en producción |
 | Propinas/premios | zaps NIP-57 | en producción |
 | Apuestas custodiadas | canal NGE (recomendado) o zaps NIP-57 bajo `/api/v2/bets` | en producción |
@@ -379,6 +382,59 @@ Esto es diseño, no contrato estable. Para juegos por turnos determinísticos:
 No uses este diseño para tiempo real exigente, información oculta, azar no
 verificable o dinero. Usa un árbitro en tu propio backend (y NGE si hay dinero
 en juego).
+
+## Room Link de Luna (`?lnRoom`)
+
+Estándar de Luna para **invitar a jugar en una sala hosteada por tu juego**, sin que
+quien invita abra el juego primero y sin que la sala pre-exista. Luna arma el enlace
+solo (conoce tu `gameUrl`) y lo comparte:
+
+```
+https://<tu gameUrl>/?lnRoom=<roomId>      (opcional: &lnOrigin=<origen de Luna>, informativo)
+```
+
+- `lnRoom`: id de sala opaco, `^[A-Za-z0-9_-]{1,64}$`. **No pre-existe**: tu juego lo
+  crea *lazy* al primer acceso.
+- Es una **URL pelada**: NO lleva token de identidad. Luna **nunca** mintea `lnToken`
+  para este flujo. La identidad la resuelve **tu juego** por Nostr (NIP-07/46). Es
+  **público**: cualquiera con el link entra.
+- **No es un evento Nostr** ni está en el SDK — es un contrato de URL + el transporte
+  propio de tu juego (WebSocket, etc.). Distinto del tag `room` de los retos NIP-17
+  (grupo NIP-29) y del `room`+`inviteToken` de salas hosteadas por Luna.
+
+### Contrato del lado del juego (esto es lo que implementás)
+
+1. **Leé `?lnRoom`** al cargar (validá el formato). Guardalo hasta que el jugador
+   esté autenticado; recién ahí limpialo de la URL (junto con `?lnOrigin`).
+2. **Autenticá** al jugador por Nostr (tu login habitual).
+3. **Entrá-o-creá** la sala con ese id externo en tu backend: si existe, unite; si
+   no, creala con **ESE** id (el primero que abre es el host). NO uses tu generador
+   de ids acá — la sala debe tener el `lnRoom` que eligió Luna, para que los dos que
+   abren el mismo link caigan en la MISMA sala.
+4. Priorizá `lnRoom` sobre tus propios parámetros de invitación (`?join`, etc.).
+
+### Implementación de referencia (juego Ajedrez)
+
+- **web**: `pendingLnRoom()` lee y valida `?lnRoom`; en el handler `authed`, si hay
+  `lnRoom` llama `net.enterRoom(lnRoom)` (antes que su `?join` propio); `cleanUrl`
+  borra `lnRoom`/`lnOrigin`.
+- **server**: mensaje `enter_room {roomId}` → `RoomManager.enterByExternalId(roomId,
+  jugador)`: si la sala existe la une, si no la crea con ese id (1º host/blancas, 2º
+  negras). Valida `^[A-Za-z0-9_-]{1,64}$`.
+
+### Gotchas (para que funcione a la primera)
+
+- **Unir-o-crear, no solo unir.** Si tu "join" tira error cuando la sala no existe,
+  el Room Link nunca arranca (la sala se crea lazy en el primer acceso).
+- **Leé `lnRoom` ANTES de limpiar la URL, y entrá DESPUÉS de autenticar.** Si limpiás
+  la URL antes del login, perdés el `lnRoom`.
+- **Mismo id para ambos jugadores.** La sala se crea con el `lnRoom` de Luna, no con
+  un id tuyo — si no, el segundo jugador entra a otra sala y nunca se encuentran.
+- **Identidad por Nostr, no por Luna.** No esperes un `lnToken`; Luna no lo manda. Si
+  tu juego acepta invitados, podés dejarlos entrar; si querés respetar el contrato al
+  pie, forzá login Nostr para este ramal.
+
+Doc canónico del contrato: `docs/luna-room-link.md` (en el repo de Luna Negra).
 
 ## Reseñas, comentarios y logros
 
@@ -629,4 +685,5 @@ Mantén dos tiers: abierto (`kind:31339`, social, falsificable) y verificado
 - Spec de Nostr Games Protocol (NGP): `docs/nostr-games-protocol.md`
 - Apuestas NGP (kinds 1339/1341/31340): `docs/nostr-games-protocol-apuestas.md`
 - Salas e invitaciones NGP: `docs/nostr-games-protocol-salas-invitaciones.md`
+- Room Link de Luna (`?lnRoom`, contrato del enlace): `docs/luna-room-link.md`
 - Implementación de NGP: `docs/nostr-games-protocol-implementacion.md`
