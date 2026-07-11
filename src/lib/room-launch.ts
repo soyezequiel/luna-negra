@@ -131,7 +131,7 @@ export function launchStandaloneGame({
   gameUrl: string;
   slug?: string;
   title?: string;
-  /** "Luna Room Link": abre el juego en una sala HOSTEADA POR EL JUEGO (`?lnRoom=`).
+  /** "Luna Room Link": abre el juego en una sala HOSTEADA POR EL JUEGO (`?join=`).
    * Distinto del par `inviteToken`+`room` de `launchGameRoom` (salas de Luna). La
    * sala no pre-existe: el juego la crea lazy. Ver docs/luna-room-link.md. */
   roomId?: string;
@@ -141,7 +141,7 @@ export function launchStandaloneGame({
 }): LaunchResult {
   const url = new URL(gameUrl, window.location.origin);
   url.searchParams.set("lnOrigin", window.location.origin);
-  if (roomId) url.searchParams.set("lnRoom", roomId);
+  if (roomId) url.searchParams.set("join", roomId); // ?join: estándar único (antes ?lnRoom)
   const dest = url.toString();
   const existing = slug ? getOpenGameWindow(slug) : null;
   if (existing && win && existing !== win) win.close();

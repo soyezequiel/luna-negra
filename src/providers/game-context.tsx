@@ -17,7 +17,7 @@ export type CurrentGame = {
   /** Coordenada Nostr `30023:<tienda>:<slug>` (Nostr Games Protocol (NGP)). */
   nostrCoord?: string | null;
   /** El juego declaró soporte de "Luna Room Link" (sala hosteada por el juego): la
-   * barra de amigos invita con un enlace `?lnRoom=` dirigido en vez del flujo de
+   * barra de amigos invita con un enlace `?join=` dirigido en vez del flujo de
    * salas hosteadas por Luna. Ver docs/luna-room-link.md. */
   roomLink?: boolean;
 };

@@ -105,7 +105,7 @@ export async function queueGameLaunchRequest(input: {
 /**
  * Encola el popup para un "Luna Room Link". A diferencia de
  * `queueGameLaunchRequest`, no mintea una sala de Luna: conserva el `inviteUrl`
- * del juego para que el cliente entre a su propia sala `lnRoom`. El `lnInvite`
+ * del juego para que el cliente entre a su propia sala `join`. El `lnInvite`
  * viaja como `inviteToken`; con enlaces abiertos es "" (el juego entra directo,
  * sin verificar token).
  *

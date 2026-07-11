@@ -16,7 +16,7 @@ import { queueRoomLinkLaunchRequest } from "@/lib/game-launch-requests";
 //
 //   POST { gameId, roomId?, toNpub? } → { roomId, inviteUrl }
 //     - roomId ausente → se genera uno opaco (la sala no pre-existe).
-//     - El enlace es SIEMPRE ABIERTO (`?lnRoom=`): quien lo tenga entra con su
+//     - El enlace es SIEMPRE ABIERTO (`?join=`): quien lo tenga entra con su
 //       identidad actual. No se firma ningún token dirigido.
 //     - toNpub presente → es un amigo puntual: además de devolver el enlace, le
 //       encolamos la orden de entrada para que su juego YA ABIERTO muestre el
@@ -123,12 +123,13 @@ export async function POST(req: Request) {
     targetNpub = toNpub;
   }
 
-  // Enlace canónico ABIERTO: <Game.gameUrl>/?lnRoom=<roomId>. Sin token: cualquiera
-  // con el enlace entra con su identidad actual.
+  // Enlace canónico ABIERTO: <Game.gameUrl>/?join=<roomId>. Sin token: cualquiera
+  // con el enlace entra con su identidad actual. `?join` es el formato estándar
+  // (NGP), el mismo del reto NIP-17; el juego crea la sala lazy.
   let inviteUrl: string;
   try {
     const url = new URL(game.gameUrl);
-    url.searchParams.set("lnRoom", roomId);
+    url.searchParams.set("join", roomId);
     inviteUrl = url.toString();
   } catch {
     return NextResponse.json(

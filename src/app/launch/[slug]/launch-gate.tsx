@@ -15,7 +15,7 @@ type Status = "checking" | "redirecting" | "needsLogin" | "needsBuy" | "error";
 /**
  * Puerta cliente del cold-open. Verifica el acceso con el endpoint
  * (`POST /api/games/:id/sessions`, que cubre invitado en juegos gratis) y
- * redirige a `returnTo` con `lnOrigin` apendido (el `lnRoom` ya viaja dentro de
+ * redirige a `returnTo` con `lnOrigin` apendido (el `join` ya viaja dentro de
  * `returnTo`). La identidad del jugador la resuelve el juego por Nostr (NIP-07/46).
  */
 export function LaunchGate({

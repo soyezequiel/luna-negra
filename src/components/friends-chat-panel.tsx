@@ -145,7 +145,7 @@ export function FriendsChatPanel({
               const showDay =
                 !prev || !sameDay(prev.created_at, m.created_at);
               const invite = parseInvite(m.text);
-              // "Luna Room Link": enlace `?lnRoom=` del dominio del juego (sin slug
+              // "Luna Room Link": enlace `?join=` del dominio del juego (sin slug
               // de Luna). Solo si no era una invitación de sala de Luna.
               const roomLink = invite ? null : parseRoomLink(m.text);
               const superseded =

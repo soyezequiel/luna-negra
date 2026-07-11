@@ -39,7 +39,7 @@ export function parseInvite(text: string): Invite | null {
 }
 
 // "Luna Room Link": enlace a una sala HOSTEADA POR EL JUEGO, con el dominio del
-// juego y el param `lnRoom` (ver docs/luna-room-link.md). A diferencia de
+// juego y el param estándar `?join` (ver docs/luna-room-link.md). A diferencia de
 // `parseInvite`, el link NO lleva el slug de Luna (apunta directo al juego), así
 // que devolvemos la URL cruda: entrar = abrir esa URL (el juego resuelve la
 // identidad por cold-open contra /launch/<slug>).
@@ -49,8 +49,8 @@ const URL_RE = /https?:\/\/[^\s<>"']+/gi;
 const LN_ROOM_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * Detecta un enlace de sala de juego (`?lnRoom=…`) dentro de un texto arbitrario.
- * Parsea cada URL del texto y devuelve la primera con un `lnRoom` válido, o null.
+ * Detecta un enlace de sala de juego (`?join=…`) dentro de un texto arbitrario.
+ * Parsea cada URL del texto y devuelve la primera con un `join` válido, o null.
  */
 export function parseRoomLink(text: string): RoomLink | null {
   const matches = text.match(URL_RE);
@@ -58,7 +58,7 @@ export function parseRoomLink(text: string): RoomLink | null {
   for (const raw of matches) {
     try {
       const u = new URL(raw);
-      const roomId = u.searchParams.get("lnRoom");
+      const roomId = u.searchParams.get("join");
       if (roomId && LN_ROOM_RE.test(roomId)) return { url: raw, roomId };
     } catch {
       /* no es una URL válida → seguir */

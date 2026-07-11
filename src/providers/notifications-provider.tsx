@@ -379,7 +379,7 @@ export function NotificationsProvider({
           fireDesktop(`🎮 ${title}`, body, href, `invite:${npub}`);
           return;
         }
-        // "Luna Room Link": DM con un enlace `?lnRoom=` del dominio del juego. Se
+        // "Luna Room Link": DM con un enlace `?join=` del dominio del juego. Se
         // ancla igual que una invitación de Luna, pero unirse = abrir esa URL.
         const roomLink = parseRoomLink(plain);
         if (roomLink) {

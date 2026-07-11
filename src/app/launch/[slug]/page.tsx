@@ -3,10 +3,10 @@ import { getPublishedGameBySlug } from "@/lib/store-catalog";
 import { LaunchGate } from "./launch-gate";
 
 // Cold-open SSO de "Luna Room Link" (ver docs/luna-room-link.md §"Handoff de
-// identidad"). Un enlace crudo `<gameUrl>?lnRoom=…` reenviado por WhatsApp/Discord
+// identidad"). Un enlace crudo `<gameUrl>?join=…` reenviado por WhatsApp/Discord
 // cae en el juego SIN identidad; el juego rebota acá con `returnTo` = su URL
 // original. Luna autentica (reusa la sesión o pide login), mintea un entitlement
-// fresco y redirige de vuelta al dominio del juego con `lnToken` + `lnRoom`
+// fresco y redirige de vuelta al dominio del juego con `lnToken` + `join`
 // intactos.
 export const dynamic = "force-dynamic";
 

@@ -63,7 +63,7 @@ const ANIMS: Anim[] = [
     src: "/animaciones/room-link.html",
     title: "Luna Room Link",
     badge: "Room Link",
-    spec: "Estándar de invitación a salas · ?lnRoom · sala lazy",
+    spec: "Estándar de invitación a salas · ?join · sala lazy",
     name: "Luna Room Link",
     desc:
       'Luna arma el enlace de invitación <strong>desde la ficha, sin abrir el juego</strong>. El link lleva tu dominio y la sala se crea <em>lazy</em> en tu backend al primer acceso. La animación arma el link y lo sigue hasta la sala.',

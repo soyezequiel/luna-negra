@@ -263,7 +263,7 @@ export default function MessagesPage() {
                 ) : (
                   thread.map((m) => {
                     const invite = parseInvite(m.text);
-                    // "Luna Room Link": enlace `?lnRoom=` del dominio del juego.
+                    // "Luna Room Link": enlace `?join=` del dominio del juego.
                     const roomLink = invite ? null : parseRoomLink(m.text);
                     // Invitación recibida superada por otra más nueva del chat.
                     const superseded =

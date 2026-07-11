@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 /**
  * "Invitar a jugar" con Luna Room Link (ver docs/luna-room-link.md): genera —sin
  * abrir el juego— un enlace público a una sala HOSTEADA POR EL JUEGO, con el
- * dominio del juego (`<gameUrl>?lnRoom=…`). Cualquiera con el enlace entra; la
+ * dominio del juego (`<gameUrl>?join=…`). Cualquiera con el enlace entra; la
  * identidad la resuelve el juego por cold-open contra `/launch/<slug>`.
  *
  * La variante DIRIGIDA (a un `npub`) la soporta el endpoint (`toNpub`); acá

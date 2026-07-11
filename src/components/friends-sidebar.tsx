@@ -230,7 +230,7 @@ export function FriendsSidebar() {
   }
 
   // Despacha el "Invitar a jugar": si el juego soporta Luna Room Link (sala del
-  // propio juego) usa un enlace general `?lnRoom=`; si no, el flujo clásico de
+  // propio juego) usa un enlace general `?join=`; si no, el flujo clásico de
   // salas hosteadas por Luna (DM con `/game/<slug>?room=`).
   function handleInvite(recipientPubkey: string, name: string) {
     if (isRoomLink) void inviteViaRoomLink(recipientPubkey, name);
@@ -298,7 +298,7 @@ export function FriendsSidebar() {
     }
   }
 
-  // Verifica el acceso y abre el juego del host en la sala room-link (`?lnRoom=`),
+  // Verifica el acceso y abre el juego del host en la sala room-link (`?join=`),
   // reutilizando la ventana `win` preabierta en el gesto del click si la hay.
   async function openHostInRoom(
     game: CurrentGame,
@@ -312,7 +312,7 @@ export function FriendsSidebar() {
     });
     const sd = await sr.json().catch(() => ({}));
     // La identidad la resuelve el juego por Nostr (NIP-07/46): abrimos con el link
-    // limpio (solo lnRoom + lnOrigin). Solo tiramos si falla el HTTP o el endpoint
+    // limpio (solo ?join + lnOrigin). Solo tiramos si falla el HTTP o el endpoint
     // no confirmó el acceso.
     if (!sr.ok || !sd.nostrLogin) {
       throw new Error(sd.error ?? "No se pudo abrir el juego");
@@ -335,7 +335,7 @@ export function FriendsSidebar() {
     }
   }
 
-  // El host abre SU juego en la sala room-link compartida (`?lnRoom=`). No crea una
+  // El host abre SU juego en la sala room-link compartida (`?join=`). No crea una
   // fila Room en Luna: la sala vive en el backend del juego, creada al primer acceso.
   async function openRoomLinkGame() {
     if (!currentGame) return;
