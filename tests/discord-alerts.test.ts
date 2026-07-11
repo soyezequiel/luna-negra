@@ -96,6 +96,25 @@ describe("alertas operativas de Discord", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("en dev NO manda nada a Discord aunque haya webhook configurado", async () => {
+    vi.stubEnv(
+      "DISCORD_ALERT_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/123/alert-token",
+    );
+    vi.stubEnv("NODE_ENV", "development");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { notifyOperationalError } = await import("@/lib/discord");
+
+    await notifyOperationalError({
+      source: "test-flow",
+      error: new Error("falló algo en dev"),
+      fingerprint: "dev-no-manda",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("el fallo operativo lleva el prompt copy-pasteable para Claude Code", async () => {
     vi.stubEnv(
       "DISCORD_ALERT_WEBHOOK_URL",
@@ -122,6 +141,7 @@ describe("alertas operativas de Discord", () => {
 
   it("deduplica la misma falla durante el cooldown", async () => {
     vi.stubEnv("DISCORD_ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/123/token");
+    vi.stubEnv("NODE_ENV", "production");
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     const { notifyOperationalError } = await import("@/lib/discord");

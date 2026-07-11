@@ -13,7 +13,11 @@
 // Diseño "Eclipse": fondo negro, marca Luna (violeta) / Corona (dorado) /
 // Aurora (verde), tipografías Bricolage Grotesque + Geist. El hero trae un
 // diagrama animado del flujo NGP y un selector de niveles de adopción (N0–N3)
-// que resalta las partes del diagrama; la guía manual es un acordeón.
+// que resalta las partes del diagrama. Ojo: N0–N2 (y el zap de N3) comparten la
+// topología broadcast NGP (jugador firma → relays → cualquiera lee), pero al
+// elegir N3 "Económico" el diagrama se transforma en el canal NGE real:
+// request/response cifrado juego⇄escrow (no broadcast), con la liquidación
+// pública como única parte auditable. La guía manual es un acordeón.
 
 import { originFrom } from "@/lib/dev-guide";
 
@@ -84,6 +88,12 @@ const STYLE = `
   .nbox.clientes { background: linear-gradient(160deg, rgba(79,230,168,0.09), rgba(24,21,34,0.4)); border-color: rgba(255,255,255,0.08); padding: 16px 14px; }
   .node[data-on="1"] .nbox.glow-luna { border-color: #9d8cff; box-shadow: 0 0 0 1px #9d8cff, 0 18px 44px -16px rgba(157,140,255,0.6); }
   .node[data-on="1"] .nbox.glow-aurora { border-color: #4fe6a8; box-shadow: 0 0 0 1px #4fe6a8, 0 18px 44px -16px rgba(79,230,168,0.6); }
+  .node[data-on="1"] .nbox.glow-corona { border-color: #ffb648; box-shadow: 0 0 0 1px #ffb648, 0 18px 44px -16px rgba(255,182,72,0.6); }
+  .nbox.juego { background: linear-gradient(160deg, rgba(255,182,72,0.10), rgba(24,21,34,0.4)); }
+  .nbox.escrow { background: linear-gradient(160deg, rgba(255,182,72,0.09), rgba(24,21,34,0.4)); border-color: rgba(255,255,255,0.08); padding: 16px 14px; }
+  .ntag.corona { color: #ffcd7a; background: rgba(255,182,72,0.12); border-color: rgba(255,182,72,0.3); }
+  .cli.hi.corona { color: #ffcd7a; background: rgba(255,182,72,0.12); border-color: rgba(255,182,72,0.28); }
+  .relaydot .g.corona { background: #ffb648; box-shadow: 0 0 7px #ffb648; }
   .sign { width: 46px; height: 46px; margin: 0 auto 12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #221d30, #0a0810); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px rgba(157,140,255,0.4); animation: ngp-pulse 2.6s ease-out infinite; font-size: 20px; }
   .ntitle { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
   .nsub { font-size: 12.5px; color: #9a93ad; margin-top: 4px; line-height: 1.4; }
@@ -226,6 +236,15 @@ const STYLE = `
     91%  { opacity: 1; transform: translateY(-50%) scale(1); }
     100% { left: 99%; opacity: 0; transform: translateY(-50%) scale(0.7); }
   }
+  @keyframes ngp-flow-rev {
+    0%   { left: 99%; opacity: 0; transform: translateY(-50%) scale(0.7); }
+    9%   { opacity: 1; transform: translateY(-50%) scale(1); }
+    91%  { opacity: 1; transform: translateY(-50%) scale(1); }
+    100% { left: 1%;  opacity: 0; transform: translateY(-50%) scale(0.7); }
+  }
+  /* Nivel económico (NGE): canal cifrado bidireccional, no broadcast público */
+  .diagram[data-mode="nge"] .conn { background: repeating-linear-gradient(90deg, rgba(255,182,72,0.55) 0 5px, transparent 5px 11px); }
+  .diagram[data-mode="nge"] .pill.p2 { animation-name: ngp-flow-rev; }
   @keyframes ngp-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(157,140,255,0.55); } 60% { box-shadow: 0 0 0 14px rgba(157,140,255,0); } }
   @keyframes ngp-relay { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
   @keyframes ngp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
@@ -340,7 +359,7 @@ const BODY = `
         </div>
       </div>
       <div class="anchor">
-        <div class="anchor-chip"><span class="u">Todo ancla en</span><span class="coord">30023:&lt;dev&gt;:&lt;slug&gt;</span><span class="u" style="text-transform:none;letter-spacing:0;font-size:11px;color:#5f5872">— la coordenada del juego</span></div>
+        <div class="anchor-chip" id="anchorChip"><span class="u">Todo ancla en</span><span class="coord">30023:&lt;dev&gt;:&lt;slug&gt;</span><span class="u" style="text-transform:none;letter-spacing:0;font-size:11px;color:#5f5872">— la coordenada del juego</span></div>
       </div>
     </div>
   </section>
@@ -700,12 +719,21 @@ const SCRIPT = `
         code: "{\\n  \\"kind\\": 30315,                    // NIP-38 user status\\n  \\"pubkey\\": \\"<pubkey del jugador>\\",\\n  \\"tags\\": [\\n    [\\"d\\", \\"general\\"],\\n    [\\"a\\", \\"30023:npub1dev…:pacman-pwa\\"],  // a qué juego\\n    [\\"expiration\\", \\"1719360300\\"]          // TTL ~30-240s\\n  ],\\n  \\"content\\": \\"Jugando Pac-Toshi\\"\\n}"
       },
       N3: {
-        color: "corona", active: ["jugador","relays","clientes"], packet: "zap · NIP-57",
-        name: "Económico", nip: "NIP-57 · kind 9735 · estándar · escrow → NGE",
-        desc: "Para juegos gratis o para premiar al ganador: un zap (NIP-57) firmado por el usuario al dev o al ganador. El recibo (kind 9735) es verificable → podés armar un \\"top de zappers\\" por juego. Es NIP-57 estándar, sin custodia. Cuando SÍ hay custodia —depósito, pozo y payout— usás el canal de escrow NGE (RPC cifrado, sección Escrow NGE): la coordinación es privada y la liquidación se publica igual como eventos NGP auditables.",
-        tip: "Regla de oro: los zaps son propinas sin custodia; las apuestas con pozo van por NGE. La compra de juegos de pago y los webhooks quedan en la REST 1.0.",
-        codeTitle: "propina / premio (zap)",
-        code: "// NIP-57 estándar — el usuario zapea\\n// al dev o al ganador (sin custodia).\\n{\\n  \\"kind\\": 9735,                 // recibo de zap\\n  \\"tags\\": [\\n    [\\"a\\", \\"30023:npub1dev…:pacman-pwa\\"],\\n    [\\"p\\", \\"<pubkey del dev / ganador>\\"]\\n  ]\\n}\\n\\n// apuestas con custodia → canal NGE\\n// compra de pago / webhooks → REST 1.0"
+        color: "corona", active: ["jugador","relays","clientes"], mode: "nge",
+        packets: ["24940 ▸ request", "24941 ◂ response"],
+        name: "Económico", nip: "NGE · canal cifrado estilo NWC · liquidación pública NGP (1339 / 1341 / 31340)",
+        desc: "El nivel del dinero cambia de topología. NGE no es broadcast: tu juego (cliente, guarda el secret) le habla al escrow (custodio, fuente de verdad) por un RPC cifrado estilo NWC. Los mensajes son eventos efímeros cifrados NIP-44 (24940 request / 24941 response); el relay es un caño tonto y nadie más lee la coordinación. Solo la liquidación —contrato 1339, resultado 1341, estado 31340— se publica en Nostr, auditable. (Para premiar sin custodia siguen los zaps NIP-57 públicos, que sí viajan como los eventos de N0-N2.)",
+        tip: "La diferencia clave con NGP: acá el juego y el escrow hablan request/response cifrado, no eventos que cualquier cliente lee. Lo público es la liquidación. Compra de juegos de pago y webhooks siguen en la REST 1.0.",
+        diagram: {
+          nodes: {
+            jugador:  { cls: "nbox juego glow-corona", html: '<div class="sign">🎮</div><div class="ntitle">Juego</div><div class="nsub">cliente NGE · guarda el secret</div><div class="ntag corona">URI de conexión</div>' },
+            relays:   { cls: "nbox relays glow-corona", html: '<div class="ntitle">Relay</div><div class="nsub">caño tonto · no lee nada</div><div class="relaylist"><div class="relaydot"><span class="g corona"></span>wss://relay.luna.fit</div></div><div class="nsub" style="margin-top:10px">cifrado NIP-44 · efímero</div>' },
+            clientes: { cls: "nbox escrow glow-corona", html: '<div class="ntitle">Escrow</div><div class="nsub" style="margin-bottom:2px">custodio · fuente de verdad</div><div class="clist"><div class="cli hi corona">Custodia el pozo</div><div class="cli">Cobra los depósitos</div><div class="cli">Paga al ganador</div></div>' }
+          },
+          anchor: '<span class="u">Solo la liquidación se publica</span><span class="coord" style="color:#ffcd7a">1339 · 1341 · 31340</span><span class="u" style="text-transform:none;letter-spacing:0;font-size:11px;color:#5f5872">— auditable en Nostr (NGP)</span>'
+        },
+        codeTitle: "conectar al canal NGE",
+        code: "// La URI del escrow: 3 campos, sin bind.\\nNGE_CONNECTION=\\"nostr+nge://<escrow-pubkey>?relay=wss://relay.luna.fit&secret=<client-nsec>\\"\\n\\nimport { NGE } from \\"nostr-game-protocol/nge\\";\\nconst nge = NGE.fromEnv();          // lee NGE_CONNECTION\\n\\n// createBet → un bolt11 POR ASIENTO (el jugador lo paga, no firma).\\nconst bet = await nge.createBet({\\n  seats: [{ seatId: \\"alice\\", pubkey }, { seatId: \\"bob\\" }],\\n  stakeSats: 1000,\\n  condition: \\"Mejor de 3\\"\\n});\\n\\n// El juego es el oráculo: reporta el ganador por seatId.\\nawait nge.reportResult(bet.betId, [\\"alice\\"]);"
       }
     };
 
@@ -716,8 +744,17 @@ const SCRIPT = `
     var detailEl = document.getElementById("detail");
     var pill1 = document.getElementById("pill1");
     var pill2 = document.getElementById("pill2");
+    var diagramEl = document.querySelector(".diagram");
+    var anchorChip = document.getElementById("anchorChip");
+    var anchorDefault = anchorChip ? anchorChip.innerHTML : "";
     var nodes = {};
     document.querySelectorAll("[data-node]").forEach(function (n) { nodes[n.getAttribute("data-node")] = n; });
+    // Guardá el contenido por defecto de cada nodo para restaurarlo (N3 lo reemplaza).
+    var boxes = {};
+    Object.keys(nodes).forEach(function (k) {
+      var box = nodes[k].querySelector(".nbox");
+      boxes[k] = { el: box, html: box.innerHTML, cls: box.className };
+    });
     var buttons = document.querySelectorAll(".lvl");
 
     function renderDetail(id) {
@@ -752,14 +789,21 @@ const SCRIPT = `
           b.style.setProperty("--lvl-glow", c.glow);
         }
       });
+      pill1.textContent = L.packets ? L.packets[0] : L.packet;
+      pill2.textContent = L.packets ? L.packets[1] : L.packet;
       [pill1, pill2].forEach(function (p) {
-        p.textContent = L.packet;
         p.style.background = c.hex;
         p.style.boxShadow = "0 8px 22px -6px " + c.glow;
       });
+      var ov = (L.diagram && L.diagram.nodes) || null;
       Object.keys(nodes).forEach(function (k) {
         nodes[k].setAttribute("data-on", L.active.indexOf(k) >= 0 ? "1" : "0");
+        var b = boxes[k];
+        if (ov && ov[k]) { b.el.className = ov[k].cls; b.el.innerHTML = ov[k].html; }
+        else { b.el.className = b.cls; b.el.innerHTML = b.html; }
       });
+      if (diagramEl) diagramEl.setAttribute("data-mode", L.mode || "");
+      if (anchorChip) anchorChip.innerHTML = (L.diagram && L.diagram.anchor) || anchorDefault;
       renderDetail(id);
     }
 

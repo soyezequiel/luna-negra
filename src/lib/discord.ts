@@ -163,6 +163,15 @@ async function postDiscordWebhook(
   content: string,
   embeds?: DiscordEmbed[],
 ): Promise<void> {
+  // Los avisos a Discord SOLO se mandan en producción. En dev (u otro entorno)
+  // se loguea al server y no se hace ninguna llamada de red, para no ensuciar
+  // el canal real con datos de desarrollo. Único punto por el que pasan TODOS
+  // los envíos, así ninguna ruta se escapa (incluido el webhook hardcodeado de
+  // pagos de apuestas).
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n[discord:dev-skip] ${content}\n`);
+    return;
+  }
   try {
     const res = await fetch(url, {
       method: "POST",
