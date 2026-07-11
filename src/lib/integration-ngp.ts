@@ -50,6 +50,10 @@ export type TwoZeroSide = {
   // no puede verificarla): el proveedor declara manualmente si la integró. Se
   // persiste en Game.manualCaps[key].
   manual?: boolean;
+  // Capacidad que gestiona la TIENDA: la evidencia aparece por actividad de los
+  // usuarios (zaps, reseñas), no porque el dev integre nada. La matriz la muestra
+  // aparte, en una sección contraída, para no confundir el "qué te falta integrar".
+  managed?: boolean;
 };
 
 export type CapabilityRow = {
@@ -166,7 +170,8 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-57",
           impl: "implementado",
           signal: "zaps",
-          desc: "Zap firmado por el usuario al dev o al ganador; los recibos 9735 verificados alimentan el top de zappers por juego y por dev.",
+          managed: true,
+          desc: "Zap firmado por el usuario al dev o al ganador; los recibos 9735 verificados alimentan el top de zappers por juego y por dev. Lo gestiona la tienda: el dev no integra nada.",
         },
       },
       {
@@ -177,7 +182,8 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           label: "NIP-23 / kind:1",
           impl: "implementado",
           signal: "comments",
-          desc: "Reseñas, comentarios y logros como kind:1 colgando de la coordenada del juego (tag a). Cualquier cliente Nostr los lee.",
+          managed: true,
+          desc: "Reseñas, comentarios y logros como kind:1 colgando de la coordenada del juego (tag a). Cualquier cliente Nostr los lee. Las reseñas las escriben los usuarios desde la tienda: el dev no integra nada (los logros los puede publicar el juego, opcional).",
         },
       },
       {

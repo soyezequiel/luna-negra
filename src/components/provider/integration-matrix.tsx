@@ -517,6 +517,10 @@ export function GameIntegrationCard({
   const nostrRows = rows.filter((r) => r.twoZero);
   const betsRow = nostrRows.find((r) => r.key === "bets") ?? null;
   const coreNostrRows = nostrRows.filter((r) => r.key !== "bets");
+  // Capacidades que integra el dev vs. las que gestiona la tienda (zaps, reseñas):
+  // estas últimas se muestran aparte y contraídas para no confundir la matriz.
+  const devRows = coreNostrRows.filter((r) => !r.twoZero!.managed);
+  const managedRows = coreNostrRows.filter((r) => r.twoZero!.managed);
   const nostrLive = nostrRows.filter((row) => {
     const side = row.twoZero!;
     const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
@@ -570,9 +574,9 @@ export function GameIntegrationCard({
         />
       </div>
 
-      {/* ── Nostr Games Protocol (NGP) + apuestas (opcional) ── */}
+      {/* ── Nostr Games Protocol (NGP) — capacidades que integra el dev ── */}
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {coreNostrRows.map((row) => (
+        {devRows.map((row) => (
           <NostrCapabilityTile
             key={row.key}
             row={row}
@@ -585,6 +589,34 @@ export function GameIntegrationCard({
           />
         ))}
       </div>
+
+      {/* Gestionado por la tienda (zaps, reseñas): pasivo para el dev, contraído
+          para no confundir con lo que sí hay que integrar. */}
+      {managedRows.length > 0 ? (
+        <details className="group mt-3 rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/30">
+          <summary className="flex cursor-pointer list-none items-center gap-2 p-2.5 text-[11px] font-semibold text-ln-muted marker:content-['']">
+            <span className="text-ln-faint transition-transform group-open:rotate-90">▸</span>
+            Gestionado por la tienda
+            <span className="font-normal text-ln-faint">
+              — lo generan los usuarios (zaps, reseñas); no lo integrás
+            </span>
+          </summary>
+          <div className="grid gap-2 border-t border-ln-border/60 p-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {managedRows.map((row) => (
+              <NostrCapabilityTile
+                key={row.key}
+                row={row}
+                game={game}
+                nostrProbe={nostrProbe}
+                editable={editable}
+                manualCaps={manualCaps}
+                saving={saving}
+                onToggleManual={toggleManual}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
 
       <div className="mt-3 rounded-ln-lg border border-ln-border/60 bg-ln-bg-deep/40 p-2.5">
         <div className="mb-2 flex items-center gap-2">
