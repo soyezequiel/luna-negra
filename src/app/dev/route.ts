@@ -242,6 +242,9 @@ const STYLE = `
     91%  { opacity: 1; transform: translateY(-50%) scale(1); }
     100% { left: 1%;  opacity: 0; transform: translateY(-50%) scale(0.7); }
   }
+  /* Nivel identidad: nada viaja — la pubkey queda local, sin broadcast */
+  .diagram[data-mode="local"] .pill { display: none; }
+  .diagram[data-mode="local"] .conn { opacity: 0.18; }
   /* Nivel económico (NGE): canal cifrado bidireccional, no broadcast público */
   .diagram[data-mode="nge"] .conn { background: repeating-linear-gradient(90deg, rgba(255,182,72,0.55) 0 5px, transparent 5px 11px); }
   .diagram[data-mode="nge"] .pill.p2 { animation-name: ngp-flow-rev; }
