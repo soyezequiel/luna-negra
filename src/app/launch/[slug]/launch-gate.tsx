@@ -5,18 +5,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/providers/session-provider";
 
 // Estados de la puerta de cold-open:
-//   minting     → pidiendo el entitlement al server.
-//   redirecting → token obtenido; saltando de vuelta al juego.
+//   checking    → verificando el acceso con el server.
+//   redirecting → acceso OK; saltando de vuelta al juego.
 //   needsLogin  → juego pagado sin sesión: hay que iniciar sesión.
 //   needsBuy    → sesión OK pero no posee el juego: hay que comprarlo.
-//   error       → returnTo inválido o fallo del mint.
-type Status = "minting" | "redirecting" | "needsLogin" | "needsBuy" | "error";
+//   error       → returnTo inválido o fallo de la verificación.
+type Status = "checking" | "redirecting" | "needsLogin" | "needsBuy" | "error";
 
 /**
- * Puerta cliente del cold-open. Delega el minteo del entitlement al endpoint que
- * ya lo hace (`POST /api/games/:id/sessions`, que cubre invitado en juegos
- * gratis), y al obtener el token redirige a `returnTo` con `lnToken` + `lnOrigin`
- * apendidos (el `lnRoom` ya viaja dentro de `returnTo`).
+ * Puerta cliente del cold-open. Verifica el acceso con el endpoint
+ * (`POST /api/games/:id/sessions`, que cubre invitado en juegos gratis) y
+ * redirige a `returnTo` con `lnOrigin` apendido (el `lnRoom` ya viaja dentro de
+ * `returnTo`). La identidad del jugador la resuelve el juego por Nostr (NIP-07/46).
  */
 export function LaunchGate({
   gameId,
@@ -31,7 +31,7 @@ export function LaunchGate({
   returnTo: string | null;
 }) {
   const { user, login, loading } = useSession();
-  const [status, setStatus] = useState<Status>(returnTo ? "minting" : "error");
+  const [status, setStatus] = useState<Status>(returnTo ? "checking" : "error");
   const [error, setError] = useState<string | null>(
     returnTo ? null : "El enlace de retorno no es válido.",
   );
@@ -39,7 +39,7 @@ export function LaunchGate({
 
   const attempt = useCallback(async () => {
     if (!returnTo) return;
-    setStatus("minting");
+    setStatus("checking");
     setError(null);
     try {
       const r = await fetch(`/api/games/${gameId}/sessions`, {
@@ -57,19 +57,17 @@ export function LaunchGate({
         return;
       }
       const d = (await r.json().catch(() => ({}))) as {
-        token?: string;
         nostrLogin?: boolean;
         error?: string;
       };
-      // Login migrado a Nostr: no hay lnToken; el juego identifica al jugador por
-      // NIP-07/46. Redirigimos con el link limpio (solo lnOrigin).
-      if (!r.ok || (!d.token && !d.nostrLogin)) {
+      // La identidad la resuelve el juego por Nostr (NIP-07/46). Redirigimos con el
+      // link limpio (solo lnOrigin); el juego loguea al jugador por su cuenta.
+      if (!r.ok || !d.nostrLogin) {
         setStatus("error");
-        setError(d.error ?? "No se pudo generar el acceso.");
+        setError(d.error ?? "No se pudo verificar el acceso.");
         return;
       }
       const url = new URL(returnTo);
-      if (d.token) url.searchParams.set("lnToken", d.token);
       url.searchParams.set("lnOrigin", window.location.origin);
       setStatus("redirecting");
       window.location.replace(url.toString());
@@ -100,7 +98,7 @@ export function LaunchGate({
           {title}
         </h1>
 
-        {(status === "minting" || status === "redirecting") && (
+        {(status === "checking" || status === "redirecting") && (
           <p className="text-sm text-ln-muted">
             {status === "redirecting"
               ? "Listo, abriendo el juego…"

@@ -115,121 +115,6 @@ export async function verifyMagicLink(
   }
 }
 
-// --- Entitlement (token corto para que el juego verifique el acceso) ---
-
-export type EntitlementPayload = {
-  npub: string;
-  pubkey: string;
-  gameId: string;
-  slug: string;
-};
-
-// Firmado con ES256 (clave asimétrica) → el game server lo valida offline con la
-// clave pública de /.well-known/jwks.json. Claims estándar: iss/aud/sub/exp/scope.
-export async function signEntitlement(
-  payload: EntitlementPayload,
-): Promise<string> {
-  const { privateKey, kid } = await getSigningKeys();
-  return new SignJWT({
-    npub: payload.npub,
-    pubkey: payload.pubkey,
-    gameId: payload.gameId,
-    slug: payload.slug,
-    scope: "entitlement",
-  })
-    .setProtectedHeader({ alg: "ES256", kid })
-    .setIssuer(TOKEN_ISSUER)
-    .setAudience(TOKEN_AUDIENCE)
-    .setSubject(payload.npub)
-    .setIssuedAt()
-    .setExpirationTime("5m")
-    .sign(privateKey);
-}
-
-// Motivo legible de un rechazo de entitlement, para que el juego lo muestre en su puerta
-// de login en vez de un 401 mudo. `code` es estable (apto para clientes); `message` humano.
-export type EntitlementFailure = { code: string; message: string };
-
-// Traduce el `code` de jose a un motivo accionable. Los códigos relevantes:
-//   ERR_JWT_EXPIRED                      → el token venció (exp 5m): reabrir desde Luna.
-//   ERR_JWS_SIGNATURE_VERIFICATION_FAILED→ firmado con otra LN_SIGNING_JWK: el juego apunta
-//                                          a otra instancia de Luna que no minteó el token.
-//   ERR_JWT_CLAIM_VALIDATION_FAILED      → iss/aud no coinciden.
-function describeEntitlementError(e: unknown): EntitlementFailure {
-  const code =
-    (e as { code?: string })?.code ?? (e as { name?: string })?.name ?? "UNKNOWN";
-  switch (code) {
-    case "ERR_JWT_EXPIRED":
-      return {
-        code,
-        message:
-          "El token de acceso venció (dura 5 minutos). Reabrí el juego desde Luna Negra.",
-      };
-    case "ERR_JWS_SIGNATURE_VERIFICATION_FAILED":
-      return {
-        code,
-        message:
-          "La firma del token no coincide: el juego podría estar apuntando a otra instancia de Luna Negra (revisar LUNA_NEGRA_BASE_URL).",
-      };
-    case "ERR_JWT_CLAIM_VALIDATION_FAILED":
-      return {
-        code,
-        message: "El emisor o la audiencia del token no coinciden.",
-      };
-    default:
-      return { code, message: "Token inválido o expirado." };
-  }
-}
-
-// Variante que SÍ devuelve el motivo del rechazo (la ruta lo manda al cliente). El log queda
-// acá: es lo único que distingue "token viejo" de "deploy mal apuntado" en los logs del server.
-export async function verifyEntitlementDetailed(
-  token: string,
-): Promise<
-  | { ok: true; payload: EntitlementPayload }
-  | { ok: false; error: EntitlementFailure }
-> {
-  try {
-    const { publicKey } = await getSigningKeys();
-    const { payload } = await jwtVerify(token, publicKey, {
-      issuer: TOKEN_ISSUER,
-      audience: TOKEN_AUDIENCE,
-    });
-    if (payload.scope !== "entitlement") {
-      console.warn("[auth] verifyEntitlement rechazó: scope inválido", {
-        scope: payload.scope,
-      });
-      return {
-        ok: false,
-        error: { code: "INVALID_SCOPE", message: "El token no es un entitlement de juego." },
-      };
-    }
-    return {
-      ok: true,
-      payload: {
-        npub: payload.npub as string,
-        pubkey: payload.pubkey as string,
-        gameId: payload.gameId as string,
-        slug: payload.slug as string,
-      },
-    };
-  } catch (e) {
-    const error = describeEntitlementError(e);
-    console.warn("[auth] verifyEntitlement rechazó el token", {
-      code: error.code,
-      message: (e as { message?: string })?.message,
-    });
-    return { ok: false, error };
-  }
-}
-
-export async function verifyEntitlement(
-  token: string,
-): Promise<EntitlementPayload | null> {
-  const result = await verifyEntitlementDetailed(token);
-  return result.ok ? result.payload : null;
-}
-
 // --- Invite (token para unirse a la sala multijugador de un juego) ---
 
 export type InvitePayload = {
@@ -245,7 +130,7 @@ export type InvitePayload = {
   hostPubkey: string | null;
 };
 
-// ES256 (asimétrica) → verificable offline vía JWKS, como el entitlement.
+// ES256 (asimétrica), verificable con las claves de firma de Luna.
 export async function signInvite(payload: InvitePayload): Promise<string> {
   const { privateKey, kid } = await getSigningKeys();
   return new SignJWT({

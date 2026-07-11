@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { runProbe } from "@/lib/integration-probe";
 import { probeGamesNostr } from "@/lib/integration-probe-ngp";
 import { persistNgpProbeFindings } from "@/lib/integration-telemetry";
-import { siteUrl } from "@/lib/site-url";
 
-// Probador en vivo del proveedor logueado: golpea los endpoints reales del
-// contrato público y devuelve pass/fail por interfaz.
-export async function POST(req: Request) {
+// Probador en vivo del proveedor logueado: consulta los relays de Nostr y devuelve
+// qué eventos NGP existen ahora mismo por juego (la interfaz REST 1.0 fue retirada).
+export async function POST() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -38,13 +36,10 @@ export async function POST(req: Request) {
     list.push(b.anchorEventId);
     anchorsByGame.set(b.gameId, list);
   }
-  const [results, nostr] = await Promise.all([
-    runProbe({ providerId: provider.id, origin: siteUrl(req) }),
-    probeGamesNostr(
-      games.map((g) => ({ ...g, betAnchorIds: anchorsByGame.get(g.id) ?? [] })),
-    ),
-  ]);
+  const nostr = await probeGamesNostr(
+    games.map((g) => ({ ...g, betAnchorIds: anchorsByGame.get(g.id) ?? [] })),
+  );
   // Lo encontrado en relays queda persistido como evidencia ("detectado" fijo).
   persistNgpProbeFindings(provider.id, nostr);
-  return NextResponse.json({ results, nostr });
+  return NextResponse.json({ nostr });
 }

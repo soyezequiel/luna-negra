@@ -1120,23 +1120,23 @@ export default function ProviderPage() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold text-ink">
-                    Claves de API y webhooks
+                    Webhooks
                   </h3>
                   <span className="rounded-full bg-ln-corona/15 px-2 py-0.5 text-[10px] font-semibold text-ln-corona">
                     Server-to-server
                   </span>
                 </div>
                 <p className="mt-1 max-w-2xl text-xs leading-relaxed text-faint">
-                  Claves de API (Bearer) para crear apuestas v2 por zaps en{" "}
-                  <code>/api/v2/bets</code> y webhooks firmados para las
-                  notificaciones. La vieja interfaz REST 1.0 fue retirada.
+                  Notificaciones firmadas (compra, apuesta liquidada, payout) a tu
+                  game server. La vieja interfaz REST 1.0 —incluidas las claves de
+                  API— fue retirada; los juegos se integran por NGP/NGE.
                 </p>
               </div>
               <Link
                 href="/provider/integracion/compat"
                 className="btn btn-outline shrink-0 self-start sm:self-center"
               >
-                Claves y webhooks
+                Webhooks
               </Link>
             </div>
           </div>

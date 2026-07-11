@@ -204,14 +204,13 @@ describe("launchStandaloneGame", () => {
       gameUrl: "https://tetris.example/play",
       slug: "tetris",
       title: "TETRA",
-      token: "session-token",
       win: gameWin as unknown as Window,
     });
 
     expect(result).toEqual({ ok: true });
     expect(open).not.toHaveBeenCalled();
     expect(gameWin.location.href).toBe(
-      "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example&lnToken=session-token",
+      "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example",
     );
     expect(mocks.startPlayingPresence).toHaveBeenCalledWith({
       title: "TETRA",
@@ -257,7 +256,6 @@ describe("launchStandaloneGame", () => {
       gameUrl: "https://tetris.example/play",
       slug: "tetris",
       title: "TETRA",
-      token: "session-token",
     });
     expect(result).toEqual({ ok: true });
 

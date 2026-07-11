@@ -16,9 +16,9 @@ import {
 //   · NGP → eventos observados (relays + DB) + evidencia persistida del probador
 //     + inferencias (login desde el marcador firmado). Lo cifrado se declara.
 //   · NGE → cualquier RPC autenticado recibido por el escrow (get_info alcanza).
-// Las credenciales server-to-server (claves de API + webhooks, para apuestas v2)
-// viven en /provider/integracion/compat; acá queda el toggle "Compat 1.0" con la
-// matriz de migración. La vieja interfaz REST 1.0 dependiente de Luna fue retirada.
+// Los webhooks server-to-server viven en /provider/integracion/compat. La vieja
+// interfaz REST 1.0 dependiente de Luna (login, compra, presencia, salas, claves
+// de API) fue retirada; los juegos se integran por NGP/NGE.
 
 function Legend() {
   const items = [
@@ -61,11 +61,11 @@ export default function ProviderIntegrationPage() {
   const onProbe = useCallback(async (): Promise<ProbeResponse> => {
     const d = await fetch("/api/provider/integracion/probe", { method: "POST" })
       .then((r) => r.json())
-      .catch(() => ({ results: [], nostr: {} }));
+      .catch(() => ({ nostr: {} }));
     // El probador PERSISTE lo que encuentra como evidencia: recargamos la vista
     // para que los badges pasen a "Detectado" sin refrescar la página.
     void load();
-    return { results: d?.results ?? [], nostr: d?.nostr ?? {} };
+    return { nostr: d?.nostr ?? {} };
   }, [load]);
 
   if (loading) return null;
@@ -131,7 +131,7 @@ export default function ProviderIntegrationPage() {
       <p className="mt-8 text-xs text-ln-faint">
         ¿Cómo integrar cada bloque? Mirá la{" "}
         <Link href="/dev" className="text-blue hover:underline">guía /dev</Link>.
-        Las claves de API y webhooks server-to-server (para apuestas v2 por zaps) viven en{" "}
+        Los webhooks server-to-server (notificaciones firmadas) viven en{" "}
         <Link href="/provider/integracion/compat" className="text-blue hover:underline">
           /provider/integracion/compat
         </Link>

@@ -62,12 +62,6 @@ export function getSigningKeys(): Promise<SigningKeys> {
   return cache;
 }
 
-/** Documento JWKS público (lo que ve el game server). */
-export async function getJwks(): Promise<{ keys: JWK[] }> {
-  const { publicJwk } = await getSigningKeys();
-  return { keys: [publicJwk] };
-}
-
 // Issuer/audience estándar de los tokens de dev.
 export const TOKEN_ISSUER = process.env.LN_ISSUER ?? "luna-negra";
 export const TOKEN_AUDIENCE = "lunanegra:game";

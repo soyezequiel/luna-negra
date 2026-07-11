@@ -1,4 +1,4 @@
-import { providerIdFromRequest } from "@/lib/provider-auth";
+import { providerIdFromSession } from "@/lib/provider-auth";
 import { prisma } from "@/lib/prisma";
 import { issueNgeCredential, getNgeCredential } from "@/lib/nge-credential";
 import { apiOk, apiError, corsPreflight } from "@/lib/api";
@@ -34,7 +34,7 @@ async function authorizeGame(
   req: Request,
   gameId: string,
 ): Promise<{ ok: true; gameId: string } | { ok: false; code: string; message: string; status: number }> {
-  const providerId = await providerIdFromRequest(req);
+  const providerId = await providerIdFromSession();
   if (!providerId) {
     return { ok: false, code: "UNAUTHORIZED", message: "No autenticado como proveedor", status: 401 };
   }

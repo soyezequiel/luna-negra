@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Event } from "nostr-tools";
-import { providerIdFromRequest } from "@/lib/provider-auth";
+import { providerIdFromSession } from "@/lib/provider-auth";
 import { oracleProofContent, setSelfSignedOracle } from "@/lib/oracle-keys";
 
 // Declara la clave de oráculo PROPIA del proveedor (BYO, keyless — Slice 2). Auth =
@@ -11,8 +11,8 @@ import { oracleProofContent, setSelfSignedOracle } from "@/lib/oracle-keys";
 // los publica (o los postea a /result como {event}).
 
 // Reto determinístico que el proveedor debe firmar con su clave de oráculo.
-export async function GET(req: Request) {
-  const providerId = await providerIdFromRequest(req);
+export async function GET() {
+  const providerId = await providerIdFromSession();
   if (!providerId) {
     return NextResponse.json({ error: "No autenticado como proveedor" }, { status: 401 });
   }
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const providerId = await providerIdFromRequest(req);
+  const providerId = await providerIdFromSession();
   if (!providerId) {
     return NextResponse.json({ error: "No autenticado como proveedor" }, { status: 401 });
   }

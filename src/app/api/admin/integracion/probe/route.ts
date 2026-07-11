@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
-import { runProbe } from "@/lib/integration-probe";
 import { probeGamesNostr } from "@/lib/integration-probe-ngp";
 import { persistNgpProbeFindings } from "@/lib/integration-telemetry";
-import { siteUrl } from "@/lib/site-url";
 
-// Probador en vivo de admin: corre la suite de health-check contra los endpoints
-// del contrato público, en nombre de un proveedor concreto (?providerId=).
+// Probador en vivo de admin: consulta los relays de Nostr para un proveedor
+// concreto (?providerId=) y devuelve qué eventos NGP existen (la REST 1.0 fue retirada).
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session || !isAdmin(session.pubkey)) {
@@ -23,11 +21,8 @@ export async function POST(req: Request) {
     where: { providerId },
     select: { id: true, nostrCoord: true, nostrEventId: true },
   });
-  const [results, nostr] = await Promise.all([
-    runProbe({ providerId, origin: siteUrl(req) }),
-    probeGamesNostr(games),
-  ]);
+  const nostr = await probeGamesNostr(games);
   // Lo encontrado en relays queda persistido como evidencia ("detectado" fijo).
   persistNgpProbeFindings(providerId, nostr);
-  return NextResponse.json({ results, nostr });
+  return NextResponse.json({ nostr });
 }

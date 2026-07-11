@@ -10,8 +10,6 @@ import {
   verifySession,
   signChallenge,
   verifyChallenge,
-  signEntitlement,
-  verifyEntitlement,
   signBetSession,
   verifyBetSession,
   signInvite,
@@ -45,25 +43,6 @@ describe("challenge", () => {
   });
 });
 
-describe("entitlement", () => {
-  it("round-trip", async () => {
-    const t = await signEntitlement({
-      npub: "n",
-      pubkey: "p",
-      gameId: "g1",
-      slug: "s1",
-    });
-    const e = await verifyEntitlement(t);
-    expect(e?.gameId).toBe("g1");
-    expect(e?.slug).toBe("s1");
-  });
-
-  it("un challenge no se acepta como entitlement", async () => {
-    const t = await signChallenge("abc", "n");
-    expect(await verifyEntitlement(t)).toBeNull();
-  });
-});
-
 describe("bet-session", () => {
   it("round-trip", async () => {
     const t = await signBetSession({ sub: "u1", npub: "n", pubkey: "p" });
@@ -71,8 +50,8 @@ describe("bet-session", () => {
     expect(s?.sub).toBe("u1");
   });
 
-  it("un entitlement no se acepta como bet-session", async () => {
-    const t = await signEntitlement({ npub: "n", pubkey: "p", gameId: "g", slug: "s" });
+  it("un challenge no se acepta como bet-session", async () => {
+    const t = await signChallenge("abc", "n");
     expect(await verifyBetSession(t)).toBeNull();
   });
 });
@@ -98,8 +77,8 @@ describe("invite (multijugador)", () => {
     expect(typeof i?.expiresAt).toBe("string");
   });
 
-  it("un entitlement no se acepta como invite", async () => {
-    const t = await signEntitlement({ npub: "n", pubkey: "p", gameId: "g", slug: "s" });
+  it("un challenge no se acepta como invite", async () => {
+    const t = await signChallenge("abc", "n");
     expect(await verifyInvite(t)).toBeNull();
   });
 });

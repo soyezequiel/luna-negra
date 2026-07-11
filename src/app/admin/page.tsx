@@ -143,8 +143,8 @@ function AdminPageInner() {
         { method: "POST" },
       )
         .then((res) => res.json())
-        .catch(() => ({ results: [], nostr: {} }));
-      return { results: d?.results ?? [], nostr: d?.nostr ?? {} };
+        .catch(() => ({ nostr: {} }));
+      return { nostr: d?.nostr ?? {} };
     },
     [],
   );
@@ -218,9 +218,17 @@ function AdminPageInner() {
   }
 
   async function cancelBet(id: string, version: 1 | 2) {
+    // Las apuestas v2 (por zaps) se resuelven/expiran por el motor de escrow v2 y
+    // el oráculo NGE; ya no hay cancelación REST manual (la superficie externa por
+    // API key fue retirada). Solo se cancela manualmente el motor v1.
+    if (version === 2) {
+      alert(
+        "Las apuestas v2 (por zaps) expiran/se resuelven solas por el escrow v2; no se cancelan manualmente desde acá.",
+      );
+      return;
+    }
     if (!confirm("¿Cancelar esta apuesta incompleta y reembolsar?")) return;
-    const base = version === 2 ? "/api/v2/bets" : "/api/escrow/bets";
-    await fetch(`${base}/${id}/cancel`, { method: "POST" });
+    await fetch(`/api/escrow/bets/${id}/cancel`, { method: "POST" });
     load();
   }
 

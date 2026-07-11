@@ -41,16 +41,15 @@ export function PlayButton({
       : window.open("", "_blank");
     setLoading(true);
     try {
-      const r = await fetch(`/api/games/${gameId}/sessions`, {
-        method: "POST",
-      })
-        .then((res) => res.json())
-        .catch(() => null);
+      // Verifica el acceso y registra el "play" (best-effort). La identidad la
+      // resuelve el juego por Nostr (NIP-07/46); no se mintea token de identidad.
+      await fetch(`/api/games/${gameId}/sessions`, { method: "POST" }).catch(
+        () => null,
+      );
       const result = launchStandaloneGame({
         gameUrl,
         slug,
         title,
-        token: r?.token,
         win,
       });
       if (!result.ok) {

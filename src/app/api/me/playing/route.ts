@@ -5,9 +5,8 @@ import { getOwnPresence } from "@/lib/social";
 
 // Presencia del PROPIO jugador (¿está jugando algo ahora?). La tienda la sondea
 // para gobernar su estado NIP-38 "Jugando X" (ver src/lib/playing-presence.ts).
-// Auth por cookie de sesión (consumo interno del frontend, NO la API v1 con API
-// key). Normalizamos el npub desde el pubkey para casar con cómo lo guarda
-// `recordPresence` (npubOf(pubkey)).
+// Auth por cookie de sesión (consumo interno del frontend). Normalizamos el npub
+// desde el pubkey para casar con cómo se guarda la presencia (npubOf(pubkey)).
 export async function GET() {
   const session = await getSession();
   if (!session) {

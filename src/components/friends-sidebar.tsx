@@ -298,7 +298,7 @@ export function FriendsSidebar() {
     }
   }
 
-  // Mintea un entitlement y abre el juego del host en la sala room-link (`?lnRoom=`),
+  // Verifica el acceso y abre el juego del host en la sala room-link (`?lnRoom=`),
   // reutilizando la ventana `win` preabierta en el gesto del click si la hay.
   async function openHostInRoom(
     game: CurrentGame,
@@ -308,22 +308,19 @@ export function FriendsSidebar() {
     const sr = await fetch(`/api/games/${game.gameId}/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Room Link no es retro-compatible: identidad SIEMPRE por Nostr, nunca lnToken.
       body: JSON.stringify({ roomLink: true }),
     });
     const sd = await sr.json().catch(() => ({}));
-    // Login por Nostr: el endpoint no mintea `token` (responde `nostrLogin:true`).
-    // No es un error: abrimos el juego con el link limpio (solo lnRoom + lnOrigin) y la
-    // identidad la resuelve el juego por NIP-07/46. Solo tiramos si además falla el HTTP
-    // o no vino ni token ni la señal de login por Nostr.
-    if (!sr.ok || (!sd.token && !sd.nostrLogin)) {
+    // La identidad la resuelve el juego por Nostr (NIP-07/46): abrimos con el link
+    // limpio (solo lnRoom + lnOrigin). Solo tiramos si falla el HTTP o el endpoint
+    // no confirmó el acceso.
+    if (!sr.ok || !sd.nostrLogin) {
       throw new Error(sd.error ?? "No se pudo abrir el juego");
     }
     const result = launchStandaloneGame({
       gameUrl: game.gameUrl,
       slug: game.slug,
       title: game.title,
-      token: sd.token,
       roomId,
       win,
     });

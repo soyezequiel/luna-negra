@@ -21,10 +21,6 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
-  async rewrites() {
-    // Ubicación estándar del JWKS (los clientes esperan /.well-known/jwks.json).
-    return [{ source: "/.well-known/jwks.json", destination: "/api/v1/jwks" }];
-  },
 };
 
 export default withSentryConfig(nextConfig, {

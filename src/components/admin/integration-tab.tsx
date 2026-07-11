@@ -23,10 +23,9 @@ export function IntegrationTab({
     <div>
       <h2 className="mb-1 font-semibold text-ink">Integración de juegos</h2>
       <p className="mb-4 text-xs text-faint">
-        Qué tiene cableada cada juego en tres columnas: interfaz Luna dependiente (REST),
-        intermedio (Luna ⇆ NGP) y Nostr Games Protocol (NGP).
-        Verde = en uso reciente; naranja = visto hace tiempo o configurado; azul =
-        declarado/disponible (Nostr); gris = diseño o no integrado.
+        Qué tiene cableada cada juego en Nostr Games Protocol (NGP) y NGE.
+        Verde = en uso reciente; naranja = visto hace tiempo; azul =
+        declarado/disponible; gris = diseño o no integrado.
       </p>
       {integrations.length === 0 ? (
         <p className="text-muted">No hay proveedores.</p>
@@ -38,7 +37,7 @@ export function IntegrationTab({
                 <p className="text-sm font-semibold text-ink">
                   {view.provider.name}
                   <span className="ml-2 text-xs font-normal text-faint">
-                    {view.games.length} juego(s) · {view.provider.apiKeys} API key(s)
+                    {view.games.length} juego(s)
                     {view.provider.webhookConfigured ? " · webhook ✓" : ""}
                   </span>
                 </p>
