@@ -306,7 +306,11 @@ function NostrCapabilityTile({
       <div className="mt-2 flex flex-col gap-1.5">
         <Badge2 side={side} level={lvl2} ev={ev} />
         {nostrProbe?.[row.key] ? <Probe2Chip r={nostrProbe[row.key]} /> : null}
-        {editable && isManualToggle ? (
+        {/* El checkbox de declaración manual solo tiene sentido cuando NO hay
+            evidencia. El login se INFIERE del marcador firmado: si ya está "en uso",
+            el toggle sobra y se oculta. Room Link (signal "none", nunca observable)
+            no tiene `ev`, así que siempre muestra su checkbox. */}
+        {editable && isManualToggle && !ev ? (
           <label className="mt-0.5 inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-ln-muted">
             <input
               type="checkbox"

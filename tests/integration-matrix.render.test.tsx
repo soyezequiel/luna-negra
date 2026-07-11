@@ -105,4 +105,17 @@ describe("IntegrationMatrix (verificación NGP + NGE)", () => {
     v.games = [v.games[0]];
     expect(() => renderToString(<IntegrationMatrix view={v} />)).not.toThrow();
   });
+
+  it("oculta el checkbox de login cuando ya se infiere del marcador", () => {
+    const v = view();
+    v.games = [v.games[2]]; // solo el juego con login inferido (scores + login)
+    const html = renderToString(<IntegrationMatrix view={v} editable />).replace(
+      /<!-- -->/g,
+      "",
+    );
+    // Login "en uso" (inferido): su checkbox de declaración manual sobra y se oculta.
+    expect(html).not.toContain("Declaro que integré el login Nostr");
+    // Room Link (nunca observable) SÍ conserva su checkbox aunque no haya evidencia.
+    expect(html).toContain("Declaro que integré Room Link");
+  });
 });
