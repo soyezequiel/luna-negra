@@ -25,7 +25,7 @@ export type Column = "solo-1.0" | "intermedio" | "solo-ngp";
 export type TwoZeroImpl = "implementado" | "declarado" | "diseño";
 
 // Señal de uso NGP derivable de la DB. "none" = sin señal por juego
-// (invitaciones/salas: van cifradas o no dejan rastro).
+// (invitaciones: van cifradas o no dejan rastro).
 //   betsV2   → apuestas por zaps (NIP-57): existe una ZapBet del juego (escrow v2).
 //   login    → INFERIDA de los puntajes 31339 firmados por el jugador (para
 //              firmarlos el juego tuvo que obtener su signer NIP-07/46).
@@ -126,18 +126,6 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
           impl: "implementado",
           signal: "presence",
           desc: "El propio jugador firma su estado 'jugando X' (kind:30315) anclado a la coordenada del juego. Se DETECTA SOLA: un job en background (live-presence) observa esos estados en los relays cada 30s y persiste la evidencia la primera vez que alguien juega — sin que el proveedor la declare a mano.",
-        },
-      },
-      {
-        key: "salas",
-        title: "Salas y estado",
-        oneZero: ["rooms"],
-        twoZero: {
-          label: "NIP-29",
-          impl: "diseño",
-          signal: "none",
-          manual: true,
-          desc: "Sala con estado compartido como grupo NIP-29. No observable desde el server (vive en el relay del grupo): el proveedor declara si la integró. Hoy las salas con estado en vivo se hacen por la REST 1.0 (§4).",
         },
       },
       {

@@ -1,40 +1,40 @@
-# Salas e invitaciones - Nostr Games Protocol (NGP) (draft)
+# Invitaciones - Nostr Games Protocol (NGP) (draft)
 
-> ⚠️ **EN CONSTRUCCIÓN — mayormente diseño, no código.** Nostr Games Protocol (NGP) es una mejora
-> experimental, **no prometida**, **post-hackathon**. Hoy lo garantizado es la **1.0
-> (REST, §1–§8)**. De este documento solo el **reto 1v1 (M0)** está implementado; salas
-> NIP-29 y el resto son diseño. Ver [`nostr-games-protocol.md`](nostr-games-protocol.md).
+> ⚠️ **Diseño parcialmente implementado.** El **reto/invitación 1v1 por DM
+> (NIP-17)** ya se usa (p. ej. en el ajedrez y en futbolcillo). El resto de NGP es
+> una mejora experimental **post-hackathon**, no prometida. Ver
+> [`nostr-games-protocol.md`](nostr-games-protocol.md).
 
-> Extiende la [spec NGP](nostr-games-protocol.md) con las dos piezas multijugador:
-> **§4 Salas y estado** y **§5 Invitaciones**, ambas basadas en eventos Nostr. El
-> principio rector es **desacoplar**: la *invitación* es una notificación social
-> (NGP puro, sin token); la *sala* es donde el juego sincroniza estado y maneja
-> el acceso. Cada una vive por su cuenta.
+> Extiende la [spec NGP](nostr-games-protocol.md) con la pieza multijugador social:
+> la **invitación a jugar**, basada en un DM Nostr. El principio rector es
+> **desacoplar**: la invitación es una notificación social (NGP puro, sin token de
+> acceso); *dónde* se juega y *quién puede entrar* lo resuelve el juego por su
+> cuenta (su game server, un Room Link, o eventos efímeros — §8 de la spec
+> principal). La invitación solo apunta.
 >
-> **Alcance honesto.** Esto es para juegos **por turnos con reglas
-> determinísticas** (ajedrez, Catan, el penal de futbolcillo). Tiempo real / acción
-> y juegos con info oculta **quedan fuera** (ver §X). Es la parte más pesada de
-> NGP: no es un win gratis como el marcador.
+> **Alcance honesto.** La invitación NIP-17 es liviana y **ya funciona** para retos
+> 1v1. La sincronización de estado en vivo (salas) **no** es parte de esta pieza:
+> es específica de cada juego (ver §8 de la spec principal, o el game server del
+> juego). NGP no fija un esquema de sala estándar.
 >
 > **Estado.** Borrador. Los `kind` propios pueden cambiar hasta congelar la v1.
 
 ---
 
-## 1. El principio: dos capas separadas
+## 1. El principio: la invitación solo apunta
 
-En la 1.0, invitación y sala vienen **pegadas**: el invite lleva el token de
-acceso a la sala. Eso obliga a que la invitación conozca la tecnología de la sala.
-En NGP las cortamos:
+En la 1.0, invitación y sala venían **pegadas**: el invite llevaba el token de
+acceso a la sala. Eso obligaba a que la invitación conociera la tecnología de la
+sala. En NGP la invitación es **autónoma**:
 
-| Capa | Qué es | Tecnología | Privada |
-|---|---|---|---|
-| **Invitación** | "npub A te invita a jugar Z" (señal social) | NIP-17 (DM cifrado) | sí |
-| **Sala** | dónde el juego sincroniza estado + quién puede entrar | NIP-29 (grupo en relay) | según el grupo |
+| Qué es | Tecnología | Privada |
+|---|---|---|
+| "npub A te invita a jugar Z" (señal social) | NIP-17 (DM cifrado) | sí |
 
 La invitación **no otorga acceso**: es solo un puntero ("vení acá"). El control de
-acceso vive en la **sala** (la membresía NIP-29). Resultado: la invitación es Nostr
-de punta a punta sin importar nada de la sala, y las salas exclusivas resuelven su
-propio "quién entra" sin meter tokens en el DM.
+acceso —si el juego lo necesita— vive donde el juego sincroniza estado (su game
+server, su Room Link, etc.), no en el DM. Resultado: la invitación es Nostr de
+punta a punta sin importar cómo esté hecha la sala.
 
 ---
 
@@ -54,8 +54,7 @@ juego sabe leer:
   "tags": [
     ["p", "<pubkey del invitado>"],            // destinatario (NIP-17)
     ["game", "30023:npub1dev…:catan"],         // a QUÉ juego (coordenada)
-    ["room", "<groupId>", "wss://relay.tu-juego.com"], // sala opcional + relay
-    ["url", "https://tu-juego.com/?room=…"],   // deep link opcional para lanzar
+    ["url", "https://tu-juego.com/?join=…"],   // deep link a la sala del juego (opcional)
     ["expiration", "1719363600"]               // NIP-40: la invitación caduca
   ],
   "content": "¡Te invito a una partida de Catan! 🎲"
@@ -63,130 +62,54 @@ juego sabe leer:
 ```
 
 - **Desacoplada:** no hay token de acceso. Solo el `game` (obligatorio) y, si hay
-  sala, su `room` (id del grupo NIP-29) + hint de relay.
-- **1v1 / reto:** omití `room`. La invitación *es* todo: "vos + yo + el juego Z".
-  Esto es exactamente lo que hace futbolcillo y no necesita §4 para nada.
+  sala, un `url` de deep link para lanzarla (p. ej. el Room Link `?join` del juego).
+- **1v1 / reto:** omití `url`. La invitación *es* todo: "vos + yo + el juego Z".
+  Esto es exactamente lo que hace el ajedrez/futbolcillo y no necesita infra de
+  salas para nada.
 - **Recepción:** el cliente del invitado (su pestaña de tienda, o el juego) lee sus
   DMs NIP-17 y muestra el toast. Si está offline, **la invitación lo espera en sus
   DMs** (mejor que el toast efímero de la 1.0).
-- **Aceptar:** al aceptar, el cliente resuelve cómo entrar a `room` por su cuenta
-  (§3). La invitación ya cumplió su rol y no se entera del resto.
-
-> **Solo-por-invitación:** una invitación es una *sugerencia*, no una llave. Para
-> que la sala sea exclusiva, el anfitrión **agrega al invitado a la membresía del
-> grupo** (§3.2) — idealmente antes o al mandar el DM. El acceso lo decide la sala,
-> no el DM.
+- **Aceptar:** al aceptar, el cliente abre el `url` (o, en 1v1, arranca la partida
+  directo). La invitación ya cumplió su rol y no se entera del resto.
 
 ---
 
-## 3. Sala — NIP-29 (grupo manejado por relay)
+## 3. Dónde se juega (fuera de esta pieza)
 
-Una sala es un **grupo NIP-29**: un grupo que vive en un relay *group-aware*. El
-relay hace de **anfitrión**: lleva la membresía, ordena los eventos y modera. Eso
-te devuelve las dos cosas más difíciles del multijugador descentralizado —**orden**
-y **control de acceso**— sin atarte a Luna Negra (cualquier relay NIP-29 sirve;
-podés correr el tuyo en el self-host).
+La invitación deliberadamente **no** define la sala. El juego elige cómo:
 
-- **Identidad de la sala:** `<relay>'<groupId>` (formato NIP-29). El `groupId` es
-  lo que viaja en el tag `room` de la invitación.
-- **Pertenencia al grupo:** todo evento de la sala lleva el tag **`h` = `<groupId>`**.
-  El relay rechaza los de quien no es miembro → anti-spam y exclusividad gratis.
+- **1v1 autocontenido:** no hace falta sala; la partida vive entre los dos clientes
+  o en el game server del juego (p. ej. el Room Link `?join` del ajedrez, una sala
+  hosteada por el propio juego por WebSocket).
+- **Estado en vivo:** si el juego necesita sincronizar estado multijugador, lo
+  resuelve por su cuenta — game server propio, o eventos **efímeros** (§8 de la
+  spec principal, sin esquema estándar). NGP no fija un esquema de sala.
 
-### 3.1 Estado del juego — *event-sourcing* de jugadas
-
-Para juegos por turnos, **no** uses un "bolso compartido" mutable (como la 1.0):
-en Nostr no tiene dueño y genera conflictos. En su lugar, **cada jugada es un
-evento** y el estado se reconstruye repitiéndolas en orden (el relay las ordena).
-
-```jsonc
-{
-  "kind": 9421,                                // (propuesto) jugada de juego
-  "pubkey": "<pubkey del jugador que mueve>",  // firmada por su autor
-  "tags": [
-    ["h", "<groupId>"],                        // sala (NIP-29)
-    ["a", "30023:npub1dev…:catan"],            // juego
-    ["seq", "7"],                              // número de turno (orden lógico)
-    ["prev", "<id de la jugada anterior>"]     // encadena → integridad de orden
-  ],
-  "content": "{\"action\":\"build\",\"road\":[3,4]}"  // jugada, formato del juego
-}
-```
-
-- **Firmada por su autor** → no podés falsificar la jugada del rival (mejora real
-  sobre el bolso last-write-wins de la 1.0).
-- **`seq` + `prev`** encadenan las jugadas: cualquier cliente detecta huecos o
-  bifurcaciones. El relay da el orden de llegada; el chain da el orden *lógico*.
-- **Estado = fold de las jugadas.** Reconectarte = bajar las jugadas del grupo y
-  repetirlas. Persistencia y diferido salen gratis.
-- **Snapshot opcional:** para partidas largas, el anfitrión puede publicar un
-  evento *addressable* con el estado consolidado cada N turnos (optimización; no
-  obligatorio).
-
-### 3.2 Membresía y moderación
-
-Las da NIP-29 tal cual (no inventamos nada): el anfitrión crea el grupo y agrega
-miembros con los eventos de moderación del NIP (`kind:9007` crear, `kind:9000`
-add-user, etc.). La metadata del grupo (kind `39000`+) dice nombre, si es abierto
-o cerrado, y la lista de miembros. **Ahí vive el control de acceso** que la
-invitación deliberadamente no lleva.
+Esto mantiene la invitación **100% portable**: cualquier cliente Nostr la entiende,
+sin importar cómo esté hecha la sala.
 
 ---
 
-## 4. El circuito completo (cómo encajan §4 y §5)
+## 4. Niveles de adopción
 
-```
-1. Anfitrión crea la sala  ──▶ grupo NIP-29 en su relay (groupId)
-2. Anfitrión agrega al invitado a la membresía del grupo (NIP-29 add-user)
-3. Anfitrión firma la invitación ──▶ DM NIP-17 con tag room=groupId (SIN token)
-4. Invitado recibe el DM (lo esperó si estaba offline) y acepta
-5. Invitado entra al grupo y baja las jugadas (h=groupId) ──▶ reconstruye estado
-6. Cada uno firma sus jugadas (kind:9421, h=groupId, seq/prev) ──▶ el relay ordena
-7. Fin de partida: el resultado puede publicarse como evento (y, si hay apuesta,
-   lo verifica el oráculo en 1.0 — ver spec principal §3.4/§7)
-```
+- **M0 — Reto/invitación 1v1:** solo invitación NIP-17 **sin** `url` de sala.
+  Autocontenido. **Ya implementado** (ajedrez, futbolcillo). Es el primer paso
+  recomendado.
+- **M1 — Invitación con deep link:** + `url` que lanza la sala del juego. La sala la
+  hostea el juego (game server / Room Link), no NGP.
 
-Las dos capas no se tocan: podrías cambiar NIP-29 por otra cosa sin tocar la
-invitación, y viceversa.
+> **Recomendación:** arrancar por **M0** (da el 80% del valor social con el 20% del
+> trabajo) y sumar el deep link solo cuando haya una sala hosteada que lanzar.
 
 ---
 
 ## 5. Qué queda fuera (límites honestos)
 
-| Caso | Por qué no | Alternativa |
+| Caso | Por qué no es parte de la invitación | Alternativa |
 |---|---|---|
-| **Tiempo real / acción** | Latencia de relays (100-500ms+ variable) y sin orden fino → se siente lagueado | dejar el estado vivo en 1.0 o P2P (WebRTC); usar Nostr solo para lobby/resultado |
-| **Info oculta** (manos de cartas, niebla) | Los eventos del grupo son visibles para los miembros | commit-reveal o cifrado por jugador (subproblema; evitar en v1) |
-| **Reglas no determinísticas / lógica secreta** | Sin árbitro, cada cliente valida las reglas; si no son reproducibles, no cierra | mantener un árbitro (game server 1.0) |
-| **Azar** (dados, mezclar) | No se le cree a un cliente | commit-reveal entre jugadores, o aleatoriedad verificable (URD, como vesta) |
-
-> **Dependencia de relay:** la sala necesita un relay NIP-29 vivo y compartido.
-> Correr el tuyo en el self-host te da control; seguís siendo portable porque es un
-> relay NIP-29 estándar, intercambiable.
-
----
-
-## 6. Mapa con la 1.0
-
-| 1.0 (panel) | NGP | Cambio principal |
-|---|---|---|
-| **§4 Salas y estado** (bolso compartido hosteado por Luna Negra) | grupo NIP-29 + jugadas event-sourced | el estado pasa de tu servidor a un relay; jugadas firmadas; persistente |
-| **§5 Invitaciones** (POST /invites con token, toast efímero) | DM NIP-17 que solo apunta (sin token) | desacoplada; persistente; cross-cliente; el acceso lo maneja la sala |
-| §5 Amigos | NIP-02 (ya era Nostr) | sin cambio |
-
----
-
-## 7. Niveles de adopción (multijugador)
-
-Para no obligar a todo:
-
-- **M0 — Reto 1v1:** solo invitación NIP-17 **sin** `room`. No necesita §4 ni
-  relay NIP-29. Es el primer paso recomendado (autocontenido, como futbolcillo).
-- **M1 — Sala por turnos:** + grupo NIP-29 + jugadas event-sourced (§3). Necesita
-  un relay NIP-29.
-- **M2 — Snapshots / partidas largas:** + evento de estado consolidado (§3.1).
-
-> **Recomendación:** arrancar por **M0** (da el 80% del valor social con el 20% del
-> trabajo) y subir a M1 solo cuando haya un juego por turnos que lo pida.
+| **Sincronización de estado en vivo (salas)** | El esquema es específico de cada juego y la latencia de relays no da para tiempo real fino | game server propio del juego (p. ej. Room Link), o eventos efímeros §8 (sin esquema estándar) |
+| **Control de acceso a la sala** | La invitación no lleva token: es una sugerencia, no una llave | lo maneja el juego donde sincroniza estado |
+| **Info oculta / azar** | Sin árbitro, no se le cree a un cliente | mantener un árbitro (game server), commit-reveal o aleatoriedad verificable |
 
 ---
 
@@ -196,5 +119,3 @@ Para no obligar a todo:
 |---|---|---|---|
 | 14 | Invitación (rumor de DM privado) | NIP-17 | estándar |
 | 1059 / 13 | Gift-wrap / seal del DM | NIP-17 | estándar |
-| 9007, 9000, 9001, 39000+ | Crear grupo, add/remove miembro, metadata | NIP-29 | estándar |
-| 9421 | **Jugada de juego** (en grupo, `h`) | esta spec | *propuesto* |

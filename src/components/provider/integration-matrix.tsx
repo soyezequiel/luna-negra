@@ -121,7 +121,7 @@ function declaredFor(
 }
 
 // Texto del checkbox con el que el proveedor declara que integró una pata NGP no
-// observable (login/presencia/salas/invitaciones). Fuente única para la matriz Luna
+// observable (login/presencia/invitaciones). Fuente única para la matriz Luna
 // y la vista estándar Nostr.
 function manualToggleLabel(row: CapabilityRow): string {
   switch (row.key) {
@@ -129,8 +129,6 @@ function manualToggleLabel(row: CapabilityRow): string {
       return "Declaro que integré el login Nostr (NIP-07/46)";
     case "presencia":
       return "Declaro que uso la presencia en vivo (NIP-38)";
-    case "salas":
-      return "Declaro que integré salas Nostr (NIP-29)";
     case "invitaciones":
       return "Declaro que integré invitaciones Nostr (NIP-17)";
     default:
@@ -266,7 +264,7 @@ const NOSTR_RING: Record<Level2, string> = {
 
 // Tarjeta de la vista estándar: SOLO la pata Nostr de una capacidad (interfaz
 // NGP). Sin badge Luna ni control de migración; el proveedor solo
-// declara las patas no observables (login/presencia/salas/invitaciones).
+// declara las patas no observables (login/presencia/invitaciones).
 function NostrCapabilityTile({
   row,
   game,
@@ -633,7 +631,7 @@ export function GameIntegrationCard({
         (marcador, reseñas, zaps), presencia vista por el probador (queda persistida), login
         NIP-07/46 <em>inferido</em> del marcador firmado por el jugador, y NGE detectado con
         cualquier RPC autenticado (un <code>get_info</code> alcanza). Lo cifrado E2E o sin
-        rastro (salas NIP-29, invitaciones NIP-17, login sin marcador) se declara manualmente.
+        rastro (invitaciones NIP-17, login sin marcador) se declara manualmente.
       </p>
     </div>
   );

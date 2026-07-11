@@ -101,7 +101,7 @@ export default function ProviderIntegrationPage() {
             firmado. Para <strong>NGE</strong> (apuestas y escrow) alcanza con que
             tu game server mande <strong>un RPC autenticado</strong> — pegá{" "}
             <code>NGE_CONNECTION</code>, mandá <code>get_info</code> y listo. Lo que
-            va cifrado E2E (salas NIP-29, invitaciones NIP-17) no se puede observar:
+            va cifrado E2E (invitaciones NIP-17) no se puede observar:
             eso lo declarás manualmente.
           </p>
         </div>

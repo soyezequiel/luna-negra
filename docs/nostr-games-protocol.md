@@ -29,9 +29,11 @@
 > Negra, pero todas sus acciones son eventos firmados verificables):
 > [nostr-games-protocol-apuestas.md](nostr-games-protocol-apuestas.md).
 >
-> **Salas e invitaciones multijugador** (lo que en el panel 1.0 son §4 y §5) tienen
-> su propio diseño Nostr —invitación NIP-17 desacoplada + sala NIP-29— en
+> **Invitaciones multijugador** (lo que en el panel 1.0 es §5) tienen su propio
+> diseño Nostr —invitación NIP-17 desacoplada, sin token— en
 > [nostr-games-protocol-salas-invitaciones.md](nostr-games-protocol-salas-invitaciones.md).
+> La *sala* (dónde se sincroniza estado) la resuelve cada juego por su cuenta
+> (su game server / Room Link, o eventos efímeros §8), no NGP.
 >
 > **Estado.** Borrador. Los `kind` marcados como *(propuesto)* pueden cambiar
 > hasta que se congele la v1 de la spec.

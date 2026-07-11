@@ -4,7 +4,7 @@ description: >-
   Integra juegos con Nostr Games Protocol (NGP) v2: login
   NIP-07/NIP-46, coordenada gameCoord, presencia NIP-38, marcador kind:31339,
   retos e invitaciones NIP-17, Room Link (?join) para invitar a jugar en salas
-  hosteadas por el juego, salas NIP-29 de diseño, reseñas/logros kind:1,
+  hosteadas por el juego, reseñas/logros kind:1,
   zaps NIP-57, marcador verificado por oráculo (kind:31338),
   apuestas custodiadas por NGE o por zaps bajo /api/v2/bets y
   patrones probados en Tetris para signers, relays, inbox NIP-17 y auto-firma de
@@ -163,7 +163,6 @@ para que entiendas el formato; en producción preferí los helpers del paquete.
 | Identidad | NIP-07/NIP-46 (el jugador firma; no hay SSO de Luna) | disponible |
 | Marcador | `kind:31339` (legacy 31337 solo lectura) | en producción |
 | Presencia | NIP-38 `kind:30315` con `a=gameCoord` | en producción |
-| Salas/estado | NIP-29 + jugadas | diseño |
 | Invitación/reto | NIP-17 gift-wrap (DM cifrado con el link de la sala) | reto 1v1 en producción |
 | Invitar a jugar (Room Link) | URL `?join=<id>`; tu juego crea/une la sala (ver sección Room Link) | en producción |
 | Reseñas/logros | `kind:1` con `a=gameCoord` | en producción |
@@ -370,11 +369,10 @@ interno es `kind:14` y viaja como gift-wrap `kind:1059`.
 }
 ```
 
-Para 1v1 puro omite `room`. Si usas sala NIP-29, agrega:
-
-```jsonc
-["room", "<groupId>", "wss://relay..."]
-```
+Para 1v1 puro, el `url` alcanza (o incluso podés omitirlo: la invitación *es*
+"vos + yo + el juego"). Si tu juego hostea una sala, el `url` es su Room Link
+`?join=<id>` (ver la sección Room Link). La invitación solo apunta: no define ni
+otorga acceso a la sala.
 
 Requisitos:
 
@@ -389,8 +387,8 @@ y escuchar en otro. Usa fallback de DM unido a los `kind:10050` del destinatario
 
 Patrón Tetris para no depender de la clave privada cruda:
 
-1. Crear un rumor `kind:14` sin firma, con tags `p`, `game`, `url`,
-   `expiration` y, si aplica, `room`. Calcular `id` con `getEventHash`.
+1. Crear un rumor `kind:14` sin firma, con tags `p`, `game`, `url` y
+   `expiration`. Calcular `id` con `getEventHash`.
 2. Cifrar el rumor con NIP-44 hacia el destinatario y firmar un seal `kind:13`
    con el signer del emisor.
 3. Cifrar el seal con una clave efímera hacia el destinatario y firmar el
@@ -405,18 +403,18 @@ Patrón Tetris para no depender de la clave privada cruda:
 7. Deduplicar por `giftWrap.id` y por `rumor.id`, y persistir ids vistos acotados
    en storage para no repetir toasts al recargar.
 
-## Salas NIP-29
+## Salas y estado en vivo
 
-Esto es diseño, no contrato estable. Para juegos por turnos determinísticos:
+NGP **no** define un esquema de sala. La sincronización de estado multijugador la
+resuelve tu juego por su cuenta:
 
-- La sala es un grupo NIP-29 en un relay group-aware.
-- Cada jugada es un evento firmado, por ejemplo `kind:9421` propuesto.
-- Tags esperados: `h=<groupId>`, `a=<gameCoord>`, `seq`, `prev`.
-- El estado se reconstruye plegando jugadas.
+- **1v1 / por turnos:** hostealo en tu propio backend (el patrón del ajedrez: sala
+  por WebSocket + Room Link `?join`, ver abajo).
+- **Sin backend:** eventos efímeros (kind 20000–29999) con tu propio esquema, como
+  extensión no estándar (§8 de la spec principal).
 
-No uses este diseño para tiempo real exigente, información oculta, azar no
-verificable o dinero. Usa un árbitro en tu propio backend (y NGE si hay dinero
-en juego).
+No uses Nostr para tiempo real exigente, información oculta, azar no verificable o
+dinero. Usa un árbitro en tu propio backend (y NGE si hay dinero en juego).
 
 ## Room Link de Luna (`?join`)
 
@@ -438,8 +436,8 @@ https://<tu gameUrl>/?join=<roomId>      (opcional: &lnOrigin=<origen de Luna>, 
   para este flujo. La identidad la resuelve **tu juego** por Nostr (NIP-07/46). Es
   **público**: cualquiera con el link entra.
 - El **contrato de URL** no es un evento Nostr (es URL + el transporte propio de tu
-  juego: WebSocket, etc.), aunque el SDK trae los helpers del link. Distinto del tag
-  `room` de los retos NIP-17 (grupo NIP-29) y del `room`+`inviteToken` de salas de Luna.
+  juego: WebSocket, etc.), aunque el SDK trae los helpers del link. El reto NIP-17
+  solo lo transporta como puntero (`url`), sin definir cómo es la sala.
 
 ### Contrato del lado del juego (esto es lo que implementás)
 
