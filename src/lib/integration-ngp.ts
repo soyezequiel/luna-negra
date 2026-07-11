@@ -133,15 +133,18 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
         },
       },
       {
-        key: "invitaciones",
-        title: "Invitaciones y amigos",
-        oneZero: ["social"],
+        // Clave `roomLink` (no `invitaciones`): esta fila declara Room Link, la
+        // misma capacidad que habilita el botón «Invitar» (Game.manualCaps.roomLink).
+        // Tildarla acá o en el toggle de la ficha es lo mismo.
+        key: "roomLink",
+        title: "Invitaciones (Room Link)",
+        oneZero: [],
         twoZero: {
-          label: "NIP-17",
-          impl: "diseño",
+          label: "NIP-17 · ?join",
+          impl: "implementado",
           signal: "none",
           manual: true,
-          desc: "Invitación general a jugar por DM cifrado (NIP-17, gift-wrap): apunta a la coordenada del juego (y opcionalmente a una sala), sin otorgar acceso. Cifrada E2E → no observable desde el server: el proveedor declara si la integró. Hoy las invitaciones van por la REST 1.0 (§5).",
+          desc: "Invitar a jugar: un DM NIP-17 (o link directo) que apunta a tu sala `?join` hosteada por el juego. No deja rastro observable desde el server (URL + transporte propio, p. ej. WebSocket) → el proveedor declara si lo integró. Es lo que habilita el botón «Invitar» de Luna.",
         },
       },
       {
@@ -202,21 +205,23 @@ export const INTEGRATION_COLUMNS: IntegrationColumn[] = [
 ];
 
 // Capacidad "Luna Room Link" (enlace de invitación a sala hosteada por el juego,
-// ver docs/luna-room-link.md). Es una capacidad 1.0 (REST: entitlement + URL al
-// dominio del juego), NO una pata NGP, así que NO vive en el catálogo de la matriz
-// 1.0/NGP. Se declara manualmente igual que las patas `manual` (el server no puede
-// observar si el juego implementó el contrato de 6 pasos): solo si el proveedor la
-// marca, Luna muestra el botón "Invitar" en la ficha. Se persiste en
-// Game.manualCaps["roomLink"].
+// ver docs/luna-room-link.md). Se declara manualmente (el server no puede observar
+// el contrato de 6 pasos: es una URL `?join` + el transporte propio del juego):
+// solo si el proveedor la marca, Luna muestra el botón "Invitar". Se persiste en
+// Game.manualCaps["roomLink"] — la MISMA clave que declara la fila "Invitaciones
+// (Room Link)" del catálogo de arriba y el toggle de la ficha del juego.
 export const ROOM_LINK_CAP = "roomLink";
 
 // Claves de capacidad declarables manualmente (Game.manualCaps). Sirve para
 // validar en el server qué claves acepta el PATCH y de allowlist en el cliente.
-// Las patas NGP no observables (login, presencia…) se derivan del catálogo
-// (`manual: true`); `roomLink` se suma aparte porque es 1.0 (sin fila de catálogo).
+// Se derivan del catálogo (patas `manual: true`: login, Room Link). `roomLink`
+// también se lista explícito por si el toggle de la ficha se usa sin la matriz;
+// el Set deduplica.
 export const MANUAL_CAP_KEYS: string[] = [
-  ...INTEGRATION_COLUMNS.flatMap((c) =>
-    c.rows.filter((r) => r.twoZero?.manual).map((r) => r.key),
-  ),
-  ROOM_LINK_CAP,
+  ...new Set([
+    ...INTEGRATION_COLUMNS.flatMap((c) =>
+      c.rows.filter((r) => r.twoZero?.manual).map((r) => r.key),
+    ),
+    ROOM_LINK_CAP,
+  ]),
 ];

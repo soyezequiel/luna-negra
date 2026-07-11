@@ -91,7 +91,11 @@ describe("IntegrationMatrix (verificación NGP + NGE)", () => {
     // así que su checkbox no debe renderizarse ni siquiera en modo editable.
     expect(html).not.toContain("Declaro que uso la presencia en vivo");
     // Las capacidades genuinamente inobservables SÍ conservan su checkbox.
-    expect(html).toContain("Declaro que integré invitaciones Nostr");
+    // "Invitaciones" ahora representa Room Link (la clave que habilita «Invitar»).
+    expect(html).toContain("Declaro que integré Room Link");
+    expect(html).toContain("Invitaciones (Room Link)");
+    // Ya no existe la declaración de invitaciones NIP-17 ni la de amigos.
+    expect(html).not.toContain("Declaro que integré invitaciones Nostr");
     // Salas NIP-29 se removió del catálogo NGP: su checkbox no debe existir.
     expect(html).not.toContain("Declaro que integré salas Nostr");
   });

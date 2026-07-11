@@ -121,7 +121,7 @@ function declaredFor(
 }
 
 // Texto del checkbox con el que el proveedor declara que integró una pata NGP no
-// observable (login/presencia/invitaciones). Fuente única para la matriz Luna
+// observable (login/presencia/Room Link). Fuente única para la matriz Luna
 // y la vista estándar Nostr.
 function manualToggleLabel(row: CapabilityRow): string {
   switch (row.key) {
@@ -129,8 +129,8 @@ function manualToggleLabel(row: CapabilityRow): string {
       return "Declaro que integré el login Nostr (NIP-07/46)";
     case "presencia":
       return "Declaro que uso la presencia en vivo (NIP-38)";
-    case "invitaciones":
-      return "Declaro que integré invitaciones Nostr (NIP-17)";
+    case "roomLink":
+      return "Declaro que integré Room Link (invitar a jugar por ?join)";
     default:
       return `Declaro que integré ${row.twoZero?.label ?? "esta capacidad"}`;
   }
@@ -264,7 +264,7 @@ const NOSTR_RING: Record<Level2, string> = {
 
 // Tarjeta de la vista estándar: SOLO la pata Nostr de una capacidad (interfaz
 // NGP). Sin badge Luna ni control de migración; el proveedor solo
-// declara las patas no observables (login/presencia/invitaciones).
+// declara las patas no observables (login/presencia/Room Link).
 function NostrCapabilityTile({
   row,
   game,
@@ -521,7 +521,10 @@ export function GameIntegrationCard({
   // estas últimas se muestran aparte y contraídas para no confundir la matriz.
   const devRows = coreNostrRows.filter((r) => !r.twoZero!.managed);
   const managedRows = coreNostrRows.filter((r) => r.twoZero!.managed);
-  const nostrLive = nostrRows.filter((row) => {
+  // Progreso "NGP N de M": cuenta solo lo que el dev integra. Las capacidades
+  // gestionadas por la tienda (zaps, reseñas) no suman ni al numerador ni al total.
+  const countedRows = nostrRows.filter((r) => !r.twoZero!.managed);
+  const nostrLive = countedRows.filter((row) => {
     const side = row.twoZero!;
     const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
     return leg2State(side, ev, declaredFor(row, manualCaps)) === "live";
@@ -536,11 +539,11 @@ export function GameIntegrationCard({
             <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-ln-aurora transition-all"
-                style={{ width: `${Math.round((nostrLive / nostrRows.length) * 100)}%` }}
+                style={{ width: `${Math.round((nostrLive / countedRows.length) * 100)}%` }}
               />
             </div>
             <span className="text-[11px] text-ln-muted">
-              <span className="font-semibold text-ln-text">NGP {nostrLive}</span> de {nostrRows.length}
+              <span className="font-semibold text-ln-text">NGP {nostrLive}</span> de {countedRows.length}
             </span>
           </div>
           {(() => {
@@ -663,7 +666,7 @@ export function GameIntegrationCard({
         (marcador, reseñas, zaps), presencia vista por el probador (queda persistida), login
         NIP-07/46 <em>inferido</em> del marcador firmado por el jugador, y NGE detectado con
         cualquier RPC autenticado (un <code>get_info</code> alcanza). Lo cifrado E2E o sin
-        rastro (invitaciones NIP-17, login sin marcador) se declara manualmente.
+        rastro (Room Link, login sin marcador) se declara manualmente.
       </p>
     </div>
   );
