@@ -114,6 +114,52 @@ export async function syncLivePresence(): Promise<void> {
   if (data.length > 0) {
     await prisma.playerCountSample.createMany({ data });
   }
+
+  await detectVerifiedScore(byCoord);
+}
+
+/**
+ * Auto-detección del "marcador verificado" (atestación del oráculo, kind:31338).
+ * A diferencia de la presencia (efímera, ventana de 180s), la atestación es
+ * PERMANENTE (addressable): la buscamos SIN `since` y SOLO para los juegos que
+ * todavía no tienen la señal — una vez detectada, el ping "ngp:oraculo" queda fijo
+ * y no hace falta re-consultarla. Sin esto, el 31338 solo se detectaba corriendo
+ * "Verificar ahora" a mano: no tenía job propio como el marcador 31339 (score-sync).
+ */
+async function detectVerifiedScore(
+  byCoord: Map<string, { gameId: string; providerId: string }>,
+): Promise<void> {
+  try {
+    const gameIds = [...new Set([...byCoord.values()].map((t) => t.gameId))];
+    const detected = await prisma.integrationPing.findMany({
+      where: { feature: "ngp:oraculo", gameId: { in: gameIds } },
+      select: { gameId: true },
+    });
+    const done = new Set(detected.map((p) => p.gameId));
+    const pending = new Map([...byCoord].filter(([, t]) => !done.has(t.gameId)));
+    if (pending.size === 0) return;
+
+    const attestations = await pool().querySync(
+      RELAYS,
+      { kinds: [NGP_KIND.scoreAttestation], "#a": [...pending.keys()] },
+      { maxWait: 5000 },
+    );
+    const recorded = new Set<string>();
+    for (const ev of attestations) {
+      const coord = ev.tags.find((t) => t[0] === "a")?.[1];
+      const target = coord ? pending.get(coord) : undefined;
+      if (!target || recorded.has(target.gameId)) continue;
+      recorded.add(target.gameId);
+      // Ver una atestación del oráculo anclada al juego ES la evidencia de que
+      // integró el marcador verificado (mismo criterio que el probador manual).
+      void recordIntegration("ngp:oraculo", {
+        providerId: target.providerId,
+        gameId: target.gameId,
+      });
+    }
+  } catch {
+    // best-effort: relays/DB caídos → reintenta el próximo ciclo.
+  }
 }
 
 /**
