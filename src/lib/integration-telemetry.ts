@@ -5,6 +5,7 @@ import {
   INTEGRATION_FEATURE_KEYS,
   type IntegrationFeature,
 } from "@/lib/integration-features";
+import { INTEGRATION_COLUMNS } from "@/lib/integration-ngp";
 
 // Además de las interfaces 1.0 (§1–§8), la telemetría registra:
 //   "nge"      → RPC NGE autenticado recibido (cualquier método, incluido
@@ -449,6 +450,58 @@ export async function scoreGamesByIntegration(
     score.set(g.id, all.size);
   }
   return score;
+}
+
+// ── Score de integración NGP (para la card de la tienda) ─────────────────────
+//
+// A diferencia de scoreGamesByIntegration (que mide las interfaces 1.0/REST + NGE),
+// esto cuenta SOLO las capacidades de Nostr Games Protocol (NGP) que el DEV integra
+// —las mismas "Capacidades de NGP activas" del panel (ver integration-matrix.tsx)—.
+// Es la fuente única: derivamos las filas contables del catálogo INTEGRATION_COLUMNS
+// (patas NGP `twoZero`), excluyendo las gestionadas por la tienda (zaps, reseñas),
+// que no dependen de que el dev integre nada.
+const NGP_COUNTED_ROWS = INTEGRATION_COLUMNS.flatMap((c) => c.rows)
+  .filter((r) => r.twoZero && !r.twoZero.managed)
+  .map((r) => ({
+    key: r.key,
+    signal: r.twoZero!.signal, // clave en NostrSignals ("none" = sin señal observable)
+    manual: !!r.twoZero!.manual, // login/presencia/roomLink: se declaran a mano
+  }));
+
+// Total de capacidades NGP contables (el denominador del "NGP N/M" de la card).
+export const NGP_TOTAL_CAPS = NGP_COUNTED_ROWS.length;
+
+export type NgpScorableGame = {
+  id: string;
+  // Game.manualCaps: capacidades declaradas por el proveedor (login/presencia/roomLink).
+  manualCaps?: Record<string, boolean> | null;
+};
+
+/**
+ * Cuántas capacidades NGP tiene ACTIVAS cada juego (0–NGP_TOTAL_CAPS), con la misma
+ * regla que el panel: una capacidad cuenta si hay evidencia observable
+ * (readNostrEvidence) O está declarada manualmente (manualCaps). Un solo lote de
+ * consultas para todos los juegos, así escala en cada render de la portada.
+ */
+export async function scoreGamesByNgp(
+  games: NgpScorableGame[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const g of games) out.set(g.id, 0);
+  if (games.length === 0) return out;
+
+  const nostr = await readNostrEvidence(games.map((g) => g.id));
+  for (const g of games) {
+    const sig = nostr.get(g.id);
+    let active = 0;
+    for (const row of NGP_COUNTED_ROWS) {
+      const ev = row.signal !== "none" ? sig?.[row.signal] ?? null : null;
+      const declared = row.manual && !!g.manualCaps?.[row.key];
+      if (ev || declared) active++;
+    }
+    out.set(g.id, active);
+  }
+  return out;
 }
 
 export type GameRef = {

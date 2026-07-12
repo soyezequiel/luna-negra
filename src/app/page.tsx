@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import LunaNegraBackground from "@/components/LunaNegraBackground";
-import { GameCard } from "@/components/game-card";
+import { GameCard, NgpBadge } from "@/components/game-card";
 import { SocialRail } from "@/components/social-rail";
 import {
   CATEGORIES,
@@ -54,7 +54,7 @@ export default async function StorePage({
   );
   const total = matched.length;
 
-  const ranked = [...matched].sort((a, b) => b.integration - a.integration);
+  const ranked = [...matched].sort((a, b) => b.ngpActive - a.ngpActive);
   const games = ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -167,6 +167,10 @@ export default async function StorePage({
                           {g.title}
                         </span>
                       )}
+                      {/* Sello NGP: mismas capacidades activas que la card del catálogo. */}
+                      <div className="absolute right-2.5 top-2.5 z-10">
+                        <NgpBadge active={g.ngpActive} total={g.ngpTotal} />
+                      </div>
                     </Link>
                   ))}
                 </div>
@@ -247,7 +251,8 @@ export default async function StorePage({
                       coverUrl: g.coverUrl,
                       priceSats: g.priceSats,
                       categories: g.categories,
-                      integration: g.integration,
+                      ngpActive: g.ngpActive,
+                      ngpTotal: g.ngpTotal,
                       reviewLabel: g.reviewLabel,
                     }}
                   />

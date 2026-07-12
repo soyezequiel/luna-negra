@@ -1,7 +1,7 @@
 import { unstable_cache, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { categoryQuerySlugs, normalizeCategories } from "@/lib/categories";
-import { scoreGamesByIntegration } from "@/lib/integration-telemetry";
+import { scoreGamesByNgp, NGP_TOTAL_CAPS } from "@/lib/integration-telemetry";
 import { getReviewSummary, getReviewSummaries } from "@/lib/reviews";
 
 // Tag único de todo lo que dependa del catálogo publicado (Home + ficha + relacionados).
@@ -38,7 +38,11 @@ export type CatalogGame = {
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
   createdAt: string; // ISO: ya serializado para el Data Cache
-  integration: number; // 0–8 interfaces de Luna Negra cableadas
+  // Capacidades de Nostr Games Protocol (NGP) que el juego tiene ACTIVAS (0–ngpTotal),
+  // con la misma regla que el panel "Capacidades de NGP activas". Es lo que rankea y
+  // lo que muestra el sello "NGP N/M" de la card.
+  ngpActive: number;
+  ngpTotal: number;
   isBeta: boolean; // beta: la Home lo filtra salvo opt-in del usuario
   // Resumen de reseñas ("Muy positivas · 4,6 ★ (87)"). label null = sin reseñas.
   reviewLabel: string | null;
@@ -61,10 +65,16 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       coverUrl: true,
       horizontalCoverUrl: true,
       createdAt: true,
+      manualCaps: true,
       isBeta: true,
     },
   });
-  const scores = await scoreGamesByIntegration(games);
+  const scores = await scoreGamesByNgp(
+    games.map((g) => ({
+      id: g.id,
+      manualCaps: (g.manualCaps as Record<string, boolean> | null) ?? null,
+    })),
+  );
   const reviews = await getReviewSummaries(games.map((g) => g.id));
   return games.map((g) => {
     const r = reviews.get(g.id);
@@ -78,7 +88,8 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       coverUrl: g.coverUrl,
       horizontalCoverUrl: g.horizontalCoverUrl,
       createdAt: g.createdAt.toISOString(),
-      integration: scores.get(g.id) ?? 0,
+      ngpActive: scores.get(g.id) ?? 0,
+      ngpTotal: NGP_TOTAL_CAPS,
       isBeta: g.isBeta,
       reviewLabel: r?.label ?? null,
       reviewAverage: r?.average ?? 0,

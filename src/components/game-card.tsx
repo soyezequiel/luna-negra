@@ -12,11 +12,41 @@ export type GameCardData = {
   priceSats: number;
   categories?: string[];
   multiplayer?: boolean;
-  // Número de interfaces de Luna Negra (§1–§8) integradas; >0 muestra el sello.
-  integration?: number;
+  // Capacidades de Nostr Games Protocol (NGP) ACTIVAS del juego (0–ngpTotal). >0
+  // muestra el sello "NGP N/M"; el color se gradúa según qué tan integrado esté.
+  ngpActive?: number;
+  ngpTotal?: number;
   // Resumen de reseñas ("Muy positivas"); null/undefined = sin reseñas, no se muestra.
   reviewLabel?: string | null;
 };
+
+// Color del sello NGP según qué tan integrado esté (fracción de capacidades
+// activas): tenue → aurora → brillante. Mismo lenguaje que el panel (ln-aurora).
+function ngpBadgeClass(active: number, total: number): string {
+  const ratio = total > 0 ? active / total : 0;
+  if (ratio >= 0.8) return "bg-ln-aurora/25 text-ln-aurora-bright";
+  if (ratio >= 0.4) return "bg-ln-aurora/20 text-ln-aurora";
+  return "bg-ln-luna/20 text-ln-luna";
+}
+
+// Sello "✦ NGP N/M": capacidades NGP activas del juego. Sin sello si 0. Compartido
+// por la card del catálogo y las portadas del hero, para que estilo/color/tooltip
+// sean una sola fuente. No posiciona: quien lo use lo ubica (absolute, flex, …).
+export function NgpBadge({ active, total }: { active?: number; total?: number }) {
+  if (!active || active <= 0) return null;
+  const t = total && total > 0 ? total : active;
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] backdrop-blur-sm ${ngpBadgeClass(
+        active,
+        t,
+      )}`}
+      title={`Integrado con Nostr Games Protocol · ${active}/${t} capacidades NGP activas`}
+    >
+      ✦ NGP {active}/{t}
+    </span>
+  );
+}
 
 export function GameCard({ game }: { game: GameCardData }) {
   const hue = hueFromSlug(game.slug);
@@ -48,18 +78,15 @@ export function GameCard({ game }: { game: GameCardData }) {
             {categoryLabel(game.categories[0])}
           </span>
         ) : null}
-        {game.multiplayer ? (
-          <span className="absolute right-2 top-2 rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
-            ⚇ Multi
-          </span>
-        ) : game.integration && game.integration > 0 ? (
-          <span
-            className="absolute right-2 top-2 rounded-full bg-ln-luna/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-luna backdrop-blur-sm"
-            title={`Integrado con Luna Negra · ${game.integration}/8 interfaces`}
-          >
-            ✦ Integrado
-          </span>
-        ) : null}
+        {/* Esquina superior derecha: Multi y/o sello NGP, apilados. */}
+        <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+          {game.multiplayer ? (
+            <span className="rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
+              ⚇ Multi
+            </span>
+          ) : null}
+          <NgpBadge active={game.ngpActive} total={game.ngpTotal} />
+        </div>
 
         {/* Degradado inferior para legibilidad */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
