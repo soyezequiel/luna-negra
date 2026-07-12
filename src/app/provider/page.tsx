@@ -43,7 +43,7 @@ function gameNjumpUrl(coord: string | null): string | null {
 
 // Fila copiable con el `gameCoord` de un juego (la coord NGP `30023:<pubkey>:<slug>`
 // que el juego usa en el tag `a`). `pending` = todavía no publicado, la coord es la
-// prevista. Reutilizada en la tarjeta NGP de la pestaña Integración.
+// prevista. Reutilizada en la tarjeta NGP de la pestaña Credenciales.
 function CoordLine({
   title,
   coord,
@@ -209,7 +209,7 @@ function TabNav({
   const items: { id: Tab; label: string }[] = [
     { id: "games", label: "Juegos" },
     { id: "sales", label: "Ventas" },
-    { id: "integration", label: "Integración" },
+    { id: "integration", label: "Credenciales" },
     { id: "profile", label: "Perfil" },
   ];
   return (
@@ -625,7 +625,7 @@ export default function ProviderPage() {
             Estadísticas
           </Link>
           <Link href="/provider/integracion" className="btn btn-ghost">
-            Integración
+            Estado de integración
           </Link>
           <Link href="/dev" className="btn btn-ghost">
             Guía /dev
