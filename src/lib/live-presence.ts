@@ -1,4 +1,5 @@
 import { SimplePool, nip19, type Event } from "nostr-tools";
+import type { SubCloser } from "nostr-tools/abstract-pool";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { NGP_KIND, parsePresenceEvent } from "nostr-game-protocol/ngp-core";
@@ -9,9 +10,11 @@ import { recordIntegration } from "./integration-telemetry";
  * REST (§3, `GamePresence`), la ÚNICA señal de quién está jugando es el propio
  * estado NIP-38 (`kind:30315`) que la pestaña de la tienda firma y renueva cada
  * ~8s mientras el juego reporta (ver playing-presence.ts), anclado a la
- * coordenada del juego. Acá contamos esos eventos frescos por juego — mismo
- * patrón in-process que score-sync/comment-sync — y los unificamos con la
- * presencia 1.0 en `getLiveNow`.
+ * coordenada del juego. Acá los contamos por juego combinando dos caminos:
+ * una suscripción PERSISTENTE a los relays (cada evento reconcilia al instante
+ * → detección en segundos) y un tick periódico de backfill/poda/muestreo —
+ * mismo patrón in-process que score-sync/comment-sync — y los unificamos con
+ * la presencia 1.0 en `getLiveNow`.
  *
  * El scheduler vive en src/instrumentation.ts.
  */
@@ -91,6 +94,114 @@ export type PresenceObservation = {
   /** Vencimiento efectivo (ya calculado) si `active`. */
   expiresAt: number;
 };
+
+/** Destino en el catálogo de una coordenada de juego publicada. */
+type CoordTarget = { gameId: string; providerId: string };
+
+/**
+ * Traduce un evento NIP-38 crudo a la observación que consume la reconciliación
+ * (vigencia/ancla según el protocolo + vencimiento efectivo acotado). Compartido
+ * entre el tick periódico y la suscripción en vivo para que ambos caminos
+ * apliquen EXACTAMENTE las mismas reglas.
+ */
+function toObservation(
+  ev: Event,
+  byCoord: Map<string, CoordTarget>,
+  nowSec: number,
+): PresenceObservation | null {
+  // Vigencia y ancla las decide el protocolo (contenido vacío = presencia
+  // limpiada; expiración NIP-40 pasada = vencida).
+  const parsed = parsePresenceEvent(ev, nowSec);
+  if (!parsed) return null;
+  const target = parsed.gameCoord ? byCoord.get(parsed.gameCoord) : undefined;
+  const active = parsed.active && !!target;
+  // Vencimiento efectivo: NIP-40 del evento, o fallback a la ventana de lectura,
+  // acotado por el tope de seguridad (evita expiraciones absurdas).
+  const expiresAt = active
+    ? Math.min(
+        parsed.expiresAt ?? ev.created_at + WINDOW_SECONDS,
+        ev.created_at + MAX_PRESENCE_LIFETIME_S,
+      )
+    : 0;
+  return {
+    pubkey: ev.pubkey,
+    npub: nip19.npubEncode(ev.pubkey),
+    gameId: active ? target!.gameId : null,
+    providerId: active ? target!.providerId : null,
+    active,
+    createdAt: ev.created_at,
+    expiresAt,
+  };
+}
+
+/**
+ * Suscripción PERSISTENTE a los estados NIP-38 del catálogo: cada evento que
+ * llega se reconcilia al instante contra el estado en memoria, así el badge
+ * "jugando ahora" no espera al próximo tick (antes la detección tardaba hasta
+ * LIVE_PRESENCE_SYNC_INTERVAL_MS). El tick queda como backfill/poda/muestreo.
+ * Mismo patrón de resuscripción ante cierre que nge-service. Va en `globalThis`
+ * por la duplicación de chunks de Turbopack (ver LiveState).
+ */
+type LiveSubscription = {
+  closer: SubCloser | null;
+  /** Coordenadas suscriptas (clave de comparación para re-suscribir si cambian). */
+  coordsKey: string;
+  /** Destinos vigentes por coordenada; el handler siempre lee la versión fresca. */
+  targets: Map<string, CoordTarget>;
+  /** true cuando el cierre es nuestro (cambio de coords), para no re-suscribir. */
+  closedByUs: boolean;
+};
+
+const _gSub = globalThis as unknown as { __lunaLivePresenceSub?: LiveSubscription };
+
+function ensureLiveSubscription(byCoord: Map<string, CoordTarget>): void {
+  const existing = _gSub.__lunaLivePresenceSub;
+  if (byCoord.size === 0) {
+    // Catálogo sin coordenadas: no hay nada que escuchar; cerrar la sub vieja
+    // para no seguir reconciliando presencia de juegos que ya no están.
+    if (existing) {
+      existing.closedByUs = true;
+      existing.closer?.close();
+      _gSub.__lunaLivePresenceSub = undefined;
+    }
+    return;
+  }
+  const coordsKey = [...byCoord.keys()].sort().join("\n");
+  if (existing) {
+    // Refrescar los destinos siempre (un juego puede cambiar de proveedor sin
+    // cambiar de coordenada); re-suscribir solo si cambió el set de coords.
+    existing.targets = byCoord;
+    if (existing.coordsKey === coordsKey) return;
+    existing.closedByUs = true;
+    existing.closer?.close();
+  }
+
+  const sub: LiveSubscription = { closer: null, coordsKey, targets: byCoord, closedByUs: false };
+  _gSub.__lunaLivePresenceSub = sub;
+  const open = () => {
+    // La ventana `since` cubre el hueco entre caída y resuscripción; los eventos
+    // repetidos son inocuos (la reconciliación descarta lo viejo/duplicado).
+    const since = Math.floor(Date.now() / 1000) - WINDOW_SECONDS;
+    sub.closer = pool().subscribeMany(
+      RELAYS,
+      { kinds: [NGP_KIND.presence], "#a": [...sub.targets.keys()], since },
+      {
+        onevent: (ev) => {
+          const nowSec = Math.floor(Date.now() / 1000);
+          const obs = toObservation(ev, sub.targets, nowSec);
+          if (obs) reconcileLivePresence(state(), [obs], nowSec);
+        },
+        onclose: () => {
+          // Relay caído o socket muerto: re-suscribir con backoff, salvo que el
+          // cierre haya sido nuestro o ya haya una suscripción más nueva.
+          if (sub.closedByUs || _gSub.__lunaLivePresenceSub !== sub) return;
+          setTimeout(open, 10_000).unref?.();
+        },
+      },
+    );
+  };
+  open();
+}
 
 function findEntryCreatedAt(
   byGame: Map<string, Map<string, LiveEntry>>,
@@ -188,10 +299,13 @@ export async function syncLivePresence(): Promise<void> {
     where: { status: "published", nostrCoord: { not: null } },
     select: { id: true, providerId: true, nostrCoord: true },
   });
-  const byCoord = new Map<string, { gameId: string; providerId: string }>();
+  const byCoord = new Map<string, CoordTarget>();
   for (const g of games) {
     if (g.nostrCoord) byCoord.set(g.nostrCoord, { gameId: g.id, providerId: g.providerId });
   }
+  // Detección en vivo: los eventos nuevos entran por acá al instante; lo que
+  // sigue del tick es backfill (por si la sub perdió algo), poda y muestreo.
+  ensureLiveSubscription(byCoord);
   if (byCoord.size === 0) return;
 
   const since = Math.floor(Date.now() / 1000) - WINDOW_SECONDS;
@@ -223,33 +337,13 @@ export async function syncLivePresence(): Promise<void> {
   const observations: PresenceObservation[] = [];
   const freshByGame = new Map<string, Map<string, number>>();
   for (const ev of latestByPubkey.values()) {
-    // Vigencia y ancla las decide el protocolo (contenido vacío = presencia
-    // limpiada; expiración NIP-40 pasada = vencida).
-    const parsed = parsePresenceEvent(ev, nowSec);
-    if (!parsed) continue;
-    const target = parsed.gameCoord ? byCoord.get(parsed.gameCoord) : undefined;
-    const active = parsed.active && !!target;
-    // Vencimiento efectivo: NIP-40 del evento, o fallback a la ventana de lectura,
-    // acotado por el tope de seguridad (evita expiraciones absurdas).
-    const expiresAt = active
-      ? Math.min(
-          parsed.expiresAt ?? ev.created_at + WINDOW_SECONDS,
-          ev.created_at + MAX_PRESENCE_LIFETIME_S,
-        )
-      : 0;
-    observations.push({
-      pubkey: ev.pubkey,
-      npub: nip19.npubEncode(ev.pubkey),
-      gameId: active ? target!.gameId : null,
-      providerId: active ? target!.providerId : null,
-      active,
-      createdAt: ev.created_at,
-      expiresAt,
-    });
-    if (active) {
-      let m = freshByGame.get(target!.gameId);
-      if (!m) freshByGame.set(target!.gameId, (m = new Map()));
-      m.set(ev.pubkey, ev.created_at);
+    const obs = toObservation(ev, byCoord, nowSec);
+    if (!obs) continue;
+    observations.push(obs);
+    if (obs.active && obs.gameId) {
+      let m = freshByGame.get(obs.gameId);
+      if (!m) freshByGame.set(obs.gameId, (m = new Map()));
+      m.set(obs.pubkey, obs.createdAt);
     }
   }
 

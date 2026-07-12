@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-// Cada cuánto refresca el conteo. La fuente (GamePresence + NIP-38) ya se
-// sincroniza en el server cada 30s; sondear más seguido no aportaría nada.
-const POLL_INTERVAL_MS = 30_000;
+// Cada cuánto refresca el conteo. En el server la presencia NIP-38 entra por
+// suscripción persistente (reconcilia al instante), así que el poll del cliente
+// es lo que domina la latencia del badge: 10s la deja en segundos sin cargar
+// la API (la ruta lee memoria + una query liviana).
+const POLL_INTERVAL_MS = 10_000;
 
 /**
  * "Jugando ahora" estilo SteamDB, en la columna de metadatos de la ficha.
