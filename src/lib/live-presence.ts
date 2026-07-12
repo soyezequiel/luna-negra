@@ -2,7 +2,7 @@ import { SimplePool, nip19, type Event } from "nostr-tools";
 import type { SubCloser } from "nostr-tools/abstract-pool";
 import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
-import { NGP_KIND, parsePresenceEvent } from "nostr-game-protocol/ngp-core";
+import { NGP_KIND, NGP_PRESENCE_D_TAG, parsePresenceEvent } from "nostr-game-protocol/ngp-core";
 import { recordIntegration } from "./integration-telemetry";
 
 /**
@@ -135,72 +135,144 @@ function toObservation(
 }
 
 /**
- * Suscripción PERSISTENTE a los estados NIP-38 del catálogo: cada evento que
- * llega se reconcilia al instante contra el estado en memoria, así el badge
- * "jugando ahora" no espera al próximo tick (antes la detección tardaba hasta
- * LIVE_PRESENCE_SYNC_INTERVAL_MS). El tick queda como backfill/poda/muestreo.
- * Mismo patrón de resuscripción ante cierre que nge-service. Va en `globalThis`
- * por la duplicación de chunks de Turbopack (ver LiveState).
+ * Suscripciones PERSISTENTES a los relays: cada evento que llega se reconcilia
+ * al instante contra el estado en memoria, así el badge "jugando ahora" no
+ * espera al próximo tick (antes la detección tardaba hasta
+ * LIVE_PRESENCE_SYNC_INTERVAL_MS). Son DOS suscripciones complementarias:
+ *
+ *  - por COORDENADA (`#a` = juegos del catálogo): altas y renovaciones. No ve
+ *    los CLEARS, porque el template de clear del protocolo no lleva tag `a`
+ *    (contenido vacío + expiración inmediata) — y como 30315 es reemplazable,
+ *    el clear PISA a la presencia activa en el relay: por la vía `#a` la tienda
+ *    solo "deja de ver" al jugador y lo retenía hasta vencer su NIP-40 (~4 min).
+ *  - por AUTOR (los pubkeys que están "jugando ahora", slot `#d:general`):
+ *    captura ese clear (y cualquier cambio de estado a otro juego/status) al
+ *    instante, para bajar el badge en segundos al salir del juego.
+ *
+ * El tick queda como backfill/poda/muestreo. Mismo patrón de resuscripción ante
+ * cierre que nge-service. Va en `globalThis` por la duplicación de chunks de
+ * Turbopack (ver LiveState).
  */
-type LiveSubscription = {
+type ManagedSub = {
   closer: SubCloser | null;
-  /** Coordenadas suscriptas (clave de comparación para re-suscribir si cambian). */
-  coordsKey: string;
-  /** Destinos vigentes por coordenada; el handler siempre lee la versión fresca. */
-  targets: Map<string, CoordTarget>;
-  /** true cuando el cierre es nuestro (cambio de coords), para no re-suscribir. */
+  /** Clave del filtro suscripto (coords o autores), para re-suscribir si cambia. */
+  key: string;
+  /** true cuando el cierre es nuestro (cambio de filtro), para no re-suscribir. */
   closedByUs: boolean;
 };
 
-const _gSub = globalThis as unknown as { __lunaLivePresenceSub?: LiveSubscription };
+type LiveSubState = {
+  coordSub: ManagedSub | null;
+  authorSub: ManagedSub | null;
+  /** Destinos vigentes por coordenada; los handlers siempre leen la versión fresca. */
+  targets: Map<string, CoordTarget>;
+};
 
-function ensureLiveSubscription(byCoord: Map<string, CoordTarget>): void {
-  const existing = _gSub.__lunaLivePresenceSub;
-  if (byCoord.size === 0) {
-    // Catálogo sin coordenadas: no hay nada que escuchar; cerrar la sub vieja
-    // para no seguir reconciliando presencia de juegos que ya no están.
-    if (existing) {
-      existing.closedByUs = true;
-      existing.closer?.close();
-      _gSub.__lunaLivePresenceSub = undefined;
-    }
-    return;
-  }
-  const coordsKey = [...byCoord.keys()].sort().join("\n");
+const _gSub = globalThis as unknown as { __lunaLivePresenceSub?: LiveSubState };
+function subState(): LiveSubState {
+  if (!_gSub.__lunaLivePresenceSub)
+    _gSub.__lunaLivePresenceSub = { coordSub: null, authorSub: null, targets: new Map() };
+  return _gSub.__lunaLivePresenceSub;
+}
+
+/** Reconciliación inmediata de un evento NIP-38 llegado por suscripción. */
+function handleLiveEvent(ev: Event): void {
+  // Solo el slot de juego (`d:general`): un status de otro slot (p. ej. music)
+  // no toca la presencia. Los filtros ya piden `#d`, pero no confiamos en que
+  // todos los relays lo apliquen.
+  if (ev.tags.find((t) => t[0] === "d")?.[1] !== NGP_PRESENCE_D_TAG) return;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const obs = toObservation(ev, subState().targets, nowSec);
+  if (!obs) return;
+  reconcileLivePresence(state(), [obs], nowSec);
+  // El set de jugadores vivos pudo cambiar (alta o clear) → ajustar el watch.
+  ensureClearsWatch();
+}
+
+/**
+ * Abre (o re-abre si cambió el filtro) una de las dos suscripciones. `filter`
+ * es un builder para que el `since` se recalcule en cada re-apertura.
+ */
+function openManagedSub(
+  slot: "coordSub" | "authorSub",
+  key: string,
+  filter: () => Parameters<SimplePool["subscribeMany"]>[1],
+): void {
+  const ss = subState();
+  const existing = ss[slot];
+  if (existing?.key === key) return;
   if (existing) {
-    // Refrescar los destinos siempre (un juego puede cambiar de proveedor sin
-    // cambiar de coordenada); re-suscribir solo si cambió el set de coords.
-    existing.targets = byCoord;
-    if (existing.coordsKey === coordsKey) return;
     existing.closedByUs = true;
     existing.closer?.close();
   }
-
-  const sub: LiveSubscription = { closer: null, coordsKey, targets: byCoord, closedByUs: false };
-  _gSub.__lunaLivePresenceSub = sub;
+  const sub: ManagedSub = { closer: null, key, closedByUs: false };
+  ss[slot] = sub;
   const open = () => {
-    // La ventana `since` cubre el hueco entre caída y resuscripción; los eventos
-    // repetidos son inocuos (la reconciliación descarta lo viejo/duplicado).
-    const since = Math.floor(Date.now() / 1000) - WINDOW_SECONDS;
-    sub.closer = pool().subscribeMany(
-      RELAYS,
-      { kinds: [NGP_KIND.presence], "#a": [...sub.targets.keys()], since },
-      {
-        onevent: (ev) => {
-          const nowSec = Math.floor(Date.now() / 1000);
-          const obs = toObservation(ev, sub.targets, nowSec);
-          if (obs) reconcileLivePresence(state(), [obs], nowSec);
-        },
-        onclose: () => {
-          // Relay caído o socket muerto: re-suscribir con backoff, salvo que el
-          // cierre haya sido nuestro o ya haya una suscripción más nueva.
-          if (sub.closedByUs || _gSub.__lunaLivePresenceSub !== sub) return;
-          setTimeout(open, 10_000).unref?.();
-        },
+    sub.closer = pool().subscribeMany(RELAYS, filter(), {
+      onevent: handleLiveEvent,
+      onclose: () => {
+        // Relay caído o socket muerto: re-suscribir con backoff, salvo que el
+        // cierre haya sido nuestro o ya haya una suscripción más nueva.
+        if (sub.closedByUs || subState()[slot] !== sub) return;
+        setTimeout(open, 10_000).unref?.();
       },
-    );
+    });
   };
   open();
+}
+
+function closeManagedSub(slot: "coordSub" | "authorSub"): void {
+  const ss = subState();
+  const existing = ss[slot];
+  if (!existing) return;
+  existing.closedByUs = true;
+  existing.closer?.close();
+  ss[slot] = null;
+}
+
+/** Suscripción por coordenada (altas/renovaciones de presencia del catálogo). */
+function ensureLiveSubscription(byCoord: Map<string, CoordTarget>): void {
+  const ss = subState();
+  // Refrescar los destinos siempre (un juego puede cambiar de proveedor sin
+  // cambiar de coordenada); re-suscribir solo si cambió el set de coords.
+  ss.targets = byCoord;
+  if (byCoord.size === 0) {
+    // Catálogo sin coordenadas: no hay nada que escuchar; cerrar las subs viejas
+    // para no seguir reconciliando presencia de juegos que ya no están.
+    closeManagedSub("coordSub");
+    closeManagedSub("authorSub");
+    return;
+  }
+  const coords = [...byCoord.keys()].sort();
+  openManagedSub("coordSub", coords.join("\n"), () => ({
+    kinds: [NGP_KIND.presence],
+    "#a": coords,
+    // La ventana `since` cubre el hueco entre caída y resuscripción; los eventos
+    // repetidos son inocuos (la reconciliación descarta lo viejo/duplicado).
+    since: Math.floor(Date.now() / 1000) - WINDOW_SECONDS,
+  }));
+}
+
+/**
+ * Watch de CLEARS: sigue el slot `d:general` de los jugadores que están
+ * "jugando ahora". Sin `since` a propósito: 30315 es reemplazable, el relay
+ * manda el estado VIGENTE al suscribir — si el clear se publicó mientras esta
+ * sub estaba caída (o entre resuscripciones), igual llega al reconectar.
+ * Se llama después de cada reconciliación (tick y eventos en vivo).
+ */
+function ensureClearsWatch(): void {
+  const authors = new Set<string>();
+  for (const m of state().byGame.values()) for (const pk of m.keys()) authors.add(pk);
+  if (authors.size === 0) {
+    closeManagedSub("authorSub");
+    return;
+  }
+  const sorted = [...authors].sort();
+  openManagedSub("authorSub", sorted.join("\n"), () => ({
+    kinds: [NGP_KIND.presence],
+    authors: sorted,
+    "#d": [NGP_PRESENCE_D_TAG],
+  }));
 }
 
 function findEntryCreatedAt(
@@ -352,6 +424,8 @@ export async function syncLivePresence(): Promise<void> {
   // presencia o llega un clear. Ver `reconcileLivePresence`.
   const st = state();
   reconcileLivePresence(st, observations, nowSec);
+  // El set de jugadores vivos pudo cambiar → ajustar el watch de clears.
+  ensureClearsWatch();
 
   // Detección automática de la presencia NGP: la evidencia de que un juego integró
   // la presencia es ver su estado NIP-38 SOSTENIDO — o sea, RENOVADO. Solo la damos
