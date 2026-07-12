@@ -1075,14 +1075,6 @@ export default function ProviderPage() {
               </div>
             ) : null}
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link href="/provider/integracion" className="btn btn-outline">
-                Ver estado de integración
-              </Link>
-              <Link href="/dev" className="btn btn-ghost">
-                Guía /dev
-              </Link>
-            </div>
           </div>
 
           {/* credencial NGE (apuestas por eventos, por juego) — protagonista */}
