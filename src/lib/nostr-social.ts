@@ -873,17 +873,26 @@ const CLEAR_STATUS_TTL_SECONDS = 120;
  * Limpia la presencia "jugando" (NIP-38): publica un estado reemplazable vacío que
  * pisa al "Jugando X" anterior (mismo `d:general`, `created_at` más nuevo) para que
  * los amigos dejen de ver el juego como abierto (`fetchStatuses` ignora los estados
- * sin contenido). Best-effort.
+ * sin contenido). Con `slug`, ancla el clear a la coordenada del juego (tag `a`,
+ * igual que `publishPlayingStatus`): un observador que filtra presencia por `#a`
+ * —como el sync de background del server— ve el clear al instante en vez de
+ * "dejar de ver" al jugador y retenerlo hasta el NIP-40. Best-effort.
  */
-export async function clearPlayingStatus(): Promise<void> {
+export async function clearPlayingStatus(slug?: string): Promise<void> {
+  const tags: string[][] = [["d", "general"]];
+  if (slug) {
+    const known = await resolveStoreCoords().catch(() => null);
+    const coord =
+      known?.coordBySlug[slug] ??
+      (known?.pubkey ? `30023:${known.pubkey}:${slug}` : null);
+    if (coord) tags.push(["a", coord]);
+  }
+  tags.push(["expiration", String(now() + CLEAR_STATUS_TTL_SECONDS)]);
   await publish(
     await sign({
       kind: 30315,
       created_at: now(),
-      tags: [
-        ["d", "general"],
-        ["expiration", String(now() + CLEAR_STATUS_TTL_SECONDS)],
-      ],
+      tags,
       content: "",
     }),
   );

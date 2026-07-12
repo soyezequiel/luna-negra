@@ -139,7 +139,8 @@ export function startPlayingPresence({
     stopped = true;
     if (timer) clearInterval(timer);
     if (activeStop === stop) activeStop = null;
-    if (clear) clearPlayingStatus().catch(() => {});
+    // Con el slug, el clear ancla la coord del juego (visible vía #a al instante).
+    if (clear) clearPlayingStatus(slug).catch(() => {});
   }
 
   const stop = () => finish(false);

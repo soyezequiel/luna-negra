@@ -56,7 +56,7 @@ beforeEach(() => {
   mocks.queueRoomLinkLaunchRequest.mockReset().mockResolvedValue(true);
 });
 
-describe("POST /api/v1/rooms/invite", () => {
+describe("POST /api/rooms/invite", () => {
   it("queues the popup for a friend with an OPEN link (no directed token)", async () => {
     const { status, json } = await postRoomLink({
       gameId: "game1",
@@ -69,11 +69,12 @@ describe("POST /api/v1/rooms/invite", () => {
       roomId: "ROOM1",
       launchQueued: true,
     });
-    // El enlace es abierto: lleva lnRoom pero NUNCA un token dirigido.
-    expect(json.inviteUrl).toContain("lnRoom=ROOM1");
+    // El enlace es abierto: lleva ?join (formato estándar NGP) pero NUNCA un
+    // token dirigido.
+    expect(json.inviteUrl).toContain("join=ROOM1");
     expect(json.inviteUrl).not.toContain("lnInvite=");
     expect(json.lnInvite).toBeUndefined();
-    // Se encola la orden de entrada con token vacío (entrada directa por lnRoom).
+    // Se encola la orden de entrada con token vacío (entrada directa por ?join).
     expect(mocks.queueRoomLinkLaunchRequest).toHaveBeenCalledWith({
       providerId: "prov1",
       npub: "npub-guest",
@@ -94,7 +95,7 @@ describe("POST /api/v1/rooms/invite", () => {
       launchQueued: false,
     });
     expect(json.lnInvite).toBeUndefined();
-    expect(json.inviteUrl).toContain("lnRoom=ROOM1");
+    expect(json.inviteUrl).toContain("join=ROOM1");
     expect(json.inviteUrl).not.toContain("lnInvite=");
     expect(mocks.queueRoomLinkLaunchRequest).not.toHaveBeenCalled();
   });
