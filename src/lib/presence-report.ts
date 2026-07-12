@@ -434,6 +434,7 @@ export type Diagnostic = {
 // la presencia se contó SIN renovarse: el ping "ngp:presencia" está throttleado a
 // 1/min, así que damos 2 min de gracia para no marcar gameplay real como colgado.
 const LINGER_SLACK_MS = 120_000;
+const LIVE_PRESENCE_WINDOW_SECONDS_MS = LIVE_PRESENCE_WINDOW_SECONDS * 1000;
 
 export function buildDiagnostics(args: {
   coordEvents: ReportEvent[];
@@ -453,12 +454,23 @@ export function buildDiagnostics(args: {
   //     refresco (más allá de la holgura del throttle) = presencia contada sin que
   //     nadie renovara su estado ⇒ evento colgado (falso positivo). Se ve aun
   //     cuando el evento ya se cayó de los relays, así que atrapa el bug post-mortem.
+  //     Excluimos las muestras recientes (dentro de la ventana de lectura) cuando
+  //     HAY eventos frescos presentes: esas muestras las explican esos eventos, no
+  //     un colgado. Un juego que re-firma cada 2-4 min (más lento que el ciclo de
+  //     30s) tampoco dispara el refresco pese a ser gameplay real, así que sin este
+  //     recorte la bandera marcaría de más.
   const samples = args.liveSamples ?? [];
   const lastRefresh = args.lastPresenceRefreshMs ?? null;
+  const nowMs = nowSec * 1000;
+  const hasFreshNow =
+    coordEvents.some((e) => e.withinLiveWindow && e.parserActive && e.matchesGameCoord);
+  const recentCutoffMs = nowMs - LIVE_PRESENCE_WINDOW_SECONDS_MS;
   if (samples.length > 0) {
-    const lingering = samples.filter(
-      (s) => lastRefresh === null || s.sampledAtMs > lastRefresh + LINGER_SLACK_MS,
-    );
+    const lingering = samples.filter((s) => {
+      const afterRefresh = lastRefresh === null || s.sampledAtMs > lastRefresh + LINGER_SLACK_MS;
+      const explainedByCurrent = hasFreshNow && s.sampledAtMs >= recentCutoffMs;
+      return afterRefresh && !explainedByCurrent;
+    });
     if (lingering.length > 0) {
       const newest = Math.max(...lingering.map((s) => s.sampledAtMs));
       out.push({
@@ -468,11 +480,11 @@ export function buildDiagnostics(args: {
           `${lingering.length} muestra(s) de conteo contaron presencia sin un refresco cercano` +
           (lastRefresh === null
             ? " (nunca se registró un refresco `ngp:presencia`): la presencia se contó sin renovarse ⇒ evento colgado."
-            : `: el último refresco real fue hace ${Math.round((nowSec * 1000 - lastRefresh) / 60000)} min, pero se siguió contando después ⇒ evento colgado (huella del falso positivo).`),
+            : `: el último refresco real fue hace ${Math.round((nowMs - lastRefresh) / 60000)} min, pero se siguió contando después ⇒ evento colgado (huella del falso positivo).`),
         detail: {
           lastPresenceRefreshMs: lastRefresh,
           lingeringSamples: lingering.length,
-          newestLingeringSampleAgoSeconds: Math.round((nowSec * 1000 - newest) / 1000),
+          newestLingeringSampleAgoSeconds: Math.max(0, Math.round((nowMs - newest) / 1000)),
         },
       });
     }
