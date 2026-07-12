@@ -34,18 +34,136 @@ function pool(): SimplePool {
   return _pool;
 }
 
-// Conteo instantáneo derivado de NIP-38, en memoria (una sola instancia en
-// self-host): gameId → npubs con estado fresco y no vencido. No hace falta
-// persistir el instante; el histórico para el pico ya sale de
-// `PlayerCountSample` (acá solo agregamos una fuente más, "live-2.0").
-const liveByGame = new Map<string, Set<string>>();
+// Vida máxima que le damos a una presencia en memoria, como tope de seguridad por
+// si un evento declara una expiración NIP-40 absurdamente lejana (el máximo del
+// protocolo NGP es 240s; damos margen por clock drift). Sin esto, un evento con
+// `expiration` bugueada podría dejar a alguien "jugando" para siempre.
+const MAX_PRESENCE_LIFETIME_S = 300;
+// Cuánto recordamos el `created_at` del último clear/tombstone de un jugador para
+// no "resucitarlo" si un relay lento vuelve a servir su evento viejo pre-cierre.
+const TOMBSTONE_TTL_S = 300;
 
-// Marca temporal de la última presencia vista por (juego, pubkey), entre ciclos
-// del sync. Sirve para exigir presencia SOSTENIDA antes de dar por integrada la
-// capacidad: solo si el MISMO jugador renueva su estado NIP-38 (su `created_at`
-// avanza de un ciclo al siguiente) lo contamos como integración. Un evento
-// optimista de un solo click "flota" sobre su TTL sin renovarse → nunca avanza.
-const presenceSeenAt = new Map<string, Map<string, number>>();
+/** Presencia vigente de un jugador en un juego, con su vencimiento efectivo. */
+export type LiveEntry = {
+  npub: string;
+  providerId: string;
+  createdAt: number;
+  /** Instante (epoch s) hasta el que se cuenta: NIP-40 del evento, o fallback. */
+  expiresAt: number;
+};
+
+/**
+ * Estado en memoria del sync. Va en `globalThis` a propósito: Turbopack bundlea
+ * este módulo en varios chunks (el scheduler que lo puebla y las rutas que leen
+ * `getLiveNow` pueden caer en chunks distintos), así que un `const` a nivel de
+ * módulo daría instancias separadas y el badge leería siempre 0. Mismo patrón que
+ * `prisma.ts`. Ver memoria "Turbopack duplica estado".
+ *
+ *  - `byGame`: gameId → (pubkey hex → presencia vigente). Es PERSISTENTE entre
+ *    ciclos: una query flaky que pierde un evento NO borra al jugador; solo sale
+ *    cuando vence (`expiresAt`) o llega un clear (contenido vacío / sin coord).
+ *  - `tombstones`: pubkey → created_at del último clear, anti-resurrección.
+ *  - `seenAt`: gameId → (pubkey → created_at fresco del ciclo), para la racha de
+ *    refresco que exige la auto-detección de integración (`presenceWasRefreshed`).
+ */
+export type LiveState = {
+  byGame: Map<string, Map<string, LiveEntry>>;
+  tombstones: Map<string, number>;
+  seenAt: Map<string, Map<string, number>>;
+};
+
+const _g = globalThis as unknown as { __lunaLivePresence?: LiveState };
+function state(): LiveState {
+  if (!_g.__lunaLivePresence)
+    _g.__lunaLivePresence = { byGame: new Map(), tombstones: new Map(), seenAt: new Map() };
+  return _g.__lunaLivePresence;
+}
+
+/** Observación de un jugador en un ciclo: el último evento NIP-38 ya resuelto. */
+export type PresenceObservation = {
+  pubkey: string;
+  npub: string;
+  /** gameId del catálogo si el estado ancla a un juego vigente; null si no. */
+  gameId: string | null;
+  providerId: string | null;
+  active: boolean;
+  createdAt: number;
+  /** Vencimiento efectivo (ya calculado) si `active`. */
+  expiresAt: number;
+};
+
+function findEntryCreatedAt(
+  byGame: Map<string, Map<string, LiveEntry>>,
+  pubkey: string,
+): number | undefined {
+  for (const m of byGame.values()) {
+    const e = m.get(pubkey);
+    if (e) return e.createdAt;
+  }
+  return undefined;
+}
+
+function removeFromAllGames(byGame: Map<string, Map<string, LiveEntry>>, pubkey: string): void {
+  for (const m of byGame.values()) m.delete(pubkey);
+}
+
+/**
+ * Aplica las observaciones de un ciclo al estado persistente (función PURA sobre
+ * `st`, para poder testearla). Reglas:
+ *   - `d:general` es un slot ÚNICO por jugador: el último evento manda; al procesar
+ *     a un jugador se lo saca de todos los juegos y se lo re-ubica (o se lo baja).
+ *   - anti-resurrección: se ignora un evento cuyo `created_at` no sea MÁS NUEVO que
+ *     el último clear recordado (relay lento sirviendo el estado viejo pre-cierre).
+ *   - staleness: se ignora un evento más viejo que el que ya tenemos vigente.
+ *   - un evento activo anclado a un juego → alta/actualización con su vencimiento.
+ *   - un evento no-activo (contenido vacío / vencido / sin coord del catálogo) →
+ *     clear: se baja al jugador y se recuerda el tombstone.
+ *   - al final se podan las entradas vencidas y los tombstones viejos.
+ * Los jugadores que NO aparecen en `observations` (la query no los trajo) se dejan
+ * intactos: es lo que evita el parpadeo por queries flaky.
+ */
+export function reconcileLivePresence(
+  st: LiveState,
+  observations: PresenceObservation[],
+  nowSec: number,
+): void {
+  for (const o of observations) {
+    const clearedAt = st.tombstones.get(o.pubkey);
+    if (clearedAt !== undefined && o.createdAt <= clearedAt) continue;
+    const existingCreatedAt = findEntryCreatedAt(st.byGame, o.pubkey);
+    if (existingCreatedAt !== undefined && o.createdAt < existingCreatedAt) continue;
+
+    removeFromAllGames(st.byGame, o.pubkey);
+    if (o.active && o.gameId && o.providerId) {
+      let m = st.byGame.get(o.gameId);
+      if (!m) st.byGame.set(o.gameId, (m = new Map()));
+      m.set(o.pubkey, {
+        npub: o.npub,
+        providerId: o.providerId,
+        createdAt: o.createdAt,
+        expiresAt: o.expiresAt,
+      });
+      st.tombstones.delete(o.pubkey);
+    } else {
+      st.tombstones.set(o.pubkey, o.createdAt);
+    }
+  }
+
+  for (const [gameId, m] of st.byGame) {
+    for (const [pk, e] of m) if (e.expiresAt <= nowSec) m.delete(pk);
+    if (m.size === 0) st.byGame.delete(gameId);
+  }
+  for (const [pk, t] of st.tombstones) if (t + TOMBSTONE_TTL_S <= nowSec) st.tombstones.delete(pk);
+}
+
+/** Npubs vigentes (no vencidos) de un juego, desde el estado persistente. */
+function liveNpubsOf(gameId: string, nowSec: number): string[] {
+  const m = state().byGame.get(gameId);
+  if (!m) return [];
+  const out: string[] = [];
+  for (const e of m.values()) if (e.expiresAt > nowSec) out.push(e.npub);
+  return out;
+}
 
 /**
  * ¿Algún jugador RENOVÓ su presencia respecto al ciclo anterior? Es true solo si
@@ -98,64 +216,83 @@ export async function syncLivePresence(): Promise<void> {
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const next = new Map<
-    string,
-    { providerId: string; npubs: Set<string>; createdByPubkey: Map<string, number> }
-  >();
+  const providerByGame = new Map(games.map((g) => [g.id, g.providerId]));
+
+  // Observaciones de ESTE ciclo (último evento por jugador ya deduplicado) y, en
+  // paralelo, los `created_at` frescos por juego para la racha de refresco.
+  const observations: PresenceObservation[] = [];
+  const freshByGame = new Map<string, Map<string, number>>();
   for (const ev of latestByPubkey.values()) {
     // Vigencia y ancla las decide el protocolo (contenido vacío = presencia
     // limpiada; expiración NIP-40 pasada = vencida).
     const parsed = parsePresenceEvent(ev, nowSec);
-    if (!parsed || !parsed.active || !parsed.gameCoord) continue;
-
-    const target = byCoord.get(parsed.gameCoord);
-    if (!target) continue;
-
-    let grp = next.get(target.gameId);
-    if (!grp)
-      next.set(
-        target.gameId,
-        (grp = { providerId: target.providerId, npubs: new Set(), createdByPubkey: new Map() }),
-      );
-    grp.npubs.add(nip19.npubEncode(ev.pubkey));
-    grp.createdByPubkey.set(ev.pubkey, ev.created_at);
+    if (!parsed) continue;
+    const target = parsed.gameCoord ? byCoord.get(parsed.gameCoord) : undefined;
+    const active = parsed.active && !!target;
+    // Vencimiento efectivo: NIP-40 del evento, o fallback a la ventana de lectura,
+    // acotado por el tope de seguridad (evita expiraciones absurdas).
+    const expiresAt = active
+      ? Math.min(
+          parsed.expiresAt ?? ev.created_at + WINDOW_SECONDS,
+          ev.created_at + MAX_PRESENCE_LIFETIME_S,
+        )
+      : 0;
+    observations.push({
+      pubkey: ev.pubkey,
+      npub: nip19.npubEncode(ev.pubkey),
+      gameId: active ? target!.gameId : null,
+      providerId: active ? target!.providerId : null,
+      active,
+      createdAt: ev.created_at,
+      expiresAt,
+    });
+    if (active) {
+      let m = freshByGame.get(target!.gameId);
+      if (!m) freshByGame.set(target!.gameId, (m = new Map()));
+      m.set(ev.pubkey, ev.created_at);
+    }
   }
 
-  liveByGame.clear();
-  for (const [gameId, grp] of next) liveByGame.set(gameId, grp.npubs);
+  // Reconciliación PERSISTENTE: no colapsa el conteo a 0 cuando una query pierde
+  // un evento (parpadeo por relays flaky); solo baja a un jugador cuando vence su
+  // presencia o llega un clear. Ver `reconcileLivePresence`.
+  const st = state();
+  reconcileLivePresence(st, observations, nowSec);
 
   // Detección automática de la presencia NGP: la evidencia de que un juego integró
   // la presencia es ver su estado NIP-38 SOSTENIDO — o sea, RENOVADO. Solo la damos
   // por integrada cuando el MISMO jugador vuelve a firmar su estado entre dos ciclos
   // del sync (su `created_at` avanza), que es lo que hace el gameplay real o la
-  // presencia nativa NGP (refresco cada ~8s). Un evento optimista de un solo click
-  // (la tienda al abrir el juego) "flota" sobre su TTL sin renovarse: su created_at
-  // nunca avanza, así que NO lo contamos — evita el falso "Detectado" que dejaba
-  // pegado un solo click. Se persiste como ping "ngp:presencia" (best-effort; el
-  // throttle dedupea a 1/min por juego) para que el panel marque "Detectado" solo,
-  // sin que el proveedor lo declare a mano.
+  // presencia nativa NGP. Un evento optimista de un solo click "flota" sobre su TTL
+  // sin renovarse: su created_at nunca avanza, así que NO lo contamos — evita el
+  // falso "Detectado". Se persiste como ping "ngp:presencia" (best-effort; el
+  // throttle dedupea a 1/min por juego). Se calcula sobre los eventos FRESCOS de
+  // este ciclo (no el estado persistente), para conservar la semántica de renovación.
   const nextSeen = new Map<string, Map<string, number>>();
-  for (const [gameId, grp] of next) {
-    const refreshed = presenceWasRefreshed(presenceSeenAt.get(gameId), grp.createdByPubkey);
-    nextSeen.set(gameId, grp.createdByPubkey);
+  for (const [gameId, fresh] of freshByGame) {
+    const refreshed = presenceWasRefreshed(st.seenAt.get(gameId), fresh);
+    nextSeen.set(gameId, fresh);
     if (refreshed) {
-      void recordIntegration("ngp:presencia", { providerId: grp.providerId, gameId });
+      const providerId = providerByGame.get(gameId);
+      if (providerId) void recordIntegration("ngp:presencia", { providerId, gameId });
     }
   }
-  // Solo recordamos los juegos con presencia de ESTE ciclo: los que dejaron de
-  // tenerla reinician su racha (su próxima aparición vuelve a ser "primera vista").
-  presenceSeenAt.clear();
-  for (const [gameId, seen] of nextSeen) presenceSeenAt.set(gameId, seen);
+  st.seenAt.clear();
+  for (const [gameId, seen] of nextSeen) st.seenAt.set(gameId, seen);
 
-  // Histórico para el pico del día: una fila por juego con jugadores, mismo
-  // patrón que presence-sampler.ts (source distinta: "live-2.0").
-  const data = [...next.entries()]
-    .filter(([, grp]) => grp.npubs.size > 0)
-    .map(([gameId, grp]) => ({
-      providerId: grp.providerId,
-      gameId,
-      count: grp.npubs.size,
-      npubs: [...grp.npubs].slice(0, 200),
+  // Histórico para el pico del día: una fila por juego, desde el estado RECONCILIADO
+  // (así la curva tampoco parpadea). Mismo patrón que presence-sampler.ts.
+  const data = [...st.byGame.entries()]
+    .map(([gameId, m]) => {
+      const npubs = [...m.values()].filter((e) => e.expiresAt > nowSec).map((e) => e.npub);
+      return { gameId, npubs, providerId: providerByGame.get(gameId) };
+    })
+    .filter((r) => r.npubs.length > 0 && r.providerId)
+    .map((r) => ({
+      providerId: r.providerId!,
+      gameId: r.gameId,
+      count: r.npubs.length,
+      npubs: r.npubs.slice(0, 200),
       source: "live-2.0",
       sampledAt: new Date(),
     }));
@@ -224,7 +361,7 @@ export async function getLiveNow(gameId: string): Promise<number> {
     select: { npub: true },
   });
   const npubs = new Set(restRows.map((r) => r.npub));
-  for (const npub of liveByGame.get(gameId) ?? []) npubs.add(npub);
+  for (const npub of liveNpubsOf(gameId, Math.floor(Date.now() / 1000))) npubs.add(npub);
   return npubs.size;
 }
 
@@ -241,8 +378,8 @@ export function presenceMemorySnapshot(gameId: string): {
   seenAtByPubkey: Record<string, number>;
 } {
   return {
-    liveNpubs: [...(liveByGame.get(gameId) ?? [])],
-    seenAtByPubkey: Object.fromEntries(presenceSeenAt.get(gameId) ?? new Map()),
+    liveNpubs: liveNpubsOf(gameId, Math.floor(Date.now() / 1000)),
+    seenAtByPubkey: Object.fromEntries(state().seenAt.get(gameId) ?? new Map()),
   };
 }
 
