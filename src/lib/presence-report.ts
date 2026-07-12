@@ -212,7 +212,9 @@ function latestByPubkey(events: ReportEvent[]): Map<string, ReportEvent> {
 
 export type PresenceReport = Awaited<ReturnType<typeof buildPresenceReport>>;
 
-export async function buildPresenceReport(gameId: string) {
+const HEX64 = /^[0-9a-f]{64}$/i;
+
+export async function buildPresenceReport(gameId: string, opts?: { pubkey?: string }) {
   const game = await prisma.game.findUnique({
     where: { id: gameId },
     select: {
@@ -247,7 +249,14 @@ export async function buildPresenceReport(gameId: string) {
     // ── 2. Slot compartido `d:general` de cada jugador que alguna vez ancló acá.
     //    Es donde chocan la presencia de la tienda, la del juego y el tombstone;
     //    revela si el clear llegó y si el estado vigente sigue "activo".
-    const pubkeys = [...new Set(coordEvents.map((e) => e.pubkey))];
+    //    Incluimos SIEMPRE el autor de la coord (el dev del juego, `30023:<pk>:<slug>`)
+    //    y un pubkey opcional del pedido: así el tombstone es visible aun cuando ya
+    //    no queda presencia activa anclada (justo tras cerrar el juego).
+    const coordAuthor = coord.split(":")[1];
+    const extraPubkeys = [coordAuthor, opts?.pubkey].filter(
+      (pk): pk is string => typeof pk === "string" && HEX64.test(pk),
+    );
+    const pubkeys = [...new Set([...coordEvents.map((e) => e.pubkey), ...extraPubkeys])];
     let slotEvents: ReportEvent[] = [];
     let slotPerRelay: ReturnType<typeof foldRelayResults>["perRelay"] = [];
     const slotErrors: Record<string, string> = {};
