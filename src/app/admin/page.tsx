@@ -373,6 +373,9 @@ function AdminPageInner() {
           <Link href="/admin/stats" className="btn btn-ghost">
             Estadísticas
           </Link>
+          <Link href="/admin/diagnostico-presencia" className="btn btn-ghost">
+            Diagnóstico presencia
+          </Link>
         </div>
       </div>
 

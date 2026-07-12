@@ -25,6 +25,9 @@ export const LIVE_PRESENCE_SYNC_INTERVAL_MS = Number(
 // cualquiera que siga activo sin traer historial innecesario.
 const WINDOW_SECONDS = 180;
 
+/** Ventana de lectura del sync (segundos), expuesta para el reporte de diagnóstico. */
+export const LIVE_PRESENCE_WINDOW_SECONDS = WINDOW_SECONDS;
+
 let _pool: SimplePool | null = null;
 function pool(): SimplePool {
   if (!_pool) _pool = new SimplePool();
@@ -36,6 +39,31 @@ function pool(): SimplePool {
 // persistir el instante; el histórico para el pico ya sale de
 // `PlayerCountSample` (acá solo agregamos una fuente más, "live-2.0").
 const liveByGame = new Map<string, Set<string>>();
+
+// Marca temporal de la última presencia vista por (juego, pubkey), entre ciclos
+// del sync. Sirve para exigir presencia SOSTENIDA antes de dar por integrada la
+// capacidad: solo si el MISMO jugador renueva su estado NIP-38 (su `created_at`
+// avanza de un ciclo al siguiente) lo contamos como integración. Un evento
+// optimista de un solo click "flota" sobre su TTL sin renovarse → nunca avanza.
+const presenceSeenAt = new Map<string, Map<string, number>>();
+
+/**
+ * ¿Algún jugador RENOVÓ su presencia respecto al ciclo anterior? Es true solo si
+ * un mismo pubkey aparece en ambos ciclos con un `created_at` más nuevo — la
+ * huella del refresco periódico (gameplay real / presencia nativa NGP). Un evento
+ * optimista de un solo click no se renueva: su created_at no cambia → false.
+ * `prev`/`current` son mapas pubkey→created_at (el más nuevo por jugador y ciclo).
+ */
+export function presenceWasRefreshed(
+  prev: Map<string, number> | undefined,
+  current: Map<string, number>,
+): boolean {
+  for (const [pubkey, createdAt] of current) {
+    const prevAt = prev?.get(pubkey);
+    if (prevAt !== undefined && createdAt > prevAt) return true;
+  }
+  return false;
+}
 
 export async function syncLivePresence(): Promise<void> {
   const games = await prisma.game.findMany({
@@ -70,7 +98,10 @@ export async function syncLivePresence(): Promise<void> {
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const next = new Map<string, { providerId: string; npubs: Set<string> }>();
+  const next = new Map<
+    string,
+    { providerId: string; npubs: Set<string>; createdByPubkey: Map<string, number> }
+  >();
   for (const ev of latestByPubkey.values()) {
     // Vigencia y ancla las decide el protocolo (contenido vacío = presencia
     // limpiada; expiración NIP-40 pasada = vencida).
@@ -81,23 +112,40 @@ export async function syncLivePresence(): Promise<void> {
     if (!target) continue;
 
     let grp = next.get(target.gameId);
-    if (!grp) next.set(target.gameId, (grp = { providerId: target.providerId, npubs: new Set() }));
+    if (!grp)
+      next.set(
+        target.gameId,
+        (grp = { providerId: target.providerId, npubs: new Set(), createdByPubkey: new Map() }),
+      );
     grp.npubs.add(nip19.npubEncode(ev.pubkey));
+    grp.createdByPubkey.set(ev.pubkey, ev.created_at);
   }
 
   liveByGame.clear();
   for (const [gameId, grp] of next) liveByGame.set(gameId, grp.npubs);
 
-  // Detección automática de la presencia NGP: ver un estado NIP-38 vivo anclado a
-  // la coordenada del juego ES la evidencia de que integró la presencia. La
-  // persistimos como ping "ngp:presencia" (best-effort; el throttle dedupea a
-  // 1/min por juego) para que el panel de integración marque "Detectado" solo,
-  // sin que el proveedor tenga que declararlo a mano. NIP-38 es efímero: sin este
-  // registro continuo, la evidencia se perdería entre corridas del probador.
+  // Detección automática de la presencia NGP: la evidencia de que un juego integró
+  // la presencia es ver su estado NIP-38 SOSTENIDO — o sea, RENOVADO. Solo la damos
+  // por integrada cuando el MISMO jugador vuelve a firmar su estado entre dos ciclos
+  // del sync (su `created_at` avanza), que es lo que hace el gameplay real o la
+  // presencia nativa NGP (refresco cada ~8s). Un evento optimista de un solo click
+  // (la tienda al abrir el juego) "flota" sobre su TTL sin renovarse: su created_at
+  // nunca avanza, así que NO lo contamos — evita el falso "Detectado" que dejaba
+  // pegado un solo click. Se persiste como ping "ngp:presencia" (best-effort; el
+  // throttle dedupea a 1/min por juego) para que el panel marque "Detectado" solo,
+  // sin que el proveedor lo declare a mano.
+  const nextSeen = new Map<string, Map<string, number>>();
   for (const [gameId, grp] of next) {
-    if (grp.npubs.size === 0) continue;
-    void recordIntegration("ngp:presencia", { providerId: grp.providerId, gameId });
+    const refreshed = presenceWasRefreshed(presenceSeenAt.get(gameId), grp.createdByPubkey);
+    nextSeen.set(gameId, grp.createdByPubkey);
+    if (refreshed) {
+      void recordIntegration("ngp:presencia", { providerId: grp.providerId, gameId });
+    }
   }
+  // Solo recordamos los juegos con presencia de ESTE ciclo: los que dejaron de
+  // tenerla reinician su racha (su próxima aparición vuelve a ser "primera vista").
+  presenceSeenAt.clear();
+  for (const [gameId, seen] of nextSeen) presenceSeenAt.set(gameId, seen);
 
   // Histórico para el pico del día: una fila por juego con jugadores, mismo
   // patrón que presence-sampler.ts (source distinta: "live-2.0").
@@ -178,6 +226,24 @@ export async function getLiveNow(gameId: string): Promise<number> {
   const npubs = new Set(restRows.map((r) => r.npub));
   for (const npub of liveByGame.get(gameId) ?? []) npubs.add(npub);
   return npubs.size;
+}
+
+/**
+ * Foto del estado en memoria del sync para un juego, para el reporte de
+ * diagnóstico de presencia (admin). `liveNpubs` = a quién cuenta AHORA como
+ * "jugando" (lo que devuelve `getLiveNow` por la vía NGP); `seenAtByPubkey` =
+ * el `created_at` del último ciclo por jugador (insumo de `presenceWasRefreshed`,
+ * o sea la racha de renovación que exige la auto-detección de integración).
+ * Solo lee los mapas en memoria; no toca relays ni DB.
+ */
+export function presenceMemorySnapshot(gameId: string): {
+  liveNpubs: string[];
+  seenAtByPubkey: Record<string, number>;
+} {
+  return {
+    liveNpubs: [...(liveByGame.get(gameId) ?? [])],
+    seenAtByPubkey: Object.fromEntries(presenceSeenAt.get(gameId) ?? new Map()),
+  };
 }
 
 /** Pico de jugadores concurrentes del juego en las últimas 24 h (todas las fuentes). */
