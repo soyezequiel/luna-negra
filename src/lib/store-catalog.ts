@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { categoryQuerySlugs, normalizeCategories } from "@/lib/categories";
 import { scoreGamesByNgp, NGP_TOTAL_CAPS } from "@/lib/integration-telemetry";
 import { getReviewSummary, getReviewSummaries } from "@/lib/reviews";
+import { parseScreenshotUrls, parseVideoUrls } from "@/lib/game-media";
 
 // Tag único de todo lo que dependa del catálogo publicado (Home + ficha + relacionados).
 export const CATALOG_TAG = "games";
@@ -37,6 +38,12 @@ export type CatalogGame = {
   priceSats: number;
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
+  // Capturas de pantalla del juego (URLs ya parseadas del JSON). Alimentan la
+  // grilla 2×2 del destacado y el popup de la card del catálogo.
+  screenshots: string[];
+  // Videos (trailers) del juego. El banner del destacado reproduce el primero
+  // en hover (mute, sin controles).
+  videos: string[];
   createdAt: string; // ISO: ya serializado para el Data Cache
   // Capacidades de Nostr Games Protocol (NGP) que el juego tiene ACTIVAS (0–ngpTotal),
   // con la misma regla que el panel "Capacidades de NGP activas". Es lo que rankea y
@@ -64,6 +71,8 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       priceSats: true,
       coverUrl: true,
       horizontalCoverUrl: true,
+      screenshots: true,
+      videos: true,
       createdAt: true,
       manualCaps: true,
       isBeta: true,
@@ -87,6 +96,8 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       priceSats: g.priceSats,
       coverUrl: g.coverUrl,
       horizontalCoverUrl: g.horizontalCoverUrl,
+      screenshots: parseScreenshotUrls(g.screenshots),
+      videos: parseVideoUrls(g.videos),
       createdAt: g.createdAt.toISOString(),
       ngpActive: scores.get(g.id) ?? 0,
       ngpTotal: NGP_TOTAL_CAPS,

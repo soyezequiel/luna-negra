@@ -581,6 +581,8 @@ export default async function GamePage({
                   slug: g.slug,
                   title: g.title,
                   coverUrl: g.coverUrl,
+                  horizontalCoverUrl: g.horizontalCoverUrl,
+                  screenshots: parseScreenshotUrls(g.screenshots),
                   priceSats: g.priceSats,
                   categories: g.categories,
                   reviewLabel: g.reviews?.label ?? null,

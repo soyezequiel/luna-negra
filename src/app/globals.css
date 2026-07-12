@@ -327,32 +327,6 @@ h1, h2, h3 {
   text-align: center;
   box-shadow: 0 2px 10px rgba(255, 247, 207, 0.55);
 }
-.summer-carousel-track {
-  scrollbar-width: none;
-}
-.summer-carousel-track::-webkit-scrollbar {
-  display: none;
-}
-.summer-carousel-arrow {
-  position: absolute;
-  top: 50%;
-  z-index: 4;
-  display: none;
-  width: 54px;
-  height: 86px;
-  transform: translateY(-50%);
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.74);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 92px;
-  line-height: 0.6;
-  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
-  pointer-events: none;
-}
-.summer-promo-card {
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
 @media (min-width: 640px) {
   .summer-sale-title {
     font-size: 64px;
@@ -367,11 +341,6 @@ h1, h2, h3 {
     padding-inline: 14px;
   }
 }
-@media (min-width: 880px) {
-  .summer-carousel-arrow {
-    display: flex;
-  }
-}
 @media (min-width: 1100px) {
   .summer-sale-title {
     font-size: 82px;
@@ -381,14 +350,6 @@ h1, h2, h3 {
   }
   .summer-sale-ribbon {
     font-size: 15px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .summer-promo-card {
-    transition: none;
-  }
-  .summer-promo-card:hover {
-    transform: none;
   }
 }
 
@@ -652,6 +613,41 @@ h1, h2, h3 {
   80%, 100% { transform: scale(2.4); opacity: 0; }
 }
 
+/* Entrada de cards del catálogo: suben y aparecen, con stagger por índice
+   (--i) para que la grilla se arme en cascada al montar/filtrar. */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ln-fade-up {
+  animation: fadeInUp 0.38s ease both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* Popup de detalle al hover de una card. */
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.ln-pop-in {
+  animation: popIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Ken-burns sutil del arte dentro del popup. */
+@keyframes kenburns {
+  from { transform: scale(1.06); }
+  to { transform: scale(1.16); }
+}
+.ln-kenburns {
+  animation: kenburns 6s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ln-fade-up,
+  .ln-pop-in,
+  .ln-kenburns { animation: none; }
+}
+
 /* Skeletons: barrido shimmer sobre superficie hundida. */
 .ln-shimmer {
   background:
@@ -733,5 +729,10 @@ html.no-gpu [class*="backdrop-blur"] {
 /* Skeletons: el shimmer infinito repinta sin parar mientras hay
    contenido cargando. Dejamos la superficie hundida estática. */
 html.no-gpu .ln-shimmer {
+  animation: none;
+}
+
+/* Ken-burns infinito del popup: mismo motivo que el shimmer. */
+html.no-gpu .ln-kenburns {
   animation: none;
 }

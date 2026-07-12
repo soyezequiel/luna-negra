@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import LunaNegraBackground from "@/components/LunaNegraBackground";
-import { GameCard, NgpBadge } from "@/components/game-card";
+import { GameCard } from "@/components/game-card";
+import { FeaturedCarousel } from "@/components/featured-carousel";
 import { SocialRail } from "@/components/social-rail";
 import {
   CATEGORIES,
@@ -9,8 +9,6 @@ import {
   normalizeCategory,
   categoryLabel,
 } from "@/lib/categories";
-import { hueFromSlug } from "@/lib/format";
-import { normalizeImageUrl } from "@/lib/game-media";
 import { getPublishedCatalog } from "@/lib/store-catalog";
 import { getSession } from "@/lib/auth";
 import { userSeesBetaGames } from "@/lib/beta";
@@ -124,59 +122,6 @@ export default async function StorePage({
               </p>
             </div>
           </div>
-
-          {promoGames.length > 0 ? (
-            <div className="relative z-20 mx-auto -mt-[126px] max-w-[1240px] px-[22px] ln:-mt-[134px]">
-              <div className="relative">
-                {promoGames.length > 1 ? (
-                  <>
-                    <span
-                      className="summer-carousel-arrow left-0 ln:left-3"
-                      aria-hidden
-                    >
-                      &lsaquo;
-                    </span>
-                    <span
-                      className="summer-carousel-arrow right-0 ln:right-3"
-                      aria-hidden
-                    >
-                      &rsaquo;
-                    </span>
-                  </>
-                ) : null}
-
-                <div className="summer-carousel-track flex snap-x justify-start gap-4 overflow-x-auto pb-3 pr-2 ln:justify-center ln:overflow-hidden ln:pb-0">
-                  {promoGames.map((g) => (
-                    <Link
-                      key={g.id}
-                      href={`/game/${g.slug}`}
-                      aria-label={`Ver ${g.title}`}
-                      className="summer-promo-card cover group relative block aspect-[3/4] w-[min(76vw,340px)] shrink-0 snap-center overflow-hidden rounded-[2px] bg-ln-bg-deep shadow-[0_18px_40px_rgba(0,0,0,.42)] transition-transform duration-150 hover:-translate-y-1 ln:w-[clamp(260px,23vw,360px)]"
-                      style={{ "--h": hueFromSlug(g.slug) } as CSSProperties}
-                    >
-                      {g.coverUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={normalizeImageUrl(g.coverUrl)}
-                          alt=""
-                          referrerPolicy="no-referrer"
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="absolute inset-0 flex items-center justify-center p-5 text-center font-display text-xl font-extrabold text-white">
-                          {g.title}
-                        </span>
-                      )}
-                      {/* Sello NGP: mismas capacidades activas que la card del catálogo. */}
-                      <div className="absolute right-2.5 top-2.5 z-10">
-                        <NgpBadge active={g.ngpActive} total={g.ngpTotal} />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : (
         <section className="mb-8">
@@ -188,6 +133,28 @@ export default async function StorePage({
           </p>
         </section>
       )}
+
+      {cleanHome && promoGames.length > 0 ? (
+        <section className="mb-10">
+          <h2 className="mb-4 text-[21px] font-semibold text-ln-text">
+            Destacados y recomendados
+          </h2>
+          <FeaturedCarousel
+            games={promoGames.map((g) => ({
+              slug: g.slug,
+              title: g.title,
+              coverUrl: g.coverUrl,
+              horizontalCoverUrl: g.horizontalCoverUrl,
+              screenshots: g.screenshots,
+              videos: g.videos,
+              priceSats: g.priceSats,
+              categories: g.categories,
+              ngpActive: g.ngpActive,
+              ngpTotal: g.ngpTotal,
+            }))}
+          />
+        </section>
+      ) : null}
 
       {cleanHome ? (
         <form action="/" method="get" className="mb-6 ln:hidden">
@@ -242,13 +209,16 @@ export default async function StorePage({
           <>
             {gridGames.length > 0 ? (
               <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(214px,1fr))]">
-                {gridGames.map((g) => (
+                {gridGames.map((g, i) => (
                   <GameCard
                     key={g.id}
+                    index={i}
                     game={{
                       slug: g.slug,
                       title: g.title,
                       coverUrl: g.coverUrl,
+                      horizontalCoverUrl: g.horizontalCoverUrl,
+                      screenshots: g.screenshots,
                       priceSats: g.priceSats,
                       categories: g.categories,
                       ngpActive: g.ngpActive,
