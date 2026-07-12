@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { presenceWasRefreshed } from "@/lib/live-presence";
+import {
+  presenceWasRefreshed,
+  reconcileLivePresence,
+  type LiveState,
+  type PresenceObservation,
+} from "@/lib/live-presence";
 
 // La detección de integración de presencia (ping "ngp:presencia") solo debe
 // dispararse con presencia SOSTENIDA — un jugador que renueva su estado NIP-38
@@ -45,5 +50,72 @@ describe("presenceWasRefreshed", () => {
     const prev = new Map([["pkA", 1000]]);
     const current = new Map([["pkA", 990]]);
     expect(presenceWasRefreshed(prev, current)).toBe(false);
+  });
+});
+
+// El pico del día (PlayerCountSample) solo debe contar presencias CONFIRMADAS: una
+// apertura de un solo disparo, que nunca renueva su estado NIP-38, no puede fijar el
+// pico de 24h ni dejar la huella de "conteo colgado". `reconcileLivePresence` marca
+// `confirmed` recién cuando el mismo jugador re-firma (created_at avanza entre ciclos).
+describe("reconcileLivePresence: confirmación por renovación", () => {
+  const GAME = "game1";
+  const PROVIDER = "prov1";
+
+  function freshState(): LiveState {
+    return { byGame: new Map(), tombstones: new Map(), seenAt: new Map() };
+  }
+
+  function obs(pubkey: string, createdAt: number, nowSec: number): PresenceObservation {
+    return {
+      pubkey,
+      npub: `npub_${pubkey}`,
+      gameId: GAME,
+      providerId: PROVIDER,
+      active: true,
+      createdAt,
+      expiresAt: nowSec + 180, // dentro de la ventana de vigencia
+    };
+  }
+
+  function entry(st: LiveState, pubkey: string) {
+    return st.byGame.get(GAME)?.get(pubkey);
+  }
+
+  it("una primera vista queda SIN confirmar (no cuenta al pico)", () => {
+    const st = freshState();
+    const now = 10_000;
+    reconcileLivePresence(st, [obs("pkA", now - 5, now)], now);
+    expect(entry(st, "pkA")).toBeDefined();
+    expect(entry(st, "pkA")?.confirmed).toBe(false);
+  });
+
+  it("se confirma cuando el mismo jugador renueva (created_at avanza)", () => {
+    const st = freshState();
+    const now1 = 10_000;
+    reconcileLivePresence(st, [obs("pkA", now1 - 5, now1)], now1);
+    const now2 = now1 + 40;
+    reconcileLivePresence(st, [obs("pkA", now2 - 2, now2)], now2); // re-firma
+    expect(entry(st, "pkA")?.confirmed).toBe(true);
+  });
+
+  it("una re-entrega del MISMO evento (created_at igual) no confirma", () => {
+    const st = freshState();
+    const now1 = 10_000;
+    const createdAt = now1 - 5;
+    reconcileLivePresence(st, [obs("pkA", createdAt, now1)], now1);
+    const now2 = now1 + 30;
+    reconcileLivePresence(st, [obs("pkA", createdAt, now2)], now2); // mismo created_at
+    expect(entry(st, "pkA")?.confirmed).toBe(false);
+  });
+
+  it("una vez confirmada, se mantiene confirmada en ciclos siguientes", () => {
+    const st = freshState();
+    const now1 = 10_000;
+    reconcileLivePresence(st, [obs("pkA", now1 - 5, now1)], now1);
+    const now2 = now1 + 40;
+    reconcileLivePresence(st, [obs("pkA", now2 - 2, now2)], now2); // confirma
+    const now3 = now2 + 40;
+    reconcileLivePresence(st, [obs("pkA", now3 - 2, now3)], now3);
+    expect(entry(st, "pkA")?.confirmed).toBe(true);
   });
 });

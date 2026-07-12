@@ -52,6 +52,15 @@ export type LiveEntry = {
   createdAt: number;
   /** Instante (epoch s) hasta el que se cuenta: NIP-40 del evento, o fallback. */
   expiresAt: number;
+  /**
+   * ¿Se sostuvo al menos una renovación? Es true cuando el mismo jugador re-firmó
+   * su presencia (su `created_at` avanzó respecto a la entrada anterior) — la huella
+   * del heartbeat real. Una apertura de un solo disparo (nunca renueva) queda en
+   * false. El badge "jugando ahora" cuenta ambas (detección instantánea), pero el
+   * histórico/pico (`PlayerCountSample`) SOLO cuenta las confirmadas, para que una
+   * apertura fugaz no infle el pico de 24h ni deje la huella de "conteo colgado".
+   */
+  confirmed: boolean;
 };
 
 /**
@@ -274,13 +283,13 @@ function ensureClearsWatch(): void {
   }));
 }
 
-function findEntryCreatedAt(
+function findEntry(
   byGame: Map<string, Map<string, LiveEntry>>,
   pubkey: string,
-): number | undefined {
+): LiveEntry | undefined {
   for (const m of byGame.values()) {
     const e = m.get(pubkey);
-    if (e) return e.createdAt;
+    if (e) return e;
   }
   return undefined;
 }
@@ -312,18 +321,24 @@ export function reconcileLivePresence(
   for (const o of observations) {
     const clearedAt = st.tombstones.get(o.pubkey);
     if (clearedAt !== undefined && o.createdAt <= clearedAt) continue;
-    const existingCreatedAt = findEntryCreatedAt(st.byGame, o.pubkey);
-    if (existingCreatedAt !== undefined && o.createdAt < existingCreatedAt) continue;
+    const existing = findEntry(st.byGame, o.pubkey);
+    if (existing !== undefined && o.createdAt < existing.createdAt) continue;
 
     removeFromAllGames(st.byGame, o.pubkey);
     if (o.active && o.gameId && o.providerId) {
       let m = st.byGame.get(o.gameId);
       if (!m) st.byGame.set(o.gameId, (m = new Map()));
+      // Confirmada = el jugador ya estaba y re-firmó (created_at avanzó), o ya venía
+      // confirmado de antes. Una primera vista queda sin confirmar hasta que renueve.
+      const confirmed = existing
+        ? existing.confirmed || o.createdAt > existing.createdAt
+        : false;
       m.set(o.pubkey, {
         npub: o.npub,
         providerId: o.providerId,
         createdAt: o.createdAt,
         expiresAt: o.expiresAt,
+        confirmed,
       });
       st.tombstones.delete(o.pubkey);
     } else {
@@ -448,10 +463,16 @@ export async function syncLivePresence(): Promise<void> {
   for (const [gameId, seen] of nextSeen) st.seenAt.set(gameId, seen);
 
   // Histórico para el pico del día: una fila por juego, desde el estado RECONCILIADO
-  // (así la curva tampoco parpadea). Mismo patrón que presence-sampler.ts.
+  // (así la curva tampoco parpadea). Mismo patrón que presence-sampler.ts. Solo
+  // contamos presencias CONFIRMADAS (renovadas al menos una vez): una apertura de un
+  // solo disparo no debe fijar el pico de 24h ni dejar la huella de conteo colgado
+  // (COUNTED_WITHOUT_REFRESH). El badge en vivo sí las cuenta (getLiveNow), pero el
+  // pico refleja concurrencia sostenida.
   const data = [...st.byGame.entries()]
     .map(([gameId, m]) => {
-      const npubs = [...m.values()].filter((e) => e.expiresAt > nowSec).map((e) => e.npub);
+      const npubs = [...m.values()]
+        .filter((e) => e.confirmed && e.expiresAt > nowSec)
+        .map((e) => e.npub);
       return { gameId, npubs, providerId: providerByGame.get(gameId) };
     })
     .filter((r) => r.npubs.length > 0 && r.providerId)

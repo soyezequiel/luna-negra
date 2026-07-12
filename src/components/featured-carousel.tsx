@@ -266,9 +266,14 @@ export function FeaturedCarousel({ games }: { games: FeaturedGame[] }) {
             </p>
           ) : null}
 
-          {/* Grilla 2×2 de capturas (solo si el juego tiene). */}
+          {/* Grilla 2×2 de capturas (solo si el juego tiene). Al pasar el mouse
+              por una miniatura se muestra en el banner; al salir de la grilla,
+              el banner vuelve a la imagen original (shot = null). */}
           {hasShots ? (
-            <div className="mt-3.5 grid grid-cols-2 gap-2">
+            <div
+              className="mt-3.5 grid grid-cols-2 gap-2"
+              onPointerLeave={() => setShot(null)}
+            >
               {shots.slice(0, 4).map((src, i) => {
                 const active = i === shot;
                 return (
