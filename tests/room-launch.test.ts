@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  startPlayingPresence: vi.fn(),
   watchGameWindow: vi.fn(),
-}));
-
-vi.mock("@/lib/playing-presence", () => ({
-  startPlayingPresence: mocks.startPlayingPresence,
 }));
 
 vi.mock("@/lib/invite", () => ({
@@ -45,7 +40,6 @@ function okResponse(body: unknown) {
 beforeEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
-  mocks.startPlayingPresence.mockReset();
   mocks.watchGameWindow.mockReset();
 });
 
@@ -85,14 +79,9 @@ describe("joinRoomAndPlay", () => {
     expect(gameWin.location.href).toBe(
       "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example&inviteToken=invite-token&room=ROOM1",
     );
-    expect(mocks.startPlayingPresence).toHaveBeenCalledWith({
-      title: "TETRA",
-      link: "https://luna.example/game/tetris?room=ROOM1",
-      slug: "tetris",
-    });
   });
 
-  it("reports popup-blocked via onBlocked and skips presence when window.open returns null", async () => {
+  it("reports popup-blocked via onBlocked when window.open returns null", async () => {
     const onBlocked = vi.fn();
     const onError = vi.fn();
     vi.stubGlobal("window", {
@@ -122,7 +111,6 @@ describe("joinRoomAndPlay", () => {
       "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example&inviteToken=invite-token&room=ROOM1",
     );
     expect(onError).not.toHaveBeenCalled();
-    expect(mocks.startPlayingPresence).not.toHaveBeenCalled();
     expect(mocks.watchGameWindow).not.toHaveBeenCalled();
   });
 
@@ -183,7 +171,6 @@ describe("joinRoomAndPlay", () => {
 
     expect(gameWin.close).toHaveBeenCalledTimes(1);
     expect(gameWin.location.href).toBe("");
-    expect(mocks.startPlayingPresence).not.toHaveBeenCalled();
   });
 });
 
@@ -212,11 +199,6 @@ describe("launchStandaloneGame", () => {
     expect(gameWin.location.href).toBe(
       "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example",
     );
-    expect(mocks.startPlayingPresence).toHaveBeenCalledWith({
-      title: "TETRA",
-      link: "https://luna.example/game/tetris",
-      slug: "tetris",
-    });
   });
 
   it("returns popup-blocked with the destination URL when no window can be opened", async () => {
@@ -238,7 +220,6 @@ describe("launchStandaloneGame", () => {
       reason: "popup-blocked",
       dest: "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example",
     });
-    expect(mocks.startPlayingPresence).not.toHaveBeenCalled();
   });
 
   it("notifies opened game windows when Luna Negra logs out", async () => {

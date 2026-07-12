@@ -79,22 +79,18 @@ function hasLunaNegraLabel(ev: { tags: string[][] }): boolean {
 export type StoreCoords = {
   pubkey: string | null;
   coords: Set<string>;
-  /** slug → coord, para anclar la presencia que firma la propia tienda. */
+  /** slug → coord de cada juego publicado. */
   coordBySlug: Record<string, string>;
-  /** ¿El admin dejó activa la presencia optimista al abrir un juego? Default true
-   * (comportamiento actual). Lo lee `startPlayingPresence` para decidir si publica
-   * el estado NIP-38 al hacer click o si delega toda la presencia al juego. */
-  clickPresenceEnabled: boolean;
 };
 
-// Compat: las funciones puras (selectFreshStatuses / isLingeringPlayingStatus)
-// aceptan también el string legacy "pubkey de la tienda" (tests y callers viejos).
+// Compat: las funciones puras (selectFreshStatuses) aceptan también el string
+// legacy "pubkey de la tienda" (tests y callers viejos).
 export type KnownCoords = StoreCoords | string | null | undefined;
 
 function normalizeKnown(known: KnownCoords): StoreCoords | null {
   if (!known) return null;
   if (typeof known === "string") {
-    return { pubkey: known, coords: new Set(), coordBySlug: {}, clickPresenceEnabled: true };
+    return { pubkey: known, coords: new Set(), coordBySlug: {} };
   }
   return known;
 }
@@ -140,24 +136,12 @@ async function resolveStoreCoords(): Promise<StoreCoords | null> {
       pubkey: typeof data?.pubkey === "string" ? data.pubkey : null,
       coords: new Set(Object.values(coordBySlug)),
       coordBySlug,
-      // Ausente (endpoint viejo cacheado) = encendido, el comportamiento actual.
-      clickPresenceEnabled: data?.clickPresenceEnabled !== false,
     };
     _storeCoordsAt = Date.now();
   } catch {
     // Sin red: conservamos lo último resuelto (mejor stale que nada).
   }
   return _storeCoords;
-}
-
-/**
- * ¿El admin dejó activa la presencia optimista al abrir un juego? La lee la config
- * pública de la tienda (`/api/store/coords`, cacheada ~2min). Default true: si el
- * server no respondió o es una versión vieja, mantenemos el comportamiento actual.
- */
-export async function isClickPresenceEnabled(): Promise<boolean> {
-  const sc = await resolveStoreCoords();
-  return sc?.clickPresenceEnabled ?? true;
 }
 
 export function npubOf(pubkey: string): string {
@@ -675,228 +659,12 @@ export async function publishStatus(content: string): Promise<void> {
   );
 }
 
-/**
- * Publica/renueva la presencia "jugando X" (NIP-38). Best-effort: incluye link
- * al juego y una expiración corta (NIP-40). El lifecycle lo gobierna
- * `playing-presence.ts`: se re-llama mientras la API confirme que el jugador sigue
- * jugando y la expiración corta hace que el estado se auto-limpie si la tienda
- * muere sin poder publicar el `clearPlayingStatus`. El contenido NO lleva emoji
- * (la UI antepone 🎮).
- *
- * `stateLabel` (opcional) enriquece el texto con lo que el juego reportó en su
- * heartbeat (`GamePresence.stateJson` → `deriveStateLabel`, ver social.ts):
- * "Jugando Tetris — nivel 7 en Luna Negra". Sigue siendo texto plano NIP-38, lo
- * lee cualquier cliente Nostr.
- */
-export async function publishPlayingStatus(
-  title: string,
-  gameUrl?: string,
-  ttlSeconds = 30,
-  stateLabel?: string | null,
-  slug?: string,
-): Promise<void> {
-  const tags: string[][] = [["d", "general"], lunaNegraStatusTag()];
-  if (gameUrl) tags.push(["r", gameUrl]);
-  // Ancla la presencia a la coordenada REAL del juego (`a`=Game.nostrCoord, que
-  // con artículos provider-firmados lleva la pubkey del PROVEEDOR, no la de la
-  // tienda), ADEMÁS de la etiqueta `l:luna-negra`. Sin este `a`, el sync de
-  // background del server (live-presence.ts, que consulta los relays por `#a` =
-  // nostrCoord) no ve la presencia → no cuenta "jugando ahora" NGP ni detecta la
-  // integración de presencia. El rail de amigos ya la aceptaba por etiqueta O
-  // coordenada, así que el tag extra no lo afecta.
-  if (slug) {
-    const known = await resolveStoreCoords();
-    const coord =
-      known?.coordBySlug[slug] ??
-      (known?.pubkey ? `30023:${known.pubkey}:${slug}` : null);
-    if (coord) tags.push(["a", coord]);
-  }
-  tags.push(["expiration", String(now() + ttlSeconds)]);
-  const content = stateLabel
-    ? `Jugando ${title} — ${stateLabel} en Luna Negra`
-    : `Jugando ${title} en Luna Negra`;
-  await publish(
-    await sign({
-      kind: 30315,
-      created_at: now(),
-      tags,
-      content,
-    }),
-  );
-}
-
-/**
- * ¿El usuario tiene colgado un estado NIP-38 "jugando X" de ESTA tienda que
- * todavía se ve fresco? Sirve para detectar presencias que quedaron vivas cuando
- * la pestaña de la tienda se cerró de golpe y el `clearPlayingStatus` nunca salió.
- *
- * Distingue una PRESENCIA DE JUEGO (marca luna-negra o coordenada del juego, con
- * forma de "jugando": expiración NIP-40, tag `r` de link, o el texto "Jugando … en
- * Luna Negra") de un ESTADO MANUAL de texto libre (`publishStatus`), que NO hay que
- * tocar. Sólo devuelve true para lo primero, así el reconciliador no borra un
- * estado que el usuario puso a mano.
- */
-export async function hasStalePlayingStatus(pubkey: string): Promise<boolean> {
-  const [evs, known] = await Promise.all([
-    querySyncByAuthors([pubkey], { kinds: [30315], "#d": ["general"] }),
-    resolveStoreCoords(),
-  ]);
-  let latest: StatusEvent | undefined;
-  for (const ev of evs) {
-    if (!latest || ev.created_at > latest.created_at) latest = ev;
-  }
-  return isLingeringPlayingStatus(latest, known);
-}
-
-/**
- * Decisión pura: ¿este es el último estado y es una presencia de juego de esta
- * tienda todavía vigente (no un estado manual, no vencido)? Extraído para poder
- * testearlo sin tocar relays.
- */
-// Umbral para dar por COLGADA una presencia de juego auto-firmada SIN expiración
-// NIP-40: el juego re-firma su presencia cada ~2-4 min mientras jugás (spec NGP,
-// `expiration` de 60-240s), así que una partida en curso tiene `created_at`
-// reciente; una con `created_at` más viejo que esto quedó de una sesión ya cerrada.
-// Generoso a propósito para no borrar NUNCA la presencia de una partida activa.
-const STALE_GAME_PRESENCE_SECONDS = 600; // 10 min
-
-export function isLingeringPlayingStatus(
-  latest: StatusEvent | undefined,
-  known?: KnownCoords,
-  nowSec: number = now(),
-): boolean {
-  if (!latest || !latest.content) return false;
-  const byCoord = hasKnownGameCoord(latest, known);
-  const byLabel = hasLunaNegraLabel(latest);
-  if (!byLabel && !byCoord) return false;
-
-  // Vigencia (misma regla que selectFreshStatuses): si ya venció no se muestra,
-  // así que no hace falta limpiarlo.
-  const exp = latest.tags.find((t) => t[0] === "expiration")?.[1];
-  const expiresAt = exp !== undefined ? Number(exp) : null;
-  if (expiresAt !== null) {
-    if (!Number.isFinite(expiresAt) || expiresAt <= nowSec) return false;
-  } else if (latest.created_at + STATUS_FALLBACK_TTL_SECONDS <= nowSec) {
-    return false;
-  }
-
-  // Presencia anclada a la coordenada de un juego (NGP, auto-firmada por el propio
-  // juego, p. ej. Tetra/Ajedrez). Es el juego —no la tienda— quien gobierna su
-  // ciclo de vida, y NO podemos preguntar `/api/me/playing` (los juegos 2.0 no
-  // reportan `GamePresence`), así que hay que ser muy conservador para no borrar la
-  // presencia de una partida EN CURSO:
-  if (byCoord) {
-    // Con expiración NIP-40 futura, el juego declara explícitamente que sigue
-    // activo → jamás la tocamos (borrarla nukearía la presencia en vivo, que es
-    // justo lo que rompía que "no se viera a nadie jugando").
-    if (expiresAt !== null) return false;
-    // Sin NIP-40 sólo la damos por colgada si su `created_at` es claramente VIEJO
-    // (el juego dejó de re-firmar hace rato = sesión cerrada). Una recién firmada
-    // (partida activa) se respeta.
-    return latest.created_at + STALE_GAME_PRESENCE_SECONDS <= nowSec;
-  }
-
-  // Path por etiqueta `l:luna-negra`: ahí sí puede haber un estado manual de texto
-  // libre (`publishStatus` lleva la misma etiqueta), así que exigimos la "forma de
-  // jugando" (expiración, link `r`, o el texto que firma la tienda) para no borrar
-  // un estado que el usuario puso a mano.
-  return (
-    latest.tags.some((t) => t[0] === "expiration") ||
-    latest.tags.some((t) => t[0] === "r") ||
-    /jugando .+ en luna negra/i.test(latest.content)
-  );
-}
-
-/**
- * Decisión pura: ¿la presencia NIP-38 vigente la firmó el PROPIO juego (anclada a
- * la coordenada de un juego del catálogo y SIN la etiqueta `l:luna-negra` que la
- * tienda pone en su presencia optimista)? La tienda lo usa para NO pisar con su
- * clear la presencia auto-firmada de un juego 2.0: si el juego ya tomó el control
- * del estado `d:general`, la tienda se corre en vez de limpiarlo. Extraído para
- * testear sin tocar relays.
- */
-export function isGameSignedPresence(
-  latest: StatusEvent | undefined,
-  known?: KnownCoords,
-  nowSec: number = now(),
-): boolean {
-  if (!latest || !latest.content) return false;
-  // Con la etiqueta de la tienda ⇒ es NUESTRA presencia optimista, no la del juego.
-  if (hasLunaNegraLabel(latest)) return false;
-  // Debe anclar a la coordenada de un juego del catálogo (la firma el juego).
-  if (!hasKnownGameCoord(latest, known)) return false;
-  // Y estar vigente (misma regla que selectFreshStatuses).
-  const exp = latest.tags.find((t) => t[0] === "expiration")?.[1];
-  if (exp) {
-    const expiresAt = Number(exp);
-    if (!Number.isFinite(expiresAt) || expiresAt <= nowSec) return false;
-  } else if (latest.created_at + STATUS_FALLBACK_TTL_SECONDS <= nowSec) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * ¿El juego ya auto-firmó su propia presencia NIP-38 (kind:30315) y tomó el control
- * del estado `d:general`? Consulta el último estado del usuario en los relays y
- * delega en `isGameSignedPresence`. La tienda la llama antes de limpiar su presencia
- * optimista al lanzar un juego 2.0, para no pisar la que firma el propio juego.
- * Best-effort: false si no hay signer/señal clara.
- */
-export async function hasGameSignedPresence(): Promise<boolean> {
-  const signer = getActiveSigner() ?? (await restoreSigner());
-  if (!signer) return false;
-  const pubkey = await signer.getPublicKey().catch(() => null);
-  if (!pubkey) return false;
-  const [evs, known] = await Promise.all([
-    querySyncByAuthors([pubkey], { kinds: [30315], "#d": ["general"] }),
-    resolveStoreCoords(),
-  ]);
-  let latest: StatusEvent | undefined;
-  for (const ev of evs) {
-    if (!latest || ev.created_at > latest.created_at) latest = ev;
-  }
-  return isGameSignedPresence(latest, known);
-}
-
-// Expiración del "tombstone" de limpieza. Debe ser cómodamente futura: como el
-// estado es reemplazable (kind 30315 + d:general), este evento vacío PISA al
-// "Jugando X" anterior por ser el `created_at` más nuevo, y `selectFreshStatuses`
-// lo ignora por tener `content` vacío. Antes usábamos `now()+1`: tan al filo que
-// algunos relays lo rechazaban por "ya vencido" (o lo purgaban antes de
-// propagarlo), y la presencia vieja del juego —firmada por el propio juego sin
-// expiración, válida hasta 1 h por el TTL de fallback— resurgía. Con una ventana
-// holgada el clear se acepta y sobrescribe de forma fiable.
-const CLEAR_STATUS_TTL_SECONDS = 120;
-
-/**
- * Limpia la presencia "jugando" (NIP-38): publica un estado reemplazable vacío que
- * pisa al "Jugando X" anterior (mismo `d:general`, `created_at` más nuevo) para que
- * los amigos dejen de ver el juego como abierto (`fetchStatuses` ignora los estados
- * sin contenido). Con `slug`, ancla el clear a la coordenada del juego (tag `a`,
- * igual que `publishPlayingStatus`): un observador que filtra presencia por `#a`
- * —como el sync de background del server— ve el clear al instante en vez de
- * "dejar de ver" al jugador y retenerlo hasta el NIP-40. Best-effort.
- */
-export async function clearPlayingStatus(slug?: string): Promise<void> {
-  const tags: string[][] = [["d", "general"]];
-  if (slug) {
-    const known = await resolveStoreCoords().catch(() => null);
-    const coord =
-      known?.coordBySlug[slug] ??
-      (known?.pubkey ? `30023:${known.pubkey}:${slug}` : null);
-    if (coord) tags.push(["a", coord]);
-  }
-  tags.push(["expiration", String(now() + CLEAR_STATUS_TTL_SECONDS)]);
-  await publish(
-    await sign({
-      kind: 30315,
-      created_at: now(),
-      tags,
-      content: "",
-    }),
-  );
-}
+// NOTA: acá vivía la presencia OPTIMISTA de la tienda (publishPlayingStatus /
+// clearPlayingStatus / isLingeringPlayingStatus / isGameSignedPresence y todo su
+// arbitraje anti-stomp). Se eliminó: la ÚNICA fuente de "jugando X" es la
+// presencia NIP-38 que firma el PROPIO juego (NGP, ver live-presence.ts del lado
+// server y selectFreshStatuses arriba del lado rail). Un solo escritor del slot
+// `d:general` = cero arbitraje.
 
 // --- Actividad por juego (respuestas al artículo NIP-23 del juego) ---
 //

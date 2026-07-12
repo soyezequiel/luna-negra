@@ -12,22 +12,12 @@
 
 import { useEffect } from "react";
 import { useSession } from "@/providers/session-provider";
-import { reconcilePlayingPresence } from "@/lib/playing-presence";
 
 const HEARTBEAT_MS = 30_000;
 
 export function StorePresenceBeacon() {
   const { user } = useSession();
   const loggedIn = Boolean(user);
-  const pubkey = user?.pubkey;
-
-  // Al abrir la tienda: si quedó un estado NIP-38 "jugando X" colgado de una
-  // sesión previa y la API confirma que ya no estás jugando, lo limpia para que
-  // los amigos no te vean como jugando algo que cerraste. Corre una vez por carga.
-  useEffect(() => {
-    if (!pubkey) return;
-    void reconcilePlayingPresence(pubkey);
-  }, [pubkey]);
 
   useEffect(() => {
     if (!loggedIn) return;

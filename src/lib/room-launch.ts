@@ -1,13 +1,12 @@
 /**
- * Abre o reutiliza la pestaña del juego con el token de sala y arranca la presencia
- * NIP-38 ("jugando X" con el link de la sala), derivada de la presencia que el
- * juego reporta a la API (ver playing-presence.ts). Compartido por el
+ * Abre o reutiliza la pestaña del juego con el token de sala. Compartido por el
  * MultiplayerPanel (página de juego) y la FriendsSidebar (invitar desde cualquier
- * página).
+ * página). La presencia "jugando X" NO se publica desde acá: la firma el PROPIO
+ * juego (NGP, NIP-38 anclada a su coordenada) apenas el jugador entra — la tienda
+ * solo la detecta (live-presence.ts / selectFreshStatuses).
  */
 
-import { startPlayingPresence } from "@/lib/playing-presence";
-import { inviteHref, watchGameWindow } from "@/lib/invite";
+import { watchGameWindow } from "@/lib/invite";
 
 const gameWindows = new Map<string, Window>();
 const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
@@ -151,13 +150,6 @@ export function launchStandaloneGame({
   if (!gameWin) return { ok: false, reason: "popup-blocked", dest };
   if (opened) navigateGameWindow(opened, dest);
   if (slug) registerGameWindow(slug, gameWin, gameUrl);
-
-  if (title) {
-    const link = slug
-      ? new URL(`/game/${slug}`, window.location.origin).toString()
-      : undefined;
-    startPlayingPresence({ title, link, slug });
-  }
   return { ok: true };
 }
 
@@ -199,15 +191,6 @@ export function launchGameRoom({
     });
   }
   registerGameWindow(slug, gameWin, gameUrl);
-
-  // Presencia NIP-38 con el link de la sala → los amigos pueden unirse vía Nostr.
-  // La tienda la deriva de la presencia que el juego reporta a la API; al cerrar
-  // el juego deja de reportar y el estado se limpia solo.
-  const link = new URL(
-    inviteHref({ slug, roomId }),
-    window.location.origin,
-  ).toString();
-  startPlayingPresence({ title, link, slug });
 
   // Al cerrar la pestaña del juego: limpiar la sala activa (banner local).
   watchGameWindow(gameWin);

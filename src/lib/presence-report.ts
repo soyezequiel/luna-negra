@@ -27,26 +27,24 @@ import {
  * Es de solo lectura: consulta relays y DB, no publica ni modifica nada. Usa un
  * `SimplePool` propio y efímero para no interferir con el pool del sync.
  *
- * NOTA sobre constantes espejadas: las del lado cliente (playing-presence.ts,
- * nostr-social.ts) se replican acá con su valor y origen porque esos módulos
- * arrastran `window.nostr` (signer) y no se pueden importar en el server. Si
- * cambian allá, actualizar acá. Ver también STATUS_FALLBACK_TTL_SECONDS que SÍ
- * está exportada desde nostr-social pero se mantiene espejada para no importar
- * el módulo cliente.
+ * NOTA sobre constantes espejadas: el ciclo de vida lo gobierna EL JUEGO (la
+ * presencia optimista de la tienda fue eliminada — un solo escritor del slot).
+ * Las constantes de los juegos y del cliente (nostr-social.ts arrastra
+ * `window.nostr` y no se puede importar en el server) se replican acá con su
+ * valor y origen. Si cambian allá, actualizar acá.
  */
 
 // Espejo de las constantes que gobiernan el ciclo de vida (ver NOTA arriba).
-const STORE = {
-  POLL_INTERVAL_MS: 8_000, // playing-presence.ts: cada cuánto la tienda renueva
-  STATUS_TTL_S: 120, // playing-presence.ts: expiración NIP-40 del estado de la tienda
-  STARTUP_GRACE_MS: 30_000, // playing-presence.ts: gracia si el juego nunca reporta
+const GAME = {
+  RENEW_TARGET_S: 40, // juegos (ajedrez/tetris): re-firma ~cada 40s visible, ~60s de fondo
+  PRESENCE_TTL_S: 180, // juegos: expiración NIP-40 (red de seguridad si el clear no salió)
+  CLEAR_TTL_S: 120, // SDK (NGP_PRESENCE_CLEAR_TTL_SEC): vigencia del tombstone del clear
 } as const;
 const SOCIAL = {
   STATUS_FALLBACK_TTL_SECONDS: 3600, // nostr-social.ts: vigencia de un estado SIN NIP-40 (1h)
-  STALE_GAME_PRESENCE_SECONDS: 600, // nostr-social.ts: umbral para "colgada" sin NIP-40
-  CLEAR_STATUS_TTL_SECONDS: 120, // nostr-social.ts: TTL del tombstone del clear
+  STALE_GAME_PRESENCE_SECONDS: 600, // umbral del reporte para "colgada" sin NIP-40
   PRESENCE_D_TAG: "general", // slot compartido kind:30315 d="general"
-  LUNA_LABEL: "luna-negra", // etiqueta `l` de la presencia optimista de la tienda
+  LUNA_LABEL: "luna-negra", // etiqueta de la EX presencia optimista (clasifica eventos viejos)
 } as const;
 
 const MAX_WAIT_MS = 6000;
@@ -376,9 +374,9 @@ export async function buildPresenceReport(gameId: string, opts?: { pubkey?: stri
           syncIntervalMs: LIVE_PRESENCE_SYNC_INTERVAL_MS,
           readWindowSeconds: LIVE_PRESENCE_WINDOW_SECONDS,
         },
-        store: STORE,
+        game: GAME,
         social: SOCIAL,
-        note: "Las constantes store/social son espejo de los módulos cliente (ver presence-report.ts).",
+        note: "Las constantes game/social son espejo de los juegos y del módulo cliente (ver presence-report.ts).",
       },
       liveBadge: {
         // Lo que muestra el badge "jugando ahora" en la página del juego.
@@ -541,8 +539,10 @@ export function buildDiagnostics(args: {
     .map((r) => r.latestCreatedAt)
     .filter((v): v is number => v !== null);
   if (latests.length >= 2) {
+    // Umbral: más que un ciclo de renovación del juego = un relay se perdió al
+    // menos una re-firma que otro sí tiene.
     const spread = Math.max(...latests) - Math.min(...latests);
-    if (spread > STORE.POLL_INTERVAL_MS / 1000) {
+    if (spread > GAME.RENEW_TARGET_S) {
       out.push({
         code: "RELAY_DIVERGENCE",
         severity: "warn",

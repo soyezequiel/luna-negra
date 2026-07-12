@@ -211,12 +211,6 @@ model PlatformSettings {
   // LNURL-pay que cae al NWC). null = usar el default del entorno (TREASURY_*_SATS).
   treasuryMinSats Int?
   treasuryMaxSats Int?
-  // Presencia "optimista" al abrir un juego: la pestaña de la tienda firma el
-  // estado NIP-38 "Jugando X" apenas el jugador toca "Jugar" y lo sostiene ~30s
-  // aunque el juego nunca confirme que sigue en partida (ver playing-presence.ts).
-  // Al apagarla, la única señal de "jugando ahora" es la presencia NIP-38 que
-  // firma el propio juego (NGP), que el server detecta desde los relays.
-  clickPresenceEnabled Boolean @default(true)
   updatedAt   DateTime @default(now()) @updatedAt
 }
 

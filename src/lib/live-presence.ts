@@ -6,15 +6,14 @@ import { NGP_KIND, NGP_PRESENCE_D_TAG, parsePresenceEvent } from "nostr-game-pro
 import { recordIntegration } from "./integration-telemetry";
 
 /**
- * "Jugando ahora" (Nostr Games Protocol (NGP)): para los juegos que NO integran la presencia
- * REST (§3, `GamePresence`), la ÚNICA señal de quién está jugando es el propio
- * estado NIP-38 (`kind:30315`) que la pestaña de la tienda firma y renueva cada
- * ~8s mientras el juego reporta (ver playing-presence.ts), anclado a la
- * coordenada del juego. Acá los contamos por juego combinando dos caminos:
- * una suscripción PERSISTENTE a los relays (cada evento reconcilia al instante
- * → detección en segundos) y un tick periódico de backfill/poda/muestreo —
- * mismo patrón in-process que score-sync/comment-sync — y los unificamos con
- * la presencia 1.0 en `getLiveNow`.
+ * "Jugando ahora" (Nostr Games Protocol (NGP)): la ÚNICA señal de quién está
+ * jugando es el estado NIP-38 (`kind:30315`) que firma EL PROPIO JUEGO, anclado a
+ * la coordenada del juego (tag `a`) y renovado por su heartbeat mientras la
+ * pestaña del juego exista (~40-60s, TTL 180s; al cerrar publica un clear). Acá
+ * los contamos por juego combinando dos caminos: una suscripción PERSISTENTE a
+ * los relays (cada evento reconcilia al instante → detección en segundos) y un
+ * tick periódico de backfill/poda/muestreo — mismo patrón in-process que
+ * score-sync/comment-sync. `getLiveNow` lee este estado en memoria.
  *
  * El scheduler vive en src/instrumentation.ts.
  */
@@ -23,9 +22,9 @@ export const LIVE_PRESENCE_SYNC_INTERVAL_MS = Number(
   process.env.LIVE_PRESENCE_SYNC_INTERVAL_MS ?? 30_000,
 ); // 30 s
 
-// Ventana de lectura: NIP-38 se renueva cada ~8s con TTL de 120s (STATUS_TTL_S
-// en playing-presence.ts); pedir los últimos 3 minutos alcanza para ver a
-// cualquiera que siga activo sin traer historial innecesario.
+// Ventana de lectura del backfill: los juegos renuevan cada ~40-60s (hasta ~1 min
+// estrangulados en segundo plano); 3 minutos alcanza para ver a cualquiera que
+// siga activo sin traer historial innecesario.
 const WINDOW_SECONDS = 180;
 
 /** Ventana de lectura del sync (segundos), expuesta para el reporte de diagnóstico. */
@@ -516,21 +515,13 @@ async function detectVerifiedScore(
 }
 
 /**
- * Jugadores AHORA de un juego, unificando las dos fuentes: presencia 1.0
- * (`GamePresence`; su reporte REST fue retirado con la interfaz 1.0, así que hoy
- * sólo quedan filas legadas) y la NGP en memoria (NIP-38, ver arriba). Un mismo
- * npub no debería aparecer en
- * ambas para el mismo juego (son integraciones distintas), pero por las dudas
- * se deduplica.
+ * Jugadores AHORA de un juego: la presencia NGP en memoria (NIP-38 firmada por el
+ * propio juego, ver arriba). Es la ÚNICA fuente — la unión con `GamePresence`
+ * (REST 1.0) se eliminó junto con esa interfaz: nada la escribe, así que sus filas
+ * vencidas solo aportaban una query muerta por request.
  */
 export async function getLiveNow(gameId: string): Promise<number> {
-  const restRows = await prisma.gamePresence.findMany({
-    where: { gameId, expiresAt: { gt: new Date() } },
-    select: { npub: true },
-  });
-  const npubs = new Set(restRows.map((r) => r.npub));
-  for (const npub of liveNpubsOf(gameId, Math.floor(Date.now() / 1000))) npubs.add(npub);
-  return npubs.size;
+  return liveNpubsOf(gameId, Math.floor(Date.now() / 1000)).length;
 }
 
 /**
