@@ -14,6 +14,13 @@
       "runtimeArgs": ["--prefix", "F:/proyectos/tetris", "run", "dev"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "ajedrez-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "F:/proyectos/ajedrez/web", "run", "dev"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }
