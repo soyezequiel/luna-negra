@@ -14,6 +14,7 @@ import {
   fetchContacts,
   fetchProfiles,
   fetchStatuses,
+  subscribeStatuses,
   npubOf,
   profileName,
   type Profile,
@@ -217,11 +218,16 @@ export function useFriendsData(): FriendsValue {
   const lastLoadRef = useRef(0);
   // Contactos de la última carga completa, para el poll liviano de estados.
   const contactsRef = useRef<string[]>([]);
+  // Versión reactiva del set de contactos (join de pubkeys ordenadas): dispara la
+  // (re)suscripción persistente de estados cuando la lista cambia. El ref de arriba
+  // lo leen los ticks; este `key` es solo para las deps del effect de la sub.
+  const [contactsKey, setContactsKey] = useState("");
 
   const load = useCallback(async () => {
     if (!user) {
       setFriends(null);
       contactsRef.current = [];
+      setContactsKey("");
       return;
     }
     if (loadingRef.current) return;
@@ -242,10 +248,13 @@ export function useFriendsData(): FriendsValue {
         setFriends([]);
         writeCache(user.pubkey, []);
         contactsRef.current = [];
+        setContactsKey("");
         return;
       }
       const contacts = clampContacts(rawContacts);
       contactsRef.current = contacts;
+      // `key` estable ante reordenamientos: solo cambia si el SET de contactos cambia.
+      setContactsKey([...contacts].sort().join(","));
 
       const cachedByPk = new Map((cached ?? []).map((f) => [f.pubkey, f]));
       let list: Friend[] = contacts.map((pk) => {
@@ -357,6 +366,36 @@ export function useFriendsData(): FriendsValue {
       window.removeEventListener("focus", onVisible);
     };
   }, [user]);
+
+  // Suscripción PERSISTENTE a los estados NIP-38 de los contactos: cada cambio
+  // (un amigo empieza o deja de jugar) llega en TIEMPO REAL y se pinta al instante,
+  // sin esperar al poll de 10s ni obligar a refrescar la página. El poll de arriba
+  // queda solo como red de respaldo (arranque, foco, reconexión de relays). Se
+  // re-suscribe cuando cambia el SET de contactos (`contactsKey`), no en cada carga.
+  useEffect(() => {
+    if (!user) return;
+    const contacts = contactsRef.current;
+    if (contacts.length === 0) return;
+    const unsub = subscribeStatuses(contacts, (pubkey, status) => {
+      setFriends((prev) => {
+        if (!prev) return prev;
+        const i = prev.findIndex((f) => f.pubkey === pubkey);
+        if (i < 0) return prev;
+        const cur = prev[i].status;
+        // Sin cambios reales (mismo contenido y vencimiento) → no re-render/re-sort.
+        const same =
+          (cur?.content ?? null) === (status?.content ?? null) &&
+          (cur?.expiresAt ?? 0) === (status?.expiresAt ?? 0) &&
+          (cur?.url ?? null) === (status?.url ?? null);
+        if (same) return prev;
+        const next = prev.slice();
+        next[i] = { ...next[i], status: status ?? undefined };
+        return sortFriends(next);
+      });
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, contactsKey]);
 
   // Barrido local de presencias NIP-38 vencidas: si la expiración (NIP-40) de un
   // "Jugando X" ya pasó, lo bajamos sin esperar al poll de relays. Cubre el caso

@@ -648,6 +648,71 @@ export async function fetchStatuses(
   return selectFreshStatuses(evs, undefined, known);
 }
 
+/**
+ * Suscripción PERSISTENTE a la presencia NIP-38 (`kind:30315` d="general") de un
+ * conjunto de contactos: cada cambio de estado llega en tiempo real, sin esperar
+ * al poll. Es el mismo patrón que usa el server para el badge "jugando ahora"
+ * (ver `live-presence.ts`): el poll de `fetchStatuses` queda solo como red de
+ * respaldo (reconexión de relays, arranque, foco), pero el riel de amigos ya no
+ * depende de su cadencia para reflejar que un amigo empezó/dejó de jugar.
+ *
+ * `onChange(pubkey, status)` se llama por cada evento nuevo: `status` es la
+ * presencia vigente de ESTA tienda (etiqueta luna o coordenada de juego conocida)
+ * o `null` si el evento la apaga (contenido vacío = clear, vencida, o un estado
+ * ajeno que pisó el slot compartido). Ignora eventos fuera de orden por pubkey
+ * (un relay lento sirviendo un estado viejo no revive al que ya cambió). Como
+ * kind:30315 es reemplazable, al abrir la sub el relay manda el estado vigente,
+ * así que un clear publicado mientras no escuchábamos igual llega al conectar.
+ *
+ * Devuelve una función para cerrar todas las subs. Resuelve las coordenadas de la
+ * tienda una vez antes de abrirlas (para clasificar la presencia NGP por su tag
+ * `a`); si se cierra antes de resolver, no abre nada.
+ */
+export function subscribeStatuses(
+  pubkeys: string[],
+  onChange: (pubkey: string, status: Status | null) => void,
+): () => void {
+  if (pubkeys.length === 0) return () => {};
+  let closed = false;
+  const closers: SubCloser[] = [];
+  // Último created_at aplicado por pubkey: descarta eventos fuera de orden.
+  const latestSeen = new Map<string, number>();
+
+  void resolveStoreCoords().then((known) => {
+    if (closed) return;
+    const handle = (ev: Event) => {
+      const prev = latestSeen.get(ev.pubkey);
+      if (prev !== undefined && ev.created_at < prev) return;
+      latestSeen.set(ev.pubkey, ev.created_at);
+      // selectFreshStatuses aplica exactamente las reglas del riel (clear/vencida/
+      // ajena → sin entrada). Sobre un solo evento: {pubkey: Status} o {}.
+      const fresh = selectFreshStatuses([ev], undefined, known);
+      onChange(ev.pubkey, fresh[ev.pubkey] ?? null);
+    };
+    for (let i = 0; i < pubkeys.length; i += AUTHORS_PER_QUERY) {
+      const chunk = pubkeys.slice(i, i + AUTHORS_PER_QUERY);
+      closers.push(
+        pool().subscribeMany(
+          RELAYS,
+          { kinds: [30315], "#d": ["general"], authors: chunk },
+          { onevent: handle },
+        ),
+      );
+    }
+  });
+
+  return () => {
+    closed = true;
+    for (const c of closers) {
+      try {
+        c.close();
+      } catch {
+        /* best-effort */
+      }
+    }
+  };
+}
+
 export async function publishStatus(content: string): Promise<void> {
   await publish(
     await sign({
