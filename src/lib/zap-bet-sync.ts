@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { RELAYS } from "./constants";
 import { getStorePubkey, publishSettleNote } from "./nostr-server";
 import { notifyOperationalError, notifyNonSocialZap } from "./discord";
-import { publishNgpBetState, isUnlistedBet } from "./ngp-bet-state";
+import { isUnlistedBet } from "./nge-meta";
 import { BET_SETTLE_NOTE_MIN_POT_SATS } from "./escrow-v2-config";
 import { msatToSats } from "./money";
 
@@ -143,7 +143,6 @@ export async function syncZapBetReceipts(): Promise<void> {
         where: { id: part.id },
         data: { payoutKind: "lnurl" },
       });
-      void publishNgpBetState(part.betId);
       await notifyNonSocialZap({
         flow: "payout al ganador (cerrado sin recibo)",
         reason:
@@ -242,9 +241,6 @@ async function recordPayoutReceipt(
     },
     data: { zapReceiptId: receipt.id },
   });
-  // Estado NGP: el 31340 es addressable, así que re-publicarlo enriquece el
-  // estado terminal con el recibo del payout recién llegado (fire-and-forget).
-  void publishNgpBetState(part.betId);
   void publishPayoutProofNote(part, receipt).catch((error) => {
     void notifyOperationalError({
       source: "zap-bet-sync-proof-note",

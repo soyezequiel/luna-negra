@@ -16,13 +16,11 @@ async function reportBackgroundFailure(source: string, error: unknown): Promise<
 export async function registerNode() {
   void warmUpWalletsAtBoot();
   void warmUpStoreZapProfileAtBoot();
-  void warmUpNgpTermsAtBoot();
   await startEscrowTick();
   await startNgeV2Service();
   await startNwcPaymentWatcher();
   await startZapSync();
   await startZapBetSync();
-  await startNgpBetResultSync();
   await startCommentSync();
   await startGameSync();
   await startScoreSync();
@@ -99,66 +97,6 @@ async function warmUpStoreZapProfileAtBoot() {
   } catch (err) {
     await reportBackgroundFailure("warmup-store-zap-profile", err);
   }
-}
-
-/**
- * Pre-publica las CONDICIONES del escrow NGP (kind:31340, d="terms") al arrancar:
- * comisiones/límites/ventanas legibles desde cualquier cliente Nostr, para que un
- * juego pueda armar su contrato sin tocar la API. Memoizada por contenido dentro
- * de ensureNgpEscrowTerms (republicar solo si cambió la economía). Fire-and-forget.
- */
-async function warmUpNgpTermsAtBoot() {
-  if (process.env.NEXT_PHASE === "phase-production-build") return;
-  try {
-    const { NGP_BETS_ENABLED, ensureNgpEscrowTerms } = await import("./lib/ngp-bet-state");
-    const { BETS_V2_ENABLED } = await import("./lib/escrow-v2-config");
-    if (!NGP_BETS_ENABLED || !BETS_V2_ENABLED) return;
-    await ensureNgpEscrowTerms();
-  } catch (err) {
-    await reportBackgroundFailure("warmup-ngp-terms", err);
-  }
-}
-
-/**
- * Sync IN-PROCESS de RESULTADOS de apuestas NGP (kind:1341): levanta de relays
- * los resultados firmados por el oráculo de cada proveedor y liquida con el mismo
- * núcleo que POST /api/v2/bets/{id}/result — la firma reemplaza a la API key.
- * Mismo patrón que score-sync. Ver src/lib/ngp-bet-result-sync.ts y la spec en
- * docs/nostr-games-protocol-apuestas.md (§5).
- */
-async function startNgpBetResultSync() {
-  if (process.env.NEXT_PHASE === "phase-production-build") return;
-
-  const { BETS_V2_ENABLED } = await import("./lib/escrow-v2-config");
-  const { NGP_BETS_ENABLED } = await import("./lib/ngp-bet-state");
-  const { NGP_BET_RESULT_SYNC_INTERVAL_MS, syncNgpBetResults } = await import(
-    "./lib/ngp-bet-result-sync"
-  );
-  if (
-    !BETS_V2_ENABLED ||
-    !NGP_BETS_ENABLED ||
-    !NGP_BET_RESULT_SYNC_INTERVAL_MS ||
-    NGP_BET_RESULT_SYNC_INTERVAL_MS <= 0
-  ) {
-    return;
-  }
-
-  let running = false;
-  const tick = async () => {
-    if (running) return; // no encimar corridas
-    running = true;
-    try {
-      await syncNgpBetResults();
-    } catch (err) {
-      await reportBackgroundFailure("ngp-bet-result-sync", err);
-    } finally {
-      running = false;
-    }
-  };
-
-  // Primer sync poco después del arranque, luego periódico.
-  setTimeout(tick, 35_000).unref?.();
-  setInterval(tick, NGP_BET_RESULT_SYNC_INTERVAL_MS).unref?.();
 }
 
 /**

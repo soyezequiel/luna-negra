@@ -23,7 +23,7 @@ Depósitos y premio quedan anclados a este contrato con recibos públicos.`;
 /**
  * Plantilla del evento de resultado v2: **kind:1341 de la spec NGP** (regular,
  * inmutable — docs/nostr-games-protocol-apuestas.md §5), el MISMO formato que
- * publican los oráculos BYO y que ingiere ngp-bet-result-sync. El wire vive en
+ * publican los oráculos BYO. El wire vive en
  * el core (`buildBetResultTemplate`, nostr-game-protocol/ngp-core); acá queda lo de la
  * tienda: la conversión npub→pubkey y el filtro de anclas sintéticas de dev
  * (`dev-anchor-…`), que no son eventos reales y no deben salir en un `e`.

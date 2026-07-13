@@ -27,7 +27,7 @@ import {
 import { emitBetSettledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { notifyOperationalError } from "@/lib/discord";
-import { publishNgpBetState, isUnlistedBet } from "@/lib/ngp-bet-state";
+import { isUnlistedBet } from "@/lib/nge-meta";
 import { notifyNgeBetUpdated } from "@/lib/nge-notify";
 import { RELAYS } from "@/lib/constants";
 
@@ -195,7 +195,6 @@ async function runSettlement(args: {
       },
     });
     scheduleAfter(() => emitBetRefundedV2(betId, "void"));
-    scheduleAfter(() => publishNgpBetState(betId));
     scheduleAfter(() => notifyNgeBetUpdated(betId));
     return { ok: true, voided: true };
   }
@@ -288,7 +287,6 @@ async function runSettlement(args: {
   });
 
   scheduleAfter(() => emitBetSettledV2(betId));
-  scheduleAfter(() => publishNgpBetState(betId));
   scheduleAfter(() => notifyNgeBetUpdated(betId));
   return { ok: true };
 }

@@ -39,7 +39,6 @@ import { notifyNgeBetUpdated, ngePool, publishFirstAck } from "@/lib/nge-notify"
 import { settleNgeWithManagedOracle } from "@/lib/nge-settle";
 import { emitBetCancelledV2, emitBetRefundedV2 } from "@/lib/webhooks";
 import { beginIdempotent } from "@/lib/idempotency";
-import { publishNgpBetState, ensureNgpEscrowTerms } from "@/lib/ngp-bet-state";
 import { msatToSats } from "@/lib/money";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import { notifyOperationalError } from "@/lib/discord";
@@ -57,10 +56,10 @@ import type { ZapBet, ZapBetParticipant } from "@prisma/client";
 //    el 9734 custodial). `payoutAddress` se vuelca al lud16 del invitado y la
 //    cascada de payouts existente paga ahí; sin dirección → retiro por QR.
 //  - El mapeo seatId↔asiento, el `clientRef` y la `visibility` viajan en
-//    ZapBet.metadataJson bajo la clave `nge`. La liquidación pública (31340 +
-//    1341 + nota social) corre por la capa NGP como en cualquier apuesta v2;
-//    `visibility: "unlisted"` omite la sombra 31340 y la nota social de ESA
-//    apuesta (ver isUnlistedBet en ngp-bet-state.ts).
+//    ZapBet.metadataJson bajo la clave `nge`. La liquidación publica su resultado
+//    (kind:1341) y la nota social como en cualquier apuesta v2; `visibility:
+//    "unlisted"` omite la nota social de ESA apuesta (ver isUnlistedBet en
+//    nge-meta.ts).
 //  - Dedup por id de request (§6.1): la response firmada se cachea en memoria y
 //    un reenvío del MISMO evento la re-publica sin re-ejecutar nada. Las
 //    mutaciones además son idempotentes por clave natural (betId / clientRef),
@@ -435,11 +434,6 @@ async function doCreateBet(
 
     trackIntegration("bets", { providerId: cred.game.providerId, gameId: cred.gameId });
 
-    // Sombra pública NGP (kind:31340) + terms del escrow, como el POST REST.
-    // Best-effort fuera del camino de respuesta; isUnlistedBet filtra adentro.
-    void ensureNgpEscrowTerms().catch(() => {});
-    void publishNgpBetState(bet.id).catch(() => {});
-
     // Respuesta v1.1: el detalle COMPLETO (mismo shape que get_bet) más los
     // handles de depósito. Un solo RPC deja al juego con los QR y el estado
     // inicial — sin get_bet post-creación. Recién creada, el detalle es trivial:
@@ -752,7 +746,6 @@ async function doCancelBet(
   await prisma.zapBet.update({ where: { id: bet.id }, data: { status: "cancelled_admin" } });
   void emitBetCancelledV2(bet.id).catch(() => {});
   void emitBetRefundedV2(bet.id, "cancelled").catch(() => {});
-  void publishNgpBetState(bet.id).catch(() => {});
   void notifyNgeBetUpdated(bet.id);
   return ok(method, { ok: true, status: "cancelled" });
 }

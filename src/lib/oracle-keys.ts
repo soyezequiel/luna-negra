@@ -12,8 +12,8 @@ import { encryptSecret, decryptSecret } from "@/lib/crypto-vault";
 //
 //  - PROPIA / BYO (keyless, Slice 2): el proveedor trae su PROPIA clave. Luna solo
 //    guarda `oraclePubkey` (público) — `oracleSecretEnc = null` — y NO puede firmar
-//    por él: el juego firma sus 1341 y los publica (los levanta ngp-bet-result-sync)
-//    o los postea a `/result` como `{event}`. `oracleSelfSigned = true`.
+//    por él: el juego firma sus 1341 y los postea a `/result` como `{event}`.
+//    `oracleSelfSigned = true`.
 //
 // En ambos modos `oraclePubkey` (hex) es la verdad contra la que se validan los
 // eventos firmados; `oracleSecretEnc` nunca se loguea ni se devuelve por la API.

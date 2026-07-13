@@ -8,9 +8,6 @@ import {
   BET_MIN_MSAT,
   BETS_V2_ENABLED,
 } from "@/lib/escrow-v2-config";
-import { materializeNgpBet } from "@/lib/ngp-bet-ingest";
-import { NGP_BETS_ENABLED } from "@/lib/ngp-bet-state";
-import { checkRateLimit } from "@/lib/rate-limit";
 import {
   siteUrl,
   storeLightningAddress,
@@ -94,38 +91,10 @@ export async function GET(req: Request) {
     return lnurlError("El zap debe apuntar al contrato de una apuesta");
   }
 
-  let bet = await prisma.zapBet.findUnique({
+  const bet = await prisma.zapBet.findUnique({
     where: { anchorEventId },
     include: { participants: true },
   });
-
-  // Fase 2 NGP: el `e` apunta a un contrato kind:1339 que Luna todavía no
-  // materializó (el juego lo publicó firmado por el retador, sin pasar por
-  // /api/v2/bets). Este primer intento de fondeo es la señal que despierta al
-  // escrow: buscamos el contrato en relays, lo validamos y creamos la apuesta.
-  // Rate-limit por firmante para acotar los fetch a relays (anti-spam).
-  if (!bet && NGP_BETS_ENABLED) {
-    const rl = await checkRateLimit(`ngp-bet-ingest:${signed.pubkey}`, 10, 60_000);
-    if (!rl.success) return lnurlError("Demasiados intentos; probá en un minuto");
-    const ingest = await materializeNgpBet(anchorEventId, {
-      requireSignerPubkey: signed.pubkey,
-    }).catch(
-      async (error) => {
-        await notifyOperationalError({
-          source: "ngp-bet-ingest",
-          error,
-          fingerprint: `ngp-bet-ingest:${anchorEventId}`,
-          context: { contractEventId: anchorEventId, signer: signed.pubkey },
-        });
-        return { ok: false as const, code: "INGEST_ERROR", error: "No se pudo materializar el contrato" };
-      },
-    );
-    if (!ingest.ok) return lnurlError(ingest.error);
-    bet = await prisma.zapBet.findUnique({
-      where: { id: ingest.betId },
-      include: { participants: true },
-    });
-  }
   if (!bet) return lnurlError("Contrato de apuesta no encontrado");
 
   const part = bet.participants.find((candidate) => candidate.pubkey === signed.pubkey);

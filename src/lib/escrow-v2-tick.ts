@@ -11,7 +11,6 @@ import {
   emitBetExpiredV2,
   emitBetRefundedV2,
 } from "@/lib/webhooks";
-import { publishNgpBetState } from "@/lib/ngp-bet-state";
 import { notifyNgeBetUpdated } from "@/lib/nge-notify";
 import { runNgeDeferredSettlements } from "@/lib/nge-settle";
 import { notifyOperationalError } from "@/lib/discord";
@@ -112,8 +111,6 @@ export async function runTickV2(): Promise<{
     });
     await emitBetExpiredV2(bet.id);
     await emitBetRefundedV2(bet.id, "expired");
-    // Estado NGP: `expired` (fire-and-forget; no frena el barrido del tick).
-    void publishNgpBetState(bet.id);
     void notifyNgeBetUpdated(bet.id);
   }
 
@@ -142,8 +139,6 @@ export async function runTickV2(): Promise<{
       data: { status: "refunded_timeout" },
     });
     await emitBetRefundedV2(bet.id, "resolve_timeout");
-    // Estado NGP: `void` por timeout de resolución (fire-and-forget).
-    void publishNgpBetState(bet.id);
     void notifyNgeBetUpdated(bet.id);
   }
 

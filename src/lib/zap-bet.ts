@@ -29,7 +29,6 @@ import { emitDepositReceivedV2, emitBetFundedV2 } from "@/lib/webhooks";
 import { msatToSats } from "@/lib/money";
 import { STORE_LNURL_USERNAME, storeLnurlUrl } from "@/lib/site-url";
 import { notifyBetPaymentDiagnostic, notifyNonSocialZap } from "@/lib/discord";
-import { publishNgpBetState } from "@/lib/ngp-bet-state";
 import { notifyNgeBetUpdated } from "@/lib/nge-notify";
 
 // Depósito por zap (v2). Luna Negra actúa como receptor NIP-57: el apostador firma
@@ -602,8 +601,6 @@ export async function settleDepositV2(
     zapReceiptId: depositReceiptId,
   });
   await emitDepositReceivedV2(bet.id, part.npub);
-  // Estado NGP: el depósito nuevo queda visible en el 31340 (fire-and-forget).
-  void publishNgpBetState(bet.id);
   // Push NGE 24942: el juego se entera del depósito sin esperar su poll.
   void notifyNgeBetUpdated(bet.id);
 }
@@ -638,8 +635,6 @@ export async function promoteIfAllPaidV2(betId: string, now: Date): Promise<bool
     // sin esperar a los relays. Fire-and-forget, nunca bloquea el "funded".
     prewarmPayoutDestinations(bet.participants.map((p) => p.npub));
     await emitBetFundedV2(betId);
-    // Estado NGP: transición a `funded` (fire-and-forget).
-    void publishNgpBetState(betId);
     // Push NGE 24942: `funded` es LA transición que el juego espera para arrancar.
     void notifyNgeBetUpdated(betId);
     return true;

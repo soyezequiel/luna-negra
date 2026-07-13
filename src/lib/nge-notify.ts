@@ -4,9 +4,9 @@
 // funded, settled, expired, refunded, cancelled) el escrow publica un evento
 // efímero firmado por la tienda y cifrado NIP-44 hacia la credencial `C` del
 // juego. Es best-effort y NO autoritativo: despierta al cliente, que confirma
-// con get_bet. Los call sites lo disparan fire-and-forget junto a la sombra
-// NGP (publishNgpBetState) — a diferencia de ella, el push sale TAMBIÉN para
-// apuestas unlisted (es canal privado, no liquidación pública).
+// con get_bet. Los call sites lo disparan fire-and-forget en cada transición; el
+// push sale TAMBIÉN para apuestas unlisted (es canal privado, no liquidación
+// pública).
 
 import { finalizeEvent, type Event } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools";
