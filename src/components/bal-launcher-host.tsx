@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   BalLauncher,
   WebPostMessageTransport,
@@ -44,7 +44,9 @@ export function BalLauncherHost() {
   const pendingResolve = useRef<((decision: BalConsentDecision) => void) | null>(null);
   const [pending, setPending] = useState<BalConsentRequest | null>(null);
 
-  useEffect(() => { userRef.current = user; }, [user]);
+  // `getIdentity` vive dentro de un efecto de montaje. El layout effect publica
+  // la cuenta nueva antes de que el usuario pueda abrir el juego tras el login.
+  useLayoutEffect(() => { userRef.current = user; }, [user]);
 
   // `window.opener.focus()` no es confiable entre pestañas. El juego pide el
   // foco por el canal permitido de postMessage y Luna lo intenta desde su lado.

@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { fetchProfile, profileName } from "@/lib/nostr";
@@ -12,6 +13,7 @@ import { clearNip17Cache, getNostrPermsMode, warmUpPermissions } from "@/lib/nos
 import { notifyOpenGameWindowsLogout } from "@/lib/room-launch";
 import { clearDmCache } from "@/lib/dm-cache";
 import { logoutBalLauncherSessions } from "@/lib/bal-launcher";
+import { createSessionLoadGuard } from "@/lib/session-load-guard";
 import {
   clearActiveSigner,
   importNsec,
@@ -69,13 +71,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [emailLoginEnabled, setEmailLoginEnabled] = useState(false);
+  const sessionLoadGuard = useRef(createSessionLoadGuard());
 
   useEffect(() => {
+    const initialLoad = sessionLoadGuard.current.snapshot();
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
-        setUser(d.user);
         setEmailLoginEnabled(Boolean(d.emailLogin));
+        // El usuario pudo completar un login con nsec mientras este GET seguía
+        // en vuelo. En ese caso su respuesta pertenece a una sesión anterior.
+        if (sessionLoadGuard.current.isCurrent(initialLoad)) setUser(d.user);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -139,6 +145,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
       const data = await res.json().catch(() => ({}) as { user?: SessionUser; error?: string });
       if (!res.ok) throw new Error(data.error ?? "Verificación fallida");
+      sessionLoadGuard.current.invalidate();
       setActiveSigner(signer, stored);
       setUser(data.user ?? null);
       setLoginModalOpen(false);
@@ -168,6 +175,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     (sessionUser: SessionUser, nsec: string) => {
       setError(null);
       const signer = importNsec(nsec);
+      sessionLoadGuard.current.invalidate();
       setActiveSigner(signer, { method: "local", nsec, source: "custodial" });
       setUser(sessionUser);
       setLoginModalOpen(false);
@@ -176,6 +184,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    sessionLoadGuard.current.invalidate();
     await logoutBalLauncherSessions();
     await fetch("/api/auth/logout", { method: "POST" });
     notifyOpenGameWindowsLogout();
@@ -190,6 +199,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // Actualiza el usuario en memoria tras guardar cambios (p. ej. lud16),
   // para que el contexto no quede desincronizado con la DB.
   const updateUser = useCallback((patch: Partial<SessionUser>) => {
+    sessionLoadGuard.current.invalidate();
     setUser((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
 
