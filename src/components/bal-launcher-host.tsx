@@ -12,6 +12,7 @@ import {
 import { useSession } from "@/providers/session-provider";
 import {
   getActiveLocalSignerSource,
+  matchSignerToSessionUser,
   resolveBalIdentitySource,
   restoreSigner,
 } from "@/lib/signer";
@@ -39,7 +40,7 @@ import {
 
 /** Listener global del launcher y consentimiento explícito del primer BAL. */
 export function BalLauncherHost() {
-  const { user } = useSession();
+  const { user, refreshSession } = useSession();
   const userRef = useRef(user);
   const pendingResolve = useRef<((decision: BalConsentDecision) => void) | null>(null);
   const [pending, setPending] = useState<BalConsentRequest | null>(null);
@@ -136,10 +137,15 @@ export function BalLauncherHost() {
       authorizationStore: createLunaBalAuthorizationStore(),
       relays: NIP46_RELAYS,
       async getIdentity() {
-        const currentUser = userRef.current;
-        if (!currentUser) return null;
         const signer = await restoreSigner();
         if (!signer) return null;
+        const identity = await matchSignerToSessionUser({
+          signer,
+          user: userRef.current,
+          refreshUser: refreshSession,
+        });
+        if (!identity) return null;
+        const currentUser = identity.user;
         const source = resolveBalIdentitySource({
           custodial: Boolean(currentUser.custodial),
           signerMethod: signer.method,
@@ -147,7 +153,7 @@ export function BalLauncherHost() {
         });
         if (!source) return null;
         const trackedSigner: BalNip46Signer = {
-          getPublicKey: () => signer.getPublicKey(),
+          getPublicKey: async () => identity.pubkey,
           signEvent: (event) => trackBalSignerOperation(
             "signing",
             `Firmando evento kind ${event.kind}`,
@@ -184,7 +190,7 @@ export function BalLauncherHost() {
         };
         return {
           identityId: currentUser.id,
-          pubkey: currentUser.pubkey,
+          pubkey: identity.pubkey,
           source,
           signer: trackedSigner,
         };
@@ -216,7 +222,7 @@ export function BalLauncherHost() {
       instance.stop();
       sessionGuard.stop();
     };
-  }, []);
+  }, [refreshSession]);
 
   function decide(decision: BalConsentDecision) {
     if (decision === "once" && pending) rememberBalAuthorizationForSession(pending);

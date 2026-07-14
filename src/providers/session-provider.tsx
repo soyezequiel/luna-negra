@@ -18,6 +18,7 @@ import {
   clearActiveSigner,
   importNsec,
   restoreSigner,
+  SIGNER_STORAGE_KEY,
   setActiveSigner,
   type LunaSigner,
   type StoredSigner,
@@ -49,6 +50,8 @@ type SessionContextValue = {
   emailLoginEnabled: boolean;
   /** Abre el modal de login (todos los métodos: extensión, QR, bunker, clave). */
   login: () => Promise<void>;
+  /** Relee la cookie y sincroniza la identidad visible con el signer activo. */
+  refreshSession: () => Promise<SessionUser | null>;
   /** Flujo challenge → firma kind:27235 → verify, con el signer elegido. */
   loginWithSigner: (signer: LunaSigner, stored: StoredSigner) => Promise<void>;
   /**
@@ -73,22 +76,49 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [emailLoginEnabled, setEmailLoginEnabled] = useState(false);
   const sessionLoadGuard = useRef(createSessionLoadGuard());
 
+  const refreshSession = useCallback(async (): Promise<SessionUser | null> => {
+    sessionLoadGuard.current.invalidate();
+    const request = sessionLoadGuard.current.snapshot();
+    try {
+      const response = await fetch("/api/auth/me", { cache: "no-store" });
+      const data = await response.json() as {
+        user?: SessionUser | null;
+        emailLogin?: boolean;
+      };
+      if (!response.ok) return null;
+      if (!sessionLoadGuard.current.isCurrent(request)) return null;
+      const nextUser = data.user ?? null;
+      setEmailLoginEnabled(Boolean(data.emailLogin));
+      setUser(nextUser);
+      return nextUser;
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
-    const initialLoad = sessionLoadGuard.current.snapshot();
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        setEmailLoginEnabled(Boolean(d.emailLogin));
-        // El usuario pudo completar un login con nsec mientras este GET seguía
-        // en vuelo. En ese caso su respuesta pertenece a una sesión anterior.
-        if (sessionLoadGuard.current.isCurrent(initialLoad)) setUser(d.user);
-      })
-      .catch(() => {})
+    void Promise.resolve()
+      .then(() => refreshSession())
       .finally(() => setLoading(false));
     // Restaurar el signer persistido (la cookie restaura la sesión, pero firmar
     // comentarios/DMs/presencia necesita el signer en memoria).
     void restoreSigner();
-  }, []);
+  }, [refreshSession]);
+
+  // La cookie y localStorage son compartidos entre pestañas. Si otra pestaña
+  // cambia de identidad, sincronizamos el usuario antes del próximo BAL.
+  useEffect(() => {
+    const onFocus = () => { void refreshSession(); };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === SIGNER_STORAGE_KEY) void refreshSession();
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [refreshSession]);
 
   // Solo si el usuario eligió "autorizar todo al iniciar sesión" (modo "all"):
   // pide todos los permisos NIP-07 de una vez al establecer la sesión. En el
@@ -211,6 +241,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         error,
         emailLoginEnabled,
         login,
+        refreshSession,
         loginWithSigner,
         adoptCustodialSession,
         loginModalOpen,

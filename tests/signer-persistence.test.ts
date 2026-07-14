@@ -17,6 +17,36 @@ beforeEach(() => {
 });
 
 describe("persistencia del signer", () => {
+  it("recupera la cuenta de sesión que corresponde a la nsec activa", async () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("window", {});
+    const secret = generateSecretKey();
+    const pubkey = getPublicKey(secret);
+    const { createLocalSigner, matchSignerToSessionUser } = await import("@/lib/signer");
+    const refreshUser = vi.fn(async () => ({ id: "new", pubkey }));
+
+    const identity = await matchSignerToSessionUser({
+      signer: createLocalSigner(secret),
+      user: { id: "stale", pubkey: "a".repeat(64) },
+      refreshUser,
+    });
+
+    expect(refreshUser).toHaveBeenCalledOnce();
+    expect(identity).toEqual({ user: { id: "new", pubkey }, pubkey });
+  });
+
+  it("no presta BAL si la cookie sigue perteneciendo a otra clave", async () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("window", {});
+    const { createLocalSigner, matchSignerToSessionUser } = await import("@/lib/signer");
+
+    await expect(matchSignerToSessionUser({
+      signer: createLocalSigner(generateSecretKey()),
+      user: { pubkey: "a".repeat(64) },
+      refreshUser: async () => ({ pubkey: "b".repeat(64) }),
+    })).resolves.toBeNull();
+  });
+
   it("resuelve BAL para una nsec importada y para un complemento NIP-07", async () => {
     vi.stubGlobal("localStorage", memoryStorage());
     vi.stubGlobal("window", {});

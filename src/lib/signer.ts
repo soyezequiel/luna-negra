@@ -48,7 +48,7 @@ export interface LunaSigner {
 
 // --- Persistencia de la sesión de signer (localStorage, JSON discriminado) ---
 
-const SIGNER_KEY = "ln_signer";
+export const SIGNER_STORAGE_KEY = "ln_signer";
 
 export type StoredSigner =
   | { method: "nip07" }
@@ -75,7 +75,7 @@ export type StoredSigner =
 function readStoredSigner(): StoredSigner | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(SIGNER_KEY);
+    const raw = localStorage.getItem(SIGNER_STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as StoredSigner;
   } catch {
@@ -86,8 +86,8 @@ function readStoredSigner(): StoredSigner | null {
 function writeStoredSigner(stored: StoredSigner | null): void {
   if (typeof window === "undefined") return;
   try {
-    if (stored) localStorage.setItem(SIGNER_KEY, JSON.stringify(stored));
-    else localStorage.removeItem(SIGNER_KEY);
+    if (stored) localStorage.setItem(SIGNER_STORAGE_KEY, JSON.stringify(stored));
+    else localStorage.removeItem(SIGNER_STORAGE_KEY);
   } catch {
     /* storage bloqueado: la sesión de signer no persiste */
   }
@@ -134,6 +134,26 @@ export function resolveBalIdentitySource({
   if (localSource === "imported") return "nsec";
   if (custodial && localSource === "custodial") return "email";
   return null;
+}
+
+/**
+ * Une la cuenta de Luna con el signer real. Si el estado React quedó viejo
+ * (otra pestaña, HMR o una respuesta tardía), relee la sesión antes de fallar.
+ */
+export async function matchSignerToSessionUser<T extends { pubkey: string }>({
+  signer,
+  user,
+  refreshUser,
+}: {
+  signer: LunaSigner;
+  user: T | null;
+  refreshUser: () => Promise<T | null>;
+}): Promise<{ user: T; pubkey: string } | null> {
+  const pubkey = (await signer.getPublicKey()).trim().toLowerCase();
+  const matches = (candidate: T | null) => candidate?.pubkey.trim().toLowerCase() === pubkey;
+  if (matches(user)) return { user: user!, pubkey };
+  const refreshed = await refreshUser();
+  return matches(refreshed) ? { user: refreshed!, pubkey } : null;
 }
 
 export function setActiveSigner(signer: LunaSigner, stored: StoredSigner): void {
