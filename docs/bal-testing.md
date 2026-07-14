@@ -22,8 +22,13 @@ SDK local `F:\proyectos\SDK NGP`.
 3. Verificar que el consentimiento muestra juego, origen exacto, pubkey activa y permisos.
 4. Elegir **Permitir esta vez**. El juego debe obtener esa pubkey y seguir su
    challenge Nostr sin mostrar ni copiar una Bunker URI.
-5. Cerrar y abrir: debe preguntar otra vez. Repetir con **Permitir y recordar**;
-   la apertura siguiente puede iniciar automáticamente.
+5. Recargar Ajedrez: **Permitir esta vez** debe conservarse dentro de la pestaña
+   actual de Luna y renegociar BAL sin mostrar otro consentimiento. Cerrar la
+   ventana del juego y abrirla otra vez debe preguntar nuevamente.
+6. Repetir con **Permitir y recordar**: también debe iniciar automáticamente
+   después de cerrar y volver a abrir Ajedrez.
+7. Entrar a una sala y elegir **Salir de la sala**: debe volver al inicio de
+   Ajedrez sin recargar ni pedir una nueva autorización BAL.
 
 ## nsec importada
 

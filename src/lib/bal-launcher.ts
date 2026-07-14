@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  BAL_DEFAULT_SESSION_TTL_MS,
   WebStorageBalAuthorizationStore,
+  createBalAuthorization,
   type BalAuthorization,
   type BalAuthorizationStore,
+  type BalConsentRequest,
   type BalGameRegistry,
   type BalLauncher,
   type BalTransportEnvelope,
@@ -19,6 +22,7 @@ export const BAL_AUTHORIZATIONS_CHANGED = "luna-negra:bal-authorizations-changed
 const BAL_CONSENT_REQUIRED_MESSAGE = "luna-negra:bal-consent-required";
 export const BAL_FOCUS_REQUEST_MESSAGE = "luna-negra:bal-focus-request";
 const BAL_GAME_BINDING_PREFIX = "luna-negra:bal-game-binding:";
+const BAL_SESSION_AUTHORIZATIONS_KEY = "luna-negra:bal-session-authorizations.v1";
 
 type RegisteredGame = { gameId: string; gameName: string; origin: string; peer: Window };
 type PersistedGameBinding = Omit<RegisteredGame, "peer">;
@@ -35,6 +39,11 @@ function persistGameBinding(binding: PersistedGameBinding): void {
   } catch {
     /* sin sessionStorage: el registro conserva su vida normal en memoria */
   }
+}
+
+function removeGameBinding(gameId: string): void {
+  try { sessionStorage.removeItem(bindingKey(gameId)); }
+  catch { /* noop */ }
 }
 
 function restoreGameBinding(gameId: string): PersistedGameBinding | null {
@@ -99,6 +108,8 @@ export function unregisterBalGameWindow(peer: Window): void {
   const game = games.get(peer);
   games.delete(peer);
   if (!game) return;
+  removeGameBinding(game.gameId);
+  removeBalSessionAuthorizationsForGame(game.gameId);
   unregisterBalSignerGame(game.gameId, game.gameName);
   // BAL está habilitado para un único juego. Al cerrarlo también cerramos su
   // remoto efímero para que el estado de la navbar describa la conexión real.
@@ -135,15 +146,63 @@ export function matchesRegisteredBalGameWindow(
 }
 
 class NotifyingAuthorizationStore implements BalAuthorizationStore {
-  private readonly delegate = new WebStorageBalAuthorizationStore(localStorage);
-  list(): BalAuthorization[] { return this.delegate.list(); }
+  private readonly persistent = persistentAuthorizationStore();
+  private readonly session = sessionAuthorizationStore();
+
+  list(): BalAuthorization[] {
+    const now = Date.now();
+    const records = [...this.session.list(), ...this.persistent.list()]
+      .filter((record) => record.expiresAt > now);
+    return [...new Map(records.map((record) => [record.id, record])).values()];
+  }
+
   save(authorization: BalAuthorization): void {
-    this.delegate.save(authorization);
+    this.persistent.save(authorization);
+    this.session.remove(authorization.id);
     window.dispatchEvent(new Event(BAL_AUTHORIZATIONS_CHANGED));
   }
+
   remove(id: string): void {
-    this.delegate.remove(id);
+    this.persistent.remove(id);
+    this.session.remove(id);
     window.dispatchEvent(new Event(BAL_AUTHORIZATIONS_CHANGED));
+  }
+}
+
+function persistentAuthorizationStore(): WebStorageBalAuthorizationStore {
+  return new WebStorageBalAuthorizationStore(localStorage);
+}
+
+function sessionAuthorizationStore(): WebStorageBalAuthorizationStore {
+  return new WebStorageBalAuthorizationStore(sessionStorage, BAL_SESSION_AUTHORIZATIONS_KEY);
+}
+
+function removeBalSessionAuthorizationsForGame(gameId: string): void {
+  try {
+    const store = sessionAuthorizationStore();
+    for (const authorization of store.list()) {
+      if (authorization.gameId === gameId) store.remove(authorization.id);
+    }
+  } catch {
+    /* sessionStorage bloqueado: el consentimiento no se pudo persistir */
+  }
+}
+
+function clearBalSessionAuthorizations(): void {
+  try { sessionStorage.removeItem(BAL_SESSION_AUTHORIZATIONS_KEY); }
+  catch { /* noop */ }
+}
+
+/** Mantiene "Permitir esta vez" durante la vida de la pestaña de Luna. */
+export function rememberBalAuthorizationForSession(request: BalConsentRequest): void {
+  try {
+    sessionAuthorizationStore().save(createBalAuthorization(
+      request,
+      Date.now(),
+      BAL_DEFAULT_SESSION_TTL_MS,
+    ));
+  } catch {
+    /* sin sessionStorage, "esta vez" conserva la semántica de una conexión */
   }
 }
 
@@ -157,6 +216,7 @@ export function setActiveBalLauncher(value: BalLauncher<Window> | null): void {
 
 export async function logoutBalLauncherSessions(): Promise<void> {
   reportBalDisconnecting();
+  clearBalSessionAuthorizations();
   await launcher?.logoutAll("launcher_logout");
 }
 
@@ -168,5 +228,5 @@ export async function revokeBalAuthorization(id: string): Promise<void> {
 
 export function listBalAuthorizations(): BalAuthorization[] {
   if (typeof window === "undefined") return [];
-  return createLunaBalAuthorizationStore().list() as BalAuthorization[];
+  return persistentAuthorizationStore().list();
 }

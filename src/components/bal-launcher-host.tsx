@@ -27,6 +27,7 @@ import {
   lunaBalGameRegistry,
   matchesRegisteredBalGameWindow,
   notifyBalConsentRequired,
+  rememberBalAuthorizationForSession,
   setActiveBalLauncher,
 } from "@/lib/bal-launcher";
 
@@ -219,6 +220,7 @@ export function BalLauncherHost() {
   }, []);
 
   function decide(decision: BalConsentDecision) {
+    if (decision === "once" && pending) rememberBalAuthorizationForSession(pending);
     reportBalConsentDecision(decision);
     const resolve = pendingResolve.current;
     pendingResolve.current = null;
