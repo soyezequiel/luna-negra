@@ -64,14 +64,14 @@ export function BalSignerStatusIndicator() {
 
   if (status.phase === "idle") return null;
 
-  const label = PHASE_COPY[status.phase];
-  const title = [label, status.gameName, status.detail].filter(Boolean).join(" · ");
+  const phaseLabel = PHASE_COPY[status.phase];
+  const isAlert = status.phase === "rejected" || status.phase === "error";
+  const label = isAlert && status.detail ? status.detail : phaseLabel;
+  const title = [phaseLabel, status.gameName, status.detail].filter(Boolean).join(" · ");
   const isWorking = status.phase === "connecting" || status.phase === "reconnecting"
     || status.phase === "signing" || status.phase === "encrypting"
     || status.phase === "decrypting" || status.phase === "disconnecting";
   const isHealthy = status.phase === "connected" || status.phase === "signed";
-  const isAlert = status.phase === "rejected" || status.phase === "error";
-
   return (
     <div
       role="status"
@@ -88,7 +88,7 @@ export function BalSignerStatusIndicator() {
       )}
     >
       <SignerGlyph key={status.phase} phase={status.phase} />
-      <span className="hidden max-w-[132px] truncate min-[430px]:inline">{label}</span>
+      <span className="hidden max-w-[190px] truncate min-[430px]:inline">{label}</span>
       {status.activeSessions > 1 ? (
         <span className="hidden min-w-4 rounded-full bg-current/15 px-1 text-center font-mono text-[9px] ln:inline">
           {status.activeSessions}

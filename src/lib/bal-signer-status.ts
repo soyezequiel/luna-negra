@@ -319,17 +319,19 @@ export function observeBalSignerMessage(message: unknown): void {
     return;
   }
   if (candidate.type !== "BAL_ERROR") return;
+  clearTransientTimer();
   pendingRequests.delete(candidate.requestId);
   const rejected = candidate.code === "USER_REJECTED" || candidate.code === "PERMISSION_DENIED";
+  const code = typeof candidate.code === "string" ? candidate.code : null;
+  const errorMessage = typeof candidate.message === "string"
+    ? candidate.message
+    : rejected ? "La operación fue rechazada" : "El signer encontró un error";
   emit({
     phase: rejected ? "rejected" : "error",
     gameName: request?.gameName ?? currentGameName(),
     activeSessions: activeSessions.size,
-    detail: typeof candidate.message === "string"
-      ? candidate.message
-      : rejected ? "La operación fue rechazada" : "El signer encontró un error",
+    detail: code ? `[${code}] ${errorMessage}` : errorMessage,
   });
-  returnToStableAfter(4500);
 }
 
 export function reportBalDisconnecting(detail = "Cerrando las sesiones de firma"): void {
