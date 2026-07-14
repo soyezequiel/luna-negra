@@ -15,6 +15,7 @@ import {
   type BalTransportEnvelope,
 } from "nostr-game-protocol/bal";
 import {
+  disableBalSignerGame,
   registerBalSignerGame,
   reportBalDisconnecting,
   unregisterBalSignerGame,
@@ -228,6 +229,17 @@ export function unregisterBalGameWindow(peer: Window): void {
   unregisterBalSignerGame(game.gameId, game.gameName);
   // BAL está habilitado para un único juego. Al cerrarlo también cerramos su
   // remoto efímero para que el estado de la navbar describa la conexión real.
+  void launcher?.logoutAll("launcher_logout");
+}
+
+/** Desvincula BAL porque el jugador eligió iniciar el juego sin ese servicio. */
+export function disableBalGameWindow(peer: Window): void {
+  const game = games.get(peer);
+  games.delete(peer);
+  if (!game) return;
+  removeGameBinding(game.gameId);
+  removeBalSessionAuthorizationsForGame(game.gameId);
+  disableBalSignerGame(game.gameId);
   void launcher?.logoutAll("launcher_logout");
 }
 

@@ -272,6 +272,30 @@ describe("launchStandaloneGame", () => {
     });
   });
 
+  it("launches without BAL when the player declines the pre-permission", async () => {
+    const gameWin = createFakeGameWindow();
+    const open = vi.fn(() => gameWin);
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      open,
+    });
+
+    const { launchStandaloneGame } = await import("@/lib/room-launch");
+
+    const result = launchStandaloneGame({
+      gameUrl: "https://ajedrez.example/play?lnOrigin=https%3A%2F%2Fold.example",
+      slug: "ajedrez",
+      title: "Ajedrez",
+      balEnabled: false,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(open).toHaveBeenCalledWith(
+      "https://ajedrez.example/play?lnBal=off",
+      "luna-negra-game-ajedrez",
+    );
+  });
+
   it("notifies opened game windows when Luna Negra logs out", async () => {
     const gameWin = createFakeGameWindow();
     vi.stubGlobal("window", {

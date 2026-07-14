@@ -62,17 +62,26 @@ describe("BAL signer navbar status", () => {
     });
   });
 
-  it("shows a rejected request without inventing an active session", async () => {
+  it("treats intentionally playing without BAL as a neutral state", async () => {
     const status = await import("@/lib/bal-signer-status");
     status.registerBalSignerGame("ajedrez", "Ajedrez");
     status.reportBalConnectionRequested("request-2", "ajedrez", "Ajedrez");
     status.reportBalConsentDecision("deny");
 
-    expect(status.getBalSignerStatusSnapshot()).toMatchObject({
-      phase: "rejected",
+    expect(status.getBalSignerStatusSnapshot()).toEqual({
+      phase: "idle",
       activeSessions: 0,
-      gameName: "Ajedrez",
+      gameName: null,
+      detail: null,
     });
+
+    status.observeBalSignerMessage({
+      type: "BAL_ERROR",
+      requestId: "request-2",
+      code: "USER_REJECTED",
+      message: "El usuario rechazó el acceso BAL",
+    });
+    expect(status.getBalSignerStatusSnapshot().phase).toBe("idle");
   });
 
   it("keeps the exact BAL error visible until another state change", async () => {

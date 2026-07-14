@@ -49,6 +49,7 @@ const registeredGames = new Map<string, string>();
 const pendingRequests = new Map<string, { gameId: string; gameName: string }>();
 const activeSessions = new Map<string, ActiveSession>();
 const previouslyConnectedGames = new Set<string>();
+const intentionallyDeniedRequests = new Set<string>();
 
 function emit(next: BalSignerStatus): void {
   status = next;
@@ -234,12 +235,28 @@ export function unregisterBalSignerGame(gameId: string, gameName: string): void 
   returnToStableAfter(3500);
 }
 
+/** Limpia el indicador sin advertencias cuando jugar sin BAL fue intencional. */
+export function disableBalSignerGame(gameId: string): void {
+  registeredGames.delete(gameId);
+  for (const [requestId, request] of pendingRequests) {
+    if (request.gameId === gameId) {
+      pendingRequests.delete(requestId);
+      intentionallyDeniedRequests.delete(requestId);
+    }
+  }
+  for (const [requestId, session] of activeSessions) {
+    if (session.gameId === gameId) removeSession(requestId);
+  }
+  emit(stableStatus());
+}
+
 export function reportBalConnectionRequested(
   requestId: string,
   gameId: string,
   gameName: string,
 ): void {
   clearTransientTimer();
+  intentionallyDeniedRequests.delete(requestId);
   pendingRequests.set(requestId, { gameId, gameName });
   const reconnecting = previouslyConnectedGames.has(gameId)
     || status.phase === "reconnecting";
@@ -264,13 +281,15 @@ export function reportBalAwaitingApproval(gameId: string, gameName: string): voi
 export function reportBalConsentDecision(decision: "once" | "remember" | "deny"): void {
   const gameName = currentGameName();
   if (decision === "deny") {
-    emit({
-      phase: "rejected",
-      gameName,
-      activeSessions: activeSessions.size,
-      detail: "Rechazaste la solicitud del juego",
-    });
-    returnToStableAfter(4200);
+    // Elegir jugar sin BAL es una alternativa válida, no un error del signer.
+    // Guardamos el request para ignorar el BAL_ERROR/USER_REJECTED que el wire
+    // usa como respuesta técnica a la negativa.
+    const requestId = [...pendingRequests.keys()].at(-1);
+    if (requestId) {
+      pendingRequests.delete(requestId);
+      intentionallyDeniedRequests.add(requestId);
+    }
+    emit(activeSessions.size > 0 ? stableStatus() : IDLE_STATUS);
     return;
   }
   emit({
@@ -322,6 +341,10 @@ export function observeBalSignerMessage(message: unknown): void {
   clearTransientTimer();
   pendingRequests.delete(candidate.requestId);
   const rejected = candidate.code === "USER_REJECTED" || candidate.code === "PERMISSION_DENIED";
+  if (rejected && intentionallyDeniedRequests.delete(candidate.requestId)) {
+    emit(activeSessions.size > 0 ? stableStatus() : IDLE_STATUS);
+    return;
+  }
   const code = typeof candidate.code === "string" ? candidate.code : null;
   const errorMessage = typeof candidate.message === "string"
     ? candidate.message

@@ -7,11 +7,9 @@ import { Button } from "@/components/ui/button";
 import { useNotify } from "@/providers/notifications-provider";
 import { useSession } from "@/providers/session-provider";
 import {
-  clearSuppressedBalConsent,
   createBalPreauthorizationRequest,
   grantBalPreauthorization,
   hasBalAuthorization,
-  suppressNextBalConsent,
 } from "@/lib/bal-launcher";
 import {
   getActiveSigner,
@@ -69,7 +67,7 @@ export function PlayButton({
     });
   }
 
-  async function openGame(suppressedRequest?: BalConsentRequest) {
+  async function openGame(balEnabled = true) {
     if (loading) return;
     // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
     // y otros bloqueadores de popups rechazan el window.open.
@@ -88,9 +86,9 @@ export function PlayButton({
         slug,
         title,
         win,
+        balEnabled,
       });
       if (!result.ok) {
-        if (suppressedRequest) clearSuppressedBalConsent(suppressedRequest);
         notify({
           title: POPUP_BLOCKED_TITLE,
           body: POPUP_BLOCKED_BODY,
@@ -100,7 +98,6 @@ export function PlayButton({
         });
       }
     } catch {
-      if (suppressedRequest) clearSuppressedBalConsent(suppressedRequest);
       win?.close();
     } finally {
       setLoading(false);
@@ -126,8 +123,7 @@ export function PlayButton({
     if (!request) return;
     setPreauthorization(null);
     if (decision === "deny") {
-      suppressNextBalConsent(request);
-      void openGame(request);
+      void openGame(false);
       return;
     }
     grantBalPreauthorization(request, decision === "remember");

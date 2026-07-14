@@ -61,7 +61,10 @@ actual.
 
 ## Rechazo, fallback y revocación
 
-- **No permitir** lleva al login existente y permite invitado.
+- **Jugar sin permiso** abre el juego con `lnBal=off`: no inicia el handshake BAL,
+  no registra la ventana como signer y Ajedrez continúa con su login existente.
+- **No permitir** durante un pedido ya iniciado también lleva al login existente;
+  la decisión queda en estado neutral, sin mostrar un error de conexión en ninguna app.
 - Sin sesión en Luna Negra no aparece consentimiento.
 - En **Perfil → Inicio automático en juegos**, revocar Ajedrez. Se cierra también
   su sesión activa y el siguiente inicio vuelve a preguntar.

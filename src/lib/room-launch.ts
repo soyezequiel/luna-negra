@@ -7,7 +7,11 @@
  */
 
 import { watchGameWindow } from "@/lib/invite";
-import { registerBalGameWindow, unregisterBalGameWindow } from "@/lib/bal-launcher";
+import {
+  disableBalGameWindow,
+  registerBalGameWindow,
+  unregisterBalGameWindow,
+} from "@/lib/bal-launcher";
 
 const gameWindows = new Map<string, Window>();
 const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
@@ -77,11 +81,13 @@ export function registerGameWindow(
   win: Window | null,
   gameUrl?: string,
   gameName?: string,
+  balEnabled = true,
 ): void {
   if (!win) return;
   gameWindows.set(slug, win);
   if (gameUrl) gameWindowOrigins.set(slug, new URL(gameUrl, window.location.origin).origin);
-  if (gameUrl) registerBalGameWindow(slug, gameName ?? slug, win, gameUrl);
+  if (gameUrl && balEnabled) registerBalGameWindow(slug, gameName ?? slug, win, gameUrl);
+  else if (!balEnabled) disableBalGameWindow(win);
 
   const previous = gameWindowWatchers.get(slug);
   if (previous) clearInterval(previous);
@@ -123,6 +129,7 @@ export function launchStandaloneGame({
   title,
   roomId,
   win,
+  balEnabled = true,
 }: {
   gameUrl: string;
   slug?: string;
@@ -134,9 +141,17 @@ export function launchStandaloneGame({
   /** Pestaña abierta sincrónicamente dentro del gesto del click (evita el bloqueo
    * de popups); si no se pasa, se abre una nueva acá. */
   win?: Window | null;
+  /** `false` omite por completo la negociación BAL y conserva el login propio. */
+  balEnabled?: boolean;
 }): LaunchResult {
   const url = new URL(gameUrl, window.location.origin);
-  url.searchParams.set("lnOrigin", window.location.origin);
+  if (balEnabled) {
+    url.searchParams.set("lnOrigin", window.location.origin);
+    url.searchParams.delete("lnBal");
+  } else {
+    url.searchParams.delete("lnOrigin");
+    url.searchParams.set("lnBal", "off");
+  }
   if (roomId) url.searchParams.set("join", roomId); // ?join: estándar único (antes ?lnRoom)
   const dest = url.toString();
   const existing = slug ? getOpenGameWindow(slug) : null;
@@ -146,7 +161,7 @@ export function launchStandaloneGame({
     opened ?? window.open(dest, slug ? gameWindowTarget(slug) : "_blank");
   if (!gameWin) return { ok: false, reason: "popup-blocked", dest };
   if (opened) navigateGameWindow(opened, dest);
-  if (slug) registerGameWindow(slug, gameWin, gameUrl, title);
+  if (slug) registerGameWindow(slug, gameWin, gameUrl, title, balEnabled);
   return { ok: true };
 }
 
