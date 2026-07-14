@@ -15,6 +15,7 @@ import {
 } from "@/lib/bal-launcher";
 import { getStoredLocalSignerSource } from "@/lib/signer";
 import {
+  getOpenGameWindow,
   launchStandaloneGame,
   preopenGameWindowIfNeeded,
   POPUP_BLOCKED_BODY,
@@ -103,8 +104,12 @@ export function PlayButton({
 
   function play() {
     if (loading) return;
+    // Reconciliar la ventana ANTES de mirar el permiso temporal. Si el usuario
+    // cerró el juego y vuelve a abrirlo antes de que corra el watcher, esta
+    // lectura detecta `closed`, desregistra BAL y elimina "Permitir esta vez".
+    const gameAlreadyOpen = slug ? getOpenGameWindow(slug) !== null : false;
     const request = getPreauthorizationRequest();
-    if (request && !hasBalAuthorization(request)) {
+    if (!gameAlreadyOpen && request && !hasBalAuthorization(request)) {
       setPreauthorization(request);
       return;
     }

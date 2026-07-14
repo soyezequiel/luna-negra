@@ -37,6 +37,18 @@ function okResponse(body: unknown) {
   });
 }
 
+function memoryStorage(): Storage {
+  const records = new Map<string, string>();
+  return {
+    get length() { return records.size; },
+    clear: () => records.clear(),
+    getItem: (key) => records.get(key) ?? null,
+    key: (index) => [...records.keys()][index] ?? null,
+    removeItem: (key) => { records.delete(key); },
+    setItem: (key, value) => { records.set(key, value); },
+  };
+}
+
 beforeEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
@@ -175,6 +187,44 @@ describe("joinRoomAndPlay", () => {
 });
 
 describe("launchStandaloneGame", () => {
+  it("clears a one-time BAL grant immediately when the previous game window is closed", async () => {
+    const localStorage = memoryStorage();
+    const sessionStorage = memoryStorage();
+    const gameWin = createFakeGameWindow();
+    vi.stubGlobal("localStorage", localStorage);
+    vi.stubGlobal("sessionStorage", sessionStorage);
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      open: vi.fn(() => gameWin),
+      dispatchEvent: vi.fn(),
+    });
+
+    const bal = await import("@/lib/bal-launcher");
+    const roomLaunch = await import("@/lib/room-launch");
+    const request = bal.createBalPreauthorizationRequest({
+      gameId: "ajedrez",
+      gameName: "Ajedrez",
+      gameUrl: "https://ajedrez.example/play",
+      identityId: "user-1",
+      pubkey: "a".repeat(64),
+      identitySource: "nsec",
+    });
+    expect(request).not.toBeNull();
+    bal.grantBalPreauthorization(request!, false);
+    roomLaunch.registerGameWindow(
+      "ajedrez",
+      gameWin as unknown as Window,
+      "https://ajedrez.example/play",
+      "Ajedrez",
+    );
+    expect(bal.hasBalAuthorization(request!)).toBe(true);
+
+    gameWin.closed = true;
+
+    expect(roomLaunch.getOpenGameWindow("ajedrez")).toBeNull();
+    expect(bal.hasBalAuthorization(request!)).toBe(false);
+  });
+
   it("navigates a pre-opened window instead of opening a new one", async () => {
     const gameWin = createFakeGameWindow();
     const open = vi.fn(() => {
