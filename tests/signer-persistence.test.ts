@@ -17,6 +17,28 @@ beforeEach(() => {
 });
 
 describe("persistencia del signer", () => {
+  it("resuelve BAL para una nsec importada y para un complemento NIP-07", async () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("window", {});
+    const { resolveBalIdentitySource } = await import("@/lib/signer");
+
+    expect(resolveBalIdentitySource({
+      custodial: false,
+      signerMethod: "local",
+      localSource: "imported",
+    })).toBe("nsec");
+    expect(resolveBalIdentitySource({
+      custodial: false,
+      signerMethod: "nip07",
+      localSource: null,
+    })).toBe("nip07");
+    expect(resolveBalIdentitySource({
+      custodial: false,
+      signerMethod: "nip46",
+      localSource: null,
+    })).toBeNull();
+  });
+
   it("restaura una clave local después de recargar el módulo", async () => {
     const storage = memoryStorage();
     vi.stubGlobal("localStorage", storage);

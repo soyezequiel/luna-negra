@@ -19,6 +19,12 @@ function permissionLabel(permission: string): string {
   return permission;
 }
 
+function identitySourceLabel(source: BalConsentRequest["identitySource"]): string {
+  if (source === "nip07") return "Complemento Nostr · NIP-07";
+  if (source === "nsec") return "Clave nsec importada en Luna";
+  return "Clave de tu cuenta de Luna";
+}
+
 export function BalConsentDialog({
   request,
   mode,
@@ -73,6 +79,9 @@ export function BalConsentDialog({
             <div>
               <dt className="text-xs uppercase tracking-wide text-ln-faint">Identidad</dt>
               <dd className="mt-0.5 font-mono text-xs text-ln-soft">{identity}</dd>
+              <dd className="mt-1 text-xs text-ln-faint">
+                {identitySourceLabel(request.identitySource)}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-ln-faint">Permisos solicitados</dt>

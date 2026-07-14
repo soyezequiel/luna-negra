@@ -10,7 +10,11 @@ import {
   type BalTransport,
 } from "nostr-game-protocol/bal";
 import { useSession } from "@/providers/session-provider";
-import { getActiveLocalSignerSource, restoreSigner } from "@/lib/signer";
+import {
+  getActiveLocalSignerSource,
+  resolveBalIdentitySource,
+  restoreSigner,
+} from "@/lib/signer";
 import { NIP46_RELAYS } from "@/lib/signer-nip46";
 import { BalSessionGuard } from "@/lib/bal-session-guard";
 import { BalConsentDialog } from "@/components/bal-consent-dialog";
@@ -133,13 +137,12 @@ export function BalLauncherHost() {
         const currentUser = userRef.current;
         if (!currentUser) return null;
         const signer = await restoreSigner();
-        if (!signer || signer.method !== "local") return null;
-        const localSource = getActiveLocalSignerSource();
-        const source = currentUser.custodial
-          ? "email" as const
-          : localSource === "imported"
-            ? "nsec" as const
-            : null;
+        if (!signer) return null;
+        const source = resolveBalIdentitySource({
+          custodial: Boolean(currentUser.custodial),
+          signerMethod: signer.method,
+          localSource: getActiveLocalSignerSource(),
+        });
         if (!source) return null;
         const trackedSigner: BalNip46Signer = {
           getPublicKey: () => signer.getPublicKey(),

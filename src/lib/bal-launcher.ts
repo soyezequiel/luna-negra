@@ -3,6 +3,7 @@
 import {
   BAL_DEFAULT_SESSION_TTL_MS,
   WebStorageBalAuthorizationStore,
+  balAuthorizationId,
   createBalAuthorization,
   matchesBalAuthorization,
   type BalAuthorization,
@@ -99,7 +100,10 @@ export function createBalPreauthorizationRequest(
 /** Indica si el pre-permiso ya existe (por esta pestaña o recordado). */
 export function hasBalAuthorization(request: BalConsentRequest): boolean {
   const now = Date.now();
-  return [...sessionAuthorizationStore().list(), ...persistentAuthorizationStore().list()]
+  return [
+    ...listCompatibleAuthorizations(sessionAuthorizationStore()),
+    ...listCompatibleAuthorizations(persistentAuthorizationStore()),
+  ]
     .some((record) => matchesBalAuthorization(record, request, now));
 }
 
@@ -262,7 +266,10 @@ class NotifyingAuthorizationStore implements BalAuthorizationStore {
 
   list(): BalAuthorization[] {
     const now = Date.now();
-    const records = [...this.session.list(), ...this.persistent.list()]
+    const records = [
+      ...listCompatibleAuthorizations(this.session),
+      ...listCompatibleAuthorizations(this.persistent),
+    ]
       .filter((record) => record.expiresAt > now);
     return [...new Map(records.map((record) => [record.id, record])).values()];
   }
@@ -286,6 +293,18 @@ function persistentAuthorizationStore(): WebStorageBalAuthorizationStore {
 
 function sessionAuthorizationStore(): WebStorageBalAuthorizationStore {
   return new WebStorageBalAuthorizationStore(sessionStorage, BAL_SESSION_AUTHORIZATIONS_KEY);
+}
+
+/** Descarta grants de versiones previas cuyo ID no incluía el tipo de firmante. */
+function listCompatibleAuthorizations(
+  store: WebStorageBalAuthorizationStore,
+): BalAuthorization[] {
+  const compatible: BalAuthorization[] = [];
+  for (const record of store.list()) {
+    if (record.id === balAuthorizationId(record)) compatible.push(record);
+    else store.remove(record.id);
+  }
+  return compatible;
 }
 
 function removeBalSessionAuthorizationsForGame(gameId: string): void {
@@ -339,5 +358,5 @@ export async function revokeBalAuthorization(id: string): Promise<void> {
 
 export function listBalAuthorizations(): BalAuthorization[] {
   if (typeof window === "undefined") return [];
-  return persistentAuthorizationStore().list();
+  return listCompatibleAuthorizations(persistentAuthorizationStore());
 }

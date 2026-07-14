@@ -18,8 +18,10 @@ import {
   nip19,
   type Event,
 } from "nostr-tools";
+import type { BalIdentitySource } from "nostr-game-protocol/bal";
 
 export type SignerMethod = "nip07" | "nip46" | "local";
+export type LocalSignerSource = "imported" | "generated" | "custodial";
 
 export type UnsignedEvent = {
   kind: number;
@@ -54,7 +56,7 @@ export type StoredSigner =
       method: "local";
       nsec: string;
       /** Procedencia para políticas como BAL; ausente = sesión legacy no elegible. */
-      source?: "imported" | "generated" | "custodial";
+      source?: LocalSignerSource;
     }
   | {
       method: "nip46";
@@ -101,8 +103,12 @@ export function getActiveSigner(): LunaSigner | null {
   return active;
 }
 
+export function getStoredSignerMethod(): SignerMethod | null {
+  return readStoredSigner()?.method ?? null;
+}
+
 /** Metadato local persistido; permite preparar UX antes de restaurar el signer. */
-export function getStoredLocalSignerSource(): "imported" | "generated" | "custodial" | null {
+export function getStoredLocalSignerSource(): LocalSignerSource | null {
   const stored = readStoredSigner();
   return stored?.method === "local" ? stored.source ?? null : null;
 }
@@ -111,6 +117,23 @@ export function getStoredLocalSignerSource(): "imported" | "generated" | "custod
 export function getActiveLocalSignerSource(): "imported" | "generated" | "custodial" | null {
   if (active?.method !== "local") return null;
   return getStoredLocalSignerSource();
+}
+
+/** Fuente BAL real: nunca presenta un complemento como si fuera una nsec local. */
+export function resolveBalIdentitySource({
+  custodial,
+  signerMethod,
+  localSource,
+}: {
+  custodial: boolean;
+  signerMethod: SignerMethod | null;
+  localSource: LocalSignerSource | null;
+}): BalIdentitySource | null {
+  if (signerMethod === "nip07") return "nip07";
+  if (signerMethod !== "local") return null;
+  if (localSource === "imported") return "nsec";
+  if (custodial && localSource === "custodial") return "email";
+  return null;
 }
 
 export function setActiveSigner(signer: LunaSigner, stored: StoredSigner): void {

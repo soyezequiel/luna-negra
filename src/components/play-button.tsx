@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { BalConsentRequest, BalIdentitySource } from "nostr-game-protocol/bal";
+import type { BalConsentRequest } from "nostr-game-protocol/bal";
 import { BalConsentDialog } from "@/components/bal-consent-dialog";
 import { Button } from "@/components/ui/button";
 import { useNotify } from "@/providers/notifications-provider";
@@ -13,7 +13,12 @@ import {
   hasBalAuthorization,
   suppressNextBalConsent,
 } from "@/lib/bal-launcher";
-import { getStoredLocalSignerSource } from "@/lib/signer";
+import {
+  getActiveSigner,
+  getStoredLocalSignerSource,
+  getStoredSignerMethod,
+  resolveBalIdentitySource,
+} from "@/lib/signer";
 import {
   getOpenGameWindow,
   launchStandaloneGame,
@@ -48,11 +53,11 @@ export function PlayButton({
 
   function getPreauthorizationRequest(): BalConsentRequest | null {
     if (!slug || !user) return null;
-    const identitySource: BalIdentitySource | null = user.custodial
-      ? "email"
-      : getStoredLocalSignerSource() === "imported"
-        ? "nsec"
-        : null;
+    const identitySource = resolveBalIdentitySource({
+      custodial: Boolean(user.custodial),
+      signerMethod: getActiveSigner()?.method ?? getStoredSignerMethod(),
+      localSource: getStoredLocalSignerSource(),
+    });
     if (!identitySource) return null;
     return createBalPreauthorizationRequest({
       gameId: slug,

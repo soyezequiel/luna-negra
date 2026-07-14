@@ -60,6 +60,22 @@ describe("BAL session authorization", () => {
 });
 
 describe("BAL preauthorization", () => {
+  it("drops grants created before authorizations were bound to the signer type", async () => {
+    const bal = await import("@/lib/bal-launcher");
+    const store = new (await import("nostr-game-protocol/bal")).WebStorageBalAuthorizationStore(
+      localStorage,
+    );
+    store.save({
+      ...request,
+      id: "legacy-without-signer-source",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    });
+
+    expect(bal.listBalAuthorizations()).toEqual([]);
+    expect(store.list()).toEqual([]);
+  });
+
   it("builds the trusted Ajedrez grant with the exact game origin and manifest", async () => {
     const bal = await import("@/lib/bal-launcher");
 
@@ -99,6 +115,15 @@ describe("BAL preauthorization", () => {
       pubkey: "a".repeat(64),
       identitySource: "nsec",
     })).toBeNull();
+
+    expect(bal.createBalPreauthorizationRequest({
+      gameId: "ajedrez",
+      gameName: "Ajedrez",
+      gameUrl: "https://ajedrez.example/play",
+      identityId: "user-1",
+      pubkey: "a".repeat(64),
+      identitySource: "nip07",
+    })).toMatchObject({ identitySource: "nip07" });
   });
 
   it("grants the next launch without turning a one-time choice into a remembered grant", async () => {

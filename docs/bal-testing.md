@@ -43,8 +43,18 @@ SDK local `F:\proyectos\SDK NGP`.
 3. Confirmar que el juego ve la pubkey derivada, nunca la `nsec`. La URL del juego
    no debe contener `bunker://`, `secret` ni `nsec`.
 
-Una clave generada por Luna Negra, NIP-07 o un bunker externo no son identidades
-BAL elegibles en v1; Ajedrez conserva su login actual.
+## Complemento Nostr (NIP-07)
+
+1. Cerrar sesión e ingresar con el complemento del navegador.
+2. Seleccionar Ajedrez y verificar que el pre-permiso identifica al firmante como
+   **Complemento Nostr · NIP-07**.
+3. Probar **Dar permiso y jugar**: Luna debe crear BAL delegando cada operación al
+   complemento, que conserva sus propios avisos y políticas de autorización.
+4. Repetir con **Jugar sin permiso**: Ajedrez debe usar su login normal o invitado
+   sin abrir un segundo consentimiento BAL.
+
+Una clave generada por Luna Negra o un bunker externo no son identidades BAL
+elegibles en v1; Ajedrez conserva su login actual.
 
 ## Rechazo, fallback y revocación
 
@@ -52,7 +62,7 @@ BAL elegibles en v1; Ajedrez conserva su login actual.
 - Sin sesión en Luna Negra no aparece consentimiento.
 - En **Perfil → Inicio automático en juegos**, revocar Ajedrez. Se cierra también
   su sesión activa y el siguiente inicio vuelve a preguntar.
-- Cambiar usuario, origen o permisos obliga a pedir consentimiento otra vez.
+- Cambiar usuario, origen, tipo de firmante o permisos obliga a pedir consentimiento otra vez.
 - Cerrar sesión en Luna Negra envía `BAL_LOGOUT`; ningún envío usa `targetOrigin="*"`.
 
 La conectividad real requiere al menos un relay NIP-46 accesible. Los tests del
