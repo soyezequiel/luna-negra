@@ -101,11 +101,16 @@ export function getActiveSigner(): LunaSigner | null {
   return active;
 }
 
+/** Metadato local persistido; permite preparar UX antes de restaurar el signer. */
+export function getStoredLocalSignerSource(): "imported" | "generated" | "custodial" | null {
+  const stored = readStoredSigner();
+  return stored?.method === "local" ? stored.source ?? null : null;
+}
+
 /** Metadato no secreto de la clave local activa. Nunca expone la nsec. */
 export function getActiveLocalSignerSource(): "imported" | "generated" | "custodial" | null {
   if (active?.method !== "local") return null;
-  const stored = readStoredSigner();
-  return stored?.method === "local" ? stored.source ?? null : null;
+  return getStoredLocalSignerSource();
 }
 
 export function setActiveSigner(signer: LunaSigner, stored: StoredSigner): void {

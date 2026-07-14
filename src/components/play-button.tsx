@@ -1,8 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import type { BalConsentRequest, BalIdentitySource } from "nostr-game-protocol/bal";
+import { BalConsentDialog } from "@/components/bal-consent-dialog";
 import { Button } from "@/components/ui/button";
 import { useNotify } from "@/providers/notifications-provider";
+import { useSession } from "@/providers/session-provider";
+import {
+  clearSuppressedBalConsent,
+  createBalPreauthorizationRequest,
+  grantBalPreauthorization,
+  hasBalAuthorization,
+  suppressNextBalConsent,
+} from "@/lib/bal-launcher";
+import { getStoredLocalSignerSource } from "@/lib/signer";
 import {
   launchStandaloneGame,
   preopenGameWindowIfNeeded,
@@ -30,9 +41,29 @@ export function PlayButton({
   size?: "sm" | "md" | "xl";
 }) {
   const [loading, setLoading] = useState(false);
+  const [preauthorization, setPreauthorization] = useState<BalConsentRequest | null>(null);
   const { notify } = useNotify();
+  const { user } = useSession();
 
-  async function play() {
+  function getPreauthorizationRequest(): BalConsentRequest | null {
+    if (!slug || !user) return null;
+    const identitySource: BalIdentitySource | null = user.custodial
+      ? "email"
+      : getStoredLocalSignerSource() === "imported"
+        ? "nsec"
+        : null;
+    if (!identitySource) return null;
+    return createBalPreauthorizationRequest({
+      gameId: slug,
+      gameName: title ?? slug,
+      gameUrl,
+      identityId: user.id,
+      pubkey: user.pubkey,
+      identitySource,
+    });
+  }
+
+  async function openGame(suppressedRequest?: BalConsentRequest) {
     if (loading) return;
     // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
     // y otros bloqueadores de popups rechazan el window.open.
@@ -53,6 +84,7 @@ export function PlayButton({
         win,
       });
       if (!result.ok) {
+        if (suppressedRequest) clearSuppressedBalConsent(suppressedRequest);
         notify({
           title: POPUP_BLOCKED_TITLE,
           body: POPUP_BLOCKED_BODY,
@@ -62,21 +94,55 @@ export function PlayButton({
         });
       }
     } catch {
+      if (suppressedRequest) clearSuppressedBalConsent(suppressedRequest);
       win?.close();
     } finally {
       setLoading(false);
     }
   }
 
+  function play() {
+    if (loading) return;
+    const request = getPreauthorizationRequest();
+    if (request && !hasBalAuthorization(request)) {
+      setPreauthorization(request);
+      return;
+    }
+    void openGame();
+  }
+
+  function decidePreauthorization(decision: "once" | "remember" | "deny") {
+    const request = preauthorization;
+    if (!request) return;
+    setPreauthorization(null);
+    if (decision === "deny") {
+      suppressNextBalConsent(request);
+      void openGame(request);
+      return;
+    }
+    grantBalPreauthorization(request, decision === "remember");
+    void openGame();
+  }
+
   return (
-    <Button
-      variant={variant}
-      size={size}
-      className={className}
-      onClick={play}
-      disabled={loading}
-    >
-      {loading ? "Abriendo…" : label}
-    </Button>
+    <>
+      <Button
+        variant={variant}
+        size={size}
+        className={className}
+        onClick={play}
+        disabled={loading}
+      >
+        {loading ? "Abriendo…" : label}
+      </Button>
+      {preauthorization ? (
+        <BalConsentDialog
+          request={preauthorization}
+          mode="prelaunch"
+          onDecision={decidePreauthorization}
+          onCancel={() => setPreauthorization(null)}
+        />
+      ) : null}
+    </>
   );
 }

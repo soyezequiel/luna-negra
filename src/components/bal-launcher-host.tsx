@@ -13,6 +13,7 @@ import { useSession } from "@/providers/session-provider";
 import { getActiveLocalSignerSource, restoreSigner } from "@/lib/signer";
 import { NIP46_RELAYS } from "@/lib/signer-nip46";
 import { BalSessionGuard } from "@/lib/bal-session-guard";
+import { BalConsentDialog } from "@/components/bal-consent-dialog";
 import {
   observeBalSignerMessage,
   reportBalAwaitingApproval,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/bal-signer-status";
 import {
   BAL_FOCUS_REQUEST_MESSAGE,
+  consumeSuppressedBalConsent,
   createLunaBalAuthorizationStore,
   lunaBalGameRegistry,
   matchesRegisteredBalGameWindow,
@@ -30,20 +32,6 @@ import {
   rememberBalAuthorizationForSession,
   setActiveBalLauncher,
 } from "@/lib/bal-launcher";
-
-const PERMISSION_LABELS: Record<string, string> = {
-  get_public_key: "Ver tu clave pública",
-  nip04_encrypt: "Cifrar mensajes NIP-04",
-  nip04_decrypt: "Descifrar mensajes NIP-04",
-  nip44_encrypt: "Cifrar mensajes NIP-44",
-  nip44_decrypt: "Descifrar mensajes NIP-44",
-};
-
-function permissionLabel(permission: string): string {
-  if (PERMISSION_LABELS[permission]) return PERMISSION_LABELS[permission];
-  if (permission.startsWith("sign_event:")) return `Firmar eventos kind ${permission.slice(11)}`;
-  return permission;
-}
 
 /** Listener global del launcher y consentimiento explícito del primer BAL. */
 export function BalLauncherHost() {
@@ -200,6 +188,12 @@ export function BalLauncherHost() {
         // Sólo hay una ventana de consentimiento visible. Una segunda solicitud
         // concurrente se rechaza para evitar clickjacking/confusión de contexto.
         if (pendingResolve.current) return Promise.resolve("deny");
+        // "Jugar sin permiso" ya fue una decisión explícita en esta pestaña.
+        // Consumirla acá evita pedir exactamente lo mismo después de abrir el juego.
+        if (consumeSuppressedBalConsent(request)) {
+          reportBalConsentDecision("deny");
+          return Promise.resolve("deny");
+        }
         notifyBalConsentRequired(request.gameId, request.origin);
         reportBalAwaitingApproval(request.gameId, request.gameName);
         setPending(request);
@@ -229,52 +223,5 @@ export function BalLauncherHost() {
   }
 
   if (!pending) return null;
-  const identity = `${pending.pubkey.slice(0, 12)}…${pending.pubkey.slice(-8)}`;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="bal-title">
-      <div className="w-full max-w-lg rounded-ln-xl border border-ln-luna/45 bg-ln-card p-6 shadow-ln-modal">
-        <p className="ln-label">Bunker Auto Login · NIP-46</p>
-        <h2 id="bal-title" className="mt-1 font-display text-2xl font-extrabold text-white">
-          ¿Usar tu identidad en {pending.gameName}?
-        </h2>
-        <p className="mt-2 text-sm text-ln-muted">
-          Luna Negra actuará como firmante remoto. Tu clave privada nunca se enviará al juego.
-        </p>
-
-        <dl className="mt-5 grid gap-3 rounded-ln-lg border border-ln-border bg-ln-bg-deep/55 p-4 text-sm">
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-ln-faint">Juego y origen</dt>
-            <dd className="mt-0.5 text-ln-text">{pending.gameName} · {pending.origin}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-ln-faint">Identidad</dt>
-            <dd className="mt-0.5 font-mono text-xs text-ln-soft">{identity}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-ln-faint">Permisos solicitados</dt>
-            <dd className="mt-1">
-              <ul className="grid gap-1 text-ln-soft">
-                {pending.permissions.map((permission) => (
-                  <li key={permission}>• {permissionLabel(permission)}</li>
-                ))}
-              </ul>
-            </dd>
-          </div>
-        </dl>
-
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
-          <button type="button" className="btn btn-luna" data-bal-consent-primary onClick={() => decide("once")}>
-            Permitir esta vez
-          </button>
-          <button type="button" className="btn btn-aurora" onClick={() => decide("remember")}>
-            Permitir y recordar
-          </button>
-          <button type="button" className="btn btn-ghost sm:col-span-2" onClick={() => decide("deny")}>
-            No permitir
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <BalConsentDialog request={pending} mode="runtime" onDecision={decide} />;
 }

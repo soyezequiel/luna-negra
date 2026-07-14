@@ -9,7 +9,8 @@ SDK local `F:\proyectos\SDK NGP`.
 2. En `ajedrez/web`: `npm install` y `npm run dev` (por defecto
    `http://localhost:5173`). Arrancar también el server para completar el login.
 3. En Luna Negra: configurar `ajedrez.gameUrl` con ese origen, ejecutar
-   `npm install` y `npm run dev`, y abrirlo desde **Jugar**. Una URL del juego
+   `npm install` y `npm run dev`, y seleccionarlo desde **Jugar**. El consentimiento
+   BAL debe aparecer en Luna **antes** de que se abra el juego. Una URL del juego
    abierta directamente no está registrada y debe caer al login normal.
 4. En la consola del juego, comprobar `window.crossOriginIsolated`. Ajedrez usa
    `COOP: restrict-properties` + `COEP: require-corp` para conservar tanto
@@ -18,19 +19,22 @@ SDK local `F:\proyectos\SDK NGP`.
 ## Cuenta por email
 
 1. Cerrar sesión en Luna Negra y entrar por enlace mágico de email.
-2. Abrir Ajedrez desde Luna Negra.
-3. Verificar que el consentimiento muestra juego, origen exacto, pubkey activa y permisos.
-4. Elegir **Permitir esta vez**. El juego debe obtener esa pubkey y seguir su
+2. Seleccionar Ajedrez desde Luna Negra.
+3. Verificar que el pre-permiso muestra juego, origen exacto, pubkey activa y permisos.
+4. Elegir **Dar permiso y jugar**. Ajedrez debe abrirse recién entonces, obtener
+   esa pubkey y seguir su
    challenge Nostr sin mostrar ni copiar una Bunker URI.
-5. Recargar Ajedrez: **Permitir esta vez** debe conservarse dentro de la pestaña
+5. Recargar Ajedrez: el permiso de ese inicio debe conservarse dentro de la pestaña
    actual de Luna y renegociar BAL sin mostrar otro consentimiento. La sesión del
    servidor debe restaurarse inmediatamente con el token mientras el firmante BAL
    se reconecta en segundo plano. Cerrar la ventana del juego y abrirla otra vez
    debe preguntar nuevamente.
-6. Repetir con **Permitir y recordar**: también debe iniciar automáticamente
-   después de cerrar y volver a abrir Ajedrez.
+6. Repetir marcando **Recordar para próximos inicios** antes de permitir: también
+   debe iniciar automáticamente después de cerrar y volver a abrir Ajedrez.
 7. Entrar a una sala y elegir **Salir de la sala**: debe volver al inicio de
    Ajedrez sin recargar ni pedir una nueva autorización BAL.
+8. Revocar el permiso y repetir con **Jugar sin permiso**: Ajedrez debe abrirse y
+   usar su login normal o invitado sin mostrar un segundo consentimiento en Luna.
 
 ## nsec importada
 
