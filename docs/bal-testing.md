@@ -53,8 +53,11 @@ SDK local `F:\proyectos\SDK NGP`.
 4. Repetir con **Jugar sin permiso**: Ajedrez debe usar su login normal o invitado
    sin abrir un segundo consentimiento BAL.
 
-Una clave generada por Luna Negra o un bunker externo no son identidades BAL
-elegibles en v1; Ajedrez conserva su login actual.
+Una clave local generada por Luna Negra también es una identidad BAL `nsec`.
+Las sesiones locales anteriores al metadato de procedencia se recuperan del mismo
+modo, siempre que la pubkey derivada coincida con la cuenta autenticada. Un bunker
+externo sigue sin ser una identidad BAL elegible en v1; Ajedrez conserva su login
+actual.
 
 ## Rechazo, fallback y revocación
 

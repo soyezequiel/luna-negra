@@ -55,7 +55,7 @@ export type StoredSigner =
   | {
       method: "local";
       nsec: string;
-      /** Procedencia para políticas como BAL; ausente = sesión legacy no elegible. */
+      /** Procedencia para UX/políticas; ausente = clave local de una sesión legacy. */
       source?: LocalSignerSource;
     }
   | {
@@ -132,7 +132,12 @@ export function resolveBalIdentitySource({
   if (signerMethod === "nip07") return "nip07";
   if (signerMethod !== "local") return null;
   if (localSource === "imported") return "nsec";
+  if (localSource === "generated") return "nsec";
   if (custodial && localSource === "custodial") return "email";
+  // Antes de guardar `source`, Luna persistía toda clave local sólo como
+  // `{ method: "local", nsec }`. Si la cuenta coincide con esa clave (lo valida
+  // `matchSignerToSessionUser`), sigue siendo una identidad BAL segura.
+  if (localSource === null) return custodial ? "email" : "nsec";
   return null;
 }
 

@@ -21,7 +21,7 @@ function permissionLabel(permission: string): string {
 
 function identitySourceLabel(source: BalConsentRequest["identitySource"]): string {
   if (source === "nip07") return "Complemento Nostr · NIP-07";
-  if (source === "nsec") return "Clave nsec importada en Luna";
+  if (source === "nsec") return "Clave nsec local en Luna";
   return "Clave de tu cuenta de Luna";
 }
 

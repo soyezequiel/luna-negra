@@ -59,6 +59,21 @@ describe("persistencia del signer", () => {
     })).toBe("nsec");
     expect(resolveBalIdentitySource({
       custodial: false,
+      signerMethod: "local",
+      localSource: "generated",
+    })).toBe("nsec");
+    expect(resolveBalIdentitySource({
+      custodial: false,
+      signerMethod: "local",
+      localSource: null,
+    })).toBe("nsec");
+    expect(resolveBalIdentitySource({
+      custodial: true,
+      signerMethod: "local",
+      localSource: null,
+    })).toBe("email");
+    expect(resolveBalIdentitySource({
+      custodial: false,
       signerMethod: "nip07",
       localSource: null,
     })).toBe("nip07");
