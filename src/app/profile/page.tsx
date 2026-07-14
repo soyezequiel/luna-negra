@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { satsLabel, hueFromSlug } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { NostrPermsSection } from "@/components/nostr-perms-section";
+import { BalAuthorizationsSection } from "@/components/bal-authorizations-section";
 
 type LibGame = { id: string; slug: string; title: string; coverUrl: string | null };
 type MineBet = {
@@ -359,6 +360,7 @@ export default function ProfilePage() {
         {/* Derecha: permisos Nostr (la config de cobros vive en /profile/editar) */}
         <div className="space-y-6">
           <NostrPermsSection />
+          <BalAuthorizationsSection />
         </div>
       </div>
     </div>

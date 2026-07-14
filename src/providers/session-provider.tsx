@@ -11,6 +11,7 @@ import { fetchProfile, profileName } from "@/lib/nostr";
 import { clearNip17Cache, getNostrPermsMode, warmUpPermissions } from "@/lib/nostr-social";
 import { notifyOpenGameWindowsLogout } from "@/lib/room-launch";
 import { clearDmCache } from "@/lib/dm-cache";
+import { logoutBalLauncherSessions } from "@/lib/bal-launcher";
 import {
   clearActiveSigner,
   importNsec,
@@ -167,7 +168,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     (sessionUser: SessionUser, nsec: string) => {
       setError(null);
       const signer = importNsec(nsec);
-      setActiveSigner(signer, { method: "local", nsec });
+      setActiveSigner(signer, { method: "local", nsec, source: "custodial" });
       setUser(sessionUser);
       setLoginModalOpen(false);
     },
@@ -175,6 +176,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    await logoutBalLauncherSessions();
     await fetch("/api/auth/logout", { method: "POST" });
     notifyOpenGameWindowsLogout();
     clearActiveSigner();

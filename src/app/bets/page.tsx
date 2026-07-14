@@ -207,6 +207,9 @@ function payoutKindLabel(kind: string | null): string | null {
 
 /** CTA contextual según el estado real de la apuesta y mi depósito. */
 function ctaFor(b: Row): { label: string; play?: boolean } {
+  if (b.payoutStatus === "withdraw_pending") {
+    return { label: "🎟️ Mostrar QR de retiro" };
+  }
   if (b.status === "pending_deposits" && b.depositStatus !== "paid") {
     return { label: `⚡ Depositar ${satsLabel(b.stakeSats)} sats` };
   }
@@ -313,7 +316,11 @@ function HistoryRow({ b }: { b: Row }) {
           </div>
           <p className="mt-0.5 truncate text-xs text-ln-faint">
             {o.label}
-            {b.payoutStatus === "paid" && b.payoutDestination ? (
+            {b.payoutStatus === "withdraw_pending" ? (
+              <span className="font-medium text-ln-corona-bright">
+                {" · "}Premio pendiente · abrir QR
+              </span>
+            ) : b.payoutStatus === "paid" && b.payoutDestination ? (
               <>
                 {" · "}
                 <span className="text-ln-muted">

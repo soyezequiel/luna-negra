@@ -50,7 +50,12 @@ const SIGNER_KEY = "ln_signer";
 
 export type StoredSigner =
   | { method: "nip07" }
-  | { method: "local"; nsec: string }
+  | {
+      method: "local";
+      nsec: string;
+      /** Procedencia para políticas como BAL; ausente = sesión legacy no elegible. */
+      source?: "imported" | "generated" | "custodial";
+    }
   | {
       method: "nip46";
       clientNsec: string;
@@ -89,21 +94,45 @@ function writeStoredSigner(stored: StoredSigner | null): void {
 // --- Signer activo (singleton en memoria) ---
 
 let active: LunaSigner | null = null;
+let restoring: Promise<LunaSigner | null> | null = null;
+let signerGeneration = 0;
 
 export function getActiveSigner(): LunaSigner | null {
   return active;
 }
 
+/** Metadato no secreto de la clave local activa. Nunca expone la nsec. */
+export function getActiveLocalSignerSource(): "imported" | "generated" | "custodial" | null {
+  if (active?.method !== "local") return null;
+  const stored = readStoredSigner();
+  return stored?.method === "local" ? stored.source ?? null : null;
+}
+
 export function setActiveSigner(signer: LunaSigner, stored: StoredSigner): void {
+  signerGeneration += 1;
   active = signer;
   writeStoredSigner(stored);
 }
 
 export function clearActiveSigner(): void {
+  // Invalida también una restauración que todavía esté esperando que aparezca
+  // NIP-07 o que termine de reconectar un bunker. Así un logout no puede ser
+  // revertido por una promesa vieja que resuelva unos milisegundos después.
+  signerGeneration += 1;
   const prev = active;
   active = null;
   writeStoredSigner(null);
   void prev?.close?.();
+}
+
+/** Las extensiones NIP-07 suelen inyectar `window.nostr` después de hidratar. */
+async function waitForNip07(timeoutMs = 5000): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const started = Date.now();
+  while (!window.nostr && Date.now() - started < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return Boolean(window.nostr);
 }
 
 /**
@@ -111,31 +140,52 @@ export function clearActiveSigner(): void {
  * días; sin esto, comentar/chatear tras volver fallaría hasta re-loguear).
  * Para NIP-46 difiere la conexión real al primer uso (import dinámico).
  */
-export async function restoreSigner(): Promise<LunaSigner | null> {
-  if (active) return active;
+async function restoreStoredSigner(): Promise<LunaSigner | null> {
+  const generation = signerGeneration;
   const stored = readStoredSigner();
+  let candidate: LunaSigner | null = null;
+
   if (!stored) {
     // Compat: sesiones previas a la abstracción eran siempre NIP-07.
-    if (typeof window !== "undefined" && window.nostr) {
-      active = createNip07Signer();
-      return active;
+    if (await waitForNip07()) {
+      candidate = createNip07Signer();
+      // Migra la sesión legacy para que la intención de restaurar quede explícita.
+      if (generation === signerGeneration) writeStoredSigner({ method: "nip07" });
     }
-    return null;
-  }
-  try {
+  } else try {
     if (stored.method === "nip07") {
-      if (typeof window === "undefined" || !window.nostr) return null;
-      active = createNip07Signer();
+      if (!(await waitForNip07())) return null;
+      candidate = createNip07Signer();
     } else if (stored.method === "local") {
-      active = importNsec(stored.nsec);
+      candidate = importNsec(stored.nsec);
     } else {
       const { restoreBunkerSigner } = await import("./signer-nip46");
-      active = await restoreBunkerSigner(stored.clientNsec, stored.bunker);
+      candidate = await restoreBunkerSigner(stored.clientNsec, stored.bunker);
     }
-    return active;
   } catch {
     return null;
   }
+
+  if (!candidate) return null;
+  if (generation !== signerGeneration) {
+    void candidate.close?.();
+    return active;
+  }
+  active = candidate;
+  return active;
+}
+
+/**
+ * Restaura una sola vez aunque SessionProvider, BAL y una acción social la pidan
+ * al mismo tiempo. Esto evita abrir varios clientes NIP-46 para la misma sesión.
+ */
+export function restoreSigner(): Promise<LunaSigner | null> {
+  if (active) return Promise.resolve(active);
+  if (restoring) return restoring;
+  restoring = restoreStoredSigner().finally(() => {
+    restoring = null;
+  });
+  return restoring;
 }
 
 // --- NIP-07 (extensión) ---

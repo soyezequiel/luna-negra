@@ -212,7 +212,12 @@ los ignora sin romperse.)
 - `status`: `pending_deposits | funded | resolving | settled | cancelled | expired | refunded`.
 - Para asientos **sin pagar**, devuelve un `bolt11` **vigente** (lo re-emite si venció):
   así el polling también entrega los handles de depósito frescos.
-- `payout` por asiento: `{ tier, sats, status, receiptId? }`.
+- `payout` por asiento: `{ tier, sats, status, receiptId?, claimUrl?, withdrawLnurl? }`.
+  Cuando `tier="withdraw"` y el retiro está pendiente, `claimUrl` abre una pantalla
+  alojada por Luna Negra que muestra el QR y sigue el estado; así el juego no necesita
+  implementar UI de LNURL-withdraw. `withdrawLnurl` permite a los clientes avanzados
+  dibujar el QR directamente. Ambos son bearer secrets y deben mostrarse sólo al
+  dueño del asiento.
 
 ### `report_result`  — solo el juego (oráculo)
 `params`: `{ betId, winners: [seatId] }` (vacío = empate/anulación → reembolso)

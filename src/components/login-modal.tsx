@@ -271,14 +271,14 @@ export function LoginModal() {
 
   async function loginGenerated() {
     if (!generated) return;
-    await finish(generated.signer, { method: "local", nsec: generated.nsec });
+    await finish(generated.signer, { method: "local", nsec: generated.nsec, source: "generated" });
   }
 
   async function loginImported() {
     if (!nsecInput.trim() || busy) return;
     try {
       const signer = importNsec(nsecInput);
-      await finish(signer, { method: "local", nsec: nsecInput.trim() });
+      await finish(signer, { method: "local", nsec: nsecInput.trim(), source: "imported" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "nsec inválido");
     }

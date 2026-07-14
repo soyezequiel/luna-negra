@@ -7,6 +7,7 @@
  */
 
 import { watchGameWindow } from "@/lib/invite";
+import { registerBalGameWindow, unregisterBalGameWindow } from "@/lib/bal-launcher";
 
 const gameWindows = new Map<string, Window>();
 const gameWindowWatchers = new Map<string, ReturnType<typeof setInterval>>();
@@ -75,15 +76,12 @@ export function registerGameWindow(
   slug: string,
   win: Window | null,
   gameUrl?: string,
+  gameName?: string,
 ): void {
   if (!win) return;
   gameWindows.set(slug, win);
   if (gameUrl) gameWindowOrigins.set(slug, new URL(gameUrl, window.location.origin).origin);
-  try {
-    win.opener = null;
-  } catch {
-    /* algunos navegadores no permiten escribir opener; el handle igual sirve */
-  }
+  if (gameUrl) registerBalGameWindow(slug, gameName ?? slug, win, gameUrl);
 
   const previous = gameWindowWatchers.get(slug);
   if (previous) clearInterval(previous);
@@ -110,10 +108,9 @@ export function notifyOpenGameWindowsLogout(): void {
         unregisterGameWindow(slug, win);
         continue;
       }
-      win.postMessage(
-        { type: LOGOUT_MESSAGE_TYPE },
-        gameWindowOrigins.get(slug) ?? "*",
-      );
+      const targetOrigin = gameWindowOrigins.get(slug);
+      if (!targetOrigin) continue;
+      win.postMessage({ type: LOGOUT_MESSAGE_TYPE }, targetOrigin);
     } catch {
       unregisterGameWindow(slug, win);
     }
@@ -149,7 +146,7 @@ export function launchStandaloneGame({
     opened ?? window.open(dest, slug ? gameWindowTarget(slug) : "_blank");
   if (!gameWin) return { ok: false, reason: "popup-blocked", dest };
   if (opened) navigateGameWindow(opened, dest);
-  if (slug) registerGameWindow(slug, gameWin, gameUrl);
+  if (slug) registerGameWindow(slug, gameWin, gameUrl, title);
   return { ok: true };
 }
 
@@ -190,7 +187,7 @@ export function launchGameRoom({
       roomId,
     });
   }
-  registerGameWindow(slug, gameWin, gameUrl);
+  registerGameWindow(slug, gameWin, gameUrl, title);
 
   // Al cerrar la pestaña del juego: limpiar la sala activa (banner local).
   watchGameWindow(gameWin);
@@ -298,6 +295,7 @@ function postEnterRoomMessage(
 }
 
 function unregisterGameWindow(slug: string, win: Window): void {
+  unregisterBalGameWindow(win);
   if (gameWindows.get(slug) === win) gameWindows.delete(slug);
   if (!gameWindows.has(slug)) gameWindowOrigins.delete(slug);
   const watcher = gameWindowWatchers.get(slug);

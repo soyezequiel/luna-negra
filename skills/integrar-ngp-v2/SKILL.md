@@ -558,6 +558,15 @@ const bet = await nge.createBet({
 // Seguir el estado: watchBet (push 24942 + respaldo) o pollBet en serverless.
 const stop = nge.watchBet(bet.betId, (b) => {
   if (b.status === "funded") empezarPartida();
+  for (const seat of b.seats) {
+    // Sin destino automático, Luna aloja la pantalla completa de retiro.
+    const claimUrl = seat.payout && "claimUrl" in seat.payout
+      ? seat.payout.claimUrl
+      : null;
+    if (seat.payout?.tier === "withdraw" && typeof claimUrl === "string") {
+      mostrarBotonCobrar(seat.seatId, claimUrl);
+    }
+  }
 });
 
 // Al terminar, el juego ES el oráculo: ganadores por seatId.
@@ -585,6 +594,9 @@ Gotchas NGE:
   llegar a un estado terminal.
 - `getInfo()` dice qué soporta el escrow (métodos, `visibilityOptions`,
   límites); ante `RATE_LIMITED`, espaciá los RPC.
+- Para un payout `withdraw`, abrí `payout.claimUrl`: Luna dibuja el QR y sigue el
+  cobro. No implementes LNURL-withdraw en el juego salvo que quieras una UI propia
+  con `payout.withdrawLnurl`. Ambos valores son secretos bearer del asiento.
 
 ### Gating y UX del lado del cliente (dónde aparece "apostar")
 

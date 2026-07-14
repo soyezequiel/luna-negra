@@ -8,6 +8,7 @@ import { satsLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { NotificationsBell } from "./notifications-bell";
+import { BalSignerStatusIndicator } from "./bal-signer-status";
 
 // Orden fijo: Tienda · Biblioteca · Apuestas | Proveedor · Admin.
 // "Amigos" sale del nav principal (se accede desde el panel derecho de amigos).
@@ -72,6 +73,8 @@ export function Navbar() {
         </Link>
 
         {/* Links centrales (≥880px) */}
+        <BalSignerStatusIndicator />
+
         <nav className="ml-2 hidden min-w-0 items-center gap-1 ln:flex">
           {STORE_LINKS.map((l) => navLink(l.href, l.label))}
           <span

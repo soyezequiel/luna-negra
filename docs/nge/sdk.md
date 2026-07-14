@@ -80,6 +80,10 @@ declarado: la URI + el RPC `get_info` los reemplazan.
 > anónimo y cobra por **QR de retiro**. El jugador **no firma** nada: paga el `bolt11` y
 > listo (depósito plano).
 
+Cuando `seat.payout.tier === "withdraw"`, abrí `seat.payout.claimUrl`: Luna Negra
+muestra el QR de retiro completo y confirma el cobro. El juego no necesita generar
+ni interpretar el QR. Si preferís una UI propia, usá `seat.payout.withdrawLnurl`.
+
 ## API
 
 | Método | Qué hace |

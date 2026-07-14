@@ -11,6 +11,7 @@ import { ZapDepositCard } from "@/components/zap-deposit-card";
 import { BetLiveRefresh } from "@/components/bet-live-refresh";
 import { BetDetailView } from "@/components/admin/bet-detail";
 import { betDetailInclude, buildZapBetDetail } from "@/lib/bet-detail";
+import { signWithdrawToken } from "@/lib/auth";
 
 // Página de una apuesta v2 (namespace propio, no choca con /bets/[id] de v1).
 // Depósitos: zaps públicos anclados al contrato. Premio: profile-zap al ganador.
@@ -50,6 +51,15 @@ export default async function ApuestaV2Page({
   const me = session
     ? bet.participants.find((p) => p.pubkey === session.pubkey)
     : undefined;
+  const withdrawHref =
+    me?.payoutStatus === "withdraw_pending" &&
+    me.withdrawDeadline &&
+    me.withdrawDeadline > new Date()
+      ? `/retiro/${await signWithdrawToken(
+          me.id,
+          Math.floor(me.withdrawDeadline.getTime() / 1000),
+        )}`
+      : null;
 
   const sats = (msat: bigint) => Number(msatToSats(msat));
   const econ = computeEconomics({
@@ -160,6 +170,19 @@ export default async function ApuestaV2Page({
             <p className="rounded-ln-lg border border-ln-corona/40 bg-ln-corona/10 p-3 text-center text-sm text-ln-corona-bright">
               ✅ Ya depositaste. Esperando al resto de los jugadores.
             </p>
+          ) : null}
+          {withdrawHref ? (
+            <section className="rounded-ln-xl border border-ln-corona/40 bg-ln-corona/10 p-4 text-center shadow-ln-corona">
+              <p className="font-display text-lg font-bold text-ln-corona-bright">
+                🎟️ Tenés un premio para cobrar
+              </p>
+              <p className="mt-1 text-sm text-ln-muted">
+                Luna Negra puede mostrarte el QR aunque el juego no lo implemente.
+              </p>
+              <Link href={withdrawHref} className="btn btn-corona mt-3 w-full">
+                Mostrar QR de retiro
+              </Link>
+            </section>
           ) : null}
         </div>
 

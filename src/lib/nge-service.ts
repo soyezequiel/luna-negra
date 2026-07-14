@@ -42,6 +42,7 @@ import { beginIdempotent } from "@/lib/idempotency";
 import { msatToSats } from "@/lib/money";
 import { trackIntegration } from "@/lib/integration-telemetry";
 import { notifyOperationalError } from "@/lib/discord";
+import { createWithdrawClaimLinks } from "@/lib/withdraw-claim";
 import type { ZapBet, ZapBetParticipant } from "@prisma/client";
 
 // Servicio NGE v2 (Nostr Game Escrow): el lado ESCROW del RPC estilo NWC.
@@ -477,18 +478,27 @@ async function findBetFor(cred: Credential, betId: unknown) {
 
 type BetWithParts = NonNullable<Awaited<ReturnType<typeof findBetFor>>>;
 
-function seatPayout(p: ZapBetParticipant): Record<string, unknown> | null {
+async function seatPayout(p: ZapBetParticipant): Promise<Record<string, unknown> | null> {
   if (p.payoutStatus === "none" || p.payoutMsat == null) return null;
   const tier =
     p.payoutKind ??
     (p.payoutStatus === "withdraw_pending" || p.payoutStatus === "claimed"
       ? "withdraw"
       : "lnurl");
+  const claim =
+    p.payoutStatus === "withdraw_pending" && p.withdrawDeadline
+      ? await createWithdrawClaimLinks(p.id, p.withdrawDeadline, baseUrl())
+      : null;
   return {
     tier,
     sats: sats(p.payoutMsat),
     status: p.payoutStatus,
     ...(p.payoutReceiptId ? { receiptId: p.payoutReceiptId } : {}),
+    // El juego puede abrir `claimUrl` y delegar TODA la UI del retiro a Luna.
+    // `withdrawLnurl` queda para clientes que sí dibujan su propio QR.
+    ...(claim
+      ? { claimUrl: claim.claimUrl, withdrawLnurl: claim.withdrawLnurl }
+      : {}),
   };
 }
 
@@ -544,7 +554,7 @@ async function doGetBet(
         seatId: s.seatId,
         deposited,
         ...(bolt11 ? { bolt11 } : {}),
-        payout: seatPayout(p),
+        payout: await seatPayout(p),
       };
     }),
   );
