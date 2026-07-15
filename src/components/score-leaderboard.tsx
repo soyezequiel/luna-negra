@@ -10,16 +10,14 @@ import {
   shortId,
   type Profile,
 } from "@/lib/nostr-social";
+import {
+  authenticatedStanding,
+  type ScoreStanding,
+  type UserScoreStandings,
+} from "@/lib/score-leaderboard";
 
 type Entry = { npub: string; score: number; rank: number; viaNostr: boolean };
 type Board = { name: string; entries: Entry[] };
-type Standing = {
-  board: string;
-  score: number;
-  rank: number;
-  total: number;
-  viaNostr: boolean;
-};
 
 const MEDALS = ["🥇", "🥈", "🥉"] as const;
 
@@ -72,7 +70,7 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [active, setActive] = useState(0);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-  const [standings, setStandings] = useState<Record<string, Standing>>({});
+  const [standings, setStandings] = useState<UserScoreStandings | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,18 +105,19 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
   // Puesto propio por tabla ("Tu mejor: 4.200 · puesto #7 de 312"). Sin sesión
   // no hay nada que pedir: el marcador público sigue andando igual.
   useEffect(() => {
-    if (!user) {
-      setStandings({});
-      return;
-    }
+    if (!user) return;
     let cancelled = false;
+    const npub = user.npub;
     void (async () => {
       try {
         const res = await fetch(`/api/scores/me?gameId=${encodeURIComponent(gameId)}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { standings: Standing[] };
+        const data = (await res.json()) as { standings: ScoreStanding[] };
         if (cancelled) return;
-        setStandings(Object.fromEntries(data.standings.map((s) => [s.board, s])));
+        setStandings({
+          npub,
+          byBoard: Object.fromEntries(data.standings.map((s) => [s.board, s])),
+        });
       } catch {
         /* fila "Vos" es un extra: si falla, el marcador sigue mostrando el top */
       }
@@ -129,7 +128,10 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
   }, [gameId, user]);
 
   const current = useMemo(() => boards?.[active] ?? null, [boards, active]);
-  const myStanding = current ? standings[current.name] : undefined;
+  // Al cerrar o cambiar de sesión, `standings` todavía puede pertenecer a la
+  // cuenta anterior. Lo filtramos durante el propio render para no intentar
+  // leer `user.npub` sin usuario ni mostrar el puesto de otra identidad.
+  const myStanding = authenticatedStanding(user, current?.name ?? null, standings);
   // Si ya aparecés en el top visible, la fila fijada sería redundante.
   const alreadyInTop = Boolean(
     user && current?.entries.some((e) => e.npub === user.npub),
@@ -207,12 +209,12 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
 
       {/* Puesto propio, fijado abajo. Se omite si ya aparecés en el top de
           arriba (sería redundante) o si no tenés puntaje en esta tabla. */}
-      {myStanding && !alreadyInTop ? (
+      {user && current && myStanding && !alreadyInTop ? (
         <div className="mt-2 flex items-center gap-3 border-t border-ln-border pt-2">
           <span className="w-6 shrink-0 text-center text-sm text-ln-faint">
             #{myStanding.rank}
           </span>
-          <Avatar src={user?.avatarUrl} seed={user!.npub} className="h-8 w-8 shrink-0" />
+          <Avatar src={user.avatarUrl} seed={user.npub} className="h-8 w-8 shrink-0" />
           <span className="min-w-0 flex-1 truncate text-sm text-ln-text">
             Vos
             {myStanding.viaNostr ? (
@@ -228,7 +230,7 @@ export function ScoreLeaderboard({ gameId }: { gameId: string }) {
             </span>
           </span>
           <span className="shrink-0 text-sm font-semibold tabular-nums text-ln-corona-bright">
-            {formatScore(current!.name, myStanding.score)}
+            {formatScore(current.name, myStanding.score)}
           </span>
         </div>
       ) : null}
