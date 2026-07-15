@@ -16,6 +16,8 @@ import { logoutBalLauncherSessions } from "@/lib/bal-launcher";
 import { createSessionLoadGuard } from "@/lib/session-load-guard";
 import {
   clearActiveSigner,
+  getStoredLocalSignerSource,
+  getStoredSignerMethod,
   importNsec,
   restoreSigner,
   SIGNER_STORAGE_KEY,
@@ -97,12 +99,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const signerPromise = restoreSigner();
     void Promise.resolve()
-      .then(() => refreshSession())
+      .then(async () => {
+        const nextUser = await refreshSession();
+        const method = getStoredSignerMethod();
+        const localSource = getStoredLocalSignerSource();
+        const needsFreshLogin =
+          method === "nip46" ||
+          (method === "local" && localSource !== "custodial");
+
+        // Las claves locales y de Nostr Connect no se persisten. Si quedó una
+        // cookie de una sesión anterior, la cerramos para que la interfaz vuelva
+        // a ofrecer el login en vez de dejar una cuenta sin capacidad de firmar.
+        if (nextUser && needsFreshLogin && !(await signerPromise)) {
+          await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+          clearActiveSigner();
+          setUser(null);
+        }
+      })
       .finally(() => setLoading(false));
-    // Restaurar el signer persistido (la cookie restaura la sesión, pero firmar
-    // comentarios/DMs/presencia necesita el signer en memoria).
-    void restoreSigner();
   }, [refreshSession]);
 
   // La cookie y localStorage son compartidos entre pestañas. Si otra pestaña
@@ -133,8 +149,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     void warmUpPermissions(user.pubkey);
   }, [user]);
 
-  // `login` ahora abre el modal con todos los métodos; los botones existentes
-  // ("Conectar con Nostr" en navbar/sidebar/páginas) siguen llamándolo igual.
+  // `login` abre el modal guiado con email y las alternativas avanzadas.
   const login = useCallback(async () => {
     setError(null);
     setLoginModalOpen(true);

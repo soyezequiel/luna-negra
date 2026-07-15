@@ -168,7 +168,7 @@ export function profileName(p: Profile | undefined, fallback: string): string {
 /** Signer activo (restaurándolo si la app recién monta); lanza si no hay. */
 async function requireSigner(): Promise<LunaSigner> {
   const signer = getActiveSigner() ?? (await restoreSigner());
-  if (!signer) throw new Error("Conectá tu Nostr para continuar");
+  if (!signer) throw new Error("Iniciá sesión para continuar");
   return signer;
 }
 

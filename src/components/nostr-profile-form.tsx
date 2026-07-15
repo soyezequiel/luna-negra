@@ -39,7 +39,7 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
     // Sembrado único desde un prop que llega async (fetch del perfil); el guard
     // `hydrated` evita pisar lo tipeado. Uso legítimo del efecto.
     /* eslint-disable react-hooks/set-state-in-effect */
-    setDisplayName(profile.displayName || profile.display_name || "");
+    setDisplayName(profile.displayName || profile.display_name || profile.name || "");
     setName(profile.name || "");
     setAbout(profile.about || "");
     setPicture(profile.picture || "");
@@ -72,6 +72,11 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
+    if (!displayName.trim()) {
+      setStatus("error");
+      setError("Elegí un nombre para completar tu perfil.");
+      return;
+    }
     setStatus("saving");
     setError(null);
     try {
@@ -85,11 +90,12 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
       // no quede mostrando el perfil viejo hasta el próximo login.
       const cachedName = profileName(merged);
       const avatarUrl = merged.picture ?? null;
-      await fetch("/api/users/me/profile", {
+      const cacheResponse = await fetch("/api/users/me/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ displayName: cachedName, avatarUrl }),
-      }).catch(() => {});
+      });
+      if (!cacheResponse.ok) throw new Error("No se pudo guardar el perfil en la tienda");
       updateUser({ displayName: cachedName, avatarUrl });
       setStatus("saved");
     } catch (err) {
@@ -102,15 +108,36 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
 
   return (
     <section className="rounded-ln-lg border border-ln-border bg-ln-card/60 p-5">
-      <h2 className="text-[15px] font-semibold text-ln-text">Perfil Nostr</h2>
+      <h2 className="text-[15px] font-semibold text-ln-text">Tu perfil</h2>
       <p className="mt-1 text-sm text-ln-muted">
-        Tu foto y nombre se publican en Nostr (kind:0) y se ven en cualquier
-        cliente. Los cambios se firman con tu identidad.
+        Elegí cómo querés que te vean en la tienda. El nombre es obligatorio;
+        la foto y el resto de los datos son opcionales.
       </p>
 
       <form onSubmit={save} className="mt-4 space-y-4">
+        <Field label="Nombre *" hint="Es lo único que necesitás para completar el perfil.">
+          <input
+            type="text"
+            required
+            maxLength={80}
+            autoComplete="nickname"
+            placeholder="Cómo te ven los demás"
+            value={displayName}
+            onChange={(e) => {
+              setDisplayName(e.target.value);
+              setStatus("idle");
+              setError(null);
+            }}
+            className={INPUT_CLASS}
+          />
+        </Field>
+
         {/* Foto */}
-        <div className="flex items-center gap-4">
+        <div>
+          <p className="mb-2 text-[13px] font-semibold text-ln-soft">
+            Foto de perfil <span className="font-normal text-ln-faint">(opcional)</span>
+          </p>
+          <div className="flex items-center gap-4">
           {picture ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -156,6 +183,7 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
               </Button>
             ) : null}
           </div>
+          </div>
         </div>
 
         <Field label="URL de la foto" hint="O pegá un enlace a tu avatar.">
@@ -173,21 +201,7 @@ export function NostrProfileForm({ profile }: { profile: NostrProfile | null }) 
           />
         </Field>
 
-        <Field label="Nombre para mostrar">
-          <input
-            type="text"
-            autoComplete="off"
-            placeholder="Cómo te ven los demás"
-            value={displayName}
-            onChange={(e) => {
-              setDisplayName(e.target.value);
-              setStatus("idle");
-            }}
-            className={INPUT_CLASS}
-          />
-        </Field>
-
-        <Field label="Nombre de usuario" hint="Tu handle corto (sin espacios).">
+        <Field label="Nombre de usuario" hint="Opcional · tu alias corto (sin espacios).">
           <input
             type="text"
             autoComplete="off"

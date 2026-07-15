@@ -50,10 +50,10 @@ export default function NotificationsPage() {
           Notificaciones
         </h1>
         <p className="mt-2 text-ln-muted">
-          Conectá tu Nostr para ver la actividad de tus juegos.
+          Iniciá sesión para ver la actividad de tus juegos.
         </p>
         <Button variant="luna" className="mt-4" onClick={login}>
-          Conectar con Nostr
+          Iniciar sesión
         </Button>
       </div>
     );

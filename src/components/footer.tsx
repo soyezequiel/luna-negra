@@ -19,7 +19,7 @@ export function Footer() {
           Luna <span className="text-ln-corona">Negra</span>
         </Link>
         <p className="text-sm text-ln-muted">
-          Jugá en el navegador. Pagá con Lightning. Conectá con Nostr.
+          Jugá en el navegador. Pagá con Lightning. Iniciá sesión en segundos.
         </p>
         <nav className="flex flex-wrap justify-center gap-5 text-xs text-ln-faint">
           <Link href="/terms" className="transition-colors hover:text-ln-text">

@@ -76,7 +76,7 @@ export function ZapDepositCard({ betId, stakeSats }: Props) {
 
       // 2) Firmar el 9734 con la identidad Nostr del usuario.
       const signer = getActiveSigner() ?? (await restoreSigner());
-      if (!signer) throw new Error("Conectá tu Nostr para depositar");
+      if (!signer) throw new Error("Iniciá sesión para depositar");
       const signed = await signer.signEvent(prep.unsignedZapRequest as UnsignedEvent);
 
       // 2b) Firmar el comentario de participación (kind:1 reply al post), si el

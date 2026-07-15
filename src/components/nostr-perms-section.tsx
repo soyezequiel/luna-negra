@@ -92,7 +92,7 @@ export function NostrPermsSection() {
           <span className="text-sm">
             <span className="text-ink">Autorizar todo al iniciar sesión</span>
             <span className="block text-xs text-faint">
-              Al conectar se piden todos los permisos juntos, una sola vez. En
+              Al iniciar sesión se piden todos los permisos juntos, una sola vez. En
               nos2x los avisos son por tipo de evento; en Alby, por operación.
             </span>
           </span>

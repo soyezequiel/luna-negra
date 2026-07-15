@@ -541,10 +541,10 @@ export default function ProviderPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Proveedor</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para publicar juegos.</p>
+        <p className="mt-2 text-muted">Iniciá sesión para publicar juegos.</p>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
           <Link href="/dev" className="btn btn-ghost">
             Ver guia para publicar

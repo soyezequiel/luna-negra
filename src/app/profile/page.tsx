@@ -85,10 +85,10 @@ export default function ProfilePage() {
         <h1 className="font-display text-3xl font-extrabold text-white">
           Perfil
         </h1>
-        <p className="mt-2 text-ln-muted">Conectá tu Nostr para ver tu perfil.</p>
+        <p className="mt-2 text-ln-muted">Iniciá sesión para ver tu perfil.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="luna" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

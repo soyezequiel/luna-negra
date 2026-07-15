@@ -83,6 +83,8 @@ export async function POST(req: Request) {
       pubkey: user.pubkey,
       email: user.email,
       custodial: true,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
     },
     nsec,
   });

@@ -15,7 +15,7 @@ import { getActiveSigner, restoreSigner, type LunaSigner } from "@/lib/signer";
 /** Signer activo (restaurándolo si la app recién monta); lanza si no hay. */
 async function requireSigner(): Promise<LunaSigner> {
   const signer = getActiveSigner() ?? (await restoreSigner());
-  if (!signer) throw new Error("Conectá tu Nostr para firmar el artículo");
+  if (!signer) throw new Error("Iniciá sesión para firmar el artículo");
   return signer;
 }
 

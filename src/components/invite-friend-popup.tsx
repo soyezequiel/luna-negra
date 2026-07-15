@@ -84,7 +84,7 @@ export function InviteFriendPopup({
         <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4">
           <p className="text-sm text-zinc-300">Conecta tu Nostr para ver amigos.</p>
           <Button className="mt-4 w-full" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       ) : (

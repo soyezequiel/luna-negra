@@ -42,7 +42,10 @@ function EmailCallback() {
       if (!res.ok) throw new Error(data.error ?? "No se pudo iniciar sesión");
       adoptCustodialSession(data.user, data.nsec);
       setStatus("ok");
-      setTimeout(() => router.replace("/"), 1200);
+      const destination = data.user?.displayName
+        ? "/"
+        : "/profile/editar?onboarding=1";
+      setTimeout(() => router.replace(destination), 1200);
     } catch (e) {
       setStatus("error");
       setError(e instanceof Error ? e.message : "No se pudo iniciar sesión");
@@ -86,7 +89,7 @@ function EmailCallback() {
             ¡Listo! 🌙
           </h1>
           <p className="mt-2 text-ln-muted">
-            Sesión iniciada. Te llevamos a la tienda…
+            Sesión iniciada. Te llevamos al siguiente paso…
           </p>
         </>
       ) : null}

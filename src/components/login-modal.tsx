@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useSession } from "@/providers/session-provider";
 import { cn } from "@/lib/utils";
+import { detectAuthDevice, needsProfileOnboarding } from "@/lib/auth-flow";
+import { fetchProfile } from "@/lib/nostr";
 import {
   createNip07Signer,
   generateLocalSigner,
@@ -12,19 +15,19 @@ import {
   type StoredSigner,
 } from "@/lib/signer";
 
-type Tab = "email" | "extension" | "qr" | "bunker" | "local";
+type AdvancedMethod = "extension" | "qr" | "bunker" | "nsec" | "temporary";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "email", label: "Email" },
-  { id: "extension", label: "Extensión" },
-  { id: "qr", label: "Escanear QR" },
-  { id: "bunker", label: "Bunker" },
-  { id: "local", label: "Clave local" },
-];
+const NOS2X_URL =
+  "https://chromewebstore.google.com/detail/nos2x/kpgefcfmnafjgpblomihpgmejjdanjjp";
+const ALBY_URL =
+  "https://chromewebstore.google.com/detail/alby-bitcoin-wallet-for-l/iokeahhehimjnekafflcihljlcjccdbe";
+const PRIMAL_URL = "https://primal.net/downloads";
+const PRIMAL_PLAY_URL =
+  "https://play.google.com/store/apps/details?id=net.primal.android";
 
 // Clases de presentación del rediseño "Eclipse" (tokens ln-*). Solo estilo: no
 // alteran ningún handler ni la lógica de firmantes.
-//  · primario → gradiente Luna con glow (acción: Conectar / Continuar / Enviar)
+//  · primario → gradiente Luna con glow (acción: Iniciar / Continuar / Enviar)
 //  · secundario → superficie translúcida con borde (Generar / Copiar)
 //  · input → fondo hundido ln-bg-deep con focus-ring Luna
 const primaryBtn =
@@ -66,23 +69,13 @@ function reportLoginFailure(error: string, lines: string[]) {
 export function LoginModal() {
   const { loginModalOpen, closeLoginModal, loginWithSigner, emailLoginEnabled } =
     useSession();
-  // En celular, escanear el QR con el mismo teléfono es incómodo: mejor abrir el
-  // enlace nostrconnect:// directo y que el SO lo derive a la app de firma
-  // instalada (Amber, Primal, nsec.app…). Se detecta tras montar para no romper SSR.
-  const [isMobile, setIsMobile] = useState(false);
-  // Pestañas visibles: "email" solo si el server lo habilitó; "extension" se
-  // oculta en celular (las extensiones NIP-07 no existen en navegadores móviles).
-  const tabs = TABS.filter((t) => {
-    if (t.id === "email") return emailLoginEnabled;
-    if (t.id === "extension") return !isMobile;
-    return true;
-  });
-  // `tabChoice` = pestaña elegida por el usuario (null = ninguna todavía). La
-  // pestaña activa se deriva: email si está disponible; en celular, QR (no hay
-  // extensión); en escritorio, extensión.
-  const [tabChoice, setTabChoice] = useState<Tab | null>(null);
-  const tab: Tab =
-    tabChoice ?? (emailLoginEnabled ? "email" : isMobile ? "qr" : "extension");
+  const router = useRouter();
+  const [device, setDevice] = useState<"desktop" | "mobile" | null>(null);
+  const isMobile = device === "mobile";
+  const isDesktop = device === "desktop";
+  const [hasExtension, setHasExtension] = useState(false);
+  const [view, setView] = useState<"main" | "advanced">("main");
+  const [method, setMethod] = useState<AdvancedMethod | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,14 +111,29 @@ export function LoginModal() {
       setBusy(true);
       setError(null);
       try {
+        const pubkey = await signer.getPublicKey();
         await loginWithSigner(signer, stored);
+        if (stored.method === "local") {
+          const profile =
+            stored.source === "generated" ? null : await fetchProfile(pubkey);
+          if (
+            needsProfileOnboarding({
+              source: stored.source === "generated" ? "generated" : "imported",
+              profile,
+            })
+          ) {
+            router.push("/profile/editar?onboarding=1");
+          }
+          setNsecInput("");
+          setGenerated(null);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error de login");
       } finally {
         setBusy(false);
       }
     },
-    [loginWithSigner],
+    [loginWithSigner, router],
   );
 
   // Detección de móvil (táctil + viewport angosto) para ofrecer el botón de
@@ -133,15 +141,34 @@ export function LoginModal() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-    const narrow = window.innerWidth <= 880;
     // Microtarea para no llamar setState sincrónicamente dentro del efecto
     // (evita el cascading render y mantiene el primer render SSR-safe en false).
-    void Promise.resolve().then(() => setIsMobile(coarse && narrow));
+    void Promise.resolve().then(() =>
+      setDevice(
+        detectAuthDevice({
+          userAgent: navigator.userAgent,
+          width: window.innerWidth,
+          coarsePointer: coarse,
+        }),
+      ),
+    );
   }, []);
+
+  useEffect(() => {
+    if (!loginModalOpen || !isDesktop) return;
+    const detect = () => setHasExtension(Boolean(window.nostr));
+    detect();
+    const timer = window.setInterval(detect, 250);
+    const stop = window.setTimeout(() => window.clearInterval(timer), 3000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+    };
+  }, [loginModalOpen, isDesktop]);
 
   // El flujo QR arranca al entrar a esa pestaña y se cancela al salir/cerrar.
   useEffect(() => {
-    if (!loginModalOpen || tab !== "qr") return;
+    if (!loginModalOpen || method !== "qr") return;
     const ctrl = new AbortController();
     qrAbort.current = ctrl;
     let cancelled = false;
@@ -206,11 +233,9 @@ export function LoginModal() {
       cancelled = true;
       ctrl.abort();
     };
-  }, [loginModalOpen, tab, finish]);
+  }, [loginModalOpen, method, finish]);
 
   if (!loginModalOpen) return null;
-
-  const hasExtension = typeof window !== "undefined" && Boolean(window.nostr);
 
   async function requestMagicLink() {
     if (!emailInput.trim() || busy) return;
@@ -293,350 +318,331 @@ export function LoginModal() {
     setNsecInput("");
     setEmailInput("");
     setEmailSent(false);
-    setTabChoice(null);
+    setView("main");
+    setMethod(null);
     closeLoginModal();
   }
 
+  const chooseMethod = (next: AdvancedMethod) => {
+    setMethod(next);
+    setError(null);
+    setAuthUrl(null);
+    setRevealQr(false);
+    setGenerated(null);
+  };
+
+  const methodButton = (
+    id: AdvancedMethod,
+    icon: string,
+    title: string,
+    description: string,
+  ) => (
+    <button
+      type="button"
+      onClick={() => chooseMethod(id)}
+      className="flex w-full items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] p-3.5 text-left transition hover:border-ln-luna/35 hover:bg-ln-luna/[0.07] focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ln-luna/12 text-lg" aria-hidden>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-ln-text">{title}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-ln-muted">
+          {description}
+        </span>
+      </span>
+      <span className="text-ln-faint" aria-hidden>›</span>
+    </button>
+  );
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={close}
     >
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Iniciar sesión"
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-[22px] border border-white/10 bg-ln-panel/70 p-7 shadow-[0_40px_100px_-30px_rgba(0,0,0,.9)] backdrop-blur animate-ln-rise motion-reduce:animate-none"
+        aria-labelledby="login-title"
+        className="max-h-[94vh] w-full overflow-y-auto rounded-t-[24px] border border-white/10 bg-ln-panel/95 p-5 shadow-[0_40px_100px_-30px_rgba(0,0,0,.9)] backdrop-blur animate-ln-rise motion-reduce:animate-none sm:max-w-lg sm:rounded-[24px] sm:p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-display text-2xl font-bold tracking-[-.02em] text-ln-text">
-              Iniciar sesión
-            </h3>
-            <p className="mt-0.5 text-[13px] text-ln-muted">
-              Entrá con tu identidad Nostr.
+          <div className="min-w-0">
+            {view === "advanced" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (method) setMethod(null);
+                  else setView("main");
+                  setError(null);
+                }}
+                className={cn("mb-2 inline-flex items-center gap-1 text-xs", linkCls)}
+              >
+                ← Volver
+              </button>
+            ) : null}
+            <h2 id="login-title" className="font-display text-2xl font-bold text-ln-text">
+              {view === "main"
+                ? "Iniciar sesión"
+                : method
+                  ? "Otra forma de iniciar sesión"
+                  : "Opciones avanzadas"}
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-ln-muted">
+              {view === "main"
+                ? "Entrá a Luna Negra de la forma que te resulte más cómoda."
+                : "Estas opciones son para personas que ya usan una identidad Nostr."}
             </p>
           </div>
           <button
+            type="button"
             onClick={close}
-            className="-mr-1 -mt-1 rounded-lg p-1.5 text-ln-faint transition hover:text-ln-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40"
+            className="-mr-1 -mt-1 rounded-lg p-2 text-ln-faint transition hover:text-ln-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40"
             aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
 
-        <div className="mt-5 flex gap-1 overflow-x-auto rounded-xl border border-white/[0.06] bg-ln-bg-deep p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              aria-pressed={tab === t.id}
-              onClick={() => {
-                setTabChoice(t.id);
-                setError(null);
-                setEmailSent(false);
-                setRevealQr(false);
-              }}
-              className={cn(
-                "flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-luna/40",
-                tab === t.id
-                  ? "bg-ln-luna/15 text-ln-luna-bright shadow-[inset_0_0_0_1px_rgba(157,140,255,.25)]"
-                  : "text-ln-muted hover:text-ln-text",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-5 min-h-[196px]">
-          {tab === "email" ? (
-            <div>
-              {emailSent ? (
-                <div className="text-center">
-                  <p className="text-3xl">📬</p>
-                  <p className="mt-3 text-sm text-ln-text">Revisá tu correo</p>
-                  <p className="mt-1 text-sm text-ln-muted">
-                    Te enviamos un enlace de acceso a{" "}
-                    <span className="text-ln-text">{emailInput.trim()}</span>. Es
-                    válido por 15 minutos.
-                  </p>
-                  <button
-                    onClick={() => setEmailSent(false)}
-                    className={cn("mt-4 text-xs", linkCls)}
-                  >
-                    Usar otro correo
-                  </button>
-                </div>
-              ) : (
+        {view === "main" ? (
+          <div className="mt-5 space-y-4">
+            <section className="rounded-2xl border border-ln-luna/35 bg-ln-luna/[0.08] p-4">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm text-ln-muted">
-                    ¿No usás Nostr? Ingresá tu email y te mandamos un enlace para
-                    entrar. Te creamos una identidad Nostr automáticamente (podés
-                    exportar tu clave desde el perfil cuando quieras).
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void requestMagicLink();
-                    }}
-                  >
-                    <input
-                      type="email"
-                      autoComplete="email"
-                      placeholder="tu@correo.com"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      className={cn("mt-3", inputCls)}
-                    />
-                    <button
-                      type="submit"
-                      className={cn(primaryBtn, "mt-3 w-full")}
-                      disabled={busy || !emailInput.trim()}
-                    >
-                      {busy ? "Enviando…" : "Enviar enlace de acceso"}
-                    </button>
-                  </form>
+                  <p className="text-base font-semibold text-ln-text">Continuar con email</p>
+                  <p className="mt-0.5 text-xs text-ln-muted">Sin contraseña. Te enviamos un enlace seguro.</p>
                 </div>
-              )}
-            </div>
-          ) : null}
-
-          {tab === "extension" ? (
-            <div>
-              <p className="text-sm text-ln-muted">
-                Usá tu extensión del navegador (nos2x, Alby). Solo se piden los
-                permisos del login; el resto, recién cuando los uses.
-              </p>
-              <button
-                className={cn(primaryBtn, "mt-4 w-full")}
-                onClick={loginExtension}
-                disabled={busy || !hasExtension}
-              >
-                {busy ? "Conectando…" : "Conectar con la extensión"}
-              </button>
-              {!hasExtension ? (
-                <p className="mt-2 text-xs text-ln-faint">
-                  No se encontró una extensión Nostr. Instalá nos2x o Alby, o
-                  usá otro método.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {tab === "qr" ? (
-            <div className="flex flex-col items-center">
-              {/* En celular, abrir el enlace directo en la app de firma instalada
-                  (Primal, Amber, nsec.app…) es mucho más cómodo que escanear el
-                  QR con el mismo teléfono. Usamos un <a> con el esquema custom
-                  para que cuente como gesto del usuario y el SO ofrezca la app.
-                  El QR queda oculto detrás de un botón "Mostrar QR". */}
-              {isMobile && qrUri ? (
-                <div className="w-full">
-                  <a
-                    href={qrUri}
-                    className={cn(
-                      primaryBtn,
-                      "flex w-full items-center justify-center gap-2 no-underline",
-                    )}
-                  >
-                    <span aria-hidden>⚡</span> Abrir en mi app de Nostr
-                  </a>
-                  <p className="mt-2 text-center text-xs text-ln-faint">
-                    Se abre <span className="text-ln-muted">Primal</span>,{" "}
-                    <span className="text-ln-muted">Amber</span> u otra app de
-                    firma instalada, y aprobás la conexión ahí.
-                  </p>
-                  {!revealQr ? (
-                    <button
-                      onClick={() => setRevealQr(true)}
-                      className={cn("mt-4 w-full text-center text-xs", linkCls)}
-                    >
-                      ¿Escaneás con otro dispositivo? Mostrar código QR
-                    </button>
-                  ) : (
-                    <div className="my-4 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[.16em] text-ln-faint">
-                      <span className="h-px flex-1 bg-white/10" />o escaneá el QR
-                      <span className="h-px flex-1 bg-white/10" />
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              {/* El QR (y su texto) solo se renderiza en escritorio o cuando el
-                  usuario lo pidió en celular. */}
-              {!isMobile || revealQr ? (
-                <>
-                  {qrDataUrl ? (
-                    <div className="rounded-2xl bg-white p-3.5">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={qrDataUrl}
-                        alt="Código QR de Nostr Connect"
-                        className="block h-[256px] w-[256px]"
-                        width={256}
-                        height={256}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-[239px] w-[239px] items-center justify-center rounded-2xl border border-white/10 bg-ln-bg-deep p-5 text-center text-sm text-ln-faint">
-                      {qrUri
-                        ? "Este navegador bloquea el QR. Copiá el enlace de abajo y pegalo en tu firmante."
-                        : "Generando QR…"}
-                    </div>
-                  )}
-                  <p className="mt-3 text-center text-sm text-ln-muted">
-                    Escaneá con <span className="text-ln-text">Amber</span> o{" "}
-                    <span className="text-ln-text">nsec.app</span> y aprobá la
-                    conexión.
-                  </p>
-                  {qrUri ? (
-                    <button
-                      onClick={() =>
-                        navigator.clipboard.writeText(qrUri).catch(() => {})
-                      }
-                      className={cn(
-                        "mt-1 font-mono text-[10px] uppercase tracking-[.16em]",
-                        linkCls,
-                      )}
-                    >
-                      Copiar enlace nostrconnect://
-                    </button>
-                  ) : null}
-                </>
-              ) : null}
-
-              {authUrl ? (
-                <a
-                  href={authUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn("mt-2 text-xs", linkCls)}
-                >
-                  Tu firmante pide autorización: abrir enlace ↗
-                </a>
-              ) : null}
-              <div className="mt-3 flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ln-aurora opacity-70" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-ln-aurora" />
-                </span>
-                <span className="font-mono text-[10px] uppercase tracking-[.16em] text-ln-aurora-bright">
-                  Esperando conexión…
+                <span className="rounded-full bg-ln-luna/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.12em] text-ln-luna-bright">
+                  Recomendado
                 </span>
               </div>
-            </div>
-          ) : null}
 
-          {tab === "bunker" ? (
-            <div>
-              <p className="text-sm text-ln-muted">
-                Pegá la URL{" "}
-                <span className="font-mono text-ln-text">bunker://…</span> de tu
-                firmante remoto, o tu identificador NIP-05 (
-                <span className="font-mono text-ln-text">usuario@dominio</span>).
-              </p>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="bunker://… o usuario@dominio"
-                value={bunkerInput}
-                onChange={(e) => setBunkerInput(e.target.value)}
-                className={cn("mt-3 font-mono", inputCls)}
-              />
-              <button
-                className={cn(primaryBtn, "mt-3 w-full")}
-                onClick={loginBunker}
-                disabled={busy || !bunkerInput.trim()}
-              >
-                {busy ? "Conectando…" : "Conectar"}
-              </button>
-              {authUrl ? (
-                <a
-                  href={authUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn("mt-2 block text-xs", linkCls)}
-                >
-                  Tu firmante pide autorización: abrir enlace ↗
-                </a>
-              ) : null}
-            </div>
-          ) : null}
-
-          {tab === "local" ? (
-            <div>
-              {generated ? (
-                <div>
-                  <p className="text-sm text-ln-muted">
-                    Tu clave nueva. Guardala en un lugar seguro:{" "}
-                    <span className="text-ln-text">
-                      se muestra una sola vez y es la única forma de recuperar tu
-                      cuenta.
-                    </span>
+              {emailSent ? (
+                <div className="mt-4 rounded-xl bg-ln-bg-deep/60 p-4 text-center">
+                  <p className="text-2xl" aria-hidden>📬</p>
+                  <p className="mt-2 text-sm font-semibold text-ln-text">Revisá tu correo</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ln-muted">
+                    Enviamos un enlace a <span className="text-ln-text">{emailInput.trim()}</span>.
+                    Es válido por 15 minutos.
                   </p>
-                  <div className="mt-3 break-all rounded-[11px] border border-ln-corona/35 bg-ln-bg-deep p-3 font-mono text-xs text-ln-corona-bright">
-                    {generated.nsec}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      className={cn(secondaryBtn, "flex-1")}
-                      onClick={copyGenerated}
-                    >
-                      {copied ? "Copiado ✓" : "Copiar"}
-                    </button>
-                    <button
-                      className={cn(primaryBtn, "flex-1")}
-                      onClick={loginGenerated}
-                      disabled={busy}
-                    >
-                      {busy ? "Conectando…" : "Continuar"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm text-ln-muted">
-                    Generá una clave nueva o importá tu{" "}
-                    <span className="font-mono text-ln-text">nsec</span>.
-                  </p>
-                  <p className="mt-2 rounded-[11px] border border-ln-danger/[0.28] bg-ln-danger/[0.08] px-3 py-2 text-xs text-[#e8a99a]">
-                    ⚠ La clave queda guardada en este navegador (sin cifrar). No
-                    uses tu identidad principal en una computadora compartida.
-                  </p>
-                  <button
-                    className={cn(secondaryBtn, "mt-3 w-full")}
-                    onClick={generateKey}
-                    disabled={busy}
-                  >
-                    Generar clave nueva
+                  <button type="button" onClick={() => setEmailSent(false)} className={cn("mt-3 text-xs", linkCls)}>
+                    Usar otro email
                   </button>
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      placeholder="nsec1…"
-                      value={nsecInput}
-                      onChange={(e) => setNsecInput(e.target.value)}
-                      className={cn("min-w-0 flex-1 font-mono", inputCls)}
-                    />
-                    <button
-                      className={cn(primaryBtn, "shrink-0")}
-                      onClick={loginImported}
-                      disabled={busy || !nsecInput.trim()}
-                    >
-                      Importar
-                    </button>
-                  </div>
                 </div>
+              ) : emailLoginEnabled ? (
+                <form
+                  className="mt-4"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void requestMagicLink();
+                  }}
+                >
+                  <label htmlFor="login-email" className="sr-only">Email</label>
+                  <input
+                    id="login-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    inputMode="email"
+                    placeholder="tu@correo.com"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    className={inputCls}
+                  />
+                  <button type="submit" className={cn(primaryBtn, "mt-3 w-full")} disabled={busy || !emailInput.trim()}>
+                    {busy ? "Enviando…" : "Recibir enlace para entrar"}
+                  </button>
+                  <p className="mt-2 text-center text-[11px] leading-relaxed text-ln-faint">
+                    Si es tu primera vez, preparamos tu cuenta automáticamente.
+                  </p>
+                </form>
+              ) : (
+                <p className="mt-4 rounded-xl border border-ln-corona/25 bg-ln-corona/[0.07] p-3 text-xs leading-relaxed text-ln-corona-bright">
+                  El acceso por email está temporalmente fuera de servicio. Podés usar otra opción mientras lo restablecemos.
+                </p>
               )}
-            </div>
-          ) : null}
-        </div>
+            </section>
+
+            {isDesktop && hasExtension ? (
+              <button
+                type="button"
+                onClick={loginExtension}
+                disabled={busy}
+                className="flex w-full items-center gap-3 rounded-2xl border border-ln-aurora/30 bg-ln-aurora/[0.07] p-4 text-left transition hover:border-ln-aurora/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-aurora/40 disabled:opacity-50"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-ln-aurora/15 text-xl" aria-hidden>◈</span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-ln-text">Entrar con tu extensión</span>
+                  <span className="mt-0.5 block text-xs text-ln-muted">Detectamos una extensión compatible en este navegador.</span>
+                </span>
+                <span className="text-sm font-semibold text-ln-aurora-bright">{busy ? "Entrando…" : "Continuar"}</span>
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => {
+                setView("advanced");
+                setMethod(null);
+                setError(null);
+              }}
+              className={cn(secondaryBtn, "w-full")}
+            >
+              Ver otras opciones
+            </button>
+          </div>
+        ) : (
+          <div className="mt-5">
+            {!method ? (
+              <div className="space-y-2.5">
+                {isDesktop
+                  ? methodButton(
+                      "extension",
+                      "◈",
+                      "Extensión del navegador",
+                      hasExtension ? "Usar la extensión detectada." : "Instalar o usar nos2x o Alby.",
+                    )
+                  : null}
+                {methodButton("qr", "▦", "Escanear un código QR", "Aprobá el acceso desde una app compatible en tu celular.")}
+                {methodButton("bunker", "⌁", "Conectarse con un bunker", "Pegá los datos de Nostr Connect de tu firmante remoto.")}
+                {methodButton("nsec", "⌨", "Introducir una clave privada", "Usá una nsec existente sólo durante esta sesión.")}
+                {methodButton("temporary", "＋", "Crear una identidad temporal", "Generá una clave nueva para probar la tienda.")}
+              </div>
+            ) : null}
+
+            {method === "extension" && isDesktop ? (
+              <div>
+                {hasExtension ? (
+                  <>
+                    <p className="text-sm leading-relaxed text-ln-muted">
+                      La extensión firma el acceso sin compartir tu clave privada con Luna Negra.
+                    </p>
+                    <button type="button" className={cn(primaryBtn, "mt-4 w-full")} onClick={loginExtension} disabled={busy}>
+                      {busy ? "Iniciando sesión…" : "Iniciar sesión con la extensión"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm leading-relaxed text-ln-muted">
+                      No detectamos una extensión compatible. Instalá una, configurala y volvé a abrir esta opción.
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <a href={NOS2X_URL} target="_blank" rel="noopener noreferrer" className={cn(secondaryBtn, "text-sm no-underline")}>Instalar nos2x ↗</a>
+                      <a href={ALBY_URL} target="_blank" rel="noopener noreferrer" className={cn(secondaryBtn, "text-sm no-underline")}>Instalar Alby ↗</a>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {method === "qr" ? (
+              <div className="flex flex-col items-center">
+                <p className="mb-4 text-center text-sm leading-relaxed text-ln-muted">
+                  Escaneá el código desde una aplicación compatible con Nostr Connect. Te recomendamos <span className="font-semibold text-ln-text">Primal</span> en el celular.
+                </p>
+                <div className="mb-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs">
+                  <a href={PRIMAL_URL} target="_blank" rel="noopener noreferrer" className={linkCls}>Descargar Primal ↗</a>
+                  <a href={PRIMAL_PLAY_URL} target="_blank" rel="noopener noreferrer" className={linkCls}>Ver en Google Play ↗</a>
+                </div>
+
+                {isMobile && qrUri ? (
+                  <div className="mb-4 w-full">
+                    <a href={qrUri} className={cn(primaryBtn, "flex w-full items-center justify-center no-underline")}>Abrir en mi app</a>
+                    {!revealQr ? (
+                      <button type="button" onClick={() => setRevealQr(true)} className={cn("mt-3 w-full text-center text-xs", linkCls)}>
+                        Mostrar QR para otro dispositivo
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {!isMobile || revealQr ? (
+                  <>
+                    {qrDataUrl ? (
+                      <div className="rounded-2xl bg-white p-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={qrDataUrl} alt="Código QR para iniciar sesión" className="block h-[240px] w-[240px]" width={240} height={240} />
+                      </div>
+                    ) : (
+                      <div className="flex h-[240px] w-[240px] items-center justify-center rounded-2xl border border-white/10 bg-ln-bg-deep p-5 text-center text-sm text-ln-faint">
+                        {qrUri ? "Este navegador bloquea la imagen. Copiá el enlace de conexión." : "Generando código…"}
+                      </div>
+                    )}
+                    {qrUri ? (
+                      <button type="button" onClick={() => navigator.clipboard.writeText(qrUri).catch(() => {})} className={cn("mt-3 font-mono text-[10px] uppercase tracking-[.12em]", linkCls)}>
+                        Copiar enlace de conexión
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                {authUrl ? <a href={authUrl} target="_blank" rel="noopener noreferrer" className={cn("mt-2 text-xs", linkCls)}>Abrir autorización ↗</a> : null}
+                <p className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.14em] text-ln-aurora-bright">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-ln-aurora" /> Esperando aprobación…
+                </p>
+              </div>
+            ) : null}
+
+            {method === "bunker" ? (
+              <div>
+                <p className="text-sm leading-relaxed text-ln-muted">
+                  Pegá una dirección <span className="font-mono text-ln-text">bunker://…</span> o tu identificador <span className="font-mono text-ln-text">usuario@dominio</span>.
+                </p>
+                <input type="text" autoComplete="off" spellCheck={false} placeholder="bunker://… o usuario@dominio" value={bunkerInput} onChange={(e) => setBunkerInput(e.target.value)} className={cn("mt-3 font-mono", inputCls)} />
+                <button type="button" className={cn(primaryBtn, "mt-3 w-full")} onClick={loginBunker} disabled={busy || !bunkerInput.trim()}>
+                  {busy ? "Conectando…" : "Iniciar sesión"}
+                </button>
+                {authUrl ? <a href={authUrl} target="_blank" rel="noopener noreferrer" className={cn("mt-3 block text-xs", linkCls)}>Abrir autorización ↗</a> : null}
+              </div>
+            ) : null}
+
+            {method === "nsec" ? (
+              <div>
+                <p className="text-sm leading-relaxed text-ln-muted">
+                  La clave se usa para firmar en este dispositivo y <span className="font-semibold text-ln-text">nunca se envía al servidor ni se guarda en el navegador</span>. Al recargar, vas a tener que ingresarla otra vez.
+                </p>
+                <p className="mt-3 rounded-xl border border-ln-danger/[0.28] bg-ln-danger/[0.08] p-3 text-xs leading-relaxed text-[#e8a99a]">
+                  No la pegues en una computadora compartida. Quien conoce tu nsec controla tu identidad.
+                </p>
+                <label htmlFor="login-nsec" className="mt-4 block text-xs font-semibold text-ln-soft">Clave privada nsec</label>
+                <input id="login-nsec" type="password" autoComplete="off" spellCheck={false} placeholder="nsec1…" value={nsecInput} onChange={(e) => setNsecInput(e.target.value)} className={cn("mt-1.5 font-mono", inputCls)} />
+                <button type="button" className={cn(primaryBtn, "mt-3 w-full")} onClick={loginImported} disabled={busy || !nsecInput.trim()}>
+                  {busy ? "Iniciando sesión…" : "Usar esta clave"}
+                </button>
+              </div>
+            ) : null}
+
+            {method === "temporary" ? (
+              <div>
+                {generated ? (
+                  <>
+                    <p className="text-sm leading-relaxed text-ln-muted">
+                      Guardá esta clave ahora. Se muestra una sola vez y es la única forma de recuperar la identidad después de cerrar o recargar.
+                    </p>
+                    <div className="mt-3 break-all rounded-xl border border-ln-corona/35 bg-ln-bg-deep p-3 font-mono text-xs text-ln-corona-bright">{generated.nsec}</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" className={secondaryBtn} onClick={copyGenerated}>{copied ? "Copiada ✓" : "Copiar clave"}</button>
+                      <button type="button" className={primaryBtn} onClick={loginGenerated} disabled={busy}>{busy ? "Entrando…" : "Ya la guardé"}</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm leading-relaxed text-ln-muted">
+                      Creamos una identidad para probar la tienda. Es temporal hasta que guardes su clave: si la perdés, no podremos recuperarla.
+                    </p>
+                    <p className="mt-3 text-xs leading-relaxed text-ln-faint">
+                      Después te llevaremos a elegir un nombre. La foto de perfil es opcional.
+                    </p>
+                    <button type="button" className={cn(primaryBtn, "mt-4 w-full")} onClick={generateKey} disabled={busy}>Crear identidad temporal</button>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {error ? (
-          <p className="mt-3 text-sm text-ln-danger">{error}</p>
+          <p role="alert" className="mt-4 rounded-xl border border-ln-danger/25 bg-ln-danger/[0.08] p-3 text-sm text-ln-danger">{error}</p>
         ) : null}
       </div>
     </div>

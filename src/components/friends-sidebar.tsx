@@ -715,10 +715,10 @@ export function FriendsSidebar() {
             {loading ? null : !user ? (
               <div className="px-1 py-2">
                 <p className="text-xs text-muted">
-                  Conectá tu Nostr para ver a tus amigos.
+                  Iniciá sesión para ver a tus amigos.
                 </p>
                 <Button variant="blue" className="mt-3 w-full" onClick={login}>
-                  Conectar con Nostr
+                  Iniciar sesión
                 </Button>
               </div>
             ) : friends === null ? (

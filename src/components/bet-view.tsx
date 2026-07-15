@@ -171,10 +171,10 @@ export function BetView({ betId }: { betId: string }) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Apuesta</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para ver la apuesta.</p>
+        <p className="mt-2 text-muted">Iniciá sesión para ver la apuesta.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

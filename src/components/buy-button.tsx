@@ -210,7 +210,7 @@ export function BuyButton({ gameId, priceSats, owned, openAccess, gameUrl, title
   if (!user) {
     return (
       <Button variant="blue" onClick={login}>
-        Conectar para comprar
+        Iniciar sesión para comprar
       </Button>
     );
   }

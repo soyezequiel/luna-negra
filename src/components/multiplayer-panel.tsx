@@ -53,10 +53,10 @@ export function MultiplayerPanel({
     return (
       <div className="rounded-ln-lg border border-ln-luna/30 bg-ln-luna/10 p-4">
         <p className="text-sm text-ln-text">
-          Te invitaron a una sala. Conectá tu Nostr para unirte.
+          Te invitaron a una sala. Iniciá sesión para unirte.
         </p>
         <Button variant="luna" className="mt-3" onClick={login}>
-          Conectar con Nostr
+          Iniciar sesión
         </Button>
       </div>
     );

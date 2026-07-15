@@ -211,7 +211,7 @@ export default function AdminVisitorsPage() {
         <h1 className="text-2xl font-bold text-white">Quiénes entran (admin)</h1>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

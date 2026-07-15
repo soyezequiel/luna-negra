@@ -72,12 +72,46 @@ export type StoredSigner =
       };
     };
 
-function readStoredSigner(): StoredSigner | null {
+/** Metadata no secreta que puede persistir entre recargas. */
+type PersistedSigner =
+  | { method: "nip07" }
+  | { method: "local"; source?: LocalSignerSource; transient: true }
+  | { method: "nip46"; transient: true };
+
+function readStoredSigner(): PersistedSigner | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(SIGNER_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as StoredSigner;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed.method === "nip07") return { method: "nip07" };
+    if (parsed.method === "local") {
+      const source =
+        parsed.source === "imported" ||
+        parsed.source === "generated" ||
+        parsed.source === "custodial"
+          ? parsed.source
+          : undefined;
+      // Migra sesiones antiguas eliminando cualquier nsec en texto plano.
+      if (typeof parsed.nsec === "string") {
+        localStorage.setItem(
+          SIGNER_STORAGE_KEY,
+          JSON.stringify({ method: "local", source, transient: true }),
+        );
+      }
+      return { method: "local", source, transient: true };
+    }
+    if (parsed.method === "nip46") {
+      // La clave cliente del bunker tampoco debe quedar en localStorage.
+      if (typeof parsed.clientNsec === "string") {
+        localStorage.setItem(
+          SIGNER_STORAGE_KEY,
+          JSON.stringify({ method: "nip46", transient: true }),
+        );
+      }
+      return { method: "nip46", transient: true };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -86,8 +120,25 @@ function readStoredSigner(): StoredSigner | null {
 function writeStoredSigner(stored: StoredSigner | null): void {
   if (typeof window === "undefined") return;
   try {
-    if (stored) localStorage.setItem(SIGNER_STORAGE_KEY, JSON.stringify(stored));
-    else localStorage.removeItem(SIGNER_STORAGE_KEY);
+    if (!stored) {
+      localStorage.removeItem(SIGNER_STORAGE_KEY);
+    } else if (stored.method === "nip07") {
+      localStorage.setItem(SIGNER_STORAGE_KEY, JSON.stringify(stored));
+    } else if (stored.method === "local") {
+      localStorage.setItem(
+        SIGNER_STORAGE_KEY,
+        JSON.stringify({
+          method: "local",
+          source: stored.source,
+          transient: true,
+        } satisfies PersistedSigner),
+      );
+    } else {
+      localStorage.setItem(
+        SIGNER_STORAGE_KEY,
+        JSON.stringify({ method: "nip46", transient: true } satisfies PersistedSigner),
+      );
+    }
   } catch {
     /* storage bloqueado: la sesión de signer no persiste */
   }
@@ -210,10 +261,16 @@ async function restoreStoredSigner(): Promise<LunaSigner | null> {
       if (!(await waitForNip07())) return null;
       candidate = createNip07Signer();
     } else if (stored.method === "local") {
-      candidate = importNsec(stored.nsec);
+      // Las claves importadas o temporales viven sólo en memoria. Una cuenta por
+      // email puede recuperar su signer custodial mediante la sesión httpOnly.
+      if (stored.source !== "custodial") return null;
+      const response = await fetch("/api/users/me/nsec", { cache: "no-store" });
+      const data = await response.json().catch(() => ({})) as { nsec?: string };
+      if (!response.ok || !data.nsec) return null;
+      candidate = importNsec(data.nsec);
     } else {
-      const { restoreBunkerSigner } = await import("./signer-nip46");
-      candidate = await restoreBunkerSigner(stored.clientNsec, stored.bunker);
+      // Nostr Connect usa una clave cliente temporal que no se persiste.
+      return null;
     }
   } catch {
     return null;

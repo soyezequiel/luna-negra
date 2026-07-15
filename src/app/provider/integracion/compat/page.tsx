@@ -74,10 +74,10 @@ export default function ProviderCompatPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Webhooks</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para ver tus webhooks.</p>
+        <p className="mt-2 text-muted">Iniciá sesión para ver tus webhooks.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

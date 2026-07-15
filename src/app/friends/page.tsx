@@ -165,11 +165,11 @@ export default function FriendsPage() {
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Amigos</h1>
         <p className="mt-2 text-muted">
-          Conectá tu Nostr para ver a quién seguís.
+          Iniciá sesión para ver a quién seguís.
         </p>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

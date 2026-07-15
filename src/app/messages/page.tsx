@@ -192,10 +192,10 @@ export default function MessagesPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Mensajes</h1>
-        <p className="mt-2 text-muted">Conectá tu Nostr para chatear.</p>
+        <p className="mt-2 text-muted">Iniciá sesión para chatear.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

@@ -129,7 +129,7 @@ export default async function StorePage({
             Tienda
           </h1>
           <p className="mt-2 max-w-xl text-ln-muted">
-            Todo se juega en el navegador. Pagá con Lightning, conectá con Nostr.
+            Todo se juega en el navegador. Pagá con Lightning e iniciá sesión en segundos.
           </p>
         </section>
       )}

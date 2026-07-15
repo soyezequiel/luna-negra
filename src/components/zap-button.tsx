@@ -89,7 +89,7 @@ export function ZapButton({ gameId, providerName, className }: Props) {
 
       // 2) Firmar el 9734 con la identidad Nostr del usuario.
       const signer = getActiveSigner() ?? (await restoreSigner());
-      if (!signer) throw new Error("Conectá tu Nostr para zapear");
+      if (!signer) throw new Error("Iniciá sesión para enviar sats");
       const signed = await signer.signEvent(
         prep.unsignedZapRequest as UnsignedEvent,
       );

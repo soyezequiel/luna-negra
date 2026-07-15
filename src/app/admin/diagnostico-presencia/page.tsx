@@ -133,7 +133,7 @@ export default function PresenceDiagnosticsPage() {
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-white">Diagnóstico de presencia (admin)</h1>
         <div className="mt-4 flex justify-center">
-          <Button variant="blue" onClick={login}>Conectar con Nostr</Button>
+          <Button variant="blue" onClick={login}>Iniciar sesión</Button>
         </div>
       </div>
     );

@@ -394,11 +394,11 @@ export default function BetsPage() {
           Tus apuestas
         </h1>
         <p className="mt-2 text-ln-muted">
-          Conectá tu Nostr para ver tus apuestas.
+          Iniciá sesión para ver tus apuestas.
         </p>
         <div className="mt-4 flex justify-center">
           <Button variant="luna" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

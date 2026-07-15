@@ -95,7 +95,7 @@ export function ActivitySection({
         </div>
       ) : (
         <p className="mb-6 text-sm text-faint">
-          Conectá tu Nostr para publicar.
+          Iniciá sesión para publicar.
         </p>
       )}
 

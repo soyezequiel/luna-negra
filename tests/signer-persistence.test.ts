@@ -84,7 +84,7 @@ describe("persistencia del signer", () => {
     })).toBeNull();
   });
 
-  it("restaura una clave local después de recargar el módulo", async () => {
+  it("no persiste ni restaura una nsec local después de recargar", async () => {
     const storage = memoryStorage();
     vi.stubGlobal("localStorage", storage);
     vi.stubGlobal("window", {});
@@ -97,13 +97,32 @@ describe("persistencia del signer", () => {
       nsec,
       source: "imported",
     });
+    const persisted = storage.getItem("ln_signer");
+    expect(persisted).not.toContain("nsec1");
+    expect(persisted).not.toContain(nsec);
 
     vi.resetModules();
     const secondLoad = await import("@/lib/signer");
     const restored = await secondLoad.restoreSigner();
 
-    expect(await restored?.getPublicKey()).toBe(getPublicKey(secret));
-    expect(restored?.method).toBe("local");
+    expect(restored).toBeNull();
+  });
+
+  it("elimina una nsec en texto plano de sesiones antiguas", async () => {
+    const storage = memoryStorage();
+    const nsec = nip19.nsecEncode(generateSecretKey());
+    storage.setItem(
+      "ln_signer",
+      JSON.stringify({ method: "local", nsec, source: "imported" }),
+    );
+    vi.stubGlobal("localStorage", storage);
+    vi.stubGlobal("window", {});
+
+    const { getStoredLocalSignerSource } = await import("@/lib/signer");
+
+    expect(getStoredLocalSignerSource()).toBe("imported");
+    expect(storage.getItem("ln_signer")).not.toContain(nsec);
+    expect(storage.getItem("ln_signer")).toContain('"transient":true');
   });
 
   it("espera la inyección tardía de NIP-07 y deduplica la restauración", async () => {

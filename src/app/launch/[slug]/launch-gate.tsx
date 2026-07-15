@@ -109,14 +109,14 @@ export function LaunchGate({
         {status === "needsLogin" && (
           <div className="space-y-3">
             <p className="text-sm text-ln-muted">
-              Iniciá sesión con Nostr para entrar a la sala.
+              Iniciá sesión para entrar a la sala.
             </p>
             <button
               type="button"
               onClick={() => void login()}
               className="btn btn-aurora w-full"
             >
-              Conectar con Nostr
+              Iniciar sesión
             </button>
           </div>
         )}

@@ -301,7 +301,7 @@ function AdminPageInner() {
         <h1 className="text-2xl font-bold text-white">Admin</h1>
         <div className="mt-4 flex justify-center">
           <Button variant="blue" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>

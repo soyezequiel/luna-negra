@@ -29,10 +29,10 @@ export default function EditProfilePage() {
         <h1 className="font-display text-3xl font-extrabold text-white">
           Editar perfil
         </h1>
-        <p className="mt-2 text-ln-muted">Conectá tu Nostr para configurar tu perfil.</p>
+        <p className="mt-2 text-ln-muted">Iniciá sesión para configurar tu perfil.</p>
         <div className="mt-4 flex justify-center">
           <Button variant="luna" onClick={login}>
-            Conectar con Nostr
+            Iniciar sesión
           </Button>
         </div>
       </div>
@@ -51,6 +51,20 @@ export default function EditProfilePage() {
       </div>
 
       <div className="mt-6 space-y-6">
+        {!user.displayName ? (
+          <section className="rounded-ln-lg border border-ln-luna/40 bg-ln-luna/10 p-5">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[.15em] text-ln-luna-bright">
+              Un último paso
+            </p>
+            <h2 className="mt-2 text-xl font-bold text-ln-text">
+              Elegí un nombre para completar tu perfil
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-ln-muted">
+              Así van a reconocerte en la tienda. También podés sumar una foto,
+              pero es opcional.
+            </p>
+          </section>
+        ) : null}
         <NostrProfileForm profile={profile} />
         {user.custodial ? <CustodialKeySection /> : null}
         <NwcSection />
