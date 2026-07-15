@@ -36,6 +36,29 @@ SDK local `F:\proyectos\SDK NGP`.
 8. Revocar el permiso y repetir con **Jugar sin permiso**: Ajedrez debe abrirse y
    usar su login normal o invitado sin mostrar un segundo consentimiento en Luna.
 
+## Varias pestañas del mismo juego
+
+1. Abrir Ajedrez desde Luna Negra, autorizar BAL y dejar esa pestaña abierta.
+2. Copiar la URL limpia de Ajedrez y abrirla directamente en otra pestaña, sin
+   `lnOrigin`. La segunda pestaña debe detectar el `SharedWorker` activo, comprobar
+   la pubkey mediante el signer compartido y entrar sin otro consentimiento.
+3. Firmar una operación desde ambas pestañas. Luna debe seguir mostrando una sola
+   sesión BAL: el `SharedWorker` conserva el cliente NIP-46 y enruta las operaciones
+   de todas las pestañas del mismo origen.
+4. Cerrar solamente la pestaña directa. La pestaña original y BAL deben continuar.
+5. Volver a abrir una pestaña directa y luego cerrar la pestaña que abrió Luna. La
+   pestaña directa debe seguir firmando: el cliente, su clave efímera y la conexión
+   a relays viven en el worker, no en la ventana que hizo el handshake.
+6. Cerrar finalmente la última pestaña de Ajedrez y abrir el juego directamente.
+   Debe usar el login
+   normal/invitado. Un marcador de `localStorage` vencido no concede acceso: el
+   estado real siempre lo confirma el `SharedWorker`.
+7. Repetir **Jugar sin permiso** mientras existe otra pestaña BAL. `lnBal=off` debe
+   prevalecer y esa pestaña no debe adjuntarse al signer compartido.
+
+Si el navegador no implementa `SharedWorker`, se conserva el comportamiento BAL
+anterior en la pestaña lanzada y las pestañas directas usan su login normal.
+
 ## nsec importada
 
 1. Cerrar sesión y usar **Clave local → Importar nsec** en Luna Negra.

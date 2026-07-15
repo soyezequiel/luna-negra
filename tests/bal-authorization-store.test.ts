@@ -47,7 +47,7 @@ describe("BAL session authorization", () => {
     expect(bal.listBalAuthorizations()).toEqual([]);
   });
 
-  it("removes the session grant when the game window really closes", async () => {
+  it("removes the session grant when the window closes before BAL connects", async () => {
     const bal = await import("@/lib/bal-launcher");
     const peer = {} as Window;
     bal.rememberBalAuthorizationForSession(request);
@@ -56,6 +56,26 @@ describe("BAL session authorization", () => {
     bal.unregisterBalGameWindow(peer);
 
     expect(await bal.createLunaBalAuthorizationStore().list()).toEqual([]);
+  });
+
+  it("preserves the session grant when the launcher window hands BAL to a SharedWorker", async () => {
+    const bal = await import("@/lib/bal-launcher");
+    const status = await import("@/lib/bal-signer-status");
+    const peer = {} as Window;
+    bal.rememberBalAuthorizationForSession(request);
+    bal.registerBalGameWindow("ajedrez", "Ajedrez", peer, request.origin);
+    status.reportBalConnectionRequested("request-1", "ajedrez", "Ajedrez");
+    status.observeBalSignerMessage({
+      type: "BAL_SESSION",
+      requestId: "request-1",
+      expiresAt: Date.now() + 60_000,
+    });
+
+    bal.unregisterBalGameWindow(peer);
+
+    expect(await bal.createLunaBalAuthorizationStore().list()).toMatchObject([
+      { gameId: "ajedrez", identityId: "user-1" },
+    ]);
   });
 });
 

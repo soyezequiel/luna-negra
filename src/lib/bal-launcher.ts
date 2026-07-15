@@ -16,6 +16,7 @@ import {
 } from "nostr-game-protocol/bal";
 import {
   disableBalSignerGame,
+  hasActiveBalSignerSession,
   registerBalSignerGame,
   reportBalDisconnecting,
   unregisterBalSignerGame,
@@ -225,11 +226,13 @@ export function unregisterBalGameWindow(peer: Window): void {
   games.delete(peer);
   if (!game) return;
   removeGameBinding(game.gameId);
-  removeBalSessionAuthorizationsForGame(game.gameId);
-  unregisterBalSignerGame(game.gameId, game.gameName);
-  // BAL está habilitado para un único juego. Al cerrarlo también cerramos su
-  // remoto efímero para que el estado de la navbar describa la conexión real.
-  void launcher?.logoutAll("launcher_logout");
+  // Ajedrez entrega la sesión al SharedWorker de su propio origen. La ventana
+  // registrada puede cerrarse mientras otras pestañas siguen usando ese remoto
+  // NIP-46; el worker o la expiración cierran la conexión real más adelante.
+  const workerOwnsSession = hasActiveBalSignerSession(game.gameId);
+  if (!workerOwnsSession) removeBalSessionAuthorizationsForGame(game.gameId);
+  unregisterBalSignerGame(game.gameId, game.gameName, workerOwnsSession);
+  if (!workerOwnsSession) void launcher?.logoutAll("launcher_logout");
 }
 
 /** Desvincula BAL porque el jugador eligió iniciar el juego sin ese servicio. */

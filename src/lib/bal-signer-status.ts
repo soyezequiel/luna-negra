@@ -170,6 +170,13 @@ export function getBalSignerStatusServerSnapshot(): BalSignerStatus {
   return IDLE_STATUS;
 }
 
+export function hasActiveBalSignerSession(gameId: string): boolean {
+  for (const session of activeSessions.values()) {
+    if (session.gameId === gameId && session.expiresAt > Date.now()) return true;
+  }
+  return false;
+}
+
 /** Recupera únicamente metadatos no secretos para mostrar una reconexión tras recargar Luna. */
 export function restoreBalSignerStatus(): void {
   if (typeof window === "undefined") return;
@@ -218,13 +225,23 @@ export function registerBalSignerGame(gameId: string, gameName: string): void {
   registeredGames.set(gameId, gameName);
 }
 
-export function unregisterBalSignerGame(gameId: string, gameName: string): void {
+export function unregisterBalSignerGame(
+  gameId: string,
+  gameName: string,
+  preserveActiveSessions = false,
+): void {
   registeredGames.delete(gameId);
   for (const [requestId, request] of pendingRequests) {
     if (request.gameId === gameId) pendingRequests.delete(requestId);
   }
-  for (const [requestId, session] of activeSessions) {
-    if (session.gameId === gameId) removeSession(requestId);
+  if (!preserveActiveSessions) {
+    for (const [requestId, session] of activeSessions) {
+      if (session.gameId === gameId) removeSession(requestId);
+    }
+  }
+  if (preserveActiveSessions && activeSessions.size > 0) {
+    emit(stableStatus());
+    return;
   }
   emit({
     phase: "disconnected",
