@@ -11,7 +11,7 @@ import {
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
 import { normalizeImageUrl } from "@/lib/game-media";
-import { ngpRatioTextClass } from "@/components/game-card";
+import { NgeBadge, ngpRatioTextClass } from "@/components/game-card";
 import { cn } from "@/lib/utils";
 
 // Subconjunto serializable de CatalogGame que necesita el carrusel destacado.
@@ -26,6 +26,7 @@ export type FeaturedGame = {
   categories: string[];
   ngpActive: number;
   ngpTotal: number;
+  ngeIntegrated: boolean;
 };
 
 // Fondo tipo "cover" centrado para una URL de imagen (o vacío si no hay).
@@ -213,6 +214,9 @@ export function FeaturedCarousel({ games }: { games: FeaturedGame[] }) {
               }}
               aria-hidden
             />
+            <div className="absolute right-3 top-3 z-[2]">
+              <NgeBadge enabled={game.ngeIntegrated} />
+            </div>
             {/* Overlay abajo-izquierda: botón de acción + categoría. */}
             <div className="absolute bottom-[18px] left-5 flex flex-col items-start gap-3">
               <span

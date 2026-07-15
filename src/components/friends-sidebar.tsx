@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
+import { useBalPreauthorization } from "@/providers/bal-preauthorization-provider";
 import { useGameContext, type CurrentGame } from "@/providers/game-context";
 import { useFriendsDrawer } from "@/providers/friends-drawer";
 import { useFriends } from "@/hooks/use-friends";
@@ -69,6 +70,7 @@ type RosterMember = { clientId: string; npub: string; host: boolean };
 export function FriendsSidebar() {
   const { user, login, loading } = useSession();
   const { notify } = useNotify();
+  const { requestBalLaunch } = useBalPreauthorization();
   const { currentGame } = useGameContext();
   const { open: drawerOpen, setOpen: setDrawerOpen } = useFriendsDrawer();
   const { friends, refresh, refreshing } = useFriends();
@@ -246,15 +248,24 @@ export function FriendsSidebar() {
   // propio juego) usa un enlace general `?join=`; si no, el flujo clásico de
   // salas hosteadas por Luna (DM con `/game/<slug>?room=`).
   function handleInvite(recipientPubkey: string, name: string) {
-    if (isRoomLink) void inviteViaRoomLink(recipientPubkey, name);
-    else void inviteToGame(recipientPubkey, name);
+    if (isRoomLink && currentGame) {
+      launchAfterPreauthorization(currentGame, (balEnabled) => {
+        void inviteViaRoomLink(recipientPubkey, name, balEnabled);
+      });
+      return;
+    }
+    void inviteToGame(recipientPubkey, name);
   }
 
   // "Luna Room Link" general: pide a Luna un enlace público con el dominio del
   // juego y lo manda por DM. Si el host todavía NO tiene el juego abierto en la
   // sala, lo abre automáticamente (para quedar esperando adentro). Reusa
   // `linkRoomId` para que todos —host e invitados— caigan en la misma sala.
-  async function inviteViaRoomLink(recipientPubkey: string, name: string) {
+  async function inviteViaRoomLink(
+    recipientPubkey: string,
+    name: string,
+    balEnabled: boolean,
+  ) {
     if (!currentGame || invitingPk) return;
     const game = currentGame;
     // ¿El host ya tiene el juego abierto? Si no, preabrimos la ventana DENTRO del
@@ -288,7 +299,7 @@ export function FriendsSidebar() {
 
       // Meter al host en la sala si no estaba ya adentro (juego cerrado).
       if (!alreadyOpen && roomId) {
-        await openHostInRoom(game, roomId, win);
+        await openHostInRoom(game, roomId, win, balEnabled);
         opened = true;
       } else {
         win?.close();
@@ -317,6 +328,7 @@ export function FriendsSidebar() {
     game: CurrentGame,
     roomId: string,
     win: Window | null,
+    balEnabled: boolean,
   ) {
     const sr = await fetch(`/api/games/${game.gameId}/sessions`, {
       method: "POST",
@@ -336,6 +348,7 @@ export function FriendsSidebar() {
       title: game.title,
       roomId,
       win,
+      balEnabled,
       balCompatible: game.balCompatible === true,
     });
     if (!result.ok) {
@@ -351,7 +364,7 @@ export function FriendsSidebar() {
 
   // El host abre SU juego en la sala room-link compartida (`?join=`). No crea una
   // fila Room en Luna: la sala vive en el backend del juego, creada al primer acceso.
-  async function openRoomLinkGame() {
+  async function openRoomLinkGame(balEnabled: boolean) {
     if (!currentGame) return;
     const game = currentGame;
     const win = preopenGameWindowIfNeeded(game.slug);
@@ -368,7 +381,7 @@ export function FriendsSidebar() {
         roomId = d.roomId as string;
         setLinkRoomId(roomId);
       }
-      await openHostInRoom(game, roomId, win);
+      await openHostInRoom(game, roomId, win, balEnabled);
     } catch (e) {
       win?.close();
       notify({
@@ -381,7 +394,7 @@ export function FriendsSidebar() {
   // Abre el juego: crea la sala la primera vez (host) y lanza la pestaña del
   // juego. Recién con el juego abierto se habilita invitar a los amigos. Si la
   // sala ya existe, reutiliza la pestaña/entra con quien haya entrado.
-  async function openGameRoom() {
+  async function openGameRoom(balEnabled: boolean) {
     if (!currentGame) return;
     const slug = currentGame.slug;
     // Reutilizamos la pestaña del juego si existe; si no, preabrimos una dentro
@@ -431,6 +444,7 @@ export function FriendsSidebar() {
         token,
         roomId: room.roomId,
         win,
+        balEnabled,
         balCompatible:
           room.balCompatible === true || currentGame.balCompatible === true,
       });
@@ -455,7 +469,7 @@ export function FriendsSidebar() {
   // Aceptar una invitación: para salas de Luna reutiliza/abre la pestaña del juego;
   // para Luna Room Link abre la URL del dominio del juego (autocontenida).
   function openGameLink(url: string) {
-    void openExternalGameLink(url).then((result) => {
+    void openExternalGameLink(url, requestBalLaunch).then((result) => {
       if (result.ok) return;
       notify({
         title: POPUP_BLOCKED_TITLE,
@@ -478,6 +492,7 @@ export function FriendsSidebar() {
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
+      preauthorize: requestBalLaunch,
       onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
       onBlocked: (dest) =>
         notify({
@@ -487,6 +502,37 @@ export function FriendsSidebar() {
           kind: "warn",
           actionLabel: "Abrir juego",
         }),
+    });
+  }
+
+  function launchAfterPreauthorization(
+    game: CurrentGame,
+    launch: (balEnabled: boolean) => void,
+  ) {
+    requestBalLaunch(
+      {
+        gameId: game.slug,
+        gameName: game.title,
+        gameUrl: game.gameUrl,
+        balCompatible: game.balCompatible === true,
+      },
+      (choice) => {
+        if (choice !== null) launch(choice);
+      },
+    );
+  }
+
+  function requestOpenRoomLinkGame() {
+    if (!currentGame) return;
+    launchAfterPreauthorization(currentGame, (balEnabled) => {
+      void openRoomLinkGame(balEnabled);
+    });
+  }
+
+  function requestOpenGameRoom() {
+    if (!currentGame) return;
+    launchAfterPreauthorization(currentGame, (balEnabled) => {
+      void openGameRoom(balEnabled);
     });
   }
 
@@ -669,7 +715,7 @@ export function FriendsSidebar() {
                     variant="play"
                     size="sm"
                     className="w-full"
-                    onClick={openRoomLinkGame}
+                    onClick={requestOpenRoomLinkGame}
                   >
                     {linkRoomId ? "▶ Entrar a la sala" : "▶ Jugar con amigos"}
                   </Button>
@@ -685,7 +731,7 @@ export function FriendsSidebar() {
                     variant="play"
                     size="sm"
                     className="w-full"
-                    onClick={openGameRoom}
+                    onClick={requestOpenGameRoom}
                   >
                     ▶ Volver al juego
                     {inRoom && inRoom.length > 0
@@ -704,7 +750,7 @@ export function FriendsSidebar() {
                     variant="play"
                     size="sm"
                     className="w-full"
-                    onClick={openGameRoom}
+                    onClick={requestOpenGameRoom}
                   >
                     ▶ Jugar con amigos
                   </Button>

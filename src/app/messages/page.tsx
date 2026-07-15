@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
+import { useBalPreauthorization } from "@/providers/bal-preauthorization-provider";
 import { Button } from "@/components/ui/button";
 import { parseInvite, parseRoomLink, latestJoinableInviteId } from "@/lib/invite";
 import {
@@ -38,6 +39,7 @@ type Msg = {
 export default function MessagesPage() {
   const { user, login, loading } = useSession();
   const { notify } = useNotify();
+  const { requestBalLaunch } = useBalPreauthorization();
   const [events, setEvents] = useState<Event[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export default function MessagesPage() {
   const [, startThreadTransition] = useTransition();
 
   function openGameLink(url: string) {
-    void openExternalGameLink(url).then((result) => {
+    void openExternalGameLink(url, requestBalLaunch).then((result) => {
       if (result.ok) return;
       notify({
         title: POPUP_BLOCKED_TITLE,
@@ -75,6 +77,7 @@ export default function MessagesPage() {
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
+      preauthorize: requestBalLaunch,
       onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
       onBlocked: (dest) =>
         notify({

@@ -31,6 +31,24 @@ export type LaunchResult =
   | { ok: true }
   | { ok: false; reason: "popup-blocked"; dest: string };
 
+export type BalLaunchGame = {
+  /** BAL usa el slug estable como gameId. */
+  gameId: string;
+  gameName: string;
+  gameUrl: string;
+  balCompatible: boolean;
+};
+
+export type BalLaunchChoice = boolean | null;
+export type BalLaunchContinuation = (
+  balEnabled: BalLaunchChoice,
+  resumedFromPrompt: boolean,
+) => void;
+export type BalLaunchPreauthorizer = (
+  game: BalLaunchGame,
+  continuation: BalLaunchContinuation,
+) => boolean;
+
 // Copy compartido para el aviso de popup bloqueado (toast en los callers).
 export const POPUP_BLOCKED_TITLE = "Tu navegador bloqueó la ventana del juego";
 export const POPUP_BLOCKED_BODY =
@@ -53,7 +71,10 @@ type ResolvedExternalGame = {
  * La URL compartida nunca se reescribe ni se vuelve a generar: `lnOrigin` es un
  * dato efímero agregado exclusivamente al destino local del receptor.
  */
-export async function openExternalGameLink(url: string): Promise<LaunchResult> {
+export async function openExternalGameLink(
+  url: string,
+  preauthorize?: BalLaunchPreauthorizer,
+): Promise<LaunchResult> {
   if (getStoredAppMode() !== "bal") return openUnregisteredExternalGameLink(url);
 
   // Hay un await antes de conocer slug/compatibilidad. Reservar la pestaña ahora
@@ -78,6 +99,36 @@ export async function openExternalGameLink(url: string): Promise<LaunchResult> {
     ) {
       try { pendingWin.name = gameWindowTarget(game.slug); }
       catch { /* el registro en memoria sigue siendo suficiente */ }
+      const launchGame: BalLaunchGame = {
+        gameId: game.slug,
+        gameName: game.title,
+        gameUrl: url,
+        balCompatible: true,
+      };
+      if (preauthorize) {
+        return new Promise<LaunchResult>((resolve) => {
+          const waitingForDecision = preauthorize(
+            launchGame,
+            (choice, resumedFromPrompt) => {
+              if (choice === null) {
+                resolve({ ok: true });
+                return;
+              }
+              resolve(launchStandaloneGame({
+                gameUrl: url,
+                slug: game.slug,
+                title: game.title,
+                win: resumedFromPrompt ? undefined : pendingWin,
+                balEnabled: choice,
+                balCompatible: true,
+              }));
+            },
+          );
+          // El diálogo debe aparecer antes que la ventana del juego. Su propio
+          // botón vuelve a aportar un gesto válido para abrirla después.
+          if (waitingForDecision) pendingWin.close();
+        });
+      }
       return launchStandaloneGame({
         gameUrl: url,
         slug: game.slug,
@@ -292,12 +343,14 @@ export async function joinRoomAndPlay({
   slug,
   roomId,
   win,
+  preauthorize,
   onError,
   onBlocked,
 }: {
   slug: string;
   roomId: string;
   win?: Window | null;
+  preauthorize?: BalLaunchPreauthorizer;
   onError?: (message: string | null) => void;
   /** El navegador bloqueó la ventana del juego: avisar al usuario y ofrecerle
    * abrir `dest` (URL final) en un nuevo gesto de click. */
@@ -321,18 +374,46 @@ export async function joinRoomAndPlay({
       pendingWin?.close();
       return;
     }
-    const result = launchGameRoom({
-      gameUrl: d.gameUrl,
-      slug: d.slug,
-      title: d.title,
-      token: d.token,
-      roomId: d.roomId,
-      win: pendingWin,
-      balCompatible: d.balCompatible === true,
-    });
-    if (!result.ok) {
-      if (onBlocked) onBlocked(result.dest);
-      else onError?.(POPUP_BLOCKED_BODY);
+    const launch = (
+      choice: BalLaunchChoice,
+      resumedFromPrompt: boolean,
+    ): void => {
+      if (choice === null) return;
+      const result = launchGameRoom({
+        gameUrl: d.gameUrl,
+        slug: d.slug,
+        title: d.title,
+        token: d.token,
+        roomId: d.roomId,
+        win: resumedFromPrompt
+          ? preopenGameWindowIfNeeded(d.slug)
+          : pendingWin,
+        balEnabled: choice,
+        balCompatible: d.balCompatible === true,
+      });
+      if (!result.ok) {
+        if (onBlocked) onBlocked(result.dest);
+        else onError?.(POPUP_BLOCKED_BODY);
+      }
+    };
+    if (preauthorize) {
+      await new Promise<void>((resolve) => {
+        const waitingForDecision = preauthorize(
+          {
+            gameId: d.slug,
+            gameName: d.title,
+            gameUrl: d.gameUrl,
+            balCompatible: d.balCompatible === true,
+          },
+          (choice, resumedFromPrompt) => {
+            launch(choice, resumedFromPrompt);
+            resolve();
+          },
+        );
+        if (waitingForDecision) pendingWin?.close();
+      });
+    } else {
+      launch(getStoredAppMode() === "bal", false);
     }
   } catch (e) {
     pendingWin?.close();

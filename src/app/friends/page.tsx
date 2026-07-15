@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { useNotify } from "@/providers/notifications-provider";
+import { useBalPreauthorization } from "@/providers/bal-preauthorization-provider";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { useFriends } from "@/hooks/use-friends";
@@ -44,6 +45,7 @@ function roomInvite(status?: Status): Invite | null {
 export default function FriendsPage() {
   const { user, login, loading } = useSession();
   const { notify } = useNotify();
+  const { requestBalLaunch } = useBalPreauthorization();
   const { friends, refresh, refreshing } = useFriends();
   const [statusText, setStatusText] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -147,6 +149,7 @@ export default function FriendsPage() {
     void joinRoomAndPlay({
       slug: invite.slug,
       roomId: invite.roomId,
+      preauthorize: requestBalLaunch,
       onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
       onBlocked: (dest) =>
         notify({

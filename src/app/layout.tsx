@@ -9,6 +9,7 @@ import { FriendsDrawerProvider } from "@/providers/friends-drawer";
 import { FriendsProvider } from "@/providers/friends-provider";
 import { NotificationsCenterProvider } from "@/providers/notifications-center-provider";
 import { AppModeProvider } from "@/providers/app-mode-provider";
+import { BalPreauthorizationProvider } from "@/providers/bal-preauthorization-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { FriendsSidebar } from "@/components/friends-sidebar";
@@ -91,6 +92,7 @@ export default function RootLayout({
         <FreshGuard version={BUILD_ID} />
         <SessionProvider>
           <AppModeProvider>
+          <BalPreauthorizationProvider>
           <BalLauncherHost />
           <StorePresenceBeacon />
           <WalletProvider>
@@ -116,6 +118,7 @@ export default function RootLayout({
             </GameContextProvider>
           </NotificationsProvider>
           </WalletProvider>
+          </BalPreauthorizationProvider>
           </AppModeProvider>
         </SessionProvider>
       </body>

@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
+import { useBalPreauthorization } from "@/providers/bal-preauthorization-provider";
 import {
   subscribeDms,
   decryptDm,
@@ -118,6 +119,7 @@ export function NotificationsProvider({
   children: React.ReactNode;
 }) {
   const { user } = useSession();
+  const { requestBalLaunch } = useBalPreauthorization();
   const router = useRouter();
 
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -169,6 +171,7 @@ export function NotificationsProvider({
         void joinRoomAndPlay({
           slug: invite.slug,
           roomId: invite.roomId,
+          preauthorize: requestBalLaunch,
           onError: (body) => notify({ title: "No se pudo unir a la sala", body: body ?? undefined }),
           onBlocked: (dest) =>
             notify({
@@ -183,7 +186,7 @@ export function NotificationsProvider({
         // Room-link externo: abrir en pestaña nueva sin reemplazar Luna. Si el
         // navegador bloquea el popup, avisar con un toast (nuevo gesto reintenta)
         // en vez de navegar la pestaña actual.
-        void openExternalGameLink(href).then((result) => {
+        void openExternalGameLink(href, requestBalLaunch).then((result) => {
           if (result.ok) return;
           notify({
             title: POPUP_BLOCKED_TITLE,
@@ -197,7 +200,7 @@ export function NotificationsProvider({
         router.push(href);
       }
     },
-    [router, notify],
+    [router, notify, requestBalLaunch],
   );
 
   // Notificación nativa de Chrome (si hay permiso). Click → enfoca y abre.

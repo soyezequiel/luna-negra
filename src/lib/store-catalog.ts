@@ -1,7 +1,11 @@
 import { unstable_cache, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { categoryQuerySlugs, normalizeCategories } from "@/lib/categories";
-import { scoreGamesByNgp, NGP_TOTAL_CAPS } from "@/lib/integration-telemetry";
+import {
+  readNgeEvidence,
+  scoreGamesByNgp,
+  NGP_TOTAL_CAPS,
+} from "@/lib/integration-telemetry";
 import { getReviewSummary, getReviewSummaries } from "@/lib/reviews";
 import { parseScreenshotUrls, parseVideoUrls } from "@/lib/game-media";
 
@@ -50,6 +54,9 @@ export type CatalogGame = {
   // lo que muestra el sello "NGP N/M" de la card.
   ngpActive: number;
   ngpTotal: number;
+  // NGE se considera integrado sólo después de observar un RPC autenticado
+  // (una apuesta creada también cuenta como evidencia de RPC).
+  ngeIntegrated: boolean;
   isBeta: boolean; // beta: la Home lo filtra salvo opt-in del usuario
   // Resumen de reseñas ("Muy positivas · 4,6 ★ (87)"). label null = sin reseñas.
   reviewLabel: string | null;
@@ -78,13 +85,17 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       isBeta: true,
     },
   });
-  const scores = await scoreGamesByNgp(
-    games.map((g) => ({
-      id: g.id,
-      manualCaps: (g.manualCaps as Record<string, boolean> | null) ?? null,
-    })),
-  );
-  const reviews = await getReviewSummaries(games.map((g) => g.id));
+  const gameIds = games.map((g) => g.id);
+  const [scores, nge, reviews] = await Promise.all([
+    scoreGamesByNgp(
+      games.map((g) => ({
+        id: g.id,
+        manualCaps: (g.manualCaps as Record<string, boolean> | null) ?? null,
+      })),
+    ),
+    readNgeEvidence(gameIds),
+    getReviewSummaries(gameIds),
+  ]);
   return games.map((g) => {
     const r = reviews.get(g.id);
     return {
@@ -101,6 +112,7 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       createdAt: g.createdAt.toISOString(),
       ngpActive: scores.get(g.id) ?? 0,
       ngpTotal: NGP_TOTAL_CAPS,
+      ngeIntegrated: Boolean(nge.get(g.id)?.rpc),
       isBeta: g.isBeta,
       reviewLabel: r?.label ?? null,
       reviewAverage: r?.average ?? 0,
@@ -130,11 +142,15 @@ export const getPublishedGameBySlug = unstable_cache(
       include: { provider: true },
     });
     if (!game || game.status !== "published") return null;
-    const reviews = await getReviewSummary(game.id);
+    const [reviews, nge] = await Promise.all([
+      getReviewSummary(game.id),
+      readNgeEvidence([game.id]),
+    ]);
     return {
       ...game,
       categories: normalizeCategories(game.categories),
       reviews,
+      ngeIntegrated: Boolean(nge.get(game.id)?.rpc),
     };
   },
   ["store-game-by-slug"],
@@ -155,8 +171,16 @@ export const getRelatedGames = unstable_cache(
       orderBy: { createdAt: "desc" },
       take: 4,
     });
-    const reviews = await getReviewSummaries(games.map((g) => g.id));
-    return games.map((g) => ({ ...g, reviews: reviews.get(g.id) ?? null }));
+    const gameIds = games.map((g) => g.id);
+    const [reviews, nge] = await Promise.all([
+      getReviewSummaries(gameIds),
+      readNgeEvidence(gameIds),
+    ]);
+    return games.map((g) => ({
+      ...g,
+      reviews: reviews.get(g.id) ?? null,
+      ngeIntegrated: Boolean(nge.get(g.id)?.rpc),
+    }));
   },
   ["store-related-games"],
   { revalidate: REVALIDATE_SECONDS, tags: [CATALOG_TAG] },

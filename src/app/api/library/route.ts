@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { scoreGamesByNgp, NGP_TOTAL_CAPS } from "@/lib/integration-telemetry";
+import {
+  readNgeEvidence,
+  scoreGamesByNgp,
+  NGP_TOTAL_CAPS,
+} from "@/lib/integration-telemetry";
 
 export async function GET() {
   const session = await getSession();
@@ -16,12 +20,16 @@ export async function GET() {
   });
 
   // Capacidades NGP activas por juego, igual que la tienda (sello "NGP N/M").
-  const ngp = await scoreGamesByNgp(
-    purchases.map((p) => ({
-      id: p.game.id,
-      manualCaps: (p.game.manualCaps as Record<string, boolean> | null) ?? null,
-    })),
-  );
+  const gameIds = purchases.map((p) => p.game.id);
+  const [ngp, nge] = await Promise.all([
+    scoreGamesByNgp(
+      purchases.map((p) => ({
+        id: p.game.id,
+        manualCaps: (p.game.manualCaps as Record<string, boolean> | null) ?? null,
+      })),
+    ),
+    readNgeEvidence(gameIds),
+  ]);
 
   return NextResponse.json({
     games: purchases.map((p) => ({
@@ -38,6 +46,7 @@ export async function GET() {
       free: p.amountSats === 0,
       ngpActive: ngp.get(p.game.id) ?? 0,
       ngpTotal: NGP_TOTAL_CAPS,
+      ngeIntegrated: Boolean(nge.get(p.game.id)?.rpc),
     })),
   });
 }

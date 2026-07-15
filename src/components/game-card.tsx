@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { priceLabel, hueFromSlug } from "@/lib/format";
 import { categoryLabel } from "@/lib/categories";
@@ -30,6 +29,8 @@ export type GameCardData = {
   // muestra el sello "NGP N/M"; el color se gradúa según qué tan integrado esté.
   ngpActive?: number;
   ngpTotal?: number;
+  // NGE detectado: el juego puede crear apuestas de satoshis vía escrow.
+  ngeIntegrated?: boolean;
   // Resumen de reseñas ("Muy positivas"); null/undefined = sin reseñas, no se muestra.
   reviewLabel?: string | null;
 };
@@ -73,6 +74,27 @@ export function NgpBadge({ active, total }: { active?: number; total?: number })
       title={`Integrado con Nostr Games Protocol · ${active}/${t} capacidades NGP activas`}
     >
       ✦ NGP {active}/{t}
+    </span>
+  );
+}
+
+// Sello de apuestas NGE. La animación vive en globals.css para poder respetar
+// reduce-motion y la degradación sin GPU de toda la app.
+export function NgeBadge({ enabled = false }: { enabled?: boolean }) {
+  if (!enabled) return null;
+  return (
+    <span
+      className="nge-badge"
+      title="Este juego permite apostar satoshis con escrow NGE"
+      aria-label="Apuestas de satoshis disponibles con NGE"
+    >
+      <span className="nge-badge__coin" aria-hidden>
+        <span>ϟ</span>
+      </span>
+      <span className="nge-badge__copy">
+        <strong>APOSTÁ SATS</strong>
+        <small>NGE ESCROW</small>
+      </span>
     </span>
   );
 }
@@ -139,6 +161,9 @@ function GameCardPopup({
             ⚇ Multi
           </span>
         ) : null}
+        <div className="absolute bottom-2 left-2">
+          <NgeBadge enabled={game.ngeIntegrated} />
+        </div>
       </div>
 
       <div className="p-3.5">
@@ -190,7 +215,7 @@ export function GameCard({ game, index = 0 }: { game: GameCardData; index?: numb
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  const onEnter = (_e: ReactPointerEvent<HTMLAnchorElement>) => {
+  const onEnter = () => {
     if (timer.current) clearTimeout(timer.current);
     // El rect se mide al disparar el timer (300ms) para tomar ya asentada la
     // elevación del hover, no al entrar.
@@ -248,6 +273,9 @@ export function GameCard({ game, index = 0 }: { game: GameCardData; index?: numb
             </span>
           ) : null}
           <NgpBadge active={game.ngpActive} total={game.ngpTotal} />
+        </div>
+        <div className="absolute bottom-2 left-2 z-10">
+          <NgeBadge enabled={game.ngeIntegrated} />
         </div>
 
         {/* Degradado inferior para legibilidad */}

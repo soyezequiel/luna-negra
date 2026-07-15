@@ -64,11 +64,14 @@ anterior en la pestaña lanzada y las pestañas directas usan su login normal.
 ## Invitaciones y Room Links
 
 1. Con BAL activo, recibir un Room Link (`?join=…`) por toast, chat o reto NIP-17
-   y tocar **Unirse**. La sala debe abrirse conservando `join` e iniciar BAL con la
-   identidad del receptor.
-2. Repetir con modo independiente. Debe abrirse la URL recibida sin resolver BAL
+   y tocar **Unirse**. Si no hay permiso vigente, el pre-permiso debe aparecer en
+   Luna antes de abrir el juego. La sala debe conservar `join` e iniciar BAL con
+   la identidad del receptor.
+2. Desde la barra de amigos, tocar **Invitar a jugar** con el juego cerrado. El
+   mismo pre-permiso debe aparecer antes de crear/abrir la sala del anfitrión.
+3. Repetir con modo independiente. Debe abrirse la URL recibida sin resolver BAL
    y el juego debe ofrecer su login normal o invitado.
-3. Copiar el enlace generado antes y después de cambiar de modo. Debe ser idéntico:
+4. Copiar el enlace generado antes y después de cambiar de modo. Debe ser idéntico:
    la preferencia del emisor nunca viaja en la invitación; cada receptor aplica su
    propia preferencia al abrirla desde Luna Negra.
 

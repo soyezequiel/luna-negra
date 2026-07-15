@@ -17,7 +17,7 @@ import { RoomLinkInvite } from "@/components/room-link-invite";
 import { RegisterGame } from "@/providers/game-context";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
-import { GameCard } from "@/components/game-card";
+import { GameCard, NgeBadge } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
 import { GameSocialPanel } from "@/components/game-social-panel";
 import { LivePlayers } from "@/components/live-players";
@@ -274,6 +274,7 @@ export default async function GamePage({
             Beta
           </span>
         ) : null}
+        <NgeBadge enabled={game.ngeIntegrated} />
         {game.reviews.label ? (
           <span
             className={`text-xs font-semibold ${reviewLabelClass(game.reviews.label)}`}
@@ -589,6 +590,7 @@ export default async function GamePage({
                   screenshots: parseScreenshotUrls(g.screenshots),
                   priceSats: g.priceSats,
                   categories: g.categories,
+                  ngeIntegrated: g.ngeIntegrated,
                   reviewLabel: g.reviews?.label ?? null,
                 }}
               />

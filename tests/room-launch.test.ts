@@ -60,6 +60,62 @@ beforeEach(() => {
 });
 
 describe("joinRoomAndPlay", () => {
+  it("waits for BAL preauthorization before opening an invited room", async () => {
+    const reservedWin = createFakeGameWindow();
+    const authorizedWin = createFakeGameWindow();
+    const open = vi.fn()
+      .mockReturnValueOnce(reservedWin)
+      .mockReturnValueOnce(authorizedWin);
+    let continueLaunch:
+      | ((choice: boolean | null, resumedFromPrompt: boolean) => void)
+      | undefined;
+    const preauthorize = vi.fn((
+      _game: unknown,
+      continuation: typeof continueLaunch,
+    ) => {
+      continueLaunch = continuation;
+      return true;
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      open,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse({
+      token: "invite-token",
+      roomId: "ROOM1",
+      slug: "tetris",
+      title: "TETRA",
+      gameUrl: "https://tetris.example/play",
+      balCompatible: true,
+      openGame: false,
+    })));
+
+    const { joinRoomAndPlay } = await import("@/lib/room-launch");
+    const joining = joinRoomAndPlay({
+      slug: "tetris",
+      roomId: "ROOM1",
+      preauthorize,
+    });
+
+    await vi.waitFor(() => expect(preauthorize).toHaveBeenCalledTimes(1));
+    expect(preauthorize.mock.calls[0][0]).toEqual({
+      gameId: "tetris",
+      gameName: "TETRA",
+      gameUrl: "https://tetris.example/play",
+      balCompatible: true,
+    });
+    expect(reservedWin.close).toHaveBeenCalledTimes(1);
+    expect(authorizedWin.location.href).toBe("");
+
+    continueLaunch?.(true, true);
+    await joining;
+
+    expect(open).toHaveBeenLastCalledWith("", "luna-negra-game-tetris");
+    expect(authorizedWin.location.href).toBe(
+      "https://tetris.example/play?lnOrigin=https%3A%2F%2Fluna.example&inviteToken=invite-token&room=ROOM1",
+    );
+  });
+
   it("opens room invitations without BAL when independent mode is stored", async () => {
     const gameWin = createFakeGameWindow();
     const localStorage = memoryStorage();
@@ -223,6 +279,142 @@ describe("joinRoomAndPlay", () => {
 });
 
 describe("openExternalGameLink", () => {
+  it("shows preauthorization before navigating a received BAL room link", async () => {
+    const reservedWin = createFakeGameWindow();
+    const authorizedWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    const open = vi.fn()
+      .mockReturnValueOnce(reservedWin)
+      .mockReturnValueOnce(authorizedWin);
+    let continueLaunch:
+      | ((choice: boolean | null, resumedFromPrompt: boolean) => void)
+      | undefined;
+    const preauthorize = vi.fn((
+      _game: unknown,
+      continuation: typeof continueLaunch,
+    ) => {
+      continueLaunch = continuation;
+      return true;
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse({
+      slug: "tetris",
+      title: "TETRA",
+      balCompatible: true,
+    })));
+    const inviteUrl = "https://tetris.example/play?join=ROOM1";
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const opening = openExternalGameLink(inviteUrl, preauthorize);
+
+    await vi.waitFor(() => expect(preauthorize).toHaveBeenCalledTimes(1));
+    expect(preauthorize.mock.calls[0][0]).toEqual({
+      gameId: "tetris",
+      gameName: "TETRA",
+      gameUrl: inviteUrl,
+      balCompatible: true,
+    });
+    expect(reservedWin.close).toHaveBeenCalledTimes(1);
+    expect(authorizedWin.location.href).toBe("");
+
+    continueLaunch?.(true, true);
+    const result = await opening;
+
+    expect(result).toEqual({ ok: true });
+    expect(open).toHaveBeenLastCalledWith(
+      "https://tetris.example/play?join=ROOM1&lnOrigin=https%3A%2F%2Fluna.example",
+      "luna-negra-game-tetris",
+    );
+  });
+
+  it("cancels a pending external launch without opening the game", async () => {
+    const reservedWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    const open = vi.fn(() => reservedWin);
+    let continueLaunch:
+      | ((choice: boolean | null, resumedFromPrompt: boolean) => void)
+      | undefined;
+    const preauthorize = vi.fn((
+      _game: unknown,
+      continuation: typeof continueLaunch,
+    ) => {
+      continueLaunch = continuation;
+      return true;
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse({
+      slug: "tetris",
+      title: "TETRA",
+      balCompatible: true,
+    })));
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const opening = openExternalGameLink(
+      "https://tetris.example/play?join=ROOM1",
+      preauthorize,
+    );
+    await vi.waitFor(() => expect(continueLaunch).toBeTypeOf("function"));
+
+    continueLaunch?.(null, true);
+
+    await expect(opening).resolves.toEqual({ ok: true });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(reservedWin.close).toHaveBeenCalledTimes(1);
+    expect(reservedWin.location.href).toBe("");
+  });
+
+  it("opens with the normal game login when preauthorization is declined", async () => {
+    const reservedWin = createFakeGameWindow();
+    const independentWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    const open = vi.fn()
+      .mockReturnValueOnce(reservedWin)
+      .mockReturnValueOnce(independentWin);
+    let continueLaunch:
+      | ((choice: boolean | null, resumedFromPrompt: boolean) => void)
+      | undefined;
+    const preauthorize = vi.fn((
+      _game: unknown,
+      continuation: typeof continueLaunch,
+    ) => {
+      continueLaunch = continuation;
+      return true;
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse({
+      slug: "tetris",
+      title: "TETRA",
+      balCompatible: true,
+    })));
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const opening = openExternalGameLink(
+      "https://tetris.example/play?join=ROOM1",
+      preauthorize,
+    );
+    await vi.waitFor(() => expect(continueLaunch).toBeTypeOf("function"));
+
+    continueLaunch?.(false, true);
+
+    await expect(opening).resolves.toEqual({ ok: true });
+    expect(open).toHaveBeenLastCalledWith(
+      "https://tetris.example/play?join=ROOM1&lnBal=off",
+      "luna-negra-game-tetris",
+    );
+  });
+
   it("keeps the received invitation URL untouched in independent mode", async () => {
     const gameWin = createFakeGameWindow();
     const localStorage = memoryStorage();

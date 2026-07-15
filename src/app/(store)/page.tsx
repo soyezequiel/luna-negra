@@ -151,6 +151,7 @@ export default async function StorePage({
               categories: g.categories,
               ngpActive: g.ngpActive,
               ngpTotal: g.ngpTotal,
+              ngeIntegrated: g.ngeIntegrated,
             }))}
           />
         </section>
@@ -223,6 +224,7 @@ export default async function StorePage({
                       categories: g.categories,
                       ngpActive: g.ngpActive,
                       ngpTotal: g.ngpTotal,
+                      ngeIntegrated: g.ngeIntegrated,
                       reviewLabel: g.reviewLabel,
                     }}
                   />

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
+import { useBalPreauthorization } from "@/providers/bal-preauthorization-provider";
 import { Button } from "@/components/ui/button";
 import { joinRoomAndPlay } from "@/lib/room-launch";
 
@@ -24,6 +25,7 @@ export function MultiplayerPanel({
   canPlay: boolean;
 }) {
   const { user, login } = useSession();
+  const { requestBalLaunch } = useBalPreauthorization();
   const params = useSearchParams();
   const roomParam = params.get("room");
 
@@ -38,6 +40,7 @@ export function MultiplayerPanel({
       await joinRoomAndPlay({
         slug,
         roomId: roomParam,
+        preauthorize: requestBalLaunch,
         onError: (message) => setError(message ?? "No se pudo unir a la sala"),
       });
     } finally {

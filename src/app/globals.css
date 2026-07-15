@@ -642,10 +642,125 @@ h1, h2, h3 {
   animation: kenburns 6s ease-in-out infinite alternate;
 }
 
+/* Badge NGE: una pequeña ficha Lightning con brillo de recompensa. El texto
+   explica la capacidad; el movimiento sólo atrae la mirada y nunca es necesario
+   para entenderla. */
+.nge-badge {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  height: 27px;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 205, 122, 0.7);
+  border-radius: 999px;
+  padding: 3px 8px 3px 3px;
+  color: #fff3cd;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 224, 143, 0.23), transparent 36%),
+    linear-gradient(115deg, rgba(67, 36, 5, 0.96), rgba(30, 17, 7, 0.96));
+  box-shadow:
+    0 0 0 1px rgba(255, 182, 72, 0.12) inset,
+    0 5px 16px -7px rgba(255, 182, 72, 0.95);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  white-space: nowrap;
+  animation: nge-badge-breathe 2.6s ease-in-out infinite;
+}
+.nge-badge::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -60%;
+  bottom: -60%;
+  left: -24%;
+  width: 18%;
+  opacity: 0;
+  transform: skewX(-20deg);
+  background: rgba(255, 255, 255, 0.7);
+  filter: blur(1px);
+  animation: nge-badge-glint 3.2s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+}
+.nge-badge__coin {
+  position: relative;
+  display: grid;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  place-items: center;
+  border: 1px solid #ffe6a1;
+  border-radius: 50%;
+  color: #3a1b00;
+  background: radial-gradient(circle at 35% 28%, #fff0a8 0 10%, #ffcd55 34%, #e98a06 100%);
+  box-shadow:
+    0 0 0 1px rgba(91, 43, 0, 0.32) inset,
+    0 0 9px rgba(255, 190, 55, 0.7);
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  animation: nge-coin-pop 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.nge-badge__coin::before,
+.nge-badge__coin::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #fff4be;
+  box-shadow: 0 0 5px #ffcf5a;
+  animation: nge-spark 2.6s ease-out infinite;
+}
+.nge-badge__coin::before { right: -4px; top: 0; }
+.nge-badge__coin::after { right: -2px; bottom: -2px; animation-delay: 0.16s; }
+.nge-badge__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+}
+.nge-badge__copy strong {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+}
+.nge-badge__copy small {
+  margin-top: 2px;
+  color: rgba(255, 214, 135, 0.72);
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+@keyframes nge-badge-breathe {
+  0%, 72%, 100% { box-shadow: 0 0 0 1px rgba(255, 182, 72, 0.12) inset, 0 5px 16px -7px rgba(255, 182, 72, 0.95); }
+  82% { box-shadow: 0 0 0 1px rgba(255, 224, 150, 0.3) inset, 0 5px 23px -5px rgba(255, 182, 72, 1); }
+}
+@keyframes nge-badge-glint {
+  0%, 54% { transform: translateX(0) skewX(-20deg); opacity: 0; }
+  60% { opacity: 0.75; }
+  78%, 100% { transform: translateX(720%) skewX(-20deg); opacity: 0; }
+}
+@keyframes nge-coin-pop {
+  0%, 72%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  79% { transform: translateY(-1px) rotate(-8deg) scale(1.12); }
+  86% { transform: translateY(0) rotate(5deg) scale(1.03); }
+}
+@keyframes nge-spark {
+  0%, 72% { transform: translate(0, 0) scale(0); opacity: 0; }
+  79% { transform: translate(2px, -2px) scale(1.3); opacity: 1; }
+  91%, 100% { transform: translate(5px, -5px) scale(0); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ln-fade-up,
   .ln-pop-in,
-  .ln-kenburns { animation: none; }
+  .ln-kenburns,
+  .nge-badge,
+  .nge-badge::after,
+  .nge-badge__coin,
+  .nge-badge__coin::before,
+  .nge-badge__coin::after { animation: none; }
 }
 
 /* Skeletons: barrido shimmer sobre superficie hundida. */
@@ -734,5 +849,12 @@ html.no-gpu .ln-shimmer {
 
 /* Ken-burns infinito del popup: mismo motivo que el shimmer. */
 html.no-gpu .ln-kenburns {
+  animation: none;
+}
+html.no-gpu .nge-badge,
+html.no-gpu .nge-badge::after,
+html.no-gpu .nge-badge__coin,
+html.no-gpu .nge-badge__coin::before,
+html.no-gpu .nge-badge__coin::after {
   animation: none;
 }

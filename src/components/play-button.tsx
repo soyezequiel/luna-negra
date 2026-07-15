@@ -1,25 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { BalConsentRequest } from "nostr-game-protocol/bal";
-import { BalConsentDialog } from "@/components/bal-consent-dialog";
 import { Button } from "@/components/ui/button";
 import { useNotify } from "@/providers/notifications-provider";
-import { useSession } from "@/providers/session-provider";
-import { useAppMode } from "@/providers/app-mode-provider";
+import { useBalPreauthorization } from "@/providers/bal-preauthorization-provider";
 import {
-  createBalPreauthorizationRequest,
-  grantBalPreauthorization,
-  hasBalAuthorization,
-} from "@/lib/bal-launcher";
-import {
-  getActiveSigner,
-  getStoredLocalSignerSource,
-  getStoredSignerMethod,
-  resolveBalIdentitySource,
-} from "@/lib/signer";
-import {
-  getOpenGameWindow,
   launchStandaloneGame,
   preopenGameWindowIfNeeded,
   POPUP_BLOCKED_BODY,
@@ -48,31 +33,10 @@ export function PlayButton({
   size?: "sm" | "md" | "xl";
 }) {
   const [loading, setLoading] = useState(false);
-  const [preauthorization, setPreauthorization] = useState<BalConsentRequest | null>(null);
   const { notify } = useNotify();
-  const { user } = useSession();
-  const { mode } = useAppMode();
+  const { requestBalLaunch } = useBalPreauthorization();
 
-  function getPreauthorizationRequest(): BalConsentRequest | null {
-    if (!slug || !user) return null;
-    const identitySource = resolveBalIdentitySource({
-      custodial: Boolean(user.custodial),
-      signerMethod: getActiveSigner()?.method ?? getStoredSignerMethod(),
-      localSource: getStoredLocalSignerSource(),
-    });
-    if (!identitySource) return null;
-    return createBalPreauthorizationRequest({
-      gameId: slug,
-      gameName: title ?? slug,
-      gameUrl,
-      identityId: user.id,
-      pubkey: user.pubkey,
-      identitySource,
-      balCompatible,
-    });
-  }
-
-  async function openGame(balEnabled = mode === "bal" && balCompatible) {
+  async function openGame(balEnabled: boolean) {
     if (loading) return;
     // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
     // y otros bloqueadores de popups rechazan el window.open.
@@ -112,53 +76,28 @@ export function PlayButton({
 
   function play() {
     if (loading) return;
-    if (mode === "independent") {
-      void openGame(false);
-      return;
-    }
-    // Reconciliar la ventana ANTES de mirar el permiso temporal. Si el usuario
-    // cerró el juego y vuelve a abrirlo antes de que corra el watcher, esta
-    // lectura detecta `closed`, desregistra BAL y elimina "Permitir esta vez".
-    const gameAlreadyOpen = slug ? getOpenGameWindow(slug) !== null : false;
-    const request = getPreauthorizationRequest();
-    if (!gameAlreadyOpen && request && !hasBalAuthorization(request)) {
-      setPreauthorization(request);
-      return;
-    }
-    void openGame();
-  }
-
-  function decidePreauthorization(decision: "once" | "remember" | "deny") {
-    const request = preauthorization;
-    if (!request) return;
-    setPreauthorization(null);
-    if (decision === "deny") {
-      void openGame(false);
-      return;
-    }
-    grantBalPreauthorization(request, decision === "remember");
-    void openGame();
+    requestBalLaunch(
+      {
+        gameId: slug ?? gameId,
+        gameName: title ?? slug ?? gameId,
+        gameUrl,
+        balCompatible: balCompatible && Boolean(slug),
+      },
+      (choice) => {
+        if (choice !== null) void openGame(choice);
+      },
+    );
   }
 
   return (
-    <>
-      <Button
-        variant={variant}
-        size={size}
-        className={className}
-        onClick={play}
-        disabled={loading}
-      >
-        {loading ? "Abriendo…" : label}
-      </Button>
-      {preauthorization ? (
-        <BalConsentDialog
-          request={preauthorization}
-          mode="prelaunch"
-          onDecision={decidePreauthorization}
-          onCancel={() => setPreauthorization(null)}
-        />
-      ) : null}
-    </>
+    <Button
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={play}
+      disabled={loading}
+    >
+      {loading ? "Abriendo…" : label}
+    </Button>
   );
 }
