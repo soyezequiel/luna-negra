@@ -36,27 +36,79 @@ export const POPUP_BLOCKED_TITLE = "Tu navegador bloqueó la ventana del juego";
 export const POPUP_BLOCKED_BODY =
   "Permití pop-ups para Luna Negra (en Brave: ícono 🛡️ Shields → Pop-ups) o tocá «Abrir juego».";
 
+type ResolvedExternalGame = {
+  slug: string;
+  title: string;
+  balCompatible: boolean;
+};
+
 /**
- * Abre una URL externa (Luna Room Link autocontenido) en una pestaña nueva sin
- * tocar la pestaña de Luna. Devuelve `false` solo si el navegador bloqueó el
- * popup, para que el caller avise en vez de reemplazar la pestaña actual.
+ * Abre un Room Link/reto externo respetando la preferencia DEL receptor.
  *
- * OJO: no usamos `window.open(url, "_blank", "noopener")`. Con `noopener` el
- * navegador devuelve `null` AUNQUE la pestaña se haya abierto bien (así lo define
- * la spec de HTML), así que el viejo fallback `if (!w) location.assign(url)`
- * creía que estaba bloqueado y encima navegaba la pestaña de Luna → se abría la
- * pestaña nueva Y se reemplazaba Luna Negra. Abrimos sin `noopener` y anulamos el
- * `opener` a mano; así el `null` de retorno sí significa "popup bloqueado".
+ * En modo independiente conserva el comportamiento anterior: abre la URL cruda
+ * en otra pestaña y corta `opener`. En modo BAL preabre una pestaña dentro del
+ * gesto, resuelve server-side si la URL pertenece a un juego publicado y, sólo
+ * si ese juego declaró BAL, la registra en el launcher antes de navegarla.
+ *
+ * La URL compartida nunca se reescribe ni se vuelve a generar: `lnOrigin` es un
+ * dato efímero agregado exclusivamente al destino local del receptor.
  */
-export function openExternalGameLink(url: string): boolean {
-  const win = window.open(url, "_blank");
-  if (!win) return false;
+export async function openExternalGameLink(url: string): Promise<LaunchResult> {
+  if (getStoredAppMode() !== "bal") return openUnregisteredExternalGameLink(url);
+
+  // Hay un await antes de conocer slug/compatibilidad. Reservar la pestaña ahora
+  // evita que Brave y otros bloqueadores rechacen la apertura posterior.
+  const pendingWin = window.open("", "_blank");
+  if (!pendingWin) return { ok: false, reason: "popup-blocked", dest: url };
+
+  try {
+    const response = await fetch("/api/games/resolve-launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const game = (await response.json().catch(() => null)) as
+      | ResolvedExternalGame
+      | null;
+    if (
+      response.ok
+      && game?.balCompatible === true
+      && typeof game.slug === "string"
+      && typeof game.title === "string"
+    ) {
+      try { pendingWin.name = gameWindowTarget(game.slug); }
+      catch { /* el registro en memoria sigue siendo suficiente */ }
+      return launchStandaloneGame({
+        gameUrl: url,
+        slug: game.slug,
+        title: game.title,
+        win: pendingWin,
+        balCompatible: true,
+      });
+    }
+  } catch {
+    // Fallar al reconocer una URL no debe impedir que el receptor use el enlace.
+  }
+
+  return openUnregisteredExternalGameLink(url, pendingWin);
+}
+
+/** Apertura directa sin BAL; mantiene el contrato de seguridad anterior. */
+function openUnregisteredExternalGameLink(
+  url: string,
+  pendingWin?: Window,
+): LaunchResult {
+  // Sin await conviene navegar en el propio window.open: mantiene exactamente el
+  // flujo actual del modo independiente y evita un flash de pestaña vacía.
+  const win = pendingWin ?? window.open(url, "_blank");
+  if (!win) return { ok: false, reason: "popup-blocked", dest: url };
   try {
     win.opener = null;
   } catch {
     /* cross-origin: algunos navegadores no dejan escribir opener; ya está abierta */
   }
-  return true;
+  if (pendingWin) navigateGameWindow(win, url);
+  return { ok: true };
 }
 
 export function getOpenGameWindow(slug: string): Window | null {

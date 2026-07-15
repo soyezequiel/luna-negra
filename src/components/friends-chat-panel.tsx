@@ -58,6 +58,7 @@ export function FriendsChatPanel({
   inviteDisabled,
   onInvite,
   onJoinRoom,
+  onOpenGameLink,
   onBack,
 }: {
   friendPubkey: string;
@@ -70,6 +71,7 @@ export function FriendsChatPanel({
   inviteDisabled: boolean;
   onInvite: () => void;
   onJoinRoom: (invite: { slug?: string; roomId: string; url?: string }) => void;
+  onOpenGameLink: (url: string) => void;
   onBack: () => void;
 }) {
   const { messages, loading, send, sending } = useDmThread(friendPubkey);
@@ -208,14 +210,13 @@ export function FriendsChatPanel({
                             Reto reemplazado por uno más nuevo
                           </span>
                         ) : (
-                          <a
-                            href={m.gameUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => onOpenGameLink(m.gameUrl!)}
                             className="self-start rounded-full bg-ln-aurora/20 px-2.5 py-1 text-xs font-medium text-ln-aurora-bright hover:bg-ln-aurora/30"
                           >
                             🎮 Unirse a la partida
-                          </a>
+                          </button>
                         )}
                       </div>
                     ) : (

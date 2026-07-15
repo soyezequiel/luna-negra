@@ -183,15 +183,16 @@ export function NotificationsProvider({
         // Room-link externo: abrir en pestaña nueva sin reemplazar Luna. Si el
         // navegador bloquea el popup, avisar con un toast (nuevo gesto reintenta)
         // en vez de navegar la pestaña actual.
-        if (!openExternalGameLink(href)) {
+        void openExternalGameLink(href).then((result) => {
+          if (result.ok) return;
           notify({
             title: POPUP_BLOCKED_TITLE,
             body: POPUP_BLOCKED_BODY,
-            href,
+            href: result.dest,
             kind: "warn",
             actionLabel: "Abrir juego",
           });
-        }
+        });
       } else {
         router.push(href);
       }

@@ -61,6 +61,17 @@ BAL se habilita por juego desde el panel del proveedor con la opción
 Si el navegador no implementa `SharedWorker`, se conserva el comportamiento BAL
 anterior en la pestaña lanzada y las pestañas directas usan su login normal.
 
+## Invitaciones y Room Links
+
+1. Con BAL activo, recibir un Room Link (`?join=…`) por toast, chat o reto NIP-17
+   y tocar **Unirse**. La sala debe abrirse conservando `join` e iniciar BAL con la
+   identidad del receptor.
+2. Repetir con modo independiente. Debe abrirse la URL recibida sin resolver BAL
+   y el juego debe ofrecer su login normal o invitado.
+3. Copiar el enlace generado antes y después de cambiar de modo. Debe ser idéntico:
+   la preferencia del emisor nunca viaja en la invitación; cada receptor aplica su
+   propia preferencia al abrirla desde Luna Negra.
+
 ## nsec importada
 
 1. Cerrar sesión y usar **Clave local → Importar nsec** en Luna Negra.

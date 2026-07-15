@@ -15,6 +15,8 @@ type FakeWindow = {
   close: ReturnType<typeof vi.fn>;
   focus: ReturnType<typeof vi.fn>;
   location: { href: string; origin?: string };
+  name: string;
+  opener: unknown;
   postMessage: ReturnType<typeof vi.fn>;
 };
 
@@ -26,6 +28,8 @@ function createFakeGameWindow(): FakeWindow {
     }),
     focus: vi.fn(),
     location: { href: "" },
+    name: "",
+    opener: {},
     postMessage: vi.fn(),
   };
 }
@@ -215,6 +219,117 @@ describe("joinRoomAndPlay", () => {
 
     expect(gameWin.close).toHaveBeenCalledTimes(1);
     expect(gameWin.location.href).toBe("");
+  });
+});
+
+describe("openExternalGameLink", () => {
+  it("keeps the received invitation URL untouched in independent mode", async () => {
+    const gameWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    const open = vi.fn(() => gameWin);
+    const fetch = vi.fn();
+    localStorage.setItem("luna-negra:app-mode.v1", "independent");
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open,
+    });
+    vi.stubGlobal("fetch", fetch);
+    const inviteUrl = "https://tetris.example/play?join=ROOM1";
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const result = await openExternalGameLink(inviteUrl);
+
+    expect(result).toEqual({ ok: true });
+    expect(open).toHaveBeenCalledWith(inviteUrl, "_blank");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(gameWin.opener).toBeNull();
+  });
+
+  it("launches a received room link through BAL when the recipient enabled it", async () => {
+    const gameWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    const sessionStorage = memoryStorage();
+    const open = vi.fn(() => gameWin);
+    const fetch = vi.fn(async () => okResponse({
+      slug: "tetris",
+      title: "TETRA",
+      balCompatible: true,
+    }));
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open,
+    });
+    vi.stubGlobal("sessionStorage", sessionStorage);
+    vi.stubGlobal("fetch", fetch);
+    const inviteUrl = "https://tetris.example/play?join=ROOM1";
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const result = await openExternalGameLink(inviteUrl);
+
+    expect(result).toEqual({ ok: true });
+    expect(open).toHaveBeenCalledWith("", "_blank");
+    expect(fetch).toHaveBeenCalledWith("/api/games/resolve-launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: inviteUrl }),
+    });
+    expect(gameWin.name).toBe("luna-negra-game-tetris");
+    expect(gameWin.location.href).toBe(
+      "https://tetris.example/play?join=ROOM1&lnOrigin=https%3A%2F%2Fluna.example",
+    );
+    expect(JSON.parse(
+      sessionStorage.getItem("luna-negra:bal-game-binding:tetris")!,
+    )).toEqual({
+      gameId: "tetris",
+      gameName: "TETRA",
+      origin: "https://tetris.example",
+    });
+  });
+
+  it("falls back to the original link when the game cannot use BAL", async () => {
+    const gameWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open: vi.fn(() => gameWin),
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => okResponse({
+      slug: "tetris",
+      title: "TETRA",
+      balCompatible: false,
+    })));
+    const inviteUrl = "https://tetris.example/play?join=ROOM1";
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const result = await openExternalGameLink(inviteUrl);
+
+    expect(result).toEqual({ ok: true });
+    expect(gameWin.location.href).toBe(inviteUrl);
+    expect(gameWin.opener).toBeNull();
+  });
+
+  it("reports popup blocking before resolving the game", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage: memoryStorage(),
+      open: vi.fn(() => null),
+    });
+    vi.stubGlobal("fetch", fetch);
+    const inviteUrl = "https://tetris.example/play?join=ROOM1";
+
+    const { openExternalGameLink } = await import("@/lib/room-launch");
+    const result = await openExternalGameLink(inviteUrl);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "popup-blocked",
+      dest: inviteUrl,
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

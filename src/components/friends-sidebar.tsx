@@ -454,19 +454,24 @@ export function FriendsSidebar() {
 
   // Aceptar una invitación: para salas de Luna reutiliza/abre la pestaña del juego;
   // para Luna Room Link abre la URL del dominio del juego (autocontenida).
+  function openGameLink(url: string) {
+    void openExternalGameLink(url).then((result) => {
+      if (result.ok) return;
+      notify({
+        title: POPUP_BLOCKED_TITLE,
+        body: POPUP_BLOCKED_BODY,
+        href: result.dest,
+        kind: "warn",
+        actionLabel: "Abrir juego",
+      });
+    });
+  }
+
   function joinRoom(invite: { slug?: string; roomId: string; url?: string }) {
     if (invite.url) {
       // Room-link autocontenido: abrir en pestaña nueva sin reemplazar Luna. Si el
       // navegador lo bloquea, avisar con un toast (un nuevo gesto reintenta).
-      if (!openExternalGameLink(invite.url)) {
-        notify({
-          title: POPUP_BLOCKED_TITLE,
-          body: POPUP_BLOCKED_BODY,
-          href: invite.url,
-          kind: "warn",
-          actionLabel: "Abrir juego",
-        });
-      }
+      openGameLink(invite.url);
       return;
     }
     if (!invite.slug) return;
@@ -564,6 +569,7 @@ export function FriendsSidebar() {
           inviteDisabled={inviteDisabledFor(chatWith.pubkey)}
           onInvite={() => handleInvite(chatWith.pubkey, chatWith.name)}
           onJoinRoom={joinRoom}
+          onOpenGameLink={openGameLink}
           onBack={() => setChatWith(null)}
         />
       ) : (

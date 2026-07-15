@@ -49,21 +49,26 @@ export default function MessagesPage() {
   const [, startSelectionTransition] = useTransition();
   const [, startThreadTransition] = useTransition();
 
+  function openGameLink(url: string) {
+    void openExternalGameLink(url).then((result) => {
+      if (result.ok) return;
+      notify({
+        title: POPUP_BLOCKED_TITLE,
+        body: POPUP_BLOCKED_BODY,
+        href: result.dest,
+        kind: "warn",
+        actionLabel: "Abrir juego",
+      });
+    });
+  }
+
   // Aceptar una invitación: reutilizar el juego abierto o preabrir una pestaña
   // dentro del click si todavía no existe.
   function joinRoom(invite: { slug?: string; roomId: string; url?: string }) {
     if (invite.url) {
       // Room-link: abrir la URL del dominio del juego (autocontenida) en pestaña
       // nueva sin reemplazar Luna. Si el navegador lo bloquea, avisar con toast.
-      if (!openExternalGameLink(invite.url)) {
-        notify({
-          title: POPUP_BLOCKED_TITLE,
-          body: POPUP_BLOCKED_BODY,
-          href: invite.url,
-          kind: "warn",
-          actionLabel: "Abrir juego",
-        });
-      }
+      openGameLink(invite.url);
       return;
     }
     if (!invite.slug) return;
@@ -322,14 +327,13 @@ export default function MessagesPage() {
                                 Reto reemplazado por uno más nuevo
                               </span>
                             ) : (
-                              <a
-                                href={m.gameUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={() => openGameLink(m.gameUrl!)}
                                 className="self-start rounded-sm bg-green/20 px-3 py-1.5 text-xs font-medium text-green hover:bg-green/30"
                               >
                                 🎮 Unirse a la partida
-                              </a>
+                              </button>
                             )}
                           </div>
                         ) : (
