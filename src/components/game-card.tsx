@@ -31,6 +31,8 @@ export type GameCardData = {
   ngpTotal?: number;
   // NGE detectado: el juego puede crear apuestas de satoshis vía escrow.
   ngeIntegrated?: boolean;
+  // BAL declarado: el juego acepta el inicio de sesión automático de Luna Negra.
+  balCompatible?: boolean;
   // Resumen de reseñas ("Muy positivas"); null/undefined = sin reseñas, no se muestra.
   reviewLabel?: string | null;
 };
@@ -99,6 +101,32 @@ export function NgeBadge({ enabled = false }: { enabled?: boolean }) {
   );
 }
 
+// Sello de compatibilidad con Bunker Auto Login. Se mantiene compacto porque
+// convive con NGP, Multi y NGE sobre portadas de distintos tamaños.
+export function BalBadge({ enabled = false }: { enabled?: boolean }) {
+  if (!enabled) return null;
+  return (
+    <span
+      className="inline-flex h-[27px] items-center gap-1.5 rounded-full border border-ln-luna/55 bg-[linear-gradient(115deg,rgba(37,26,76,.96),rgba(15,14,35,.96))] px-2 font-mono text-ln-luna-bright shadow-[0_5px_16px_-8px_rgba(157,140,255,.95)] backdrop-blur-sm"
+      title="Compatible con Bunker Auto Login (BAL)"
+      aria-label="Compatible con Bunker Auto Login (BAL)"
+    >
+      <span
+        className="grid h-[17px] w-[17px] place-items-center rounded-full border border-ln-luna/70 bg-ln-luna/20 text-[9px] font-black leading-none text-white"
+        aria-hidden
+      >
+        B
+      </span>
+      <span className="flex flex-col items-start leading-none">
+        <strong className="text-[8.5px] tracking-[0.11em]">BAL</strong>
+        <small className="mt-0.5 text-[6.5px] font-bold tracking-[0.1em] text-ln-luna/80">
+          AUTO LOGIN
+        </small>
+      </span>
+    </span>
+  );
+}
+
 // ── Popup de detalle (hover) ─────────────────────────────────────────────────
 // Se posiciona FIXED respecto al viewport (calculado del rect de la card), no
 // absolute dentro de la grilla: así nunca lo tapa la sidebar de amigos. Es
@@ -156,11 +184,14 @@ function GameCardPopup({
           />
         ) : null}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
-        {multiplayer ? (
-          <span className="absolute right-2 top-2 rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
-            ⚇ Multi
-          </span>
-        ) : null}
+        <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+          <BalBadge enabled={game.balCompatible} />
+          {multiplayer ? (
+            <span className="rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
+              ⚇ Multi
+            </span>
+          ) : null}
+        </div>
         <div className="absolute bottom-2 left-2">
           <NgeBadge enabled={game.ngeIntegrated} />
         </div>
@@ -267,6 +298,7 @@ export function GameCard({ game, index = 0 }: { game: GameCardData; index?: numb
         ) : null}
         {/* Esquina superior derecha: Multi y/o sello NGP, apilados. */}
         <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+          <BalBadge enabled={game.balCompatible} />
           {multiplayer ? (
             <span className="rounded-full bg-ln-aurora/20 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] text-ln-aurora-bright backdrop-blur-sm">
               ⚇ Multi

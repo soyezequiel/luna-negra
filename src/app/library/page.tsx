@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSession } from "@/providers/session-provider";
 import { Button } from "@/components/ui/button";
 import { PlayButton } from "@/components/play-button";
-import { NgeBadge, NgpBadge } from "@/components/game-card";
+import { BalBadge, NgeBadge, NgpBadge } from "@/components/game-card";
 import { hueFromSlug } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 
@@ -71,6 +71,7 @@ function Cover({
       )}
       {/* Sello NGP: mismas capacidades activas que la tienda. */}
       <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1">
+        <BalBadge enabled={game.balCompatible} />
         <NgpBadge active={game.ngpActive} total={game.ngpTotal} />
       </div>
       <div className="absolute bottom-2 left-2 z-10">

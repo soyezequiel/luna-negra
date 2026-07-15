@@ -57,6 +57,8 @@ export type CatalogGame = {
   // NGE se considera integrado sólo después de observar un RPC autenticado
   // (una apuesta creada también cuenta como evidencia de RPC).
   ngeIntegrated: boolean;
+  // El proveedor declaró soporte para Bunker Auto Login (BAL).
+  balCompatible: boolean;
   isBeta: boolean; // beta: la Home lo filtra salvo opt-in del usuario
   // Resumen de reseñas ("Muy positivas · 4,6 ★ (87)"). label null = sin reseñas.
   reviewLabel: string | null;
@@ -113,6 +115,9 @@ async function loadCatalog(): Promise<CatalogGame[]> {
       ngpActive: scores.get(g.id) ?? 0,
       ngpTotal: NGP_TOTAL_CAPS,
       ngeIntegrated: Boolean(nge.get(g.id)?.rpc),
+      balCompatible: !!(
+        (g.manualCaps as Record<string, boolean> | null) ?? null
+      )?.bal,
       isBeta: g.isBeta,
       reviewLabel: r?.label ?? null,
       reviewAverage: r?.average ?? 0,

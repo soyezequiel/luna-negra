@@ -17,7 +17,7 @@ import { RoomLinkInvite } from "@/components/room-link-invite";
 import { RegisterGame } from "@/providers/game-context";
 import { ReviewsSection } from "@/components/reviews-section";
 import { ActivitySection } from "@/components/activity-section";
-import { GameCard, NgeBadge } from "@/components/game-card";
+import { BalBadge, GameCard, NgeBadge } from "@/components/game-card";
 import { GameMediaGallery } from "@/components/game-media-gallery";
 import { GameSocialPanel } from "@/components/game-social-panel";
 import { LivePlayers } from "@/components/live-players";
@@ -274,6 +274,7 @@ export default async function GamePage({
             Beta
           </span>
         ) : null}
+        <BalBadge enabled={balCompatible} />
         <NgeBadge enabled={game.ngeIntegrated} />
         {game.reviews.label ? (
           <span
@@ -590,6 +591,9 @@ export default async function GamePage({
                   screenshots: parseScreenshotUrls(g.screenshots),
                   priceSats: g.priceSats,
                   categories: g.categories,
+                  balCompatible: !!(
+                    g.manualCaps as Record<string, boolean> | null
+                  )?.bal,
                   ngeIntegrated: g.ngeIntegrated,
                   reviewLabel: g.reviews?.label ?? null,
                 }}
