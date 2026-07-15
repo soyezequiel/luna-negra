@@ -6,6 +6,7 @@ import { BalConsentDialog } from "@/components/bal-consent-dialog";
 import { Button } from "@/components/ui/button";
 import { useNotify } from "@/providers/notifications-provider";
 import { useSession } from "@/providers/session-provider";
+import { useAppMode } from "@/providers/app-mode-provider";
 import {
   createBalPreauthorizationRequest,
   grantBalPreauthorization,
@@ -48,6 +49,7 @@ export function PlayButton({
   const [preauthorization, setPreauthorization] = useState<BalConsentRequest | null>(null);
   const { notify } = useNotify();
   const { user } = useSession();
+  const { mode } = useAppMode();
 
   function getPreauthorizationRequest(): BalConsentRequest | null {
     if (!slug || !user) return null;
@@ -67,7 +69,7 @@ export function PlayButton({
     });
   }
 
-  async function openGame(balEnabled = true) {
+  async function openGame(balEnabled = mode === "bal") {
     if (loading) return;
     // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
     // y otros bloqueadores de popups rechazan el window.open.
@@ -106,6 +108,10 @@ export function PlayButton({
 
   function play() {
     if (loading) return;
+    if (mode === "independent") {
+      void openGame(false);
+      return;
+    }
     // Reconciliar la ventana ANTES de mirar el permiso temporal. Si el usuario
     // cerró el juego y vuelve a abrirlo antes de que corra el watcher, esta
     // lectura detecta `closed`, desregistra BAL y elimina "Permitir esta vez".

@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { NotificationsBell } from "./notifications-bell";
 import { BalSignerStatusIndicator } from "./bal-signer-status";
+import { AppModeSelector } from "./app-mode-selector";
+import { useAppMode } from "@/providers/app-mode-provider";
 
 // Orden fijo: Tienda · Biblioteca · Apuestas | Proveedor · Admin.
 // "Amigos" sale del nav principal (se accede desde el panel derecho de amigos).
@@ -29,6 +31,7 @@ export function Navbar() {
   const { user, login, logout, loading, error } = useSession();
   const { connected, balanceSats } = useWallet();
   const pathname = usePathname() ?? "/";
+  const { mode } = useAppMode();
 
   const navLink = (href: string, label: string) => {
     const active = isActive(pathname, href);
@@ -57,6 +60,7 @@ export function Navbar() {
         {/* Logo eclipse + wordmark */}
         <Link
           href="/"
+          aria-label="Luna Negra"
           className="flex shrink-0 items-center gap-2.5 font-display text-[17px] font-extrabold tracking-tight text-white"
         >
           <span
@@ -67,13 +71,14 @@ export function Navbar() {
             }}
             aria-hidden
           />
-          <span>
+          <span className="hidden min-[400px]:inline">
             Luna <span className="text-ln-corona">Negra</span>
           </span>
         </Link>
 
         {/* Links centrales (≥880px) */}
-        <BalSignerStatusIndicator />
+        <AppModeSelector />
+        {mode === "bal" ? <BalSignerStatusIndicator /> : null}
 
         <nav className="ml-2 hidden min-w-0 items-center gap-1 ln:flex">
           {STORE_LINKS.map((l) => navLink(l.href, l.label))}

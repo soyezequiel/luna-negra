@@ -230,7 +230,7 @@ export function unregisterBalGameWindow(peer: Window): void {
   // registrada puede cerrarse mientras otras pestañas siguen usando ese remoto
   // NIP-46; el worker o la expiración cierran la conexión real más adelante.
   const workerOwnsSession = hasActiveBalSignerSession(game.gameId);
-  if (!workerOwnsSession) removeBalSessionAuthorizationsForGame(game.gameId);
+  if (!workerOwnsSession) clearBalSessionAuthorizationsForGame(game.gameId);
   unregisterBalSignerGame(game.gameId, game.gameName, workerOwnsSession);
   if (!workerOwnsSession) void launcher?.logoutAll("launcher_logout");
 }
@@ -241,7 +241,7 @@ export function disableBalGameWindow(peer: Window): void {
   games.delete(peer);
   if (!game) return;
   removeGameBinding(game.gameId);
-  removeBalSessionAuthorizationsForGame(game.gameId);
+  clearBalSessionAuthorizationsForGame(game.gameId);
   disableBalSignerGame(game.gameId);
   void launcher?.logoutAll("launcher_logout");
 }
@@ -322,7 +322,7 @@ function listCompatibleAuthorizations(
   return compatible;
 }
 
-function removeBalSessionAuthorizationsForGame(gameId: string): void {
+export function clearBalSessionAuthorizationsForGame(gameId: string): void {
   try {
     const store = sessionAuthorizationStore();
     for (const authorization of store.list()) {

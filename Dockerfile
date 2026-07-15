@@ -15,6 +15,9 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
+# `postinstall` ejecuta patch-package. Los parches deben existir ANTES de
+# `npm ci`; copiarlos también invalida esta capa cuando cambia el SDK BAL.
+COPY patches ./patches
 RUN npm ci
 
 # ── builder: genera el cliente Prisma y compila Next ────────────────────────

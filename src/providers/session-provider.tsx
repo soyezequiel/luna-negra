@@ -36,6 +36,8 @@ export type SessionUser = {
   custodial?: boolean;
   displayName?: string | null;
   avatarUrl?: string | null;
+  /** Código numérico corto para que otros miembros puedan encontrarte. */
+  friendCode?: number;
   lud16?: string | null;
   /** Destino de cobros de premios: "address" (lud16) | "nwc" (wallet del navegador). */
   payoutMethod?: string | null;

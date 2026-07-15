@@ -56,6 +56,35 @@ beforeEach(() => {
 });
 
 describe("joinRoomAndPlay", () => {
+  it("opens room invitations without BAL when independent mode is stored", async () => {
+    const gameWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    localStorage.setItem("luna-negra:app-mode.v1", "independent");
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open: vi.fn(() => gameWin),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => okResponse({
+        token: "invite-token",
+        roomId: "ROOM1",
+        slug: "tetris",
+        title: "TETRA",
+        gameUrl: "https://tetris.example/play",
+        openGame: false,
+      })),
+    );
+
+    const { joinRoomAndPlay } = await import("@/lib/room-launch");
+    await joinRoomAndPlay({ slug: "tetris", roomId: "ROOM1" });
+
+    expect(gameWin.location.href).toBe(
+      "https://tetris.example/play?lnBal=off&inviteToken=invite-token&room=ROOM1",
+    );
+  });
+
   it("reserves a game window before joining and navigates it when the game is closed", async () => {
     const events: string[] = [];
     const gameWin = createFakeGameWindow();
@@ -187,6 +216,31 @@ describe("joinRoomAndPlay", () => {
 });
 
 describe("launchStandaloneGame", () => {
+  it("uses the persisted independent mode for regular launches", async () => {
+    const gameWin = createFakeGameWindow();
+    const localStorage = memoryStorage();
+    const open = vi.fn(() => gameWin);
+    localStorage.setItem("luna-negra:app-mode.v1", "independent");
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      localStorage,
+      open,
+    });
+
+    const { launchStandaloneGame } = await import("@/lib/room-launch");
+    const result = launchStandaloneGame({
+      gameUrl: "https://tetris.example/play",
+      slug: "tetris",
+      title: "TETRA",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(open).toHaveBeenCalledWith(
+      "https://tetris.example/play?lnBal=off",
+      "luna-negra-game-tetris",
+    );
+  });
+
   it("clears a one-time BAL grant immediately when the previous game window is closed", async () => {
     const localStorage = memoryStorage();
     const sessionStorage = memoryStorage();

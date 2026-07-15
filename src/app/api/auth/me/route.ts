@@ -22,6 +22,7 @@ export async function GET() {
       nsecEnc: true,
       displayName: true,
       avatarUrl: true,
+      friendCode: true,
       lud16: true,
       payoutMethod: true,
       showBetaGames: true,

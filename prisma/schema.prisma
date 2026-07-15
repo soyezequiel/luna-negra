@@ -25,6 +25,9 @@ model User {
   nsecEnc     String? // secret key cifrada (solo cuentas custodiales por email)
   displayName String?
   avatarUrl   String?
+  // Código corto, estable y compartible para encontrar a otro miembro sin
+  // exponer ni copiar su npub completa. La secuencia se limita a 6 dígitos.
+  friendCode  Int      @unique @default(autoincrement())
   lud16       String? // Lightning Address para cobrar payouts (override del kind:0)
   // Destino de cobros de premios/payouts: "address" = cascada lud16 (Luna Negra
   // → kind:0); "nwc" = el wallet NWC del usuario (vive sólo en su navegador), así

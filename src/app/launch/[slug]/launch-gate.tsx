@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/providers/session-provider";
+import { useAppMode } from "@/providers/app-mode-provider";
 
 // Estados de la puerta de cold-open:
 //   checking    → verificando el acceso con el server.
@@ -31,6 +32,7 @@ export function LaunchGate({
   returnTo: string | null;
 }) {
   const { user, login, loading } = useSession();
+  const { mode } = useAppMode();
   const [status, setStatus] = useState<Status>(returnTo ? "checking" : "error");
   const [error, setError] = useState<string | null>(
     returnTo ? null : "El enlace de retorno no es válido.",
@@ -68,14 +70,20 @@ export function LaunchGate({
         return;
       }
       const url = new URL(returnTo);
-      url.searchParams.set("lnOrigin", window.location.origin);
+      if (mode === "bal") {
+        url.searchParams.set("lnOrigin", window.location.origin);
+        url.searchParams.delete("lnBal");
+      } else {
+        url.searchParams.delete("lnOrigin");
+        url.searchParams.set("lnBal", "off");
+      }
       setStatus("redirecting");
       window.location.replace(url.toString());
     } catch {
       setStatus("error");
       setError("No se pudo conectar con Luna Negra.");
     }
-  }, [gameId, returnTo]);
+  }, [gameId, mode, returnTo]);
 
   // Primer intento en cuanto sabemos si hay sesión (evita un 401 espurio antes de
   // que la cookie se resuelva).
@@ -87,7 +95,9 @@ export function LaunchGate({
 
   // Reintento automático apenas el usuario inicia sesión.
   useEffect(() => {
-    if (user && status === "needsLogin") void attempt();
+    if (user && status === "needsLogin") {
+      queueMicrotask(() => void attempt());
+    }
   }, [user, status, attempt]);
 
   return (

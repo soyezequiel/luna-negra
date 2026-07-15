@@ -10,6 +10,7 @@ import {
   type BalTransport,
 } from "nostr-game-protocol/bal";
 import { useSession } from "@/providers/session-provider";
+import { useAppMode } from "@/providers/app-mode-provider";
 import {
   getActiveLocalSignerSource,
   matchSignerToSessionUser,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/bal-signer-status";
 import {
   BAL_FOCUS_REQUEST_MESSAGE,
+  clearBalSessionAuthorizationsForGame,
   consumeSuppressedBalConsent,
   createLunaBalAuthorizationStore,
   lunaBalGameRegistry,
@@ -41,6 +43,7 @@ import {
 /** Listener global del launcher y consentimiento explícito del primer BAL. */
 export function BalLauncherHost() {
   const { user, refreshSession } = useSession();
+  const { mode } = useAppMode();
   const userRef = useRef(user);
   const pendingResolve = useRef<((decision: BalConsentDecision) => void) | null>(null);
   const [pending, setPending] = useState<BalConsentRequest | null>(null);
@@ -82,6 +85,11 @@ export function BalLauncherHost() {
   }, [pending]);
 
   useEffect(() => {
+    if (mode !== "bal") {
+      pendingResolve.current?.("deny");
+      pendingResolve.current = null;
+      return;
+    }
     restoreBalSignerStatus();
     const baseTransport = new WebPostMessageTransport(window);
     const sessionGuard = new BalSessionGuard(window);
@@ -212,6 +220,14 @@ export function BalLauncherHost() {
           pendingResolve.current = resolve;
         });
       },
+      onSessionClosed(session, reason) {
+        if (reason !== "client_logout") return;
+        clearBalSessionAuthorizationsForGame(session.gameId);
+        observeBalSignerMessage({
+          type: "BAL_LOGOUT",
+          requestId: session.requestId,
+        });
+      },
     });
     instance.start();
     setActiveBalLauncher(instance);
@@ -222,7 +238,7 @@ export function BalLauncherHost() {
       instance.stop();
       sessionGuard.stop();
     };
-  }, [refreshSession]);
+  }, [mode, refreshSession]);
 
   function decide(decision: BalConsentDecision) {
     if (decision === "once" && pending) rememberBalAuthorizationForSession(pending);
@@ -233,6 +249,6 @@ export function BalLauncherHost() {
     resolve?.(decision);
   }
 
-  if (!pending) return null;
+  if (!pending || mode !== "bal") return null;
   return <BalConsentDialog request={pending} mode="runtime" onDecision={decide} />;
 }

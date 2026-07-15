@@ -62,7 +62,14 @@ export async function POST(req: Request) {
   });
 
   const res = NextResponse.json({
-    user: { id: user.id, npub: user.npub, pubkey: user.pubkey },
+    user: {
+      id: user.id,
+      npub: user.npub,
+      pubkey: user.pubkey,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      friendCode: user.friendCode,
+    },
   });
   res.cookies.set(SESSION_COOKIE, session, {
     httpOnly: true,

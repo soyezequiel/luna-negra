@@ -13,6 +13,7 @@ import { satsLabel, hueFromSlug } from "@/lib/format";
 import { normalizeImageUrl } from "@/lib/game-media";
 import { NostrPermsSection } from "@/components/nostr-perms-section";
 import { BalAuthorizationsSection } from "@/components/bal-authorizations-section";
+import { useAppMode } from "@/providers/app-mode-provider";
 
 type LibGame = { id: string; slug: string; title: string; coverUrl: string | null };
 type MineBet = {
@@ -59,10 +60,12 @@ export default function ProfilePage() {
   const { notify } = useNotify();
   const { friends } = useFriends();
   const { connected: nwcConnected, balanceSats } = useWallet();
+  const { mode } = useAppMode();
   const [profile, setProfile] = useState<NostrProfile | null>(null);
   const [games, setGames] = useState<LibGame[]>([]);
   const [bets, setBets] = useState<MineBet[]>([]);
   const [npubCopied, setNpubCopied] = useState(false);
+  const [friendCodeCopied, setFriendCodeCopied] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -127,6 +130,18 @@ export default function ProfilePage() {
     }
   }
 
+  async function copyFriendCode() {
+    if (user!.friendCode == null) return;
+    try {
+      await navigator.clipboard.writeText(String(user!.friendCode));
+      setFriendCodeCopied(true);
+      notify({ title: "Código de amistad copiado" });
+      window.setTimeout(() => setFriendCodeCopied(false), 1500);
+    } catch {
+      notify({ title: "No se pudo copiar el código" });
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1240px] px-[22px] py-8 pb-12">
       {/* Cabecera */}
@@ -169,6 +184,17 @@ export default function ProfilePage() {
                 ⬡ {user.npub.slice(0, 18)}…
                 <span className="not-italic">{npubCopied ? "✓" : "⧉"}</span>
               </button>
+              {user.friendCode != null ? (
+                <button
+                  type="button"
+                  onClick={copyFriendCode}
+                  title="Copiar código de amistad"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-ln-luna/35 bg-ln-luna/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-ln-luna-bright transition-colors hover:bg-ln-luna/15"
+                >
+                  Código #{user.friendCode}
+                  <span aria-hidden>{friendCodeCopied ? "✓" : "⧉"}</span>
+                </button>
+              ) : null}
               {user.lud16 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-ln-corona/15 px-2.5 py-1 text-[11px] font-medium text-ln-corona">
                   ⚡ {user.lud16}
@@ -360,7 +386,20 @@ export default function ProfilePage() {
         {/* Derecha: permisos Nostr (la config de cobros vive en /profile/editar) */}
         <div className="space-y-6">
           <NostrPermsSection />
-          <BalAuthorizationsSection />
+          {mode === "bal" ? (
+            <BalAuthorizationsSection />
+          ) : (
+            <section className="rounded-ln-lg border border-ln-corona/30 bg-ln-corona/[0.06] p-4">
+              <p className="ln-label text-ln-corona">Modo independiente</p>
+              <h2 className="mt-1 text-sm font-semibold text-ln-text">
+                Los juegos gestionan su acceso
+              </h2>
+              <p className="mt-2 text-xs leading-relaxed text-ln-muted">
+                Luna Negra no iniciará sesiones BAL ni compartirá permisos con el juego.
+                Cada juego puede pedirte su propio inicio de sesión.
+              </p>
+            </section>
+          )}
         </div>
       </div>
     </div>

@@ -50,9 +50,9 @@ SDK local `F:\proyectos\SDK NGP`.
    pestaña directa debe seguir firmando: el cliente, su clave efímera y la conexión
    a relays viven en el worker, no en la ventana que hizo el handshake.
 6. Cerrar finalmente la última pestaña de Ajedrez y abrir el juego directamente.
-   Debe usar el login
-   normal/invitado. Un marcador de `localStorage` vencido no concede acceso: el
-   estado real siempre lo confirma el `SharedWorker`.
+   Luna debe cerrar inmediatamente su sesión BAL y el juego abierto directamente
+   debe usar el login normal/invitado. Un marcador de `localStorage` vencido no
+   concede acceso: el estado real siempre lo confirma el `SharedWorker`.
 7. Repetir **Jugar sin permiso** mientras existe otra pestaña BAL. `lnBal=off` debe
    prevalecer y esa pestaña no debe adjuntarse al signer compartido.
 

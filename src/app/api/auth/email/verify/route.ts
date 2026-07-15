@@ -85,6 +85,7 @@ export async function POST(req: Request) {
       custodial: true,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      friendCode: user.friendCode,
     },
     nsec,
   });

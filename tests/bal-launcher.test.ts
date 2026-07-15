@@ -95,4 +95,30 @@ describe("BAL consent UX", () => {
       "ajedrez",
     )).toBe(false);
   });
+
+  it("forgets a one-time grant when the last game tab closes", async () => {
+    vi.stubGlobal("sessionStorage", memoryStorage());
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("window", { location: { origin: "https://luna.example" } });
+    const {
+      clearBalSessionAuthorizationsForGame,
+      createBalPreauthorizationRequest,
+      hasBalAuthorization,
+      rememberBalAuthorizationForSession,
+    } = await import("@/lib/bal-launcher");
+    const request = createBalPreauthorizationRequest({
+      gameId: "ajedrez",
+      gameName: "Ajedrez",
+      gameUrl: "https://ajedrez.example/play",
+      identityId: "user-1",
+      pubkey: "a".repeat(64),
+      identitySource: "email",
+    })!;
+
+    rememberBalAuthorizationForSession(request);
+    expect(hasBalAuthorization(request)).toBe(true);
+
+    clearBalSessionAuthorizationsForGame("ajedrez");
+    expect(hasBalAuthorization(request)).toBe(false);
+  });
 });

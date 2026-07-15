@@ -475,6 +475,7 @@ export type GlobalResult = {
   pubkey: string;
   npub: string;
   profile?: Profile;
+  friendCode?: number;
   /** Tiene cuenta en Luna Negra (vino del directorio de miembros, no de relays). */
   isMember?: boolean;
 };
@@ -492,7 +493,7 @@ async function searchMembers(q: string): Promise<GlobalResult[]> {
     const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
     if (!res.ok) return [];
     const data = (await res.json()) as {
-      users?: { pubkey: string; npub: string; displayName?: string | null; avatarUrl?: string | null }[];
+      users?: { pubkey: string; npub: string; displayName?: string | null; avatarUrl?: string | null; friendCode?: number }[];
     };
     return (data.users ?? []).map((u) => ({
       pubkey: u.pubkey,
@@ -501,6 +502,7 @@ async function searchMembers(q: string): Promise<GlobalResult[]> {
         name: u.displayName ?? undefined,
         picture: u.avatarUrl ?? undefined,
       },
+      friendCode: u.friendCode,
       isMember: true,
     }));
   } catch {
@@ -518,7 +520,12 @@ export async function searchProfiles(
   limit = 10,
 ): Promise<GlobalResult[]> {
   const q = query.trim();
-  if (q.length < 2) return [];
+  const isFriendCode = /^\d{1,6}$/.test(q);
+  if (q.length < 2 && !isFriendCode) return [];
+
+  // Los dígitos son un identificador local exacto: evitamos mezclar perfiles
+  // Nostr irrelevantes y devolvemos la coincidencia de Luna Negra directamente.
+  if (isFriendCode) return (await searchMembers(q)).slice(0, limit);
 
   // 1) npub pegado directo.
   const direct = pubkeyFromNpub(q);

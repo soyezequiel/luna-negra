@@ -59,8 +59,10 @@ export function FriendSearch({
 
     const local = (friends ?? []).filter((f) => matchesFriend(f, q));
 
-    // Query muy corta: solo filtro local, sin pegarle a los relays.
-    if (q.length < 3) {
+    const isFriendCode = /^\d{1,6}$/.test(q);
+    // Un solo carácter alfabético solo filtra local; un código numérico,
+    // incluso de un dígito, sí se resuelve contra el directorio de miembros.
+    if (q.length < 2 && !isFriendCode) {
       startTransition(() => {
         onResults({ local, global: [] });
         setSearching(false);
@@ -113,7 +115,7 @@ export function FriendSearch({
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar amigo o usuario de Nostr (nombre, npub o NIP-05)…"
+        placeholder="Buscar por nombre, código, npub o NIP-05…"
         className={
           compact
             ? "w-full rounded-md border border-line bg-black/20 px-3 py-1.5 text-xs text-ink placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-blue/30"
@@ -122,7 +124,7 @@ export function FriendSearch({
       />
       {searching ? (
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">
-          Buscando en Nostr…
+          Buscando…
         </span>
       ) : null}
     </div>

@@ -60,6 +60,7 @@ export default function FriendsPage() {
   // Follows en curso / recién hechos (para el botón "Seguir" de resultados globales).
   const [followingPk, setFollowingPk] = useState<string | null>(null);
   const [followed, setFollowed] = useState<Set<string>>(new Set());
+  const [friendCodeCopied, setFriendCodeCopied] = useState(false);
   // Resultados del buscador (null = sin query → lista normal).
   const [search, setSearch] = useState<FriendSearchResults | null>(null);
   const onResults = useCallback(
@@ -71,6 +72,18 @@ export default function FriendsPage() {
   function focusSearch() {
     searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     searchRef.current?.focus();
+  }
+
+  async function copyFriendCode() {
+    if (user?.friendCode == null) return;
+    try {
+      await navigator.clipboard.writeText(String(user.friendCode));
+      setFriendCodeCopied(true);
+      notify({ title: "Código de amistad copiado" });
+      window.setTimeout(() => setFriendCodeCopied(false), 1500);
+    } catch {
+      notify({ title: "No se pudo copiar el código" });
+    }
   }
 
   async function follow(recipientPubkey: string, name: string) {
@@ -228,7 +241,35 @@ export default function FriendsPage() {
         </div>
       ) : null}
 
-      <FriendSearch friends={friends} onResults={onResults} inputRef={searchRef} />
+      <section className="mt-5 border-y border-line py-5">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-ln-text">Encontrar personas</h2>
+            <p className="mt-1 text-xs text-ln-muted">
+              Buscá por nombre visible o ingresá un código de amistad.
+            </p>
+          </div>
+          {user.friendCode != null ? (
+            <button
+              type="button"
+              onClick={copyFriendCode}
+              className="flex shrink-0 items-center gap-2 self-start rounded-lg border border-ln-luna/35 bg-ln-luna/10 px-3 py-2 text-left transition-colors hover:bg-ln-luna/15 sm:self-auto"
+              title="Copiar tu código de amistad"
+            >
+              <span>
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-ln-muted">
+                  Tu código
+                </span>
+                <span className="font-mono text-base font-bold text-ln-luna-bright">
+                  #{user.friendCode}
+                </span>
+              </span>
+              <span className="text-ln-luna" aria-hidden>{friendCodeCopied ? "✓" : "⧉"}</span>
+            </button>
+          ) : null}
+        </div>
+        <FriendSearch friends={friends} onResults={onResults} inputRef={searchRef} compact />
+      </section>
 
       {search ? (
         <div className="mt-6 space-y-4">
@@ -247,6 +288,7 @@ export default function FriendsPage() {
                     npub={f.npub}
                     name={profileName(f.profile, shortId(f.npub))}
                     picture={f.profile?.picture ?? null}
+                    friendCode={undefined}
                     isMember={f.isMember}
                     canInvite={Boolean(activeRoom)}
                     invited={invited.has(f.pubkey)}
@@ -275,6 +317,7 @@ export default function FriendsPage() {
                     npub={g.npub}
                     name={globalResultName(g)}
                     picture={g.profile?.picture ?? null}
+                    friendCode={g.friendCode}
                     isMember={g.isMember ?? false}
                     canInvite={Boolean(activeRoom)}
                     invited={invited.has(g.pubkey)}
@@ -424,6 +467,7 @@ function FriendRow({
   npub,
   name,
   picture,
+  friendCode,
   isMember,
   canInvite,
   invited,
@@ -438,6 +482,7 @@ function FriendRow({
   npub: string;
   name: string;
   picture: string | null;
+  friendCode?: number;
   isMember: boolean;
   canInvite: boolean;
   invited: boolean;
@@ -461,6 +506,11 @@ function FriendRow({
           ) : null}
         </div>
         <p className="truncate font-mono text-[11px] text-faint">{npub}</p>
+        {friendCode != null ? (
+          <p className="mt-0.5 font-mono text-[11px] font-semibold text-ln-luna">
+            Código #{friendCode}
+          </p>
+        ) : null}
       </div>
       {canFollow ? (
         <button
