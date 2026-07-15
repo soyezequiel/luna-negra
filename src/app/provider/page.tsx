@@ -112,6 +112,7 @@ type Game = {
   categories: string[];
   priceSats: number;
   gameUrl: string | null;
+  manualCaps: Record<string, boolean> | null;
   coverUrl: string | null;
   horizontalCoverUrl: string | null;
   screenshots: string;
@@ -343,6 +344,7 @@ export default function ProviderPage() {
       categories: normalizeCategories(g.categories),
       priceSats: String(g.priceSats),
       gameUrl: g.gameUrl ?? "",
+      balCompatible: !!g.manualCaps?.bal,
       coverUrl: g.coverUrl ?? "",
       horizontalCoverUrl: g.horizontalCoverUrl ?? "",
       screenshots: parseShots(g.screenshots),

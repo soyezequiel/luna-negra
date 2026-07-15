@@ -98,6 +98,7 @@ export function FriendsSidebar() {
   } | null>(null);
   // Resultados del buscador (null = sin query → lista normal).
   const [search, setSearch] = useState<FriendSearchResults | null>(null);
+  const [friendCodeCopied, setFriendCodeCopied] = useState(false);
   const onResults = useCallback(
     (r: FriendSearchResults | null) => setSearch(r),
     [],
@@ -105,6 +106,18 @@ export function FriendsSidebar() {
   // Toggle compartido y persistente: mostrar solo amigos que alguna vez
   // iniciaron en Luna Negra (sincronizado con la página /friends).
   const [onlyMembers, setOnlyMembers] = useOnlyMembers();
+
+  async function copyFriendCode() {
+    if (user?.friendCode == null) return;
+    try {
+      await navigator.clipboard.writeText(String(user.friendCode));
+      setFriendCodeCopied(true);
+      notify({ title: "Código de amistad copiado" });
+      window.setTimeout(() => setFriendCodeCopied(false), 1500);
+    } catch {
+      notify({ title: "No se pudo copiar el código" });
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -323,6 +336,7 @@ export function FriendsSidebar() {
       title: game.title,
       roomId,
       win,
+      balCompatible: game.balCompatible === true,
     });
     if (!result.ok) {
       notify({
@@ -388,6 +402,7 @@ export function FriendsSidebar() {
           title: currentGame.title,
           gameUrl: currentGame.gameUrl,
           hostToken: d.token,
+          balCompatible: currentGame.balCompatible === true,
         };
         setActiveRoom(room);
         setActiveRoomState(room);
@@ -416,6 +431,8 @@ export function FriendsSidebar() {
         token,
         roomId: room.roomId,
         win,
+        balCompatible:
+          room.balCompatible === true || currentGame.balCompatible === true,
       });
       if (!result.ok) {
         notify({
@@ -597,14 +614,34 @@ export function FriendsSidebar() {
           {user ? (
             <div className="border-b border-line px-3 py-2">
               <FriendSearch friends={friends} onResults={onResults} compact />
-              {!search && friends && friends.length > 0 ? (
-                <div className="mt-2 flex justify-end">
+              <div className="mt-2 flex min-h-6 items-center justify-between gap-2">
+                {user.friendCode != null ? (
                   <button
+                    type="button"
+                    onClick={copyFriendCode}
+                    title="Copiar tu código de amistad"
+                    aria-label={`Copiar código de amistad ${user.friendCode}`}
+                    className="flex min-w-0 items-center gap-1.5 rounded-full border border-ln-luna/30 bg-ln-luna/10 px-2 py-0.5 text-[10px] font-medium text-ln-luna transition-colors hover:border-ln-luna/50 hover:bg-ln-luna/15"
+                  >
+                    <span className="truncate text-ln-muted">Tu código</span>
+                    <span className="shrink-0 font-mono font-bold text-ln-luna-bright">
+                      #{user.friendCode}
+                    </span>
+                    <span className="shrink-0" aria-hidden>
+                      {friendCodeCopied ? "✓" : "⧉"}
+                    </span>
+                  </button>
+                ) : (
+                  <span />
+                )}
+                {!search && friends && friends.length > 0 ? (
+                  <button
+                    type="button"
                     onClick={() => setOnlyMembers(!onlyMembers)}
                     aria-pressed={onlyMembers}
                     title="Mostrar solo amigos que iniciaron en Luna Negra"
                     className={cn(
-                      "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors",
+                      "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors",
                       onlyMembers
                         ? "bg-ln-corona/15 text-ln-corona"
                         : "border border-line text-muted hover:text-ink",
@@ -613,8 +650,8 @@ export function FriendsSidebar() {
                     <span className="text-[9px]">{onlyMembers ? "✓" : ""}</span>
                     Solo en Luna Negra
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           ) : null}
 

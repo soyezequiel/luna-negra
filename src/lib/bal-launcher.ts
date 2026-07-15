@@ -22,27 +22,22 @@ import {
   unregisterBalSignerGame,
 } from "@/lib/bal-signer-status";
 
-/**
- * Manifiesto confiable del launcher. Debe coincidir exactamente con PERMISSIONS
- * en `ajedrez/web/src/nostr/bal-login.ts`: el juego nunca puede ampliar por URL
- * los permisos que Luna ofrece antes de abrirlo.
- */
-const BAL_GAME_MANIFESTS: Record<string, readonly string[]> = {
-  ajedrez: [
-    "get_public_key",
-    "sign_event:1",
-    "sign_event:13",
-    "sign_event:22242",
-    "sign_event:30315",
-    "sign_event:31339",
-    "sign_event:9734",
-    "nip04_encrypt",
-    "nip04_decrypt",
-    "nip44_encrypt",
-    "nip44_decrypt",
-  ],
-};
-const BAL_GAMES = new Set(Object.keys(BAL_GAME_MANIFESTS));
+/** Manifiesto BAL estándar que Luna muestra antes de abrir un juego declarado.
+ * El handshake real debe pedir exactamente esta lista para reutilizar el permiso;
+ * cualquier diferencia vuelve a abrir el consentimiento con la lista real. */
+const BAL_STANDARD_PERMISSIONS = [
+  "get_public_key",
+  "sign_event:1",
+  "sign_event:13",
+  "sign_event:22242",
+  "sign_event:30315",
+  "sign_event:31339",
+  "sign_event:9734",
+  "nip04_encrypt",
+  "nip04_decrypt",
+  "nip44_encrypt",
+  "nip44_decrypt",
+] as const;
 export const BAL_AUTHORIZATIONS_CHANGED = "luna-negra:bal-authorizations-changed";
 const BAL_CONSENT_REQUIRED_MESSAGE = "luna-negra:bal-consent-required";
 export const BAL_FOCUS_REQUEST_MESSAGE = "luna-negra:bal-focus-request";
@@ -63,6 +58,7 @@ export type BalPreauthorizationInput = {
   identityId: string;
   pubkey: string;
   identitySource: BalIdentitySource;
+  balCompatible: boolean;
 };
 
 function bindingKey(gameId: string): string {
@@ -76,12 +72,11 @@ function prelaunchDenialKey(request: BalConsentRequest): string {
   return `${BAL_PRELAUNCH_DENIAL_PREFIX}${parts.map(encodeURIComponent).join("|")}`;
 }
 
-/** Arma el consentimiento anticipado sólo para juegos con manifiesto local. */
+/** Arma el consentimiento anticipado sólo si el proveedor declaró soporte BAL. */
 export function createBalPreauthorizationRequest(
   input: BalPreauthorizationInput,
 ): BalConsentRequest | null {
-  const permissions = BAL_GAME_MANIFESTS[input.gameId];
-  if (!permissions) return null;
+  if (!input.balCompatible) return null;
   let origin: string;
   try {
     origin = new URL(input.gameUrl, window.location.origin).origin;
@@ -95,7 +90,7 @@ export function createBalPreauthorizationRequest(
     identityId: input.identityId,
     pubkey: input.pubkey,
     identitySource: input.identitySource,
-    permissions: [...permissions],
+    permissions: [...BAL_STANDARD_PERMISSIONS],
   };
 }
 
@@ -164,7 +159,6 @@ function removeGameBinding(gameId: string): void {
 }
 
 function restoreGameBinding(gameId: string): PersistedGameBinding | null {
-  if (!BAL_GAMES.has(gameId)) return null;
   try {
     const raw = sessionStorage.getItem(bindingKey(gameId));
     if (!raw) return null;
@@ -212,8 +206,9 @@ export function registerBalGameWindow(
   gameName: string,
   peer: Window,
   gameUrl: string,
+  balCompatible: boolean,
 ): void {
-  if (!BAL_GAMES.has(gameId)) return;
+  if (!balCompatible) return;
   const origin = new URL(gameUrl, window.location.origin).origin;
   const binding = { gameId, gameName, origin };
   persistGameBinding(binding);

@@ -83,12 +83,16 @@ export function registerGameWindow(
   gameUrl?: string,
   gameName?: string,
   balEnabled = getStoredAppMode() === "bal",
+  balCompatible = false,
 ): void {
   if (!win) return;
   gameWindows.set(slug, win);
   if (gameUrl) gameWindowOrigins.set(slug, new URL(gameUrl, window.location.origin).origin);
-  if (gameUrl && balEnabled) registerBalGameWindow(slug, gameName ?? slug, win, gameUrl);
-  else if (!balEnabled) disableBalGameWindow(win);
+  if (gameUrl && balEnabled && balCompatible) {
+    registerBalGameWindow(slug, gameName ?? slug, win, gameUrl, true);
+  } else {
+    disableBalGameWindow(win);
+  }
 
   const previous = gameWindowWatchers.get(slug);
   if (previous) clearInterval(previous);
@@ -131,6 +135,7 @@ export function launchStandaloneGame({
   roomId,
   win,
   balEnabled = getStoredAppMode() === "bal",
+  balCompatible = false,
 }: {
   gameUrl: string;
   slug?: string;
@@ -144,9 +149,12 @@ export function launchStandaloneGame({
   win?: Window | null;
   /** `false` omite por completo la negociación BAL y conserva el login propio. */
   balEnabled?: boolean;
+  /** Declaración del proveedor: el juego implementa Bunker Auto Login. */
+  balCompatible?: boolean;
 }): LaunchResult {
   const url = new URL(gameUrl, window.location.origin);
-  if (balEnabled) {
+  const useBal = balEnabled && balCompatible;
+  if (useBal) {
     url.searchParams.set("lnOrigin", window.location.origin);
     url.searchParams.delete("lnBal");
   } else {
@@ -162,7 +170,7 @@ export function launchStandaloneGame({
     opened ?? window.open(dest, slug ? gameWindowTarget(slug) : "_blank");
   if (!gameWin) return { ok: false, reason: "popup-blocked", dest };
   if (opened) navigateGameWindow(opened, dest);
-  if (slug) registerGameWindow(slug, gameWin, gameUrl, title, balEnabled);
+  if (slug) registerGameWindow(slug, gameWin, gameUrl, title, useBal, balCompatible);
   return { ok: true };
 }
 
@@ -174,6 +182,7 @@ export function launchGameRoom({
   roomId,
   win,
   balEnabled = getStoredAppMode() === "bal",
+  balCompatible = false,
 }: {
   gameUrl: string;
   slug: string;
@@ -185,9 +194,11 @@ export function launchGameRoom({
   win?: Window | null;
   /** Respeta el selector global; false deja autenticación y permisos al juego. */
   balEnabled?: boolean;
+  balCompatible?: boolean;
 }): LaunchResult {
   const url = new URL(gameUrl, window.location.origin);
-  if (balEnabled) {
+  const useBal = balEnabled && balCompatible;
+  if (useBal) {
     url.searchParams.set("lnOrigin", window.location.origin);
     url.searchParams.delete("lnBal");
   } else {
@@ -212,7 +223,7 @@ export function launchGameRoom({
       roomId,
     });
   }
-  registerGameWindow(slug, gameWin, gameUrl, title, balEnabled);
+  registerGameWindow(slug, gameWin, gameUrl, title, useBal, balCompatible);
 
   // Al cerrar la pestaña del juego: limpiar la sala activa (banner local).
   watchGameWindow(gameWin);
@@ -265,6 +276,7 @@ export async function joinRoomAndPlay({
       token: d.token,
       roomId: d.roomId,
       win: pendingWin,
+      balCompatible: d.balCompatible === true,
     });
     if (!result.ok) {
       if (onBlocked) onBlocked(result.dest);

@@ -31,6 +31,7 @@ export function PlayButton({
   gameUrl,
   title,
   slug,
+  balCompatible = false,
   className,
   label = "Jugar",
   variant = "play",
@@ -40,6 +41,7 @@ export function PlayButton({
   gameUrl: string;
   title?: string;
   slug?: string;
+  balCompatible?: boolean;
   className?: string;
   label?: string;
   variant?: "play" | "blue" | "btc" | "primary" | "outline" | "ghost";
@@ -66,10 +68,11 @@ export function PlayButton({
       identityId: user.id,
       pubkey: user.pubkey,
       identitySource,
+      balCompatible,
     });
   }
 
-  async function openGame(balEnabled = mode === "bal") {
+  async function openGame(balEnabled = mode === "bal" && balCompatible) {
     if (loading) return;
     // Pre-abrir la pestaña DENTRO del gesto del click: después del await, Brave
     // y otros bloqueadores de popups rechazan el window.open.
@@ -89,6 +92,7 @@ export function PlayButton({
         title,
         win,
         balEnabled,
+        balCompatible,
       });
       if (!result.ok) {
         notify({

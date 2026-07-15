@@ -21,11 +21,21 @@ type Props = {
   gameUrl: string | null;
   title?: string;
   slug?: string;
+  balCompatible?: boolean;
 };
 
 type Phase = "idle" | "creating" | "pending" | "paid" | "error";
 
-export function BuyButton({ gameId, priceSats, owned, openAccess, gameUrl, title, slug }: Props) {
+export function BuyButton({
+  gameId,
+  priceSats,
+  owned,
+  openAccess,
+  gameUrl,
+  title,
+  slug,
+  balCompatible,
+}: Props) {
   const { user, login } = useSession();
   const { connected: nwcConnected, refresh: refreshWallet } = useWallet();
   const router = useRouter();
@@ -166,6 +176,7 @@ export function BuyButton({ gameId, priceSats, owned, openAccess, gameUrl, title
         gameUrl={gameUrl}
         title={title}
         slug={slug}
+        balCompatible={balCompatible}
         variant="play"
       />
     ) : (
@@ -188,6 +199,7 @@ export function BuyButton({ gameId, priceSats, owned, openAccess, gameUrl, title
           gameUrl={gameUrl}
           title={title}
           slug={slug}
+          balCompatible={balCompatible}
           label={priceSats === 0 ? "▶ Jugar gratis" : "▶ Jugar"}
           variant="play"
         />

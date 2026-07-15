@@ -57,6 +57,9 @@ export async function POST(req: Request) {
         typeof body.gameUrl === "string" && body.gameUrl.trim()
           ? body.gameUrl.trim()
           : null,
+      // BAL no es detectable desde el server: el proveedor declara si integró
+      // el flujo del SDK. El launcher sigue validando ventana, origen e identidad.
+      manualCaps: { bal: body.balCompatible === true },
       coverUrl:
         typeof body.coverUrl === "string"
           ? normalizeImageUrl(body.coverUrl) || null

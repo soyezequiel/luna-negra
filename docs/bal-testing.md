@@ -1,14 +1,16 @@
 # Probar Bunker Auto Login (BAL)
 
-BAL está habilitado para el juego con slug `ajedrez`. Ambos consumidores usan el
-SDK local `F:\proyectos\SDK NGP`.
+BAL se habilita por juego desde el panel del proveedor con la opción
+**Compatible con BAL**. Para estas pruebas, activala en el juego con slug
+`ajedrez`. Ambos consumidores usan el SDK local `F:\proyectos\SDK NGP`.
 
 ## Preparación local
 
 1. En `SDK NGP`: `npm install`, `npm test` y `npm run build`.
 2. En `ajedrez/web`: `npm install` y `npm run dev` (por defecto
    `http://localhost:5173`). Arrancar también el server para completar el login.
-3. En Luna Negra: configurar `ajedrez.gameUrl` con ese origen, ejecutar
+3. En Luna Negra: configurar `ajedrez.gameUrl` con ese origen, declarar el juego
+   **Compatible con BAL**, ejecutar
    `npm install` y `npm run dev`, y seleccionarlo desde **Jugar**. El consentimiento
    BAL debe aparecer en Luna **antes** de que se abra el juego. Una URL del juego
    abierta directamente no está registrada y debe caer al login normal.

@@ -20,6 +20,8 @@ export type CurrentGame = {
    * barra de amigos invita con un enlace `?join=` dirigido en vez del flujo de
    * salas hosteadas por Luna. Ver docs/luna-room-link.md. */
   roomLink?: boolean;
+  /** El proveedor declaró que integró Bunker Auto Login. */
+  balCompatible?: boolean;
 };
 
 type GameContextValue = {
@@ -55,10 +57,35 @@ export function useGameContext(): GameContextValue {
  */
 export function RegisterGame(props: CurrentGame) {
   const { setCurrentGame } = useGameContext();
-  const { gameId, slug, title, gameUrl, nostrCoord, roomLink } = props;
+  const {
+    gameId,
+    slug,
+    title,
+    gameUrl,
+    nostrCoord,
+    roomLink,
+    balCompatible,
+  } = props;
   useEffect(() => {
-    setCurrentGame({ gameId, slug, title, gameUrl, nostrCoord, roomLink });
+    setCurrentGame({
+      gameId,
+      slug,
+      title,
+      gameUrl,
+      nostrCoord,
+      roomLink,
+      balCompatible,
+    });
     return () => setCurrentGame(null);
-  }, [setCurrentGame, gameId, slug, title, gameUrl, nostrCoord, roomLink]);
+  }, [
+    setCurrentGame,
+    gameId,
+    slug,
+    title,
+    gameUrl,
+    nostrCoord,
+    roomLink,
+    balCompatible,
+  ]);
   return null;
 }

@@ -55,6 +55,9 @@ export async function POST(req: Request) {
     slug: r.slug,
     title: game.title,
     gameUrl: game.gameUrl,
+    balCompatible: !!(
+      game.manualCaps as Record<string, boolean> | null
+    )?.bal,
     openGame,
   });
 }

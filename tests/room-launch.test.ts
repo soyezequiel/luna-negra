@@ -73,6 +73,7 @@ describe("joinRoomAndPlay", () => {
         slug: "tetris",
         title: "TETRA",
         gameUrl: "https://tetris.example/play",
+        balCompatible: true,
         openGame: false,
       })),
     );
@@ -101,6 +102,7 @@ describe("joinRoomAndPlay", () => {
         slug: "tetris",
         title: "TETRA",
         gameUrl: "https://tetris.example/play",
+        balCompatible: true,
         openGame: false,
       });
     });
@@ -139,6 +141,7 @@ describe("joinRoomAndPlay", () => {
           slug: "tetris",
           title: "TETRA",
           gameUrl: "https://tetris.example/play",
+          balCompatible: true,
           openGame: false,
         }),
       ),
@@ -216,6 +219,29 @@ describe("joinRoomAndPlay", () => {
 });
 
 describe("launchStandaloneGame", () => {
+  it("disables BAL for a game that the provider did not declare compatible", async () => {
+    const gameWin = createFakeGameWindow();
+    const open = vi.fn(() => gameWin);
+    vi.stubGlobal("window", {
+      location: { origin: "https://luna.example" },
+      open,
+    });
+
+    const { launchStandaloneGame } = await import("@/lib/room-launch");
+    const result = launchStandaloneGame({
+      gameUrl: "https://tetris.example/play",
+      slug: "tetris",
+      title: "TETRA",
+      balCompatible: false,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(open).toHaveBeenCalledWith(
+      "https://tetris.example/play?lnBal=off",
+      "luna-negra-game-tetris",
+    );
+  });
+
   it("uses the persisted independent mode for regular launches", async () => {
     const gameWin = createFakeGameWindow();
     const localStorage = memoryStorage();
@@ -262,6 +288,7 @@ describe("launchStandaloneGame", () => {
       identityId: "user-1",
       pubkey: "a".repeat(64),
       identitySource: "nsec",
+      balCompatible: true,
     });
     expect(request).not.toBeNull();
     bal.grantBalPreauthorization(request!, false);
@@ -270,6 +297,8 @@ describe("launchStandaloneGame", () => {
       gameWin as unknown as Window,
       "https://ajedrez.example/play",
       "Ajedrez",
+      true,
+      true,
     );
     expect(bal.hasBalAuthorization(request!)).toBe(true);
 
@@ -296,6 +325,7 @@ describe("launchStandaloneGame", () => {
       slug: "tetris",
       title: "TETRA",
       win: gameWin as unknown as Window,
+      balCompatible: true,
     });
 
     expect(result).toEqual({ ok: true });
@@ -317,6 +347,7 @@ describe("launchStandaloneGame", () => {
       gameUrl: "https://tetris.example/play",
       slug: "tetris",
       title: "TETRA",
+      balCompatible: true,
     });
 
     expect(result).toEqual({

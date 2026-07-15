@@ -37,6 +37,7 @@ describe("BAL consent UX", () => {
       "Ajedrez",
       gameWindow as unknown as Window,
       "https://ajedrez.example/play",
+      true,
     );
 
     notifyBalConsentRequired("ajedrez", "https://otro.example");
@@ -70,6 +71,7 @@ describe("BAL consent UX", () => {
       "Ajedrez",
       originalPeer,
       "https://ajedrez.example/play",
+      true,
     );
 
     // Simula un reload completo del launcher: el Map del módulo desaparece,
@@ -113,6 +115,7 @@ describe("BAL consent UX", () => {
       identityId: "user-1",
       pubkey: "a".repeat(64),
       identitySource: "email",
+      balCompatible: true,
     })!;
 
     rememberBalAuthorizationForSession(request);

@@ -107,6 +107,7 @@ export type ActiveRoom = {
   gameUrl?: string;
   /** Invite token del host: abre el juego más tarde y consulta la presencia. */
   hostToken?: string;
+  balCompatible?: boolean;
 };
 
 const ACTIVE_ROOM_KEY = "ln_active_room";

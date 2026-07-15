@@ -208,6 +208,7 @@ export default async function GamePage({
   // por el server. Solo con eso —y con enlace del juego— se ofrece "Invitar".
   const manualCaps = (game.manualCaps as Record<string, boolean> | null) ?? null;
   const roomLinkEnabled = !!manualCaps?.roomLink;
+  const balCompatible = !!manualCaps?.bal;
   const supportsRoomLink = Boolean(game.gameUrl) && roomLinkEnabled;
   // "Acceso abierto": el proveedor desactivó la verificación de compra → el juego se
   // juega sin comprarlo (como si fuera gratis). Ver src/lib/capability-mode.ts.
@@ -371,6 +372,7 @@ export default async function GamePage({
                     gameUrl={game.gameUrl}
                     title={game.title}
                     slug={game.slug}
+                    balCompatible={balCompatible}
                     label="▶ Jugar"
                     variant="play"
                     size="xl"
@@ -435,6 +437,7 @@ export default async function GamePage({
                     gameUrl={game.gameUrl}
                     title={game.title}
                     slug={game.slug}
+                    balCompatible={balCompatible}
                   />
                   <button
                     type="button"
@@ -500,6 +503,7 @@ export default async function GamePage({
                 gameUrl={game.gameUrl}
                 nostrCoord={game.nostrCoord}
                 roomLink={roomLinkEnabled}
+                balCompatible={balCompatible}
               />
               <MultiplayerPanel
                 gameId={game.id}

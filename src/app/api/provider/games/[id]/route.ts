@@ -44,6 +44,13 @@ export async function PATCH(
     data.priceSats = Math.max(0, Math.floor(Number(body.priceSats) || 0));
   if (typeof body.gameUrl === "string")
     data.gameUrl = body.gameUrl.trim() || null;
+  if (typeof body.balCompatible === "boolean") {
+    const current =
+      owned.game.manualCaps && typeof owned.game.manualCaps === "object"
+        ? (owned.game.manualCaps as Record<string, boolean>)
+        : {};
+    data.manualCaps = { ...current, bal: body.balCompatible };
+  }
   if (typeof body.coverUrl === "string")
     data.coverUrl = normalizeImageUrl(body.coverUrl) || null;
   if (typeof body.horizontalCoverUrl === "string")
@@ -69,9 +76,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Capacidad no declarable" }, { status: 400 });
     }
     const current =
-      owned.game.manualCaps && typeof owned.game.manualCaps === "object"
+      (data.manualCaps as Record<string, boolean> | undefined) ??
+      (owned.game.manualCaps && typeof owned.game.manualCaps === "object"
         ? (owned.game.manualCaps as Record<string, boolean>)
-        : {};
+        : {});
     data.manualCaps = { ...current, [key]: !!value };
   }
   // Migración por capacidad de la interfaz Luna (REST) a NGP: elige

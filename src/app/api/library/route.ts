@@ -30,6 +30,9 @@ export async function GET() {
       title: p.game.title,
       coverUrl: p.game.coverUrl,
       gameUrl: p.game.gameUrl,
+      balCompatible: !!(
+        p.game.manualCaps as Record<string, boolean> | null
+      )?.bal,
       // Solo los entitlements gratuitos se pueden quitar de la biblioteca (un
       // juego pagado con sats no, para no perder el acceso comprado).
       free: p.amountSats === 0,

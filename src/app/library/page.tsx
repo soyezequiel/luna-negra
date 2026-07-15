@@ -16,6 +16,7 @@ type LibraryGame = {
   title: string;
   coverUrl: string | null;
   gameUrl: string | null;
+  balCompatible: boolean;
   free: boolean;
   ngpActive: number;
   ngpTotal: number;
@@ -167,6 +168,7 @@ export default function LibraryPage() {
                         gameUrl={g.gameUrl}
                         title={g.title}
                         slug={g.slug}
+                        balCompatible={g.balCompatible}
                         variant="play"
                         size="sm"
                         label="▶ Jugar"

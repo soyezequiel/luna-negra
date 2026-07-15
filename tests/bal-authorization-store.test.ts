@@ -51,7 +51,7 @@ describe("BAL session authorization", () => {
     const bal = await import("@/lib/bal-launcher");
     const peer = {} as Window;
     bal.rememberBalAuthorizationForSession(request);
-    bal.registerBalGameWindow("ajedrez", "Ajedrez", peer, request.origin);
+    bal.registerBalGameWindow("ajedrez", "Ajedrez", peer, request.origin, true);
 
     bal.unregisterBalGameWindow(peer);
 
@@ -63,7 +63,7 @@ describe("BAL session authorization", () => {
     const status = await import("@/lib/bal-signer-status");
     const peer = {} as Window;
     bal.rememberBalAuthorizationForSession(request);
-    bal.registerBalGameWindow("ajedrez", "Ajedrez", peer, request.origin);
+    bal.registerBalGameWindow("ajedrez", "Ajedrez", peer, request.origin, true);
     status.reportBalConnectionRequested("request-1", "ajedrez", "Ajedrez");
     status.observeBalSignerMessage({
       type: "BAL_SESSION",
@@ -96,7 +96,7 @@ describe("BAL preauthorization", () => {
     expect(store.list()).toEqual([]);
   });
 
-  it("builds the trusted Ajedrez grant with the exact game origin and manifest", async () => {
+  it("builds the standard grant only for games declared BAL-compatible", async () => {
     const bal = await import("@/lib/bal-launcher");
 
     const preauthorization = bal.createBalPreauthorizationRequest({
@@ -106,6 +106,7 @@ describe("BAL preauthorization", () => {
       identityId: "user-1",
       pubkey: "a".repeat(64),
       identitySource: "nsec",
+      balCompatible: true,
     });
 
     expect(preauthorization).toMatchObject({
@@ -134,7 +135,18 @@ describe("BAL preauthorization", () => {
       identityId: "user-1",
       pubkey: "a".repeat(64),
       identitySource: "nsec",
+      balCompatible: false,
     })).toBeNull();
+
+    expect(bal.createBalPreauthorizationRequest({
+      gameId: "otro-juego",
+      gameName: "Otro",
+      gameUrl: "https://otro.example",
+      identityId: "user-1",
+      pubkey: "a".repeat(64),
+      identitySource: "nsec",
+      balCompatible: true,
+    })).toMatchObject({ gameId: "otro-juego", origin: "https://otro.example" });
 
     expect(bal.createBalPreauthorizationRequest({
       gameId: "ajedrez",
@@ -143,6 +155,7 @@ describe("BAL preauthorization", () => {
       identityId: "user-1",
       pubkey: "a".repeat(64),
       identitySource: "nip07",
+      balCompatible: true,
     })).toMatchObject({ identitySource: "nip07" });
   });
 

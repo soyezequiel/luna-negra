@@ -128,4 +128,23 @@ describe("provider game media routes", () => {
       data: { horizontalCoverUrl: "https://cdn.example/new-horizontal.jpg" },
     });
   });
+
+  it("stores the provider BAL compatibility declaration", async () => {
+    const created = await postProviderGame({
+      title: "BAL Game",
+      balCompatible: true,
+    });
+
+    expect(created.status).toBe(200);
+    expect(mocks.gameCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ manualCaps: { bal: true } }),
+    });
+
+    const updated = await patchProviderGame({ balCompatible: true });
+    expect(updated.status).toBe(200);
+    expect(mocks.gameUpdate).toHaveBeenLastCalledWith({
+      where: { id: "game-1" },
+      data: { manualCaps: { bal: true } },
+    });
+  });
 });
