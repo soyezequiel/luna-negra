@@ -225,8 +225,12 @@ export function BalLauncherHost() {
         });
       },
       onSessionClosed(session, reason) {
-        if (reason !== "client_logout") return;
-        clearBalSessionAuthorizationsForGame(session.gameId);
+        if (reason === "client_logout") {
+          clearBalSessionAuthorizationsForGame(session.gameId);
+        }
+        // Un cierre del launcher (cambio de modo, Fast Refresh o desmontaje)
+        // también debe quitar el request del contador. El reload preservado no
+        // entra acá: `stop({ preserveSessions: true })` suprime este callback.
         observeBalSignerMessage({
           type: "BAL_LOGOUT",
           requestId: session.requestId,

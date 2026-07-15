@@ -187,6 +187,15 @@ export function restoreBalSignerStatus(): void {
   } catch {
     records = [];
   }
+  // El módulo puede sobrevivir a Fast Refresh aunque el launcher anterior ya
+  // haya cerrado sus remotos. Reconstruir desde storage evita contar requests
+  // que sólo siguen vivos en memoria.
+  for (const session of activeSessions.values()) {
+    if (session.timer) clearTimeout(session.timer);
+  }
+  activeSessions.clear();
+  pendingRequests.clear();
+  intentionallyDeniedRequests.clear();
   const now = Date.now();
   const valid = records.filter((record) => (
     typeof record.requestId === "string"
@@ -197,6 +206,11 @@ export function restoreBalSignerStatus(): void {
   ));
   if (valid.length === 0) {
     try { sessionStorage.removeItem(PERSISTED_SESSIONS_KEY); } catch { /* noop */ }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    emit(stableStatus());
     return;
   }
   for (const record of valid) previouslyConnectedGames.add(record.gameId);

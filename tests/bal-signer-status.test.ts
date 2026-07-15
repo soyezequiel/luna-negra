@@ -131,4 +131,25 @@ describe("BAL signer navbar status", () => {
     await vi.advanceTimersByTimeAsync(12_000);
     expect(status.getBalSignerStatusSnapshot().phase).toBe("connected");
   });
+
+  it("drops in-memory ghost sessions when no restorable session remains", async () => {
+    const status = await import("@/lib/bal-signer-status");
+    status.reportBalConnectionRequested("ghost-1", "ajedrez", "Ajedrez");
+    status.observeBalSignerMessage({
+      type: "BAL_SESSION",
+      requestId: "ghost-1",
+      expiresAt: Date.now() + 60_000,
+    });
+    expect(status.getBalSignerStatusSnapshot().activeSessions).toBe(1);
+
+    sessionStorage.removeItem("luna-negra:bal-active-sessions");
+    status.restoreBalSignerStatus();
+
+    expect(status.getBalSignerStatusSnapshot()).toEqual({
+      phase: "idle",
+      gameName: null,
+      activeSessions: 0,
+      detail: null,
+    });
+  });
 });
