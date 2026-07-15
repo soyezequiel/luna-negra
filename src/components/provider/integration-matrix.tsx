@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   INTEGRATION_COLUMNS,
   type CapabilityRow,
@@ -253,6 +253,53 @@ const PURCHASE_OPTS: SegOpt[] = [
   },
 ];
 
+function BalCompatibilityToggle({
+  checked,
+  saving,
+  onToggle,
+}: {
+  checked: boolean;
+  saving: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  const tooltipId = useId();
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5 border-t border-ln-border/50 pt-1.5">
+      <label className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-ln-soft">
+        <input
+          type="checkbox"
+          className="peer sr-only"
+          checked={checked}
+          disabled={saving}
+          onChange={(e) => onToggle(e.target.checked)}
+        />
+        <span className="relative h-4 w-7 shrink-0 rounded-full border border-ln-border bg-ln-bg transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-2.5 after:w-2.5 after:rounded-full after:bg-ln-muted after:transition-transform peer-checked:border-ln-aurora/50 peer-checked:bg-ln-aurora/20 peer-checked:after:translate-x-3 peer-checked:after:bg-ln-aurora peer-focus-visible:ring-2 peer-focus-visible:ring-ln-luna/35 peer-disabled:opacity-60" />
+        <span>{saving ? "Guardando BAL…" : "Compatible con BAL"}</span>
+      </label>
+      <span className="group relative inline-flex shrink-0">
+        <button
+          type="button"
+          aria-label="¿Qué es BAL?"
+          aria-describedby={tooltipId}
+          className="grid h-4 w-4 place-items-center rounded-full border border-ln-border text-[9px] font-bold text-ln-muted outline-none transition-colors hover:border-ln-luna/50 hover:text-ln-luna focus-visible:ring-2 focus-visible:ring-ln-luna/35"
+        >
+          ?
+        </button>
+        <span
+          id={tooltipId}
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-2 w-64 max-w-[calc(100vw-3rem)] -translate-x-1/2 rounded-ln-md border border-ln-border bg-ln-bg-deep px-3 py-2.5 text-left text-[11px] font-normal leading-relaxed text-ln-soft opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          BAL (Bunker Auto Login) permite que Luna conecte la identidad Nostr del
+          jugador mediante NIP-46 antes de abrir el juego, sin compartir su clave
+          privada. Activá esta opción sólo si integraste el flujo BAL del SDK de
+          Nostr Games Protocol.
+        </span>
+      </span>
+    </div>
+  );
+}
+
 // Acento del borde según el estado de la pata Nostr, para la vista estándar.
 const NOSTR_RING: Record<Level2, string> = {
   active: "border-ln-aurora/45 bg-ln-aurora/[0.07]",
@@ -273,6 +320,7 @@ function NostrCapabilityTile({
   manualCaps,
   saving,
   onToggleManual,
+  balControl,
 }: {
   row: CapabilityRow;
   game: IntegrationView["games"][number];
@@ -281,6 +329,11 @@ function NostrCapabilityTile({
   manualCaps: Record<string, boolean> | null | undefined;
   saving: boolean;
   onToggleManual: (key: string, next: boolean) => void;
+  balControl?: {
+    checked: boolean;
+    saving: boolean;
+    onToggle: (next: boolean) => void;
+  };
 }) {
   const side = row.twoZero!;
   const ev = side.signal !== "none" ? game.nostr?.[side.signal] ?? null : null;
@@ -321,6 +374,9 @@ function NostrCapabilityTile({
             />
             {saving ? "Guardando…" : manualToggleLabel(row)}
           </label>
+        ) : null}
+        {editable && balControl ? (
+          <BalCompatibilityToggle {...balControl} />
         ) : null}
       </div>
     </div>
@@ -474,6 +530,7 @@ export function GameIntegrationCard({
   );
   const [saving, setSaving] = useState(false);
   const [savingLeg, setSavingLeg] = useState(false);
+  const [savingBal, setSavingBal] = useState(false);
   // Declara/desmarca una capacidad NGP no observable (login, presencia).
   async function toggleManual(key: string, next: boolean) {
     setManualCaps((m) => ({ ...m, [key]: next })); // optimista
@@ -489,6 +546,24 @@ export function GameIntegrationCard({
       setManualCaps((m) => ({ ...m, [key]: !next })); // revertir si falló
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function toggleBal(next: boolean) {
+    const previous = !!manualCaps.bal;
+    setManualCaps((m) => ({ ...m, bal: next }));
+    setSavingBal(true);
+    try {
+      const r = await fetch(`/api/provider/games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balCompatible: next }),
+      });
+      if (!r.ok) throw new Error();
+    } catch {
+      setManualCaps((m) => ({ ...m, bal: previous }));
+    } finally {
+      setSavingBal(false);
     }
   }
 
@@ -591,8 +666,17 @@ export function GameIntegrationCard({
             nostrProbe={nostrProbe}
             editable={editable}
             manualCaps={manualCaps}
-            saving={saving}
+            saving={saving || savingBal}
             onToggleManual={toggleManual}
+            balControl={
+              row.key === "identidad"
+                ? {
+                    checked: !!manualCaps.bal,
+                    saving: savingBal || saving,
+                    onToggle: toggleBal,
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

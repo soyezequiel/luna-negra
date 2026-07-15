@@ -94,6 +94,9 @@ describe("IntegrationMatrix (verificación NGP + NGE)", () => {
     // "Invitaciones" ahora representa Room Link (la clave que habilita «Invitar»).
     expect(html).toContain("Declaro que integré Room Link");
     expect(html).toContain("Invitaciones (Room Link)");
+    // BAL se declara por separado dentro de la tarjeta de Identidad / login.
+    expect(html).toContain("Compatible con BAL");
+    expect(html).toContain("Bunker Auto Login");
     // Ya no existe la declaración de invitaciones NIP-17 ni la de amigos.
     expect(html).not.toContain("Declaro que integré invitaciones Nostr");
     // Salas NIP-29 se removió del catálogo NGP: su checkbox no debe existir.
@@ -115,6 +118,8 @@ describe("IntegrationMatrix (verificación NGP + NGE)", () => {
     );
     // Login "en uso" (inferido): su checkbox de declaración manual sobra y se oculta.
     expect(html).not.toContain("Declaro que integré el login Nostr");
+    // BAL sigue siendo editable aunque el login Nostr ya tenga evidencia.
+    expect(html).toContain("Compatible con BAL");
     // Room Link (nunca observable) SÍ conserva su checkbox aunque no haya evidencia.
     expect(html).toContain("Declaro que integré Room Link");
   });

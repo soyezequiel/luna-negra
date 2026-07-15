@@ -13,7 +13,6 @@ export type GameForm = {
   categories: string[];
   priceSats: string;
   gameUrl: string;
-  balCompatible: boolean;
   coverUrl: string;
   horizontalCoverUrl: string;
   screenshots: string[];
@@ -29,7 +28,6 @@ export const emptyForm: GameForm = {
   categories: [],
   priceSats: "0",
   gameUrl: "",
-  balCompatible: false,
   coverUrl: "",
   horizontalCoverUrl: "",
   screenshots: [],
@@ -86,28 +84,6 @@ function FieldBlock({
       </div>
       {children}
     </div>
-  );
-}
-
-function InfoTooltip({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <span className="group relative inline-flex shrink-0">
-      <button
-        type="button"
-        aria-label="¿Qué es BAL?"
-        aria-describedby={id}
-        className="grid h-5 w-5 place-items-center rounded-full border border-ln-border text-[11px] font-bold text-ln-muted outline-none transition-colors hover:border-ln-luna/50 hover:text-ln-luna focus-visible:ring-2 focus-visible:ring-ln-luna/35"
-      >
-        ?
-      </button>
-      <span
-        id={id}
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-72 max-w-[calc(100vw-3rem)] rounded-ln-md border border-ln-border bg-ln-bg-deep px-3 py-2.5 text-left text-[11.5px] font-normal leading-relaxed text-ln-soft opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        {children}
-      </span>
-    </span>
   );
 }
 
@@ -353,44 +329,6 @@ export function GameFormFields({
             }
           />
         </FieldBlock>
-
-        <div className="rounded-ln-md border border-ln-border bg-ln-bg-deep/55 p-3.5">
-          <div className="flex items-start justify-between gap-4">
-            <label
-              htmlFor={`${idBase}-bal-compatible`}
-              className="flex min-w-0 cursor-pointer items-start gap-3"
-            >
-              <input
-                id={`${idBase}-bal-compatible`}
-                type="checkbox"
-                className="peer sr-only"
-                checked={form.balCompatible}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    balCompatible: e.target.checked,
-                  }))
-                }
-              />
-              <span className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full border border-ln-border bg-ln-bg transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-3.5 after:w-3.5 after:rounded-full after:bg-ln-muted after:transition-transform peer-checked:border-ln-aurora/50 peer-checked:bg-ln-aurora/20 peer-checked:after:translate-x-4 peer-checked:after:bg-ln-aurora peer-focus-visible:ring-2 peer-focus-visible:ring-ln-luna/35" />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-ln-soft">
-                  Compatible con BAL
-                </span>
-                <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ln-faint">
-                  Luna ofrecerá identidad y permisos antes de abrir el juego.
-                </span>
-              </span>
-            </label>
-            <InfoTooltip id={`${idBase}-bal-tooltip`}>
-              BAL (Bunker Auto Login) conecta la identidad Nostr del jugador con
-              el juego mediante NIP-46, sin compartir su clave privada. Activá
-              esta opción sólo si integraste el flujo BAL del SDK de Nostr Games
-              Protocol; Luna validará además la ventana y el origen exacto del
-              juego.
-            </InfoTooltip>
-          </div>
-        </div>
 
       </section>
 
