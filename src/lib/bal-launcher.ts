@@ -11,6 +11,8 @@ import {
   type BalConsentRequest,
   type BalIdentitySource,
   type BalGameRegistry,
+  type BalLauncherPersistedSession,
+  type BalLauncherSessionStore,
   type BalLauncher,
   type BalTransportEnvelope,
 } from "nostr-game-protocol/bal";
@@ -45,6 +47,9 @@ const BAL_GAME_BINDING_PREFIX = "luna-negra:bal-game-binding:";
 const BAL_SESSION_AUTHORIZATIONS_KEY = "luna-negra:bal-session-authorizations.v1";
 const BAL_PRELAUNCH_DENIAL_PREFIX = "luna-negra:bal-prelaunch-denial:";
 const BAL_PRELAUNCH_DENIAL_TTL_MS = 2 * 60_000;
+const BAL_RESTORABLE_SESSIONS_KEY = "luna-negra:bal-restorable-sessions.v1";
+const BAL_RELOAD_MARKER_KEY = "luna-negra:bal-reload-pending.v1";
+const BAL_RELOAD_MARKER_TTL_MS = 2 * 60_000;
 
 type RegisteredGame = { gameId: string; gameName: string; origin: string; peer: Window };
 type PersistedGameBinding = Omit<RegisteredGame, "peer">;
@@ -228,6 +233,92 @@ export function unregisterBalGameWindow(peer: Window): void {
   if (!workerOwnsSession) clearBalSessionAuthorizationsForGame(game.gameId);
   unregisterBalSignerGame(game.gameId, game.gameName, workerOwnsSession);
   if (!workerOwnsSession) void launcher?.logoutAll("launcher_logout");
+}
+
+function readRestorableSessions(): BalLauncherPersistedSession[] {
+  try {
+    const parsed = JSON.parse(
+      sessionStorage.getItem(BAL_RESTORABLE_SESSIONS_KEY) ?? "[]",
+    ) as unknown;
+    return Array.isArray(parsed) ? parsed as BalLauncherPersistedSession[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRestorableSessions(records: BalLauncherPersistedSession[]): void {
+  try {
+    if (records.length > 0) {
+      sessionStorage.setItem(BAL_RESTORABLE_SESSIONS_KEY, JSON.stringify(records));
+    } else {
+      sessionStorage.removeItem(BAL_RESTORABLE_SESSIONS_KEY);
+    }
+  } catch {
+    /* sin sessionStorage la sesión actual sigue funcionando, sin restauración */
+  }
+}
+
+/** Marca un unload real para que la siguiente carga pueda reanudar el remoto NIP-46. */
+export function prepareBalLauncherReload(): boolean {
+  if (readRestorableSessions().length === 0) return false;
+  try {
+    sessionStorage.setItem(
+      BAL_RELOAD_MARKER_KEY,
+      String(Date.now() + BAL_RELOAD_MARKER_TTL_MS),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function consumeBalReloadMarker(): boolean {
+  try {
+    const expiresAt = Number(sessionStorage.getItem(BAL_RELOAD_MARKER_KEY));
+    sessionStorage.removeItem(BAL_RELOAD_MARKER_KEY);
+    return Number.isFinite(expiresAt) && expiresAt > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+class LunaBalSessionStore implements BalLauncherSessionStore {
+  list(): BalLauncherPersistedSession[] {
+    // La marca se escribe en `pagehide`: una pestaña duplicada puede copiar
+    // sessionStorage, pero no obtiene permiso para levantar el mismo remoto.
+    if (!consumeBalReloadMarker()) {
+      writeRestorableSessions([]);
+      return [];
+    }
+    const records = readRestorableSessions().filter((record) => {
+      if (
+        typeof record?.requestId !== "string"
+        || typeof record.gameId !== "string"
+        || typeof record.origin !== "string"
+      ) return false;
+      const binding = restoreGameBinding(record.gameId);
+      return Boolean(binding && binding.origin === record.origin);
+    });
+    writeRestorableSessions(records);
+    return records;
+  }
+
+  save(session: BalLauncherPersistedSession): void {
+    const records = readRestorableSessions()
+      .filter((record) => record.requestId !== session.requestId);
+    records.push(session);
+    writeRestorableSessions(records);
+  }
+
+  remove(requestId: string): void {
+    writeRestorableSessions(
+      readRestorableSessions().filter((record) => record.requestId !== requestId),
+    );
+  }
+}
+
+export function createLunaBalSessionStore(): BalLauncherSessionStore {
+  return new LunaBalSessionStore();
 }
 
 /** Desvincula BAL porque el jugador eligió iniciar el juego sin ese servicio. */

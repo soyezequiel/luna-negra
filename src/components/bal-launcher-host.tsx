@@ -25,6 +25,7 @@ import {
   reportBalAwaitingApproval,
   reportBalConnectionRequested,
   reportBalConsentDecision,
+  reportBalSessionRestored,
   restoreBalSignerStatus,
   trackBalSignerOperation,
 } from "@/lib/bal-signer-status";
@@ -33,9 +34,11 @@ import {
   clearBalSessionAuthorizationsForGame,
   consumeSuppressedBalConsent,
   createLunaBalAuthorizationStore,
+  createLunaBalSessionStore,
   lunaBalGameRegistry,
   matchesRegisteredBalGameWindow,
   notifyBalConsentRequired,
+  prepareBalLauncherReload,
   rememberBalAuthorizationForSession,
   setActiveBalLauncher,
 } from "@/lib/bal-launcher";
@@ -143,6 +146,7 @@ export function BalLauncherHost() {
       transport,
       registry: lunaBalGameRegistry,
       authorizationStore: createLunaBalAuthorizationStore(),
+      sessionStore: createLunaBalSessionStore(),
       relays: NIP46_RELAYS,
       async getIdentity() {
         const signer = await restoreSigner();
@@ -228,10 +232,31 @@ export function BalLauncherHost() {
           requestId: session.requestId,
         });
       },
+      onSessionRestored(session) {
+        reportBalSessionRestored(
+          session.requestId,
+          session.gameId,
+          session.gameName,
+          session.expiresAt,
+        );
+        sessionGuard.observe({
+          type: "BAL_SESSION",
+          requestId: session.requestId,
+          expiresAt: session.expiresAt,
+        });
+      },
     });
     instance.start();
     setActiveBalLauncher(instance);
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (event.persisted || !prepareBalLauncherReload()) return;
+      // El snapshot queda en sessionStorage; cerrar sockets evita que el remoto
+      // viejo y el restaurado respondan a la vez durante la navegación.
+      instance.stop({ preserveSessions: true });
+    };
+    window.addEventListener("pagehide", handlePageHide);
     return () => {
+      window.removeEventListener("pagehide", handlePageHide);
       pendingResolve.current?.("deny");
       pendingResolve.current = null;
       setActiveBalLauncher(null);

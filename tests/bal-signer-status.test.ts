@@ -104,4 +104,31 @@ describe("BAL signer navbar status", () => {
       detail: "[NO_ACTIVE_IDENTITY] Luna Negra no tiene una identidad BAL activa",
     });
   });
+
+  it("returns to connected when the launcher restores a remote session", async () => {
+    const status = await import("@/lib/bal-signer-status");
+    sessionStorage.setItem("luna-negra:bal-active-sessions", JSON.stringify([{
+      requestId: "request-restored",
+      gameId: "ajedrez",
+      gameName: "Ajedrez",
+      expiresAt: Date.now() + 60_000,
+    }]));
+
+    status.restoreBalSignerStatus();
+    expect(status.getBalSignerStatusSnapshot().phase).toBe("reconnecting");
+    status.reportBalSessionRestored(
+      "request-restored",
+      "ajedrez",
+      "Ajedrez",
+      Date.now() + 60_000,
+    );
+
+    expect(status.getBalSignerStatusSnapshot()).toMatchObject({
+      phase: "connected",
+      gameName: "Ajedrez",
+      activeSessions: 1,
+    });
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(status.getBalSignerStatusSnapshot().phase).toBe("connected");
+  });
 });

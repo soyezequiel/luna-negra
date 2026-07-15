@@ -31,11 +31,15 @@ BAL se habilita por juego desde el panel del proveedor con la opción
    servidor debe restaurarse inmediatamente con el token mientras el firmante BAL
    se reconecta en segundo plano. Cerrar la ventana del juego y abrirla otra vez
    debe preguntar nuevamente.
-6. Repetir marcando **Recordar para próximos inicios** antes de permitir: también
+6. Con Ajedrez todavía abierto y BAL conectado, recargar **Luna Negra**. Al volver
+   la página, el indicador debe pasar de **Reconectando signer** a conectado sin
+   recargar el juego ni pedir otro consentimiento; una firma posterior debe salir
+   por la misma sesión del juego.
+7. Repetir marcando **Recordar para próximos inicios** antes de permitir: también
    debe iniciar automáticamente después de cerrar y volver a abrir Ajedrez.
-7. Entrar a una sala y elegir **Salir de la sala**: debe volver al inicio de
+8. Entrar a una sala y elegir **Salir de la sala**: debe volver al inicio de
    Ajedrez sin recargar ni pedir una nueva autorización BAL.
-8. Revocar el permiso y repetir con **Jugar sin permiso**: Ajedrez debe abrirse y
+9. Revocar el permiso y repetir con **Jugar sin permiso**: Ajedrez debe abrirse y
    usar su login normal o invitado sin mostrar un segundo consentimiento en Luna.
 
 ## Varias pestañas del mismo juego

@@ -252,6 +252,21 @@ export function unregisterBalSignerGame(
   returnToStableAfter(3500);
 }
 
+/** Confirma que el remoto NIP-46 guardado volvió a escuchar tras el reload. */
+export function reportBalSessionRestored(
+  requestId: string,
+  gameId: string,
+  gameName: string,
+  expiresAt: number,
+): void {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  addSession(requestId, gameId, gameName, expiresAt);
+  emit(stableStatus());
+}
+
 /** Limpia el indicador sin advertencias cuando jugar sin BAL fue intencional. */
 export function disableBalSignerGame(gameId: string): void {
   registeredGames.delete(gameId);

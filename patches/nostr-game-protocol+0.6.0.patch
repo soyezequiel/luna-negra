@@ -1,15 +1,15 @@
 diff --git a/node_modules/nostr-game-protocol/dist/bal-launcher.d.ts b/node_modules/nostr-game-protocol/dist/bal-launcher.d.ts
-index b36631a..e4ec80c 100644
+index b36631a..19cfaae 100644
 --- a/node_modules/nostr-game-protocol/dist/bal-launcher.d.ts
 +++ b/node_modules/nostr-game-protocol/dist/bal-launcher.d.ts
 @@ -1,5 +1,5 @@
  import { type BalAuthorizationStore, type BalConsentDecision, type BalConsentRequest, type BalIdentitySource, type BalTransport, type BalTransportEnvelope } from "./bal-core.js";
 -import { type BalNip46RelayFactory, type BalNip46Signer } from "./bal-nip46.js";
-+import { type BalNip46RelayFactory, type BalNip46SessionCloseReason, type BalNip46Signer } from "./bal-nip46.js";
++import { type BalNip46RelayFactory, type BalNip46RemoteSessionSnapshot, type BalNip46SessionCloseReason, type BalNip46Signer } from "./bal-nip46.js";
  export type BalLauncherGame<Peer> = {
      gameId: string;
      gameName: string;
-@@ -20,6 +20,12 @@ export type BalLauncherSession = {
+@@ -20,6 +20,24 @@ export type BalLauncherSession = {
      expiresAt: number;
      close(): void;
  };
@@ -19,30 +19,122 @@ index b36631a..e4ec80c 100644
 +    gameName: string;
 +    origin: string;
 +};
++export type BalLauncherPersistedSession = BalLauncherClosedSession & {
++    nonce: string;
++    authorizationId: string;
++    identityId: string;
++    identitySource: BalIdentitySource;
++    remote: BalNip46RemoteSessionSnapshot;
++};
++export interface BalLauncherSessionStore {
++    list(): BalLauncherPersistedSession[] | Promise<BalLauncherPersistedSession[]>;
++    save(session: BalLauncherPersistedSession): void | Promise<void>;
++    remove(requestId: string): void | Promise<void>;
++}
  export type BalLauncherOptions<Peer> = {
      transport: BalTransport<Peer>;
      registry: BalGameRegistry<Peer>;
-@@ -31,6 +37,7 @@ export type BalLauncherOptions<Peer> = {
+@@ -31,6 +49,11 @@ export type BalLauncherOptions<Peer> = {
      authorizationTtlMs?: number;
      sessionTtlMs?: number;
      now?: () => number;
++    sessionStore?: BalLauncherSessionStore;
++    onSessionRestored?: (session: BalLauncherClosedSession & {
++        expiresAt: number;
++    }) => void;
 +    onSessionClosed?: (session: BalLauncherClosedSession, reason: BalNip46SessionCloseReason) => void;
  };
  /** Launcher-side coordinator with source/origin validation and replay defense. */
  export declare class BalLauncher<Peer> {
+@@ -39,13 +62,20 @@ export declare class BalLauncher<Peer> {
+     private readonly seenRequests;
+     private readonly seenNonces;
+     private unsubscribe;
++    private restoring;
++    private preservingSessions;
+     constructor(options: BalLauncherOptions<Peer>);
+     start(): () => void;
+     private handle;
++    private restoreSessions;
++    private saveSession;
++    private removeSession;
+     private handleLogout;
+     private sendError;
+     private pruneReplay;
+     revokeAuthorization(authorizationId: string): Promise<void>;
+     logoutAll(reason?: "launcher_logout" | "revoked" | "expired"): Promise<void>;
+-    stop(): void;
++    stop(options?: {
++        preserveSessions?: boolean;
++    }): void;
+ }
 diff --git a/node_modules/nostr-game-protocol/dist/bal-launcher.js b/node_modules/nostr-game-protocol/dist/bal-launcher.js
-index 56ef1ae..103a9fe 100644
+index 56ef1ae..59495f5 100644
 --- a/node_modules/nostr-game-protocol/dist/bal-launcher.js
 +++ b/node_modules/nostr-game-protocol/dist/bal-launcher.js
-@@ -90,6 +90,18 @@ export class BalLauncher {
+@@ -7,6 +7,8 @@ export class BalLauncher {
+     seenRequests = new Map();
+     seenNonces = new Map();
+     unsubscribe = null;
++    restoring = null;
++    preservingSessions = false;
+     constructor(options) {
+         this.options = options;
+     }
+@@ -14,9 +16,11 @@ export class BalLauncher {
+         if (this.unsubscribe)
+             return () => this.stop();
+         this.unsubscribe = this.options.transport.subscribe((envelope) => { void this.handle(envelope); });
++        this.restoring = this.restoreSessions().finally(() => { this.restoring = null; });
+         return () => this.stop();
+     }
+     async handle(envelope) {
++        await this.restoring;
+         const candidate = envelope.data;
+         if (!candidate || typeof candidate !== "object")
+             return;
+@@ -82,7 +86,25 @@ export class BalLauncher {
+             return this.sendError(envelope, ready, "USER_REJECTED", "El usuario rechazó el acceso BAL");
+         try {
+             const expiresAt = now + (this.options.sessionTtlMs ?? 8 * 60 * 60_000);
+-            const remote = await BalNip46RemoteSession.create({
++            let remote;
++            const persist = () => {
++                const current = this.active.get(ready.requestId);
++                if (!current)
++                    return;
++                void this.saveSession({
++                    requestId: ready.requestId,
++                    nonce: ready.nonce,
++                    gameId: game.gameId,
++                    gameName: game.gameName,
++                    origin: game.origin,
++                    authorizationId: authorization.id,
++                    identityId: identity.identityId,
++                    identitySource: identity.source,
++                    remote: remote.snapshot(),
++                });
++            };
++            const authorization = remembered ?? createBalAuthorization(consent, now, this.options.authorizationTtlMs);
++            remote = await BalNip46RemoteSession.create({
+                 clientPubkey: ready.clientPubkey,
+                 identityPubkey: identity.pubkey,
+                 signer: identity.signer,
+@@ -90,9 +112,26 @@ export class BalLauncher {
                  relays: this.options.relays,
                  relayFactory: this.options.relayFactory,
                  expiresAt,
++                onRedeemed: persist,
++                onSnapshotChanged: persist,
 +                onClosed: (reason) => {
 +                    const current = this.active.get(ready.requestId);
 +                    if (!current)
 +                        return;
 +                    this.active.delete(ready.requestId);
++                    if (!this.preservingSessions)
++                        void this.removeSession(ready.requestId);
++                    if (this.preservingSessions)
++                        return;
 +                    this.options.onSessionClosed?.({
 +                        requestId: ready.requestId,
 +                        gameId: game.gameId,
@@ -52,22 +144,214 @@ index 56ef1ae..103a9fe 100644
 +                },
              });
              const bunkerUri = remote.takeBunkerUri();
-             const authorization = remembered ?? createBalAuthorization(consent, now, this.options.authorizationTtlMs);
+-            const authorization = remembered ?? createBalAuthorization(consent, now, this.options.authorizationTtlMs);
+             if (decision === "remember" && !remembered)
+                 await this.options.authorizationStore.save(authorization);
+             const session = {
+@@ -103,6 +142,8 @@ export class BalLauncher {
+                 peer: envelope.peer,
+                 origin: envelope.origin,
+                 authorizationId: authorization.id,
++                gameId: game.gameId,
++                gameName: game.gameName,
+             };
+             this.active.set(ready.requestId, session);
+             const message = {
+@@ -120,6 +161,119 @@ export class BalLauncher {
+             await this.sendError(envelope, ready, "NIP46_ERROR", error instanceof BalError ? error.message : "No se pudo crear la sesión NIP-46");
+         }
+     }
++    async restoreSessions() {
++        if (!this.options.sessionStore)
++            return;
++        let records;
++        try {
++            records = await this.options.sessionStore.list();
++        }
++        catch {
++            return;
++        }
++        if (!Array.isArray(records) || records.length === 0)
++            return;
++        let identity;
++        try {
++            identity = await this.options.getIdentity();
++        }
++        catch {
++            identity = null;
++        }
++        let authorizations = [];
++        try {
++            authorizations = await this.options.authorizationStore.list();
++        }
++        catch { /* se descartan todos los snapshots si no se puede validar el grant */ }
++        const now = this.options.now?.() ?? Date.now();
++        for (const record of records) {
++            const validAuthorization = identity
++                && Array.isArray(record?.remote?.permissions)
++                && authorizations.some((authorization) => (authorization.id === record.authorizationId
++                    && matchesBalAuthorization(authorization, {
++                        gameId: record.gameId,
++                        gameName: record.gameName,
++                        origin: record.origin,
++                        identityId: record.identityId,
++                        pubkey: record.remote.identityPubkey,
++                        identitySource: record.identitySource,
++                        permissions: record.remote.permissions,
++                    }, now)));
++            const valid = identity
++                && typeof record?.requestId === "string"
++                && typeof record.nonce === "string"
++                && typeof record.gameId === "string"
++                && typeof record.gameName === "string"
++                && typeof record.origin === "string"
++                && record.identityId === identity.identityId
++                && record.identitySource === identity.source
++                && record.remote?.identityPubkey === identity.pubkey
++                && record.remote.expiresAt > now
++                && validAuthorization;
++            if (!valid || !identity) {
++                await this.removeSession(record?.requestId);
++                continue;
++            }
++            let remote;
++            const persist = () => {
++                void this.saveSession({ ...record, remote: remote.snapshot() });
++            };
++            try {
++                remote = await BalNip46RemoteSession.resume({
++                    snapshot: record.remote,
++                    signer: identity.signer,
++                    relayFactory: this.options.relayFactory,
++                    onSnapshotChanged: persist,
++                    onClosed: (reason) => {
++                        const current = this.active.get(record.requestId);
++                        if (!current)
++                            return;
++                        this.active.delete(record.requestId);
++                        if (!this.preservingSessions)
++                            void this.removeSession(record.requestId);
++                        if (this.preservingSessions)
++                            return;
++                        this.options.onSessionClosed?.(record, reason);
++                    },
++                });
++                this.active.set(record.requestId, {
++                    expiresAt: record.remote.expiresAt,
++                    close: () => remote.close(),
++                    requestId: record.requestId,
++                    nonce: record.nonce,
++                    peer: null,
++                    origin: record.origin,
++                    authorizationId: record.authorizationId,
++                    gameId: record.gameId,
++                    gameName: record.gameName,
++                });
++                this.options.onSessionRestored?.({
++                    requestId: record.requestId,
++                    gameId: record.gameId,
++                    gameName: record.gameName,
++                    origin: record.origin,
++                    expiresAt: record.remote.expiresAt,
++                });
++            }
++            catch {
++                await this.removeSession(record.requestId);
++            }
++        }
++    }
++    async saveSession(session) {
++        try {
++            await this.options.sessionStore?.save(session);
++        }
++        catch { /* best effort */ }
++    }
++    async removeSession(requestId) {
++        if (typeof requestId !== "string")
++            return;
++        try {
++            await this.options.sessionStore?.remove(requestId);
++        }
++        catch { /* best effort */ }
++    }
+     async handleLogout(envelope) {
+         let message;
+         try {
+@@ -154,6 +308,8 @@ export class BalLauncher {
+             if (session.authorizationId !== authorizationId)
+                 continue;
+             try {
++                if (!session.peer)
++                    throw new Error("peer no disponible");
+                 await this.options.transport.send(session.peer, session.origin, {
+                     protocol: BAL_PROTOCOL,
+                     version: BAL_VERSION,
+@@ -171,6 +327,8 @@ export class BalLauncher {
+     async logoutAll(reason = "launcher_logout") {
+         await Promise.all([...this.active.values()].map(async (session) => {
+             try {
++                if (!session.peer)
++                    throw new Error("peer no disponible");
+                 await this.options.transport.send(session.peer, session.origin, {
+                     protocol: BAL_PROTOCOL,
+                     version: BAL_VERSION,
+@@ -185,11 +343,13 @@ export class BalLauncher {
+         }));
+         this.active.clear();
+     }
+-    stop() {
++    stop(options = {}) {
+         this.unsubscribe?.();
+         this.unsubscribe = null;
++        this.preservingSessions = options.preserveSessions === true;
+         for (const session of this.active.values())
+             session.close();
+         this.active.clear();
++        this.preservingSessions = false;
+     }
+ }
 diff --git a/node_modules/nostr-game-protocol/dist/bal-nip46.d.ts b/node_modules/nostr-game-protocol/dist/bal-nip46.d.ts
-index 5c345d0..3969c9f 100644
+index 5c345d0..be35b8e 100644
 --- a/node_modules/nostr-game-protocol/dist/bal-nip46.d.ts
 +++ b/node_modules/nostr-game-protocol/dist/bal-nip46.d.ts
-@@ -30,7 +30,9 @@ export type BalNip46RemoteSessionOptions = {
+@@ -30,6 +30,27 @@ export type BalNip46RemoteSessionOptions = {
      expiresAt?: number;
      relayFactory?: BalNip46RelayFactory;
      onRedeemed?: () => void;
++    onSnapshotChanged?: (snapshot: BalNip46RemoteSessionSnapshot) => void;
++    onClosed?: (reason: BalNip46SessionCloseReason) => void;
++};
++export type BalNip46SessionCloseReason = "client_logout" | "expired" | "launcher";
++/** Estado mínimo para reanudar un remoto ya canjeado tras recargar el launcher. */
++export type BalNip46RemoteSessionSnapshot = {
++    version: 1;
++    clientPubkey: string;
++    identityPubkey: string;
++    serviceSecret: string;
++    permissions: string[];
++    relays: string[];
++    expiresAt: number;
++    seenEventIds: string[];
++};
++export type BalNip46RemoteSessionResumeOptions = {
++    snapshot: BalNip46RemoteSessionSnapshot;
++    signer: BalNip46Signer;
++    relayFactory?: BalNip46RelayFactory;
++    onSnapshotChanged?: (snapshot: BalNip46RemoteSessionSnapshot) => void;
 +    onClosed?: (reason: BalNip46SessionCloseReason) => void;
  };
-+export type BalNip46SessionCloseReason = "client_logout" | "expired" | "launcher";
  /**
   * Remote signer efímero. Su clave sólo identifica esta sesión NIP-46; todas las
-  * firmas de usuario se delegan al signer de Luna Negra y nunca sale una nsec.
-@@ -61,7 +63,7 @@ export declare class BalNip46RemoteSession {
+@@ -53,6 +74,8 @@ export declare class BalNip46RemoteSession {
+     private closed;
+     private constructor();
+     static create(options: BalNip46RemoteSessionOptions): Promise<BalNip46RemoteSession>;
++    static resume(options: BalNip46RemoteSessionResumeOptions): Promise<BalNip46RemoteSession>;
++    snapshot(): BalNip46RemoteSessionSnapshot;
+     private start;
+     /** Entrega la URI exactamente una vez y elimina la copia retenida por el servicio. */
+     takeBunkerUri(): string;
+@@ -61,7 +84,7 @@ export declare class BalNip46RemoteSession {
      private execute;
      private callCrypto;
      private respond;
@@ -77,19 +361,124 @@ index 5c345d0..3969c9f 100644
  export type BalNip46ClientOptions = {
      clientSecret?: Uint8Array;
 diff --git a/node_modules/nostr-game-protocol/dist/bal-nip46.js b/node_modules/nostr-game-protocol/dist/bal-nip46.js
-index 19abb04..5472110 100644
+index 19abb04..7f04b9b 100644
 --- a/node_modules/nostr-game-protocol/dist/bal-nip46.js
 +++ b/node_modules/nostr-game-protocol/dist/bal-nip46.js
-@@ -120,7 +120,7 @@ export class BalNip46RemoteSession {
-     start() {
-         const since = Math.floor(Date.now() / 1000) - 10;
+@@ -73,6 +73,14 @@ function encodeJson(value, secretKey, peerPubkey) {
+ function validRpcId(id) {
+     return typeof id === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(id);
+ }
++function secretKeyFromHex(value) {
++    if (!HEX64.test(value))
++        throw new BalError("NIP46_ERROR", "Clave de sesión BAL inválida");
++    return Uint8Array.from(value.match(/.{2}/g), (byte) => Number.parseInt(byte, 16));
++}
++function secretKeyToHex(value) {
++    return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
++}
+ /**
+  * Remote signer efímero. Su clave sólo identifica esta sesión NIP-46; todas las
+  * firmas de usuario se delegan al signer de Luna Negra y nunca sale una nsec.
+@@ -93,7 +101,7 @@ export class BalNip46RemoteSession {
+     expiryTimer = null;
+     redeemed = false;
+     closed = false;
+-    constructor(options) {
++    constructor(options, snapshot) {
+         this.options = options;
+         if (!HEX64.test(options.clientPubkey) || !HEX64.test(options.identityPubkey)) {
+             throw new BalError("NIP46_ERROR", "Pubkey inválida para la sesión BAL");
+@@ -101,12 +109,23 @@ export class BalNip46RemoteSession {
+         this.clientPubkey = options.clientPubkey;
+         this.identityPubkey = options.identityPubkey;
+         this.permissions = new Set(normalizeBalPermissions(options.permissions));
+-        this.serviceSecret = generateSecretKey();
++        this.serviceSecret = snapshot
++            ? secretKeyFromHex(snapshot.serviceSecret)
++            : generateSecretKey();
+         this.servicePubkey = getPublicKey(this.serviceSecret);
+-        this.secret = randomToken();
++        this.secret = snapshot ? null : randomToken();
+         this.expiresAt = options.expiresAt ?? Date.now() + BAL_DEFAULT_SESSION_TTL_MS;
+         this.transport = (options.relayFactory ?? balNip46PoolTransport)(options.relays);
+-        this.bunkerUriValue = createBunkerUri({ pubkey: this.servicePubkey, relays: options.relays, secret: this.secret });
++        this.bunkerUriValue = this.secret
++            ? createBunkerUri({ pubkey: this.servicePubkey, relays: options.relays, secret: this.secret })
++            : null;
++        if (snapshot) {
++            this.redeemed = true;
++            for (const eventId of snapshot.seenEventIds) {
++                if (HEX64.test(eventId))
++                    this.seenEvents.add(eventId);
++            }
++        }
+     }
+     static async create(options) {
+         const actualPubkey = await options.signer.getPublicKey();
+@@ -117,10 +136,59 @@ export class BalNip46RemoteSession {
+         session.start();
+         return session;
+     }
+-    start() {
+-        const since = Math.floor(Date.now() / 1000) - 10;
++    static async resume(options) {
++        const { snapshot } = options;
++        if (snapshot?.version !== 1
++            || !HEX64.test(snapshot.clientPubkey)
++            || !HEX64.test(snapshot.identityPubkey)
++            || !Array.isArray(snapshot.permissions)
++            || !snapshot.permissions.every((permission) => typeof permission === "string")
++            || !Array.isArray(snapshot.relays)
++            || !snapshot.relays.every((relay) => typeof relay === "string")
++            || !Number.isFinite(snapshot.expiresAt)
++            || snapshot.expiresAt <= Date.now()
++            || !Array.isArray(snapshot.seenEventIds)) {
++            throw new BalError("NIP46_ERROR", "Snapshot de sesión BAL inválido o vencido");
++        }
++        const actualPubkey = await options.signer.getPublicKey();
++        if (actualPubkey !== snapshot.identityPubkey) {
++            throw new BalError("NIP46_ERROR", "El signer activo no corresponde a la sesión BAL guardada");
++        }
++        const session = new BalNip46RemoteSession({
++            clientPubkey: snapshot.clientPubkey,
++            identityPubkey: snapshot.identityPubkey,
++            signer: options.signer,
++            permissions: snapshot.permissions,
++            relays: snapshot.relays,
++            relayFactory: options.relayFactory,
++            expiresAt: snapshot.expiresAt,
++            onSnapshotChanged: options.onSnapshotChanged,
++            onClosed: options.onClosed,
++        }, snapshot);
++        session.start(true);
++        return session;
++    }
++    snapshot() {
++        if (!this.redeemed || this.closed) {
++            throw new BalError("NIP46_ERROR", "La sesión BAL todavía no se puede reanudar");
++        }
++        return {
++            version: 1,
++            clientPubkey: this.clientPubkey,
++            identityPubkey: this.identityPubkey,
++            serviceSecret: secretKeyToHex(this.serviceSecret),
++            permissions: [...this.permissions],
++            relays: [...this.options.relays],
++            expiresAt: this.expiresAt,
++            seenEventIds: [...this.seenEvents],
++        };
++    }
++    start(resumed = false) {
++        // Al reanudar, recuperar RPC publicados mientras la página se recargaba.
++        // `seenEventIds` evita volver a ejecutar operaciones ya procesadas.
++        const since = Math.floor(Date.now() / 1000) - (resumed ? 5 * 60 : 10);
          this.unsubscribe = this.transport.subscribe({ kinds: [NIP46_KIND], authors: [this.clientPubkey], "#p": [this.servicePubkey], since }, (event) => { void this.handleEvent(event); });
 -        this.expiryTimer = setTimeout(() => this.close(), Math.max(0, this.expiresAt - Date.now()));
 +        this.expiryTimer = setTimeout(() => this.close("expired"), Math.max(0, this.expiresAt - Date.now()));
      }
      /** Entrega la URI exactamente una vez y elimina la copia retenida por el servicio. */
      takeBunkerUri() {
-@@ -131,8 +131,10 @@ export class BalNip46RemoteSession {
+@@ -131,8 +199,10 @@ export class BalNip46RemoteSession {
          return uri;
      }
      async handleEvent(event) {
@@ -102,7 +491,16 @@ index 19abb04..5472110 100644
          if (event.pubkey !== this.clientPubkey || !verifyEvent(event) || this.seenEvents.has(event.id))
              return;
          if (Math.abs(event.created_at * 1000 - Date.now()) > 5 * 60_000)
-@@ -153,6 +155,8 @@ export class BalNip46RemoteSession {
+@@ -140,6 +210,8 @@ export class BalNip46RemoteSession {
+         this.seenEvents.add(event.id);
+         if (this.seenEvents.size > 1_000)
+             this.seenEvents.delete(this.seenEvents.values().next().value);
++        if (this.redeemed)
++            this.options.onSnapshotChanged?.(this.snapshot());
+         let request;
+         try {
+             const decoded = decodeJson(event.content, this.serviceSecret, this.clientPubkey);
+@@ -153,6 +225,8 @@ export class BalNip46RemoteSession {
          try {
              const result = await this.execute(request);
              await this.respond({ id: request.id, result });
@@ -111,7 +509,12 @@ index 19abb04..5472110 100644
          }
          catch (error) {
              const message = error instanceof BalError ? error.message : "Operación NIP-46 rechazada";
-@@ -178,6 +182,8 @@ export class BalNip46RemoteSession {
+@@ -174,10 +248,13 @@ export class BalNip46RemoteSession {
+             this.secret = null;
+             this.redeemed = true;
+             this.options.onRedeemed?.();
++            this.options.onSnapshotChanged?.(this.snapshot());
+             return "ack";
          }
          if (!this.redeemed)
              throw new BalError("NIP46_ERROR", "La sesión NIP-46 no fue conectada");
@@ -120,7 +523,7 @@ index 19abb04..5472110 100644
          if (request.method === "ping")
              return "pong";
          if (request.method === "get_public_key") {
-@@ -238,7 +244,7 @@ export class BalNip46RemoteSession {
+@@ -238,7 +315,7 @@ export class BalNip46RemoteSession {
          }, this.serviceSecret);
          await this.transport.publish(event);
      }
@@ -129,7 +532,7 @@ index 19abb04..5472110 100644
          if (this.closed)
              return;
          this.closed = true;
-@@ -248,6 +254,7 @@ export class BalNip46RemoteSession {
+@@ -248,6 +325,7 @@ export class BalNip46RemoteSession {
              clearTimeout(this.expiryTimer);
          this.expiryTimer = null;
          this.transport.close();
@@ -137,7 +540,7 @@ index 19abb04..5472110 100644
      }
  }
  /** Cliente NIP-46 efímero que consume la Bunker URI entregada por BAL. */
-@@ -345,6 +352,12 @@ export class BalNip46Client {
+@@ -345,6 +423,12 @@ export class BalNip46Client {
      nip44Encrypt(peer, plaintext) { return this.rpc("nip44_encrypt", [peer, plaintext]); }
      nip44Decrypt(peer, ciphertext) { return this.rpc("nip44_decrypt", [peer, ciphertext]); }
      async close() {
@@ -151,21 +554,30 @@ index 19abb04..5472110 100644
          this.unsubscribe = null;
          this.transport?.close();
 diff --git a/node_modules/nostr-game-protocol/src/bal-launcher.ts b/node_modules/nostr-game-protocol/src/bal-launcher.ts
-index b23a970..ee8c478 100644
+index b23a970..f14b7ad 100644
 --- a/node_modules/nostr-game-protocol/src/bal-launcher.ts
 +++ b/node_modules/nostr-game-protocol/src/bal-launcher.ts
-@@ -18,6 +18,7 @@ import {
+@@ -7,6 +7,7 @@ import {
+   matchesBalAuthorization,
+   parseBalLogout,
+   parseBalReady,
++  type BalAuthorization,
+   type BalAuthorizationStore,
+   type BalConsentDecision,
+   type BalConsentRequest,
+@@ -18,6 +19,8 @@ import {
  import {
    BalNip46RemoteSession,
    type BalNip46RelayFactory,
++  type BalNip46RemoteSessionSnapshot,
 +  type BalNip46SessionCloseReason,
    type BalNip46Signer,
  } from "./bal-nip46.js";
- 
-@@ -45,6 +46,13 @@ export type BalLauncherSession = {
+
+@@ -45,6 +48,27 @@ export type BalLauncherSession = {
    close(): void;
  };
- 
+
 +export type BalLauncherClosedSession = {
 +  requestId: string;
 +  gameId: string;
@@ -173,28 +585,106 @@ index b23a970..ee8c478 100644
 +  origin: string;
 +};
 +
++export type BalLauncherPersistedSession = BalLauncherClosedSession & {
++  nonce: string;
++  authorizationId: string;
++  identityId: string;
++  identitySource: BalIdentitySource;
++  remote: BalNip46RemoteSessionSnapshot;
++};
++
++export interface BalLauncherSessionStore {
++  list(): BalLauncherPersistedSession[] | Promise<BalLauncherPersistedSession[]>;
++  save(session: BalLauncherPersistedSession): void | Promise<void>;
++  remove(requestId: string): void | Promise<void>;
++}
++
  export type BalLauncherOptions<Peer> = {
    transport: BalTransport<Peer>;
    registry: BalGameRegistry<Peer>;
-@@ -56,6 +64,10 @@ export type BalLauncherOptions<Peer> = {
+@@ -56,14 +80,22 @@ export type BalLauncherOptions<Peer> = {
    authorizationTtlMs?: number;
    sessionTtlMs?: number;
    now?: () => number;
++  sessionStore?: BalLauncherSessionStore;
++  onSessionRestored?: (session: BalLauncherClosedSession & { expiresAt: number }) => void;
 +  onSessionClosed?: (
 +    session: BalLauncherClosedSession,
 +    reason: BalNip46SessionCloseReason,
 +  ) => void;
  };
- 
+
  type ActiveSession<Peer> = Omit<BalLauncherSession, "bunkerUri"> & {
-@@ -142,6 +154,17 @@ export class BalLauncher<Peer> {
+   requestId: string;
+   nonce: string;
+-  peer: Peer;
++  peer: Peer | null;
+   origin: string;
+   authorizationId: string;
++  gameId: string;
++  gameName: string;
+ };
+
+ /** Launcher-side coordinator with source/origin validation and replay defense. */
+@@ -72,16 +104,20 @@ export class BalLauncher<Peer> {
+   private readonly seenRequests = new Map<string, number>();
+   private readonly seenNonces = new Map<string, number>();
+   private unsubscribe: (() => void) | null = null;
++  private restoring: Promise<void> | null = null;
++  private preservingSessions = false;
+
+   constructor(private readonly options: BalLauncherOptions<Peer>) {}
+
+   start(): () => void {
+     if (this.unsubscribe) return () => this.stop();
+     this.unsubscribe = this.options.transport.subscribe((envelope) => { void this.handle(envelope); });
++    this.restoring = this.restoreSessions().finally(() => { this.restoring = null; });
+     return () => this.stop();
+   }
+
+   private async handle(envelope: BalTransportEnvelope<Peer>): Promise<void> {
++    await this.restoring;
+     const candidate = envelope.data as { type?: unknown } | null;
+     if (!candidate || typeof candidate !== "object") return;
+     if (candidate.type === "BAL_LOGOUT") return this.handleLogout(envelope);
+@@ -134,7 +170,24 @@ export class BalLauncher<Peer> {
+
+     try {
+       const expiresAt = now + (this.options.sessionTtlMs ?? 8 * 60 * 60_000);
+-      const remote = await BalNip46RemoteSession.create({
++      let remote!: BalNip46RemoteSession;
++      const persist = () => {
++        const current = this.active.get(ready.requestId);
++        if (!current) return;
++        void this.saveSession({
++          requestId: ready.requestId,
++          nonce: ready.nonce,
++          gameId: game.gameId,
++          gameName: game.gameName,
++          origin: game.origin,
++          authorizationId: authorization.id,
++          identityId: identity.identityId,
++          identitySource: identity.source,
++          remote: remote.snapshot(),
++        });
++      };
++      const authorization = remembered ?? createBalAuthorization(consent, now, this.options.authorizationTtlMs);
++      remote = await BalNip46RemoteSession.create({
+         clientPubkey: ready.clientPubkey,
+         identityPubkey: identity.pubkey,
+         signer: identity.signer,
+@@ -142,9 +195,23 @@ export class BalLauncher<Peer> {
          relays: this.options.relays,
          relayFactory: this.options.relayFactory,
          expiresAt,
++        onRedeemed: persist,
++        onSnapshotChanged: persist,
 +        onClosed: (reason) => {
 +          const current = this.active.get(ready.requestId);
 +          if (!current) return;
 +          this.active.delete(ready.requestId);
++          if (!this.preservingSessions) void this.removeSession(ready.requestId);
++          if (this.preservingSessions) return;
 +          this.options.onSessionClosed?.({
 +            requestId: ready.requestId,
 +            gameId: game.gameId,
@@ -204,35 +694,312 @@ index b23a970..ee8c478 100644
 +        },
        });
        const bunkerUri = remote.takeBunkerUri();
-       const authorization = remembered ?? createBalAuthorization(consent, now, this.options.authorizationTtlMs);
+-      const authorization = remembered ?? createBalAuthorization(consent, now, this.options.authorizationTtlMs);
+       if (decision === "remember" && !remembered) await this.options.authorizationStore.save(authorization);
+       const session: ActiveSession<Peer> = {
+         expiresAt,
+@@ -154,6 +221,8 @@ export class BalLauncher<Peer> {
+         peer: envelope.peer,
+         origin: envelope.origin,
+         authorizationId: authorization.id,
++        gameId: game.gameId,
++        gameName: game.gameName,
+       };
+       this.active.set(ready.requestId, session);
+       const message: BalSessionMessage = {
+@@ -171,6 +240,104 @@ export class BalLauncher<Peer> {
+     }
+   }
+
++  private async restoreSessions(): Promise<void> {
++    if (!this.options.sessionStore) return;
++    let records: BalLauncherPersistedSession[];
++    try { records = await this.options.sessionStore.list(); }
++    catch { return; }
++    if (!Array.isArray(records) || records.length === 0) return;
++
++    let identity: BalLauncherIdentity | null;
++    try { identity = await this.options.getIdentity(); }
++    catch { identity = null; }
++    let authorizations: BalAuthorization[] = [];
++    try { authorizations = await this.options.authorizationStore.list(); }
++    catch { /* se descartan todos los snapshots si no se puede validar el grant */ }
++    const now = this.options.now?.() ?? Date.now();
++
++    for (const record of records) {
++      const validAuthorization = identity
++        && Array.isArray(record?.remote?.permissions)
++        && authorizations.some((authorization) => (
++          authorization.id === record.authorizationId
++          && matchesBalAuthorization(authorization, {
++            gameId: record.gameId,
++            gameName: record.gameName,
++            origin: record.origin,
++            identityId: record.identityId,
++            pubkey: record.remote.identityPubkey,
++            identitySource: record.identitySource,
++            permissions: record.remote.permissions,
++          }, now)
++        ));
++      const valid = identity
++        && typeof record?.requestId === "string"
++        && typeof record.nonce === "string"
++        && typeof record.gameId === "string"
++        && typeof record.gameName === "string"
++        && typeof record.origin === "string"
++        && record.identityId === identity.identityId
++        && record.identitySource === identity.source
++        && record.remote?.identityPubkey === identity.pubkey
++        && record.remote.expiresAt > now
++        && validAuthorization;
++      if (!valid || !identity) {
++        await this.removeSession(record?.requestId);
++        continue;
++      }
++
++      let remote!: BalNip46RemoteSession;
++      const persist = () => {
++        void this.saveSession({ ...record, remote: remote.snapshot() });
++      };
++      try {
++        remote = await BalNip46RemoteSession.resume({
++          snapshot: record.remote,
++          signer: identity.signer,
++          relayFactory: this.options.relayFactory,
++          onSnapshotChanged: persist,
++          onClosed: (reason) => {
++            const current = this.active.get(record.requestId);
++            if (!current) return;
++            this.active.delete(record.requestId);
++            if (!this.preservingSessions) void this.removeSession(record.requestId);
++            if (this.preservingSessions) return;
++            this.options.onSessionClosed?.(record, reason);
++          },
++        });
++        this.active.set(record.requestId, {
++          expiresAt: record.remote.expiresAt,
++          close: () => remote.close(),
++          requestId: record.requestId,
++          nonce: record.nonce,
++          peer: null,
++          origin: record.origin,
++          authorizationId: record.authorizationId,
++          gameId: record.gameId,
++          gameName: record.gameName,
++        });
++        this.options.onSessionRestored?.({
++          requestId: record.requestId,
++          gameId: record.gameId,
++          gameName: record.gameName,
++          origin: record.origin,
++          expiresAt: record.remote.expiresAt,
++        });
++      } catch {
++        await this.removeSession(record.requestId);
++      }
++    }
++  }
++
++  private async saveSession(session: BalLauncherPersistedSession): Promise<void> {
++    try { await this.options.sessionStore?.save(session); } catch { /* best effort */ }
++  }
++
++  private async removeSession(requestId: unknown): Promise<void> {
++    if (typeof requestId !== "string") return;
++    try { await this.options.sessionStore?.remove(requestId); } catch { /* best effort */ }
++  }
++
+   private async handleLogout(envelope: BalTransportEnvelope<Peer>): Promise<void> {
+     let message;
+     try { message = parseBalLogout(envelope.data); } catch { return; }
+@@ -199,6 +366,7 @@ export class BalLauncher<Peer> {
+     for (const [requestId, session] of this.active) {
+       if (session.authorizationId !== authorizationId) continue;
+       try {
++        if (!session.peer) throw new Error("peer no disponible");
+         await this.options.transport.send(session.peer, session.origin, {
+           protocol: BAL_PROTOCOL,
+           version: BAL_VERSION,
+@@ -216,6 +384,7 @@ export class BalLauncher<Peer> {
+   async logoutAll(reason: "launcher_logout" | "revoked" | "expired" = "launcher_logout"): Promise<void> {
+     await Promise.all([...this.active.values()].map(async (session) => {
+       try {
++        if (!session.peer) throw new Error("peer no disponible");
+         await this.options.transport.send(session.peer, session.origin, {
+           protocol: BAL_PROTOCOL,
+           version: BAL_VERSION,
+@@ -230,10 +399,12 @@ export class BalLauncher<Peer> {
+     this.active.clear();
+   }
+
+-  stop(): void {
++  stop(options: { preserveSessions?: boolean } = {}): void {
+     this.unsubscribe?.();
+     this.unsubscribe = null;
++    this.preservingSessions = options.preserveSessions === true;
+     for (const session of this.active.values()) session.close();
+     this.active.clear();
++    this.preservingSessions = false;
+   }
+ }
 diff --git a/node_modules/nostr-game-protocol/src/bal-nip46.ts b/node_modules/nostr-game-protocol/src/bal-nip46.ts
-index 9ee8b5c..b03832d 100644
+index 9ee8b5c..518545f 100644
 --- a/node_modules/nostr-game-protocol/src/bal-nip46.ts
 +++ b/node_modules/nostr-game-protocol/src/bal-nip46.ts
-@@ -115,8 +115,11 @@ export type BalNip46RemoteSessionOptions = {
+@@ -115,8 +115,41 @@ export type BalNip46RemoteSessionOptions = {
    expiresAt?: number;
    relayFactory?: BalNip46RelayFactory;
    onRedeemed?: () => void;
++  onSnapshotChanged?: (snapshot: BalNip46RemoteSessionSnapshot) => void;
 +  onClosed?: (reason: BalNip46SessionCloseReason) => void;
  };
- 
+
 +export type BalNip46SessionCloseReason = "client_logout" | "expired" | "launcher";
++
++/** Estado mínimo para reanudar un remoto ya canjeado tras recargar el launcher. */
++export type BalNip46RemoteSessionSnapshot = {
++  version: 1;
++  clientPubkey: string;
++  identityPubkey: string;
++  serviceSecret: string;
++  permissions: string[];
++  relays: string[];
++  expiresAt: number;
++  seenEventIds: string[];
++};
++
++export type BalNip46RemoteSessionResumeOptions = {
++  snapshot: BalNip46RemoteSessionSnapshot;
++  signer: BalNip46Signer;
++  relayFactory?: BalNip46RelayFactory;
++  onSnapshotChanged?: (snapshot: BalNip46RemoteSessionSnapshot) => void;
++  onClosed?: (reason: BalNip46SessionCloseReason) => void;
++};
++
++function secretKeyFromHex(value: string): Uint8Array {
++  if (!HEX64.test(value)) throw new BalError("NIP46_ERROR", "Clave de sesión BAL inválida");
++  return Uint8Array.from(value.match(/.{2}/g)!, (byte) => Number.parseInt(byte, 16));
++}
++
++function secretKeyToHex(value: Uint8Array): string {
++  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
++}
 +
  /**
   * Remote signer efímero. Su clave sólo identifica esta sesión NIP-46; todas las
   * firmas de usuario se delegan al signer de Luna Negra y nunca sale una nsec.
-@@ -168,7 +171,7 @@ export class BalNip46RemoteSession {
+@@ -137,19 +170,32 @@ export class BalNip46RemoteSession {
+   private redeemed = false;
+   private closed = false;
+
+-  private constructor(private readonly options: BalNip46RemoteSessionOptions) {
++  private constructor(
++    private readonly options: BalNip46RemoteSessionOptions,
++    snapshot?: BalNip46RemoteSessionSnapshot,
++  ) {
+     if (!HEX64.test(options.clientPubkey) || !HEX64.test(options.identityPubkey)) {
+       throw new BalError("NIP46_ERROR", "Pubkey inválida para la sesión BAL");
+     }
+     this.clientPubkey = options.clientPubkey;
+     this.identityPubkey = options.identityPubkey;
+     this.permissions = new Set(normalizeBalPermissions(options.permissions));
+-    this.serviceSecret = generateSecretKey();
++    this.serviceSecret = snapshot
++      ? secretKeyFromHex(snapshot.serviceSecret)
++      : generateSecretKey();
+     this.servicePubkey = getPublicKey(this.serviceSecret);
+-    this.secret = randomToken();
++    this.secret = snapshot ? null : randomToken();
+     this.expiresAt = options.expiresAt ?? Date.now() + BAL_DEFAULT_SESSION_TTL_MS;
+     this.transport = (options.relayFactory ?? balNip46PoolTransport)(options.relays);
+-    this.bunkerUriValue = createBunkerUri({ pubkey: this.servicePubkey, relays: options.relays, secret: this.secret });
++    this.bunkerUriValue = this.secret
++      ? createBunkerUri({ pubkey: this.servicePubkey, relays: options.relays, secret: this.secret })
++      : null;
++    if (snapshot) {
++      this.redeemed = true;
++      for (const eventId of snapshot.seenEventIds) {
++        if (HEX64.test(eventId)) this.seenEvents.add(eventId);
++      }
++    }
+   }
+
+   static async create(options: BalNip46RemoteSessionOptions): Promise<BalNip46RemoteSession> {
+@@ -162,13 +208,68 @@ export class BalNip46RemoteSession {
+     return session;
+   }
+
+-  private start(): void {
+-    const since = Math.floor(Date.now() / 1000) - 10;
++  static async resume(
++    options: BalNip46RemoteSessionResumeOptions,
++  ): Promise<BalNip46RemoteSession> {
++    const { snapshot } = options;
++    if (
++      snapshot?.version !== 1
++      || !HEX64.test(snapshot.clientPubkey)
++      || !HEX64.test(snapshot.identityPubkey)
++      || !Array.isArray(snapshot.permissions)
++      || !snapshot.permissions.every((permission) => typeof permission === "string")
++      || !Array.isArray(snapshot.relays)
++      || !snapshot.relays.every((relay) => typeof relay === "string")
++      || !Number.isFinite(snapshot.expiresAt)
++      || snapshot.expiresAt <= Date.now()
++      || !Array.isArray(snapshot.seenEventIds)
++    ) {
++      throw new BalError("NIP46_ERROR", "Snapshot de sesión BAL inválido o vencido");
++    }
++    const actualPubkey = await options.signer.getPublicKey();
++    if (actualPubkey !== snapshot.identityPubkey) {
++      throw new BalError("NIP46_ERROR", "El signer activo no corresponde a la sesión BAL guardada");
++    }
++    const session = new BalNip46RemoteSession({
++      clientPubkey: snapshot.clientPubkey,
++      identityPubkey: snapshot.identityPubkey,
++      signer: options.signer,
++      permissions: snapshot.permissions,
++      relays: snapshot.relays,
++      relayFactory: options.relayFactory,
++      expiresAt: snapshot.expiresAt,
++      onSnapshotChanged: options.onSnapshotChanged,
++      onClosed: options.onClosed,
++    }, snapshot);
++    session.start(true);
++    return session;
++  }
++
++  snapshot(): BalNip46RemoteSessionSnapshot {
++    if (!this.redeemed || this.closed) {
++      throw new BalError("NIP46_ERROR", "La sesión BAL todavía no se puede reanudar");
++    }
++    return {
++      version: 1,
++      clientPubkey: this.clientPubkey,
++      identityPubkey: this.identityPubkey,
++      serviceSecret: secretKeyToHex(this.serviceSecret),
++      permissions: [...this.permissions],
++      relays: [...this.options.relays],
++      expiresAt: this.expiresAt,
++      seenEventIds: [...this.seenEvents],
++    };
++  }
++
++  private start(resumed = false): void {
++    // Al reanudar, recuperar RPC publicados mientras la página se recargaba.
++    // `seenEventIds` evita volver a ejecutar operaciones ya procesadas.
++    const since = Math.floor(Date.now() / 1000) - (resumed ? 5 * 60 : 10);
+     this.unsubscribe = this.transport.subscribe(
        { kinds: [NIP46_KIND], authors: [this.clientPubkey], "#p": [this.servicePubkey], since },
        (event) => { void this.handleEvent(event); },
      );
 -    this.expiryTimer = setTimeout(() => this.close(), Math.max(0, this.expiresAt - Date.now()));
 +    this.expiryTimer = setTimeout(() => this.close("expired"), Math.max(0, this.expiresAt - Date.now()));
    }
- 
+
    /** Entrega la URI exactamente una vez y elimina la copia retenida por el servicio. */
-@@ -180,7 +183,8 @@ export class BalNip46RemoteSession {
+@@ -180,11 +281,13 @@ export class BalNip46RemoteSession {
    }
- 
+
    private async handleEvent(event: Event): Promise<void> {
 -    if (this.closed || Date.now() >= this.expiresAt) return this.close();
 +    if (this.closed) return;
@@ -240,7 +1007,12 @@ index 9ee8b5c..b03832d 100644
      if (event.pubkey !== this.clientPubkey || !verifyEvent(event) || this.seenEvents.has(event.id)) return;
      if (Math.abs(event.created_at * 1000 - Date.now()) > 5 * 60_000) return;
      this.seenEvents.add(event.id);
-@@ -196,6 +200,7 @@ export class BalNip46RemoteSession {
+     if (this.seenEvents.size > 1_000) this.seenEvents.delete(this.seenEvents.values().next().value!);
++    if (this.redeemed) this.options.onSnapshotChanged?.(this.snapshot());
+
+     let request: Nip46Request;
+     try {
+@@ -196,6 +299,7 @@ export class BalNip46RemoteSession {
      try {
        const result = await this.execute(request);
        await this.respond({ id: request.id, result });
@@ -248,7 +1020,11 @@ index 9ee8b5c..b03832d 100644
      } catch (error) {
        const message = error instanceof BalError ? error.message : "Operación NIP-46 rechazada";
        await this.respond({ id: request.id, error: message.slice(0, 180) }).catch(() => {});
-@@ -220,6 +225,7 @@ export class BalNip46RemoteSession {
+@@ -217,9 +321,11 @@ export class BalNip46RemoteSession {
+       this.secret = null;
+       this.redeemed = true;
+       this.options.onRedeemed?.();
++      this.options.onSnapshotChanged?.(this.snapshot());
        return "ack";
      }
      if (!this.redeemed) throw new BalError("NIP46_ERROR", "La sesión NIP-46 no fue conectada");
@@ -256,26 +1032,26 @@ index 9ee8b5c..b03832d 100644
      if (request.method === "ping") return "pong";
      if (request.method === "get_public_key") {
        this.requirePermission("get_public_key");
-@@ -271,7 +277,7 @@ export class BalNip46RemoteSession {
+@@ -271,7 +377,7 @@ export class BalNip46RemoteSession {
      await this.transport.publish(event);
    }
- 
+
 -  close(): void {
 +  close(reason: BalNip46SessionCloseReason = "launcher"): void {
      if (this.closed) return;
      this.closed = true;
      this.unsubscribe?.();
-@@ -279,6 +285,7 @@ export class BalNip46RemoteSession {
+@@ -279,6 +385,7 @@ export class BalNip46RemoteSession {
      if (this.expiryTimer) clearTimeout(this.expiryTimer);
      this.expiryTimer = null;
      this.transport.close();
 +    this.options.onClosed?.(reason);
    }
  }
- 
-@@ -384,6 +391,9 @@ export class BalNip46Client implements BalNip46Signer {
+
+@@ -384,6 +491,9 @@ export class BalNip46Client implements BalNip46Signer {
    nip44Decrypt(peer: string, ciphertext: string): Promise<string> { return this.rpc("nip44_decrypt", [peer, ciphertext]); }
- 
+
    async close(): Promise<void> {
 +    if (this.pointer && this.transport) {
 +      try { await this.rpc("logout", []); } catch { /* best effort */ }

@@ -124,4 +124,49 @@ describe("BAL consent UX", () => {
     clearBalSessionAuthorizationsForGame("ajedrez");
     expect(hasBalAuthorization(request)).toBe(false);
   });
+
+  it("restores snapshots only after a real reload marker", async () => {
+    const storage = memoryStorage();
+    vi.stubGlobal("sessionStorage", storage);
+    vi.stubGlobal("window", { location: { origin: "https://luna.example" } });
+    const first = await import("@/lib/bal-launcher");
+    first.registerBalGameWindow(
+      "ajedrez",
+      "Ajedrez",
+      { postMessage: vi.fn() } as unknown as Window,
+      "https://ajedrez.example/play",
+      true,
+    );
+    first.createLunaBalSessionStore().save({
+      requestId: "request-1",
+      nonce: "nonce-1",
+      gameId: "ajedrez",
+      gameName: "Ajedrez",
+      origin: "https://ajedrez.example",
+      authorizationId: "authorization-1",
+      identityId: "user-1",
+      identitySource: "nsec",
+      remote: {
+        version: 1,
+        clientPubkey: "b".repeat(64),
+        identityPubkey: "a".repeat(64),
+        serviceSecret: "c".repeat(64),
+        permissions: ["get_public_key"],
+        relays: ["wss://relay.example"],
+        expiresAt: Date.now() + 60_000,
+        seenEventIds: [],
+      },
+    });
+    expect(first.prepareBalLauncherReload()).toBe(true);
+
+    vi.resetModules();
+    const reloaded = await import("@/lib/bal-launcher");
+    expect(await reloaded.createLunaBalSessionStore().list()).toHaveLength(1);
+
+    // Una pestaña duplicada puede copiar sessionStorage, pero sin `pagehide`
+    // no debe levantar la clave efímera del remoto original.
+    vi.resetModules();
+    const duplicated = await import("@/lib/bal-launcher");
+    expect(await duplicated.createLunaBalSessionStore().list()).toEqual([]);
+  });
 });
